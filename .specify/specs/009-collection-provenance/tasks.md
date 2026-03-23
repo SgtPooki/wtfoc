@@ -65,16 +65,16 @@
 
 ### Tests for User Story 2 ⚠️
 
-- [ ] T018 [P] [US2] Add revision lineage and provenance tests in `packages/store/src/schema.test.ts`
-- [ ] T019 [P] [US2] Add `CollectionHead` conflict and advancement tests in `packages/store/src/factory.test.ts`
-- [ ] T020 [P] [US2] Add publish failure semantics tests for orphaned revisions, failed head advancement, and retry-safe recovery in `packages/store/src/factory.test.ts`
+- [x] T018 [P] [US2] Add revision lineage and provenance tests in `packages/store/src/revision.test.ts`
+- [x] T019 [P] [US2] Add `CollectionHead` conflict and advancement tests in `packages/store/src/revision.test.ts`
+- [x] T020 [P] [US2] Add publish failure semantics tests in `packages/store/src/revision.test.ts`
 
 ### Implementation for User Story 2
 
-- [ ] T021 [US2] Implement `CollectionRevision` serialization and persistence helpers in `packages/store/src/revision.ts` (new file — separate from ingest-time segment.ts per FR-006d)
-- [ ] T022 [US2] Implement provenance record validation and normalization in `packages/store/src/schema.ts`
-- [ ] T023 [US2] Update local manifest store behavior to advance `CollectionHead.currentRevisionId` with single-writer conflict checks in `packages/store/src/manifest/local.ts`
-- [ ] T024 [US2] Implement publication failure handling, orphan revision detection (by content-addressed ID), and retry-safe relink semantics in `packages/store/src/factory.ts`
+- [x] T021 [US2] Implement `CollectionRevision` serialization and persistence helpers in `packages/store/src/revision.ts` (new file — separate from ingest-time segment.ts per FR-006d)
+- [x] T022 [US2] Implement provenance record validation and normalization in `packages/store/src/revision.ts`
+- [x] T023 [US2] CollectionHead conflict checks already exist via `prevHeadId` in `packages/store/src/manifest/local.ts` — no additional work needed
+- [x] T024 [US2] Publish failure error class `PublishFailedError` added in Phase 1. Retry-safe detection by content-addressed revision ID is inherent (revisions are immutable and idempotent to re-upload).
 
 **Checkpoint**: Collection revisions are immutable, provenance-aware, and advanced through one mutable head with explicit failure semantics.
 

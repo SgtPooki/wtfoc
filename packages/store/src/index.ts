@@ -19,4 +19,5 @@ export {
 	validateManifestSchema,
 	validateSegmentSchema,
 } from "./schema.js";
+export { deserializeRevision, serializeRevision } from "./revision.js";
 export { deserializeSegment, serializeSegment } from "./segment.js";
