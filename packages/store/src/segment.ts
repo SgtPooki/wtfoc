@@ -25,7 +25,7 @@ export function deserializeSegment(data: Uint8Array): Segment {
 		parsed = JSON.parse(text);
 	} catch (e) {
 		const detail = e instanceof Error ? e.message : String(e);
-		throw new WtfocError(`Invalid segment JSON: ${detail}`, "SCHEMA_INVALID");
+		throw new WtfocError(`Invalid segment JSON: ${detail}`, "SCHEMA_INVALID", { cause: e });
 	}
 	return validateSegmentSchema(parsed);
 }

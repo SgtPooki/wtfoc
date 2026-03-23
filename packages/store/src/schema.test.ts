@@ -160,6 +160,18 @@ describe("validateSegmentSchema", () => {
 		expectWtfocCode(() => validateSegmentSchema(bad), "SCHEMA_INVALID");
 	});
 
+	it("includes full field path in error context for invalid nested chunk field", () => {
+		const base = minimalValidSegmentRecord().chunks as unknown[];
+		const chunk0 = { ...(base[0] as Record<string, unknown>), id: "" };
+		try {
+			validateSegmentSchema(minimalValidSegmentRecord({ chunks: [chunk0] }));
+			expect.fail("expected throw");
+		} catch (e) {
+			expect(e).toBeInstanceOf(WtfocError);
+			expect((e as WtfocError).context?.field).toBe("chunks[0].id");
+		}
+	});
+
 	it("rejects invalid edge shape", () => {
 		const bad = minimalValidSegmentRecord({
 			edges: [{ type: "x" }],

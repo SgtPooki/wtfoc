@@ -24,10 +24,13 @@ function requireField<T>(
 	predicate: (v: unknown) => v is T,
 	label: string,
 	kind: SchemaKind,
+	fieldPath?: string,
 ): T {
 	const v = record[key];
 	if (!predicate(v)) {
-		throw new WtfocError(`${errorPrefix(kind)}: ${label}`, "SCHEMA_INVALID", { field: key });
+		throw new WtfocError(`${errorPrefix(kind)}: ${label}`, "SCHEMA_INVALID", {
+			field: fieldPath ?? key,
+		});
 	}
 	return v;
 }
@@ -62,6 +65,7 @@ function validateSegmentSummary(raw: unknown, index: number): SegmentSummary {
 		isNonEmptyString,
 		`segments[${index}].id must be a non-empty string`,
 		"headManifest",
+		`segments[${index}].id`,
 	);
 	const sourceTypes = requireField(
 		raw,
@@ -69,6 +73,7 @@ function validateSegmentSummary(raw: unknown, index: number): SegmentSummary {
 		(v): v is string[] => Array.isArray(v) && v.every(isString),
 		`segments[${index}].sourceTypes must be an array of strings`,
 		"headManifest",
+		`segments[${index}].sourceTypes`,
 	);
 	const chunkCount = requireField(
 		raw,
@@ -76,6 +81,7 @@ function validateSegmentSummary(raw: unknown, index: number): SegmentSummary {
 		isFiniteNonNegativeInt,
 		`segments[${index}].chunkCount must be a non-negative integer`,
 		"headManifest",
+		`segments[${index}].chunkCount`,
 	);
 
 	const summary: SegmentSummary = { id, sourceTypes, chunkCount };
@@ -114,6 +120,7 @@ function validateSegmentSummary(raw: unknown, index: number): SegmentSummary {
 			isString,
 			`segments[${index}].timeRange.from must be a string`,
 			"headManifest",
+			`segments[${index}].timeRange.from`,
 		);
 		const to = requireField(
 			raw.timeRange,
@@ -121,6 +128,7 @@ function validateSegmentSummary(raw: unknown, index: number): SegmentSummary {
 			isString,
 			`segments[${index}].timeRange.to must be a string`,
 			"headManifest",
+			`segments[${index}].timeRange.to`,
 		);
 		summary.timeRange = { from, to };
 	}
@@ -251,6 +259,7 @@ function validateChunk(
 		isNonEmptyString,
 		`chunks[${index}].id must be a non-empty string`,
 		"segment",
+		`chunks[${index}].id`,
 	);
 	const storageId = requireField(
 		raw,
@@ -258,6 +267,7 @@ function validateChunk(
 		isNonEmptyString,
 		`chunks[${index}].storageId must be a non-empty string`,
 		"segment",
+		`chunks[${index}].storageId`,
 	);
 	const embedding = requireField(
 		raw,
@@ -265,6 +275,7 @@ function validateChunk(
 		isNumberArray,
 		`chunks[${index}].embedding must be a number array`,
 		"segment",
+		`chunks[${index}].embedding`,
 	);
 	if (embedding.length !== embeddingDimensions) {
 		throw new WtfocError(
@@ -279,6 +290,7 @@ function validateChunk(
 		(v): v is string[] => Array.isArray(v) && v.every(isString),
 		`chunks[${index}].terms must be an array of strings`,
 		"segment",
+		`chunks[${index}].terms`,
 	);
 	const source = requireField(
 		raw,
@@ -286,6 +298,7 @@ function validateChunk(
 		isNonEmptyString,
 		`chunks[${index}].source must be a non-empty string`,
 		"segment",
+		`chunks[${index}].source`,
 	);
 	const sourceType = requireField(
 		raw,
@@ -293,6 +306,7 @@ function validateChunk(
 		isNonEmptyString,
 		`chunks[${index}].sourceType must be a non-empty string`,
 		"segment",
+		`chunks[${index}].sourceType`,
 	);
 	const metadata = requireField(
 		raw,
@@ -300,6 +314,7 @@ function validateChunk(
 		isStringRecord,
 		`chunks[${index}].metadata must be a string record`,
 		"segment",
+		`chunks[${index}].metadata`,
 	);
 
 	const chunk: Segment["chunks"][number] = {
@@ -348,6 +363,7 @@ function validateEdge(raw: unknown, index: number): Segment["edges"][number] {
 		isNonEmptyString,
 		`edges[${index}].type must be a non-empty string`,
 		"segment",
+		`edges[${index}].type`,
 	);
 	const sourceId = requireField(
 		raw,
@@ -355,6 +371,7 @@ function validateEdge(raw: unknown, index: number): Segment["edges"][number] {
 		isNonEmptyString,
 		`edges[${index}].sourceId must be a non-empty string`,
 		"segment",
+		`edges[${index}].sourceId`,
 	);
 	const targetType = requireField(
 		raw,
@@ -362,6 +379,7 @@ function validateEdge(raw: unknown, index: number): Segment["edges"][number] {
 		isNonEmptyString,
 		`edges[${index}].targetType must be a non-empty string`,
 		"segment",
+		`edges[${index}].targetType`,
 	);
 	const targetId = requireField(
 		raw,
@@ -369,6 +387,7 @@ function validateEdge(raw: unknown, index: number): Segment["edges"][number] {
 		isNonEmptyString,
 		`edges[${index}].targetId must be a non-empty string`,
 		"segment",
+		`edges[${index}].targetId`,
 	);
 	const evidence = requireField(
 		raw,
@@ -376,6 +395,7 @@ function validateEdge(raw: unknown, index: number): Segment["edges"][number] {
 		isString,
 		`edges[${index}].evidence must be a string`,
 		"segment",
+		`edges[${index}].evidence`,
 	);
 	const confidence = requireField(
 		raw,
@@ -383,6 +403,7 @@ function validateEdge(raw: unknown, index: number): Segment["edges"][number] {
 		(v): v is number => typeof v === "number" && Number.isFinite(v),
 		`edges[${index}].confidence must be a finite number`,
 		"segment",
+		`edges[${index}].confidence`,
 	);
 
 	return { type, sourceId, targetType, targetId, evidence, confidence };
