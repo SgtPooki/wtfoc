@@ -39,7 +39,7 @@ interface EmbedderOpts {
 /** Add --embedder flags to any command */
 function withEmbedderOptions<T extends Command>(cmd: T): T {
 	return cmd
-		.option("--embedder <type>", "Embedder: transformers (default), openai, lmstudio")
+		.option("--embedder <type>", "Embedder: transformers (default), openai, lmstudio, ollama")
 		.option("--embedder-url <url>", "Embedder API URL (for openai/lmstudio)")
 		.option("--embedder-key <key>", "Embedder API key")
 		.option("--embedder-model <model>", "Embedder model name") as T;
@@ -63,11 +63,27 @@ function createEmbedder(opts: {
 }): { embedder: Embedder; modelName: string } {
 	const type = opts.embedder ?? "transformers";
 
-	if (type === "openai" || type === "lmstudio") {
-		const apiKey = opts.embedderKey ?? process.env["WTFOC_OPENAI_API_KEY"] ?? "lm-studio";
-		const baseUrl =
-			opts.embedderUrl ?? (type === "lmstudio" ? "http://localhost:1234/v1" : undefined);
-		const model = opts.embedderModel ?? "text-embedding-3-small";
+	const apiDefaults: Record<string, { url: string; key: string; model: string }> = {
+		lmstudio: {
+			url: "http://localhost:1234/v1",
+			key: "lm-studio",
+			model: "text-embedding-3-small",
+		},
+		ollama: { url: "http://localhost:11434/v1", key: "ollama", model: "nomic-embed-text" },
+		openai: { url: "https://api.openai.com/v1", key: "", model: "text-embedding-3-small" },
+	};
+
+	if (type in apiDefaults) {
+		const d = apiDefaults[type];
+		if (!d) throw new Error(`Unknown embedder type: ${type}`);
+		const apiKey = opts.embedderKey ?? process.env["WTFOC_OPENAI_API_KEY"] ?? d.key;
+		const baseUrl = opts.embedderUrl ?? d.url;
+		const model = opts.embedderModel ?? d.model;
+
+		if (type === "openai" && !apiKey) {
+			console.error("Error: OpenAI embedder requires --embedder-key or WTFOC_OPENAI_API_KEY");
+			process.exit(2);
+		}
 
 		const embedder = new OpenAIEmbedder({ apiKey, baseUrl, model });
 		return { embedder, modelName: model };

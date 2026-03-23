@@ -54,6 +54,8 @@ if [[ "$SKIP_INGEST" == "false" ]]; then
 		"FIL-Builders/foc-cli"
 		"filecoin-project/filecoin-pin"
 		"FilOzone/synapse-sdk"
+		"FilOzone/filecoin-pay"
+		"FilOzone/filecoin-pay-explorer"
 	)
 
 	for repo in "${REPOS[@]}"; do
