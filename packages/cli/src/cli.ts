@@ -73,8 +73,11 @@ function createEmbedder(opts: {
 		return { embedder, modelName: model };
 	}
 
-	// Default: local transformers.js
+	// Default: local transformers.js (works everywhere, but lower quality)
 	try {
+		console.error(
+			"ℹ️  Using local MiniLM embedder (384d). For better results, use --embedder lmstudio or --embedder openai",
+		);
 		const embedder = new TransformersEmbedder();
 		return { embedder, modelName: "Xenova/all-MiniLM-L6-v2" };
 	} catch {
