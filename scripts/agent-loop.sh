@@ -292,6 +292,150 @@ run_agent() {
 	rm -f "$prompt_file" 2>/dev/null || true
 }
 
+# ─── Address PR feedback on PRs this agent authored ───────────────────────────
+address_pr_feedback() {
+	# Find open PRs authored by this agent that have review comments
+	local my_prs
+	my_prs=$(gh_retry gh pr list --repo "$REPO" --state open \
+		--json number,title,headRefName,labels -q '.[]' 2>/dev/null) || return 0
+
+	if [[ -z "$my_prs" ]]; then
+		return 0
+	fi
+
+	echo "$my_prs" | jq -c '.' 2>/dev/null | while IFS= read -r pr; do
+		local pr_num pr_title pr_branch pr_labels
+		pr_num=$(echo "$pr" | jq -r '.number')
+		pr_title=$(echo "$pr" | jq -r '.title')
+		pr_branch=$(echo "$pr" | jq -r '.headRefName')
+		pr_labels=$(echo "$pr" | jq -r '.labels[].name' 2>/dev/null || echo "")
+
+		# Only address PRs this agent authored (agent name in branch or in body)
+		if ! echo "$pr_branch" | grep -qi "$AGENT"; then
+			# Also check if the PR body mentions this agent
+			local pr_body
+			pr_body=$(gh pr view "$pr_num" --repo "$REPO" --json body -q '.body' 2>/dev/null || echo "")
+			if ! echo "$pr_body" | grep -qi "$AGENT"; then
+				continue
+			fi
+		fi
+
+		# Check if there's a changes-requested label or unresolved review comments
+		if ! echo "$pr_labels" | grep -q "changes-requested"; then
+			# Check for review comments we haven't addressed yet
+			local review_comments
+			review_comments=$(gh pr view "$pr_num" --repo "$REPO" --json comments \
+				-q '[.comments[] | select(.body | test("Review:"; "i")) | select(.body | test("REQUEST_CHANGES"; "i"))] | length' 2>/dev/null || echo "0")
+
+			local has_addressed
+			has_addressed=$(gh pr view "$pr_num" --repo "$REPO" --json comments \
+				-q '[.comments[] | select(.body | test("Addressed feedback"; "i"))] | length' 2>/dev/null || echo "0")
+
+			if [[ "$review_comments" -eq 0 ]] || [[ "$has_addressed" -ge "$review_comments" ]]; then
+				continue
+			fi
+
+			# Mark it so we track it
+			gh_retry gh issue edit "$pr_num" --repo "$REPO" --add-label "changes-requested" >/dev/null 2>&1 || true
+		fi
+
+		log "Addressing feedback on PR #${pr_num}: ${pr_title}"
+
+		# Get the review comments
+		local feedback
+		feedback=$(gh pr view "$pr_num" --repo "$REPO" --json comments \
+			-q '[.comments[] | select(.body | test("Review:"; "i"))] | .[-1].body' 2>/dev/null || echo "")
+
+		if [[ -z "$feedback" ]]; then
+			continue
+		fi
+
+		# Find or create the worktree for this PR's branch
+		local worktree_dir="${WORKTREE_BASE}/${pr_branch}"
+		if [[ ! -d "$worktree_dir" ]]; then
+			cd "$REPO_ROOT"
+			git fetch origin "$pr_branch" 2>/dev/null || true
+			git worktree add "$worktree_dir" "$pr_branch" 2>/dev/null || true
+			(cd "$worktree_dir" && pnpm install --frozen-lockfile 2>/dev/null) || true
+		else
+			(cd "$worktree_dir" && git pull origin "$pr_branch" --ff-only 2>/dev/null) || true
+		fi
+
+		# Get the current diff for context
+		local diff
+		diff=$(gh_retry gh pr diff "$pr_num" --repo "$REPO" 2>/dev/null) || diff=""
+
+		local fix_prompt
+		fix_prompt="You are addressing review feedback on PR #${pr_num}: ${pr_title}
+
+Working directory: ${worktree_dir}
+Branch: ${pr_branch}
+
+## Review Feedback to Address
+
+${feedback}
+
+## Current PR Diff
+
+${diff}
+
+## Instructions
+
+1. Read the review feedback carefully
+2. Make the requested changes in the worktree
+3. Ensure pnpm test and pnpm lint pass
+4. Commit with message: 'fix: address review feedback on #${pr_num}'
+5. Push to the branch
+
+Do NOT open a new PR — push to the existing branch.
+Do NOT change test scripts or package.json scripts without explicit approval."
+
+		local fix_file
+		fix_file=$(mktemp /tmp/wtfoc-fix-XXXXXXXXXXXX)
+		mv "$fix_file" "${fix_file}.md"
+		fix_file="${fix_file}.md"
+		echo "$fix_prompt" > "$fix_file"
+
+		local fix_output=""
+		case "$AGENT" in
+			cursor)
+				fix_output=$(cursor agent --print --trust \
+					--workspace "$worktree_dir" "$(cat "$fix_file")" 2>&1) || true
+				;;
+			codex)
+				fix_output=$(cat "$fix_file" | codex exec -C "$worktree_dir" --full-auto - 2>&1) || true
+				;;
+			claude)
+				fix_output=$(cd "$worktree_dir" && cat "$fix_file" | claude -p - --allowedTools Bash,Read,Write,Edit,Glob,Grep 2>&1) || true
+				;;
+		esac
+
+		rm -f "$fix_file" 2>/dev/null || true
+
+		# Commit and push any changes the agent made
+		local has_changes
+		has_changes=$(cd "$worktree_dir" && git status --porcelain | wc -l | tr -d ' ')
+		if [[ "$has_changes" -gt 0 ]]; then
+			(cd "$worktree_dir" && \
+				git add -A && \
+				git commit -m "fix: address review feedback on #${pr_num}" && \
+				git push origin "$pr_branch" 2>&1) || warn "Failed to push feedback fixes"
+		fi
+
+		# Comment that feedback was addressed
+		gh_retry gh pr comment "$pr_num" --repo "$REPO" \
+			--body "**Addressed feedback** (by ${AGENT}). Please re-review." >/dev/null 2>&1 || true
+
+		# Remove changes-requested label
+		gh_retry gh issue edit "$pr_num" --repo "$REPO" --remove-label "changes-requested" >/dev/null 2>&1 || true
+
+		log "Addressed feedback on PR #${pr_num}"
+
+		# Only address one PR per loop iteration
+		break
+	done
+}
+
 # ─── Post-agent cleanup: commit, push, PR, remove label ──────────────────────
 post_agent_cleanup() {
 	local issue_num="$1"
@@ -515,11 +659,15 @@ while true; do
 	# Step 0: Pull latest main to get script/config updates
 	(cd "$REPO_ROOT" && git pull origin main --ff-only 2>/dev/null) || true
 
-	# Step 1: Review open PRs BEFORE picking up new work
+	# Step 1: Address feedback on my own PRs (highest priority — unblocks merges)
+	log "Checking for PR feedback to address..."
+	address_pr_feedback
+
+	# Step 2: Review other agents' PRs (unblocks their work)
 	log "Checking for PRs to review..."
 	review_prs
 
-	# Step 2: Look for implementation work
+	# Step 3: Look for implementation work
 	log "Looking for work..."
 
 	issue_json=$(find_issue) || true

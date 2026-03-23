@@ -101,7 +101,7 @@ check_blocked_issues() {
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 if [[ "${1:-}" == "--loop" ]]; then
-	interval="${2:-60}"
+	interval="${2:-300}"
 	log "Running in loop mode (every ${interval}s). Ctrl+C to stop."
 	while true; do
 		check_ready_with_prs

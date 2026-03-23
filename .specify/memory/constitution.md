@@ -126,6 +126,7 @@ This project uses multiple AI agents (Claude, Cursor, Codex) working in parallel
 | `reviewing-claude` | PR is being reviewed by Claude — other agents skip | Agent loop |
 | `reviewing-cursor` | PR is being reviewed by Cursor | Agent loop |
 | `reviewing-codex` | PR is being reviewed by Codex | Agent loop |
+| `changes-requested` | PR has review feedback that needs to be addressed by the author | Agent loop or reviewer |
 
 ### Rules
 
