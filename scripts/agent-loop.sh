@@ -65,7 +65,7 @@ has_open_pr() {
 # ─── Find next issue to work on ──────────────────────────────────────────────
 find_issue() {
 	# Ensure cache is reasonably fresh (max 5 min, but don't refresh ourselves — unblock.sh does that)
-	gh_cache_ensure_fresh 600
+	# cache refreshed at top of main loop
 
 	# Priority 1: Issue already assigned to this agent (but NOT blocked, and no open PR)
 	local assigned
@@ -301,7 +301,7 @@ run_agent() {
 
 # ─── Merge PRs that are ready-to-merge and authored by this agent ─────────────
 merge_ready_prs() {
-	gh_cache_ensure_fresh 600
+	# cache refreshed at top of main loop
 
 	local my_prs
 	my_prs=$(gh_cache_prs | jq -c '.[]') || return 0
@@ -386,7 +386,7 @@ merge_ready_prs() {
 address_pr_feedback() {
 	# Find open PRs authored by this agent that have review comments
 	local my_prs
-	gh_cache_ensure_fresh 600
+	# cache refreshed at top of main loop
 	my_prs=$(gh_cache_prs | jq -c '.[]') || return 0
 
 	if [[ -z "$my_prs" ]]; then
@@ -610,7 +610,7 @@ gh_retry() {
 
 # ─── Review PRs that this agent didn't author ────────────────────────────────
 review_prs() {
-	gh_cache_ensure_fresh 600
+	# cache refreshed at top of main loop
 
 	local open_prs
 	open_prs=$(gh_cache_prs | jq -c '.[]') || return 0
@@ -817,8 +817,9 @@ ${review_output}"
 log "Starting agent loop for ${AGENT}"
 
 while true; do
-	# Step 0: Pull latest main to get script/config updates
+	# Step 0: Pull latest main + refresh cache
 	(cd "$REPO_ROOT" && git pull origin main --ff-only 2>/dev/null) || true
+	gh_cache_ensure_fresh 120  # refresh if older than 2 minutes
 
 	# Step 1: Merge my PRs that are ready-to-merge (highest — unblocks everything)
 	log "Checking for PRs to merge..."
