@@ -19,12 +19,12 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T001 Update shared manifest and collection publication schemas in `packages/common/src/schemas/manifest.ts` — rename `HeadManifest` to `CollectionHead`, add `collectionId` and `currentRevisionId` as required fields (redefine schema v1 in place), add `CollectionRevision`, `CollectionDescriptor`, `ArtifactSummaryEntry`, `DatasetRoutingMetadata`, and `ProvenanceRecord` types
-- [ ] T002 [P] Update shared exports in `packages/common/src/index.ts` to expose collection publication contracts
-- [ ] T003 Update manifest store contracts in `packages/common/src/interfaces/manifest-store.ts` so `ManifestStore` remains the owning seam for the single mutable `CollectionHead`
-- [ ] T004 [P] Add typed error classes in `packages/common/src/errors.ts`: `RevisionSchemaUnknownError` (code: `REVISION_SCHEMA_UNKNOWN`), `CollectionHeadConflictError` (code: `COLLECTION_HEAD_CONFLICT`), `PublishFailedError` (code: `PUBLISH_FAILED`)
-- [ ] T005 [P] Add schema validation coverage for `CollectionHead`, `CollectionRevision`, provenance records, and collection-revision schema-version rejection in `packages/store/src/schema.test.ts`
-- [ ] T006 Implement collection publication schema validation helpers, routing metadata validation, and artifact summary equality helpers in `packages/store/src/schema.ts`
+- [x] T001 Update shared manifest and collection publication schemas in `packages/common/src/schemas/manifest.ts` — rename `HeadManifest` to `CollectionHead`, add `collectionId` and `currentRevisionId` as required fields (redefine schema v1 in place), add `CollectionRevision`, `CollectionDescriptor`, `ArtifactSummaryEntry`, `DatasetRoutingMetadata`, and `ProvenanceRecord` types
+- [x] T002 [P] Update shared exports in `packages/common/src/index.ts` to expose collection publication contracts
+- [x] T003 Update manifest store contracts in `packages/common/src/interfaces/manifest-store.ts` so `ManifestStore` remains the owning seam for the single mutable `CollectionHead`
+- [x] T004 [P] Add typed error classes in `packages/common/src/errors.ts`: `RevisionSchemaUnknownError` (code: `REVISION_SCHEMA_UNKNOWN`), `CollectionHeadConflictError` (code: `COLLECTION_HEAD_CONFLICT`), `PublishFailedError` (code: `PUBLISH_FAILED`)
+- [x] T005 [P] Add schema validation coverage for `CollectionHead`, `CollectionRevision`, provenance records, and collection-revision schema-version rejection in `packages/store/src/schema.test.ts`
+- [x] T006 Implement collection publication schema validation helpers, routing metadata validation, and artifact summary equality helpers in `packages/store/src/schema.ts`
 
 **Checkpoint**: Shared schemas, seam ownership, typed errors, schema-version rejection, and metadata/equality validation are ready for story implementation.
 
@@ -38,20 +38,20 @@
 
 ### Tests for User Story 1 ⚠️
 
-- [ ] T007 [P] [US1] Add stable collection handle and deterministic ID tests in `packages/store/src/factory.test.ts`
-- [ ] T008 [P] [US1] Add dataset routing metadata allowlist and validation tests in `packages/store/src/schema.test.ts`
-- [ ] T009 [P] [US1] Add collection artifact placement tests for descriptor/head/revision artifacts in `packages/store/src/schema.test.ts`
-- [ ] T010 [P] [US1] Add slug-collision handling tests for deterministic collection IDs (hash of `{namespace}/{name}` tuple) in `packages/store/src/factory.test.ts`
-- [ ] T011 [P] [US1] Add lazy dataset creation tests for first publish in `packages/store/src/factory.test.ts`
+- [x] T007 [P] [US1] Add stable collection handle and deterministic ID tests in `packages/store/src/collection.test.ts`
+- [x] T008 [P] [US1] Add dataset routing metadata allowlist and validation tests in `packages/store/src/collection.test.ts`
+- [x] T009 [P] [US1] Add collection artifact placement tests for descriptor/head/revision artifacts in `packages/store/src/collection.test.ts`
+- [x] T010 [P] [US1] Add slug-collision handling tests for deterministic collection IDs (hash of `{namespace}/{name}` tuple) in `packages/store/src/collection.test.ts`
+- [x] T011 [P] [US1] Add lazy dataset creation tests for first publish in `packages/store/src/collection.test.ts`
 
 ### Implementation for User Story 1
 
-- [ ] T012 [US1] Evolve local manifest persistence from `HeadManifest` to `CollectionHead` in `packages/store/src/manifest/local.ts`
-- [ ] T013 [US1] Add `CollectionDescriptor` persistence helpers in `packages/store/src/manifest/local.ts`
-- [ ] T014 [P] [US1] Extend store factory types for collection-aware publication flows in `packages/store/src/factory.ts`
-- [ ] T015 [P] [US1] Update store exports for collection publication types and helpers in `packages/store/src/index.ts`
-- [ ] T016 [US1] Implement deterministic machine collection ID generation (hash `{storageNamespace}/{collectionName}`), collision-safe normalization, and first-publish lazy dataset creation in `packages/store/src/factory.ts`
-- [ ] T017 [US1] Implement dataset routing metadata enforcement, metadata allowlist validation, and artifact-placement helpers in `packages/store/src/schema.ts`
+- [x] T012 [US1] Evolve local manifest persistence from `HeadManifest` to `CollectionHead` in `packages/store/src/manifest/local.ts` (done in Phase 1)
+- [x] T013 [US1] Add `CollectionDescriptor` persistence helpers in `packages/store/src/collection.ts`
+- [x] T014 [P] [US1] Extend store factory types for collection-aware publication flows in `packages/store/src/collection.ts`
+- [x] T015 [P] [US1] Update store exports for collection publication types and helpers in `packages/store/src/index.ts`
+- [x] T016 [US1] Implement deterministic machine collection ID generation (hash `{storageNamespace}/{collectionName}`), collision-safe normalization, and first-publish lazy dataset creation in `packages/store/src/collection.ts`
+- [x] T017 [US1] Implement dataset routing metadata enforcement, metadata allowlist validation, and artifact-placement helpers in `packages/store/src/collection.ts`
 
 **Checkpoint**: A collection has stable identity, validated routing metadata, and collection-level artifacts persisted without abusing dataset metadata.
 

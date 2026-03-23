@@ -23,14 +23,9 @@ import {
 	TransformersEmbedder,
 	trace,
 } from "@wtfoc/search";
-import { bundleAndUpload, createStore } from "@wtfoc/store";
+import { bundleAndUpload, createStore, generateCollectionId } from "@wtfoc/store";
 import { Command } from "commander";
-import { createHash } from "node:crypto";
 import { formatQuery, formatStatus, formatTrace, type OutputFormat } from "./output.js";
-
-function collectionId(name: string, namespace = "default"): string {
-	return createHash("sha256").update(`${namespace}/${name}`).digest("hex").slice(0, 32);
-}
 
 const program = new Command();
 
@@ -168,7 +163,7 @@ program
 
 		const manifest: CollectionHead = {
 			schemaVersion: CURRENT_SCHEMA_VERSION,
-			collectionId: collectionId(name),
+			collectionId: generateCollectionId(name),
 			name,
 			currentRevisionId: null,
 			prevHeadId: null,
@@ -299,7 +294,7 @@ const ingestCmd = withEmbedderOptions(
 			// Update manifest
 			const manifest: CollectionHead = {
 				schemaVersion: CURRENT_SCHEMA_VERSION,
-				collectionId: head?.manifest.collectionId ?? collectionId(opts.collection),
+				collectionId: head?.manifest.collectionId ?? generateCollectionId(opts.collection),
 				name: opts.collection,
 				currentRevisionId: head?.manifest.currentRevisionId ?? null,
 				prevHeadId,
