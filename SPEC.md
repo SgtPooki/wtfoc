@@ -118,7 +118,7 @@ Every change requires a spec. No implementation without a ratified specification
 
 1. `/speckit.specify` — create the specification
 2. `/speckit.clarify` — clarify and de-risk (before /plan)
-3. **Cross-review** — spec reviewed by a different agent before ratification
+3. **`/peer-review`** — spec cross-reviewed by a different agent. Address all feedback before ratifying.
 4. `/speckit.plan` — create implementation plan
 5. `/speckit.checklist` — quality checklists (optional)
 6. `/speckit.tasks` — generate actionable tasks

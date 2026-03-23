@@ -44,7 +44,7 @@ Every change follows the spec-kit flow. No exceptions.
 
 1. **`/speckit.specify`** — create the specification
 2. **`/speckit.clarify`** — clarify and de-risk ambiguities (run before /plan)
-3. **Cross-review** — spec reviewed by a different agent (Cursor or Codex) before ratification
+3. **`/peer-review`** — spec reviewed by a different agent (Cursor or Codex). Address all feedback before ratifying.
 4. **`/speckit.plan`** — create implementation plan from ratified spec
 5. **`/speckit.checklist`** — generate quality checklists to validate spec (optional)
 6. **`/speckit.tasks`** — generate actionable tasks from plan
