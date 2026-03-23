@@ -1,6 +1,6 @@
 # Implementation Plan: Collection Revisions and Provenance
 
-**Branch**: `009-collection-provenance` | **Date**: 2026-03-23 | **Spec**: [/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/.specify/specs/009-collection-provenance/spec.md](/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/.specify/specs/009-collection-provenance/spec.md)
+**Branch**: `009-collection-provenance` | **Date**: 2026-03-23 | **Spec**: [spec.md](spec.md)
 **Input**: Feature specification from `/specs/009-collection-provenance/spec.md`
 
 ## Summary
@@ -80,9 +80,9 @@ packages/cli/
 
 **Structure Decision**: Extend the existing manifest/common schema path rather than creating a new package. `@wtfoc/common` carries the new contracts and schemas; `@wtfoc/store` implements collection-aware head/revision persistence; `@wtfoc/search` and `@wtfoc/cli` consume mounted collections without redefining their core seams.
 
-## Phase 0: Research Plan
+## Phase 0: Research Plan (COMPLETED — see research.md)
 
-Produce `research.md` with resolved decisions for:
+Produced `research.md` with resolved decisions for:
 
 1. **Schema evolution strategy**
    - How `HeadManifest` becomes `CollectionHead`

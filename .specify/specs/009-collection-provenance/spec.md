@@ -2,7 +2,7 @@
 
 **Feature Branch**: `009-collection-provenance`  
 **Created**: 2026-03-23  
-**Status**: Draft  
+**Status**: Ready for Implementation (cross-reviewed by Claude)  
 **Input**: User description: "Define collection revisions, provenance, FOC dataset mapping, and CID bootstrap flows for wtfoc based on issue #4 and issue #44."
 
 ## Overview
@@ -120,7 +120,7 @@ A user or agent wants updates about a collection and asks what changed between r
 
 - Two collection names normalize to the same slug; the deterministic collection ID must still remain unique and stable
 - Dataset metadata limits are reached by collection routing data
-- A revision upload succeeds but publication of the new head or latest pointer fails
+- A revision upload succeeds but publication of the new head or latest pointer fails — orphaned revision artifact on storage with no head reference. On retry, the system should detect the already-uploaded revision (by its content-addressed ID) and relink it rather than re-uploading.
 - A mounted revision references artifacts that are temporarily unreachable from one retrieval path but still exist on storage
 - A consumer mounts a revision with an unknown schema version
 - A revision diff is requested when one revision is local and the other must be resolved remotely
@@ -131,7 +131,7 @@ A user or agent wants updates about a collection and asks what changed between r
 
 - **FR-001**: The system MUST define both a stable collection handle for latest discovery and immutable revision handles for exact historical state.
 - **FR-001a**: The stable collection handle MUST be a first-class collection identifier, while its CID-backed publication form MAY be refined by a later feature.
-- **FR-001b**: The stable collection handle MUST be a deterministic machine collection ID distinct from the human collection name.
+- **FR-001b**: The stable collection handle MUST be a deterministic machine collection ID distinct from the human collection name. The ID MUST be derived by hashing the fully qualified `{storageNamespace}/{collectionName}` tuple (not just the human slug), making collisions impossible for distinct namespaced names.
 - **FR-002**: The system MUST map a published collection to one FOC dataset rather than creating a new dataset for each revision.
 - **FR-003**: The system MUST create the FOC dataset lazily when a collection is first published.
 - **FR-004**: The system MUST reserve dataset metadata for only the minimum routing data needed to recognize and locate the collection.
@@ -141,24 +141,25 @@ A user or agent wants updates about a collection and asks what changed between r
 - **FR-005b**: Collection Descriptor, Collection Head, and Collection Revision MUST be stored as ordinary artifacts in the collection dataset rather than as dataset metadata fields.
 - **FR-006**: The system MUST define an immutable collection revision object that records previous revision identity and referenced artifacts.
 - **FR-006a**: The system MUST ensure the stable collection handle can resolve the latest revision without changing the identity of prior immutable revision handles.
-- **FR-006b**: The system MUST define Collection Head as the renamed successor to HeadManifest, preserving the mutable latest-pointer role while carrying the ingest-facing summary information already associated with the head object.
+- **FR-006b**: The system MUST define Collection Head as the evolved successor to HeadManifest, preserving the mutable latest-pointer role while carrying the ingest-facing summary information already associated with the head object. New collection-publication fields (`collectionId`, `currentRevisionId`) are required on CollectionHead. The existing schema v1 is redefined in place — no version bump needed since there are no external consumers.
 - **FR-006c**: Collection Head MUST reference the current Collection Revision and MAY continue to carry mutable summary data needed for routing, ingest history, and retrieval without creating a second mutable head type.
-- **FR-006f**: A separate publication-layer mutable head is out of scope for this feature and MUST remain deferred unless ingest and publication later diverge in cadence or ownership.
 - **FR-006d**: Collection Revision and Collection Head MUST be defined as collection-publication artifacts, separate from ingest-time CAR bundles.
-- **FR-006e**: Collection publication MUST be able to reference ingest-produced bundles and segment artifacts without requiring those artifacts to be republished inside the same ingest CAR.
+- **FR-006e**: Collection publication MUST be able to reference ingest-produced bundles and segment artifacts without requiring those artifacts to be republished inside the same ingest CAR. `segmentRefs` MUST contain `SegmentSummary.id` values (per-segment IPFS CIDs, as defined in spec 010). `bundleRefs` MUST contain `BatchRecord.carRootCid` values when batch records exist.
+- **FR-006f**: A separate publication-layer mutable head is out of scope for this feature and MUST remain deferred unless ingest and publication later diverge in cadence or ownership.
 - **FR-007**: The system MUST define provenance fields sufficient to distinguish raw source artifacts, derived retrieval artifacts, the activity that produced them, and the actor or software associated with that activity.
 - **FR-007a**: The provenance model MUST include revision-of, primary-source, and derivation-chain relationships sufficient to trace how a derived artifact relates to earlier revisions and original source material.
 - **FR-008**: The system MUST preserve the current single-writer conflict model when publishing new revisions.
 - **FR-009**: The system MUST preserve older revisions as readable and verifiable after newer revisions are published.
 - **FR-010**: The system MUST support computing a revision diff from revision metadata and summaries without requiring all full artifact bodies to be downloaded.
 - **FR-010a**: Each Collection Revision MUST include a compact per-artifact summary index containing artifact ID, artifact role, source scope, and content identity sufficient for diff computation.
-- **FR-010b**: `contentIdentity` in an artifact summary entry MUST be a backend-neutral content digest or equivalent stable equality token suitable for detecting artifact changes across revisions.
+- **FR-010b**: `contentIdentity` in an artifact summary entry MUST be a backend-neutral content digest. For FOC-backed artifacts, `contentIdentity` MUST be the IPFS CID of the artifact content. For local-backend artifacts, it MUST be a SHA-256 hex digest of the canonical serialized artifact bytes.
 - **FR-011**: The system MUST allow a consumer to bootstrap a collection from a CID or revision handle and discover the artifacts required to query or trace it.
 - **FR-012**: The system MUST support reuse of stored corpus embeddings when a mounted collection already contains them.
 - **FR-013**: The system MUST preserve the distinction between semantic query and explicit-edge trace in mounted collections.
 - **FR-013a**: Mounting by stable collection handle MUST resolve the latest revision, while mounting by immutable revision handle MUST preserve pinned historical state.
-- **FR-014**: The system MUST reject unknown revision or provenance schema versions with typed schema errors.
+- **FR-014**: The system MUST reject unknown revision or provenance schema versions with typed schema errors. Required error codes: `REVISION_SCHEMA_UNKNOWN` (unknown CollectionRevision schema version), `COLLECTION_HEAD_CONFLICT` (single-writer conflict during head advancement), `PUBLISH_FAILED` (revision uploaded but head advancement failed — orphaned revision).
 - **FR-015**: The system MUST define artifact roles for at least source artifacts, segment artifacts, revision artifacts, and collection descriptor artifacts.
+- **FR-016**: New CLI commands (`publish`, `collection show`, `collection diff`, `mount`) MUST follow SPEC.md §11 output conventions: stderr for logs, stdout for data, `--json` for machine-readable output, `--quiet` for errors only. Exit codes per SPEC.md §10: 0 success, 1 general, 3 storage, 4 conflict.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -202,7 +203,7 @@ A user or agent wants updates about a collection and asks what changed between r
 
 - Subscriptions and change feeds built on top of collection revisions and revision diffs
 - User or agent workflows for polling latest revisions and processing only newly added or changed artifacts
-- A later reconciliation pass with the ingest bundling spec to ensure both specs use the same ingest-versus-publication boundary language
+- Spec 010 (CAR Bundle Uploads) is merged. `segmentRefs` use `SegmentSummary.id` (per-segment IPFS CIDs) and `bundleRefs` use `BatchRecord.carRootCid` as defined in the merged 010 schema. The `HeadManifest` → `CollectionHead` rename should be applied across the codebase when this feature lands.
 
 ## References
 

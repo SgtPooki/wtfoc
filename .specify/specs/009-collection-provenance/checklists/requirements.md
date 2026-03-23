@@ -31,5 +31,6 @@
 
 ## Notes
 
-- Spec is ready for `/speckit.clarify`.
-- Main remaining work is clarification of product boundaries and naming, not spec completeness.
+- Full spec-kit flow completed through `/speckit.analyze`.
+- Cross-reviewed by Claude. All critical/high issues remediated.
+- Ready for `/speckit.implement`.

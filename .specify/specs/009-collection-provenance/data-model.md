@@ -41,9 +41,9 @@ Single mutable latest pointer for the collection.
 
 ### Rules
 
-- `currentRevisionId` points to the current immutable `CollectionRevision`.
+- `collectionId` and `currentRevisionId` are required fields. Schema v1 is redefined in place (no consumers to break).
 - `prevHeadId` remains the conflict-detection field.
-- Existing ingest summary data remains on this object.
+- Existing ingest summary data (`segments`, `batches`, `totalChunks`, `embeddingModel`, `embeddingDimensions`) remains on this object.
 
 ## 3. CollectionRevision
 
@@ -66,7 +66,8 @@ Immutable publication record for one collection state.
 
 - `revisionId` is immutable.
 - `artifactSummaries` are sufficient for diff and inspection workflows.
-- `segmentRefs` and `bundleRefs` discover the retrieval artifacts needed by query and trace.
+- `segmentRefs` are `SegmentSummary.id` values (per-segment IPFS CIDs, as defined in merged spec 010).
+- `bundleRefs` are `BatchRecord.carRootCid` values when batch records exist (per merged spec 010).
 
 ## 4. ArtifactSummaryEntry
 
@@ -84,7 +85,7 @@ Compact artifact index entry stored inside a revision.
 
 ### Rules
 
-- `contentIdentity` is a backend-neutral content digest or equivalent stable equality token used for diff decisions.
+- `contentIdentity` is a backend-neutral content digest. For FOC-backed artifacts: the IPFS CID. For local-backend artifacts: a SHA-256 hex digest of the canonical serialized bytes.
 - `artifactRole` distinguishes source, segment, revision, descriptor, or future roles.
 - `sourceScope` is the minimal classification needed for routing and inspection.
 

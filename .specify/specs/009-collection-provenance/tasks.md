@@ -19,13 +19,14 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T001 Update shared manifest and collection publication schemas in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/common/src/schemas/manifest.ts` for `CollectionHead`, `CollectionRevision`, `CollectionDescriptor`, `ArtifactSummaryEntry`, dataset routing metadata, and explicit `contentIdentity` semantics
-- [ ] T002 [P] Update shared exports in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/common/src/index.ts` to expose collection publication contracts
-- [ ] T003 Update manifest store contracts in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/common/src/interfaces/manifest-store.ts` so `ManifestStore` remains the owning seam for the single mutable `CollectionHead`
-- [ ] T004 [P] Add schema validation coverage for `CollectionHead`, `CollectionRevision`, provenance records, and collection-revision schema-version rejection in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/schema.test.ts`
-- [ ] T005 Implement collection publication schema validation helpers, routing metadata validation, and artifact summary equality helpers in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/schema.ts`
+- [ ] T001 Update shared manifest and collection publication schemas in `packages/common/src/schemas/manifest.ts` — rename `HeadManifest` to `CollectionHead`, add `collectionId` and `currentRevisionId` as required fields (redefine schema v1 in place), add `CollectionRevision`, `CollectionDescriptor`, `ArtifactSummaryEntry`, `DatasetRoutingMetadata`, and `ProvenanceRecord` types
+- [ ] T002 [P] Update shared exports in `packages/common/src/index.ts` to expose collection publication contracts
+- [ ] T003 Update manifest store contracts in `packages/common/src/interfaces/manifest-store.ts` so `ManifestStore` remains the owning seam for the single mutable `CollectionHead`
+- [ ] T004 [P] Add typed error classes in `packages/common/src/errors.ts`: `RevisionSchemaUnknownError` (code: `REVISION_SCHEMA_UNKNOWN`), `CollectionHeadConflictError` (code: `COLLECTION_HEAD_CONFLICT`), `PublishFailedError` (code: `PUBLISH_FAILED`)
+- [ ] T005 [P] Add schema validation coverage for `CollectionHead`, `CollectionRevision`, provenance records, and collection-revision schema-version rejection in `packages/store/src/schema.test.ts`
+- [ ] T006 Implement collection publication schema validation helpers, routing metadata validation, and artifact summary equality helpers in `packages/store/src/schema.ts`
 
-**Checkpoint**: Shared schemas, seam ownership, schema-version rejection, and metadata/equality validation are ready for story implementation.
+**Checkpoint**: Shared schemas, seam ownership, typed errors, schema-version rejection, and metadata/equality validation are ready for story implementation.
 
 ---
 
@@ -37,20 +38,20 @@
 
 ### Tests for User Story 1 ⚠️
 
-- [ ] T006 [P] [US1] Add stable collection handle and deterministic ID tests in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/factory.test.ts`
-- [ ] T007 [P] [US1] Add dataset routing metadata allowlist and validation tests in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/schema.test.ts`
-- [ ] T008 [P] [US1] Add collection artifact placement tests for descriptor/head/revision artifacts in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/schema.test.ts`
-- [ ] T009 [P] [US1] Add slug-collision handling tests for deterministic collection IDs in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/factory.test.ts`
-- [ ] T010 [P] [US1] Add lazy dataset creation tests for first publish in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/factory.test.ts`
+- [ ] T007 [P] [US1] Add stable collection handle and deterministic ID tests in `packages/store/src/factory.test.ts`
+- [ ] T008 [P] [US1] Add dataset routing metadata allowlist and validation tests in `packages/store/src/schema.test.ts`
+- [ ] T009 [P] [US1] Add collection artifact placement tests for descriptor/head/revision artifacts in `packages/store/src/schema.test.ts`
+- [ ] T010 [P] [US1] Add slug-collision handling tests for deterministic collection IDs (hash of `{namespace}/{name}` tuple) in `packages/store/src/factory.test.ts`
+- [ ] T011 [P] [US1] Add lazy dataset creation tests for first publish in `packages/store/src/factory.test.ts`
 
 ### Implementation for User Story 1
 
-- [ ] T011 [US1] Evolve local manifest persistence from `HeadManifest` to `CollectionHead` in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/manifest/local.ts`
-- [ ] T012 [US1] Add `CollectionDescriptor` persistence helpers in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/manifest/local.ts`
-- [ ] T013 [P] [US1] Extend store factory types for collection-aware publication flows in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/factory.ts`
-- [ ] T014 [P] [US1] Update store exports for collection publication types and helpers in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/index.ts`
-- [ ] T015 [US1] Implement deterministic machine collection ID generation, collision-safe normalization rules, and first-publish lazy dataset creation in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/factory.ts`
-- [ ] T016 [US1] Implement dataset routing metadata enforcement, metadata allowlist validation, and artifact-placement helpers in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/schema.ts`
+- [ ] T012 [US1] Evolve local manifest persistence from `HeadManifest` to `CollectionHead` in `packages/store/src/manifest/local.ts`
+- [ ] T013 [US1] Add `CollectionDescriptor` persistence helpers in `packages/store/src/manifest/local.ts`
+- [ ] T014 [P] [US1] Extend store factory types for collection-aware publication flows in `packages/store/src/factory.ts`
+- [ ] T015 [P] [US1] Update store exports for collection publication types and helpers in `packages/store/src/index.ts`
+- [ ] T016 [US1] Implement deterministic machine collection ID generation (hash `{storageNamespace}/{collectionName}`), collision-safe normalization, and first-publish lazy dataset creation in `packages/store/src/factory.ts`
+- [ ] T017 [US1] Implement dataset routing metadata enforcement, metadata allowlist validation, and artifact-placement helpers in `packages/store/src/schema.ts`
 
 **Checkpoint**: A collection has stable identity, validated routing metadata, and collection-level artifacts persisted without abusing dataset metadata.
 
@@ -64,17 +65,16 @@
 
 ### Tests for User Story 2 ⚠️
 
-- [ ] T017 [P] [US2] Add revision lineage and provenance tests in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/schema.test.ts`
-- [ ] T018 [P] [US2] Add `CollectionHead` conflict and advancement tests in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/factory.test.ts`
-- [ ] T019 [P] [US2] Add publish failure semantics tests for orphaned revisions, failed head advancement, and retry-safe recovery in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/factory.test.ts`
+- [ ] T018 [P] [US2] Add revision lineage and provenance tests in `packages/store/src/schema.test.ts`
+- [ ] T019 [P] [US2] Add `CollectionHead` conflict and advancement tests in `packages/store/src/factory.test.ts`
+- [ ] T020 [P] [US2] Add publish failure semantics tests for orphaned revisions, failed head advancement, and retry-safe recovery in `packages/store/src/factory.test.ts`
 
 ### Implementation for User Story 2
 
-- [ ] T020 [US2] Implement `CollectionRevision` serialization and persistence helpers in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/segment.ts`
-- [ ] T021 [US2] Implement provenance record validation and normalization in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/schema.ts`
-- [ ] T022 [US2] Update local manifest store behavior to advance `CollectionHead.currentRevisionId` with single-writer conflict checks in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/manifest/local.ts`
-- [ ] T023 [US2] Implement publication failure handling, orphan revision visibility rules, and retry-safe semantics in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/factory.ts`
-- [ ] T024 [P] [US2] Update typed schema or publication failure errors in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/common/src/errors.ts` if new named errors are needed
+- [ ] T021 [US2] Implement `CollectionRevision` serialization and persistence helpers in `packages/store/src/revision.ts` (new file — separate from ingest-time segment.ts per FR-006d)
+- [ ] T022 [US2] Implement provenance record validation and normalization in `packages/store/src/schema.ts`
+- [ ] T023 [US2] Update local manifest store behavior to advance `CollectionHead.currentRevisionId` with single-writer conflict checks in `packages/store/src/manifest/local.ts`
+- [ ] T024 [US2] Implement publication failure handling, orphan revision detection (by content-addressed ID), and retry-safe relink semantics in `packages/store/src/factory.ts`
 
 **Checkpoint**: Collection revisions are immutable, provenance-aware, and advanced through one mutable head with explicit failure semantics.
 
@@ -88,18 +88,18 @@
 
 ### Tests for User Story 3 ⚠️
 
-- [ ] T025 [P] [US3] Add mounted collection query reuse tests in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/search/src/query.test.ts`
-- [ ] T026 [P] [US3] Add mounted collection trace discovery tests that prove trace can operate from explicit edges without semantic fallback in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/search/src/trace.test.ts`
-- [ ] T027 [P] [US3] Add mounted collection boundary tests showing semantic query behavior remains separate from explicit-edge trace behavior in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/search/src/query.test.ts`
-- [ ] T028 [P] [US3] Add mount semantics tests for pinned revision handles versus latest collection handles in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/search/src/query.test.ts`
+- [ ] T025 [P] [US3] Add mounted collection query reuse tests in `packages/search/src/query.test.ts`
+- [ ] T026 [P] [US3] Add mounted collection trace discovery tests that prove trace can operate from explicit edges without semantic fallback in `packages/search/src/trace.test.ts`
+- [ ] T027 [P] [US3] Add mounted collection boundary tests showing semantic query behavior remains separate from explicit-edge trace behavior in `packages/search/src/query.test.ts`
+- [ ] T028 [P] [US3] Add mount semantics tests for pinned revision handles versus latest collection handles in `packages/search/src/query.test.ts`
 
 ### Implementation for User Story 3
 
-- [ ] T029 [US3] Implement revision and artifact discovery helpers for mounted collections in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/search/src/query.ts`
-- [ ] T030 [US3] Implement explicit-edge mounted trace discovery in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/search/src/trace.ts`
-- [ ] T031 [P] [US3] Update search package exports for mounted-collection helpers in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/search/src/index.ts`
-- [ ] T032 [US3] Add CLI surface for collection mount and inspect flows in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/cli/src/cli.ts`
-- [ ] T033 [US3] Add human and JSON output for mounted collection inspection in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/cli/src/output.ts`
+- [ ] T029 [US3] Implement revision and artifact discovery helpers for mounted collections in `packages/search/src/query.ts`
+- [ ] T030 [US3] Implement explicit-edge mounted trace discovery in `packages/search/src/trace.ts`
+- [ ] T031 [P] [US3] Update search package exports for mounted-collection helpers in `packages/search/src/index.ts`
+- [ ] T032 [US3] Add CLI surface for collection mount and inspect flows in `packages/cli/src/cli.ts` (follow SPEC.md §11 output conventions: --json, --quiet, exit codes per §10)
+- [ ] T033 [US3] Add human and JSON output for mounted collection inspection in `packages/cli/src/output.ts`
 
 **Checkpoint**: Mounted collections can be discovered and reused without full corpus re-embedding, and mount semantics are unambiguous.
 
@@ -113,16 +113,16 @@
 
 ### Tests for User Story 4 ⚠️
 
-- [ ] T034 [P] [US4] Add artifact-summary diff tests in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/schema.test.ts`
-- [ ] T035 [P] [US4] Add `contentIdentity` equality semantics tests in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/schema.test.ts`
-- [ ] T036 [P] [US4] Add CLI diff output tests in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/cli/src/output.ts`
+- [ ] T034 [P] [US4] Add artifact-summary diff tests in `packages/store/src/schema.test.ts`
+- [ ] T035 [P] [US4] Add `contentIdentity` equality semantics tests (IPFS CID for FOC, SHA-256 hex for local) in `packages/store/src/schema.test.ts`
+- [ ] T036 [P] [US4] Add CLI diff output tests in `packages/cli/src/output.test.ts`
 
 ### Implementation for User Story 4
 
-- [ ] T037 [US4] Implement revision diff computation from `ArtifactSummaryEntry[]` in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/schema.ts`
-- [ ] T038 [US4] Define and implement backend-neutral `contentIdentity` generation rules in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/store/src/schema.ts`
-- [ ] T039 [US4] Add collection diff command handling in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/cli/src/cli.ts`
-- [ ] T040 [US4] Add revision diff rendering in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/cli/src/output.ts`
+- [ ] T037 [US4] Implement revision diff computation from `ArtifactSummaryEntry[]` in `packages/store/src/schema.ts`
+- [ ] T038 [US4] Implement backend-neutral `contentIdentity` generation (IPFS CID for FOC, SHA-256 hex for local) in `packages/store/src/schema.ts`
+- [ ] T039 [US4] Add collection diff command handling in `packages/cli/src/cli.ts` (follow SPEC.md §11 output conventions)
+- [ ] T040 [US4] Add revision diff rendering in `packages/cli/src/output.ts`
 
 **Checkpoint**: Collection revision diffs are machine-readable, metadata-only, and based on explicit equality semantics.
 
@@ -132,10 +132,10 @@
 
 **Purpose**: Final consistency, docs, and regression coverage across the new collection publication model.
 
-- [ ] T041 [P] Update common versioned schema documentation and comments in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/packages/common/src/schemas/manifest.ts`
-- [ ] T042 [P] Validate quickstart flows against implemented CLI surface in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/.specify/specs/009-collection-provenance/quickstart.md`
-- [ ] T043 [P] Update user-facing README or package docs for collection publication terminology in `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance/README.md`
-- [ ] T044 Run `pnpm test`, `pnpm lint:fix`, and `pnpm -r build` from `/Users/sgtpooki/code/sgtpooki/homelab-system/wtfoc-worktrees/codex-009-collection-provenance`
+- [ ] T041 [P] Add CLI publish command surface in `packages/cli/src/cli.ts` (follow SPEC.md §11 output conventions: --json, --quiet, exit codes per §10)
+- [ ] T042 [P] Validate quickstart flows against implemented CLI surface in `.specify/specs/009-collection-provenance/quickstart.md`
+- [ ] T043 [P] Update user-facing README for collection publication terminology in `README.md`
+- [ ] T044 Run `pnpm test`, `pnpm lint:fix`, and `pnpm -r build`
 
 ---
 
@@ -165,28 +165,13 @@
 
 ### Parallel Opportunities
 
-- T002 and T004 can run in parallel after T001/T003
-- T006 through T010 can run in parallel
-- T013 and T014 can run in parallel after T011/T012
-- T017 through T019 can run in parallel
+- T002, T004, T005 can run in parallel after T001/T003
+- T007 through T011 can run in parallel
+- T014 and T015 can run in parallel after T012/T013
+- T018 through T020 can run in parallel
 - T025 through T028 can run in parallel
 - T034 through T036 can run in parallel
 - T041 through T043 can run in parallel before T044
-
----
-
-## Parallel Example: User Story 2
-
-```bash
-# Write revision publication tests together
-Task: "Add revision lineage and provenance tests in packages/store/src/schema.test.ts"
-Task: "Add CollectionHead conflict and advancement tests in packages/store/src/factory.test.ts"
-Task: "Add publish failure semantics tests for orphaned revisions and failed head advancement in packages/store/src/factory.test.ts"
-
-# Then implement store-side revision helpers
-Task: "Implement CollectionRevision serialization and persistence helpers in packages/store/src/segment.ts"
-Task: "Implement provenance record validation and normalization in packages/store/src/schema.ts"
-```
 
 ---
 
@@ -207,20 +192,9 @@ Task: "Implement provenance record validation and normalization in packages/stor
 4. Add mounted collection reuse
 5. Add revision diffs
 
-### Parallel Team Strategy
-
-With multiple developers or agents using separate worktrees:
-
-1. One contributor handles `@wtfoc/common` schema evolution
-2. One contributor handles `@wtfoc/store` head/revision persistence
-3. After store contracts stabilize, another contributor handles `@wtfoc/search` mounted collection reuse
-4. CLI diff and mount commands can proceed once store/search behavior is in place
-
----
-
 ## Notes
 
 - Keep 009 scoped to collection publication semantics, not subscriptions/change feeds
 - Do not redefine ingest-time CAR bundling here
 - Preserve backend-neutral identity even while targeting FOC dataset behavior
-- Reconcile naming carefully with the parallel 010 work when branches merge
+- Spec 010 (CAR Bundle Uploads) is merged. `segmentRefs` use `SegmentSummary.id` values and `bundleRefs` use `BatchRecord.carRootCid` values from the merged 010 schema
