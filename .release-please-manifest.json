@@ -1,7 +1,7 @@
 {
-	"packages/common": "0.0.0",
-	"packages/store": "0.0.0",
-	"packages/ingest": "0.0.0",
-	"packages/search": "0.0.0",
-	"packages/cli": "0.0.0"
+	"packages/common": "0.0.1",
+	"packages/store": "0.0.1",
+	"packages/ingest": "0.0.1",
+	"packages/search": "0.0.1",
+	"packages/cli": "0.0.1"
 }
