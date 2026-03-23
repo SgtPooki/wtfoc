@@ -13,9 +13,9 @@ A customer complains in Slack. Someone files an issue. Someone else fixes it in 
 ## The Solution
 
 ```bash
-# Ingest your sources
-wtfoc ingest-slack ./exports/foc-support.json --collection team-intel
-wtfoc ingest-repo FilOzone/synapse-sdk --collection team-intel
+# Ingest your sources (source adapters are pluggable)
+wtfoc ingest slack ./exports/foc-support.json --collection team-intel
+wtfoc ingest github FilOzone/synapse-sdk --collection team-intel
 
 # Trace incidents across all sources
 wtfoc trace "upload failures" --collection team-intel
