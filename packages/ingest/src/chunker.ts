@@ -5,7 +5,7 @@ const DEFAULT_CHUNK_SIZE = 512;
 const DEFAULT_CHUNK_OVERLAP = 0;
 
 export interface MarkdownChunkerOptions {
-	/** Maximum UTF-8 characters per chunk (JavaScript string length). Default 512. */
+	/** Maximum characters per chunk, measured as JavaScript string length (UTF-16 code units). Default 512. */
 	chunkSize?: number;
 	/** Characters from the end of the previous chunk included at the start of the next. Default 0. */
 	chunkOverlap?: number;
@@ -75,13 +75,19 @@ export function findMarkdownSplitEnd(text: string, start: number, maxEnd: number
 export function chunkMarkdown(markdown: string, options: MarkdownChunkerOptions): Chunk[] {
 	const chunkSize = options.chunkSize ?? DEFAULT_CHUNK_SIZE;
 	let chunkOverlap = options.chunkOverlap ?? DEFAULT_CHUNK_OVERLAP;
-	chunkOverlap = clampOverlap(chunkOverlap, chunkSize);
 
-	if (chunkSize < 1) {
-		throw new WtfocError("chunkSize must be at least 1", "INVALID_CHUNK_SIZE", {
+	if (!Number.isFinite(chunkSize) || !Number.isInteger(chunkSize) || chunkSize < 1) {
+		throw new WtfocError("chunkSize must be a finite integer >= 1", "INVALID_CHUNK_SIZE", {
 			chunkSize,
 		});
 	}
+	if (!Number.isFinite(chunkOverlap) || !Number.isInteger(chunkOverlap) || chunkOverlap < 0) {
+		throw new WtfocError("chunkOverlap must be a finite integer >= 0", "INVALID_CHUNK_OVERLAP", {
+			chunkOverlap,
+		});
+	}
+
+	chunkOverlap = clampOverlap(chunkOverlap, chunkSize);
 	if (markdown.length === 0) {
 		return [];
 	}

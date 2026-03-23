@@ -102,6 +102,18 @@ describe("chunkMarkdown", () => {
 		expect(thrown).toBeInstanceOf(WtfocError);
 		expect((thrown as WtfocError).code).toBe("INVALID_CHUNK_SIZE");
 	});
+
+	it("throws WtfocError for non-finite or non-integer chunkSize", () => {
+		for (const bad of [NaN, Infinity, -Infinity, 1.5]) {
+			expect(() => chunkMarkdown("a", { source: "s", chunkSize: bad })).toThrow(WtfocError);
+		}
+	});
+
+	it("throws WtfocError for non-finite or non-integer chunkOverlap", () => {
+		for (const bad of [NaN, Infinity, -1, 0.5]) {
+			expect(() => chunkMarkdown("a", { source: "s", chunkOverlap: bad })).toThrow(WtfocError);
+		}
+	});
 });
 
 describe("findMarkdownSplitEnd", () => {
