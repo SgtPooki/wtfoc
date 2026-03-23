@@ -1,182 +1,113 @@
 # AGENTS.md — wtfoc
 
-Instructions for AI agents working on this codebase.
+Agent operating instructions for this repository.
 
-**Read these first, in order:**
-1. [`SPEC.md`](SPEC.md) — foundational rules (invariants that apply to everything)
-2. [`.specify/memory/constitution.md`](.specify/memory/constitution.md) — governance and development discipline
-3. Feature specs in `.specify/specs/` — what you're actually building
+Read these first, in order:
+1. [`SPEC.md`](SPEC.md) for project-wide invariants.
+2. [`.specify/memory/constitution.md`](.specify/memory/constitution.md) for governance, workflow, and coordination.
+3. The relevant feature spec in [`.specify/specs/`](.specify/specs/) before changing behavior.
+4. The nearest nested `AGENTS.md` for the package or subtree you are editing.
 
-## Project Overview
+## Purpose
 
-**wtfoc** ("What The FOC") is a decentralized knowledge tracing and recall tool built on FOC (Filecoin Onchain Cloud). It ingests knowledge from multiple sources (Slack, GitHub, docs, code), extracts relationship edges, stores everything on verifiable decentralized storage, and traces evidence-backed connections across sources.
+Use this file for repository-specific operating rules that help agents work autonomously.
 
-## Repository Structure
+- Keep this file lean. Link to source documents instead of restating them.
+- If commands, code maps, or workflow notes here become stale, update them in the same change.
+- Prefer nested `AGENTS.md` files for package-local rules over growing this root file.
 
-```
-wtfoc/
-├── SPEC.md              # Foundational rules — project-wide invariants
-├── AGENTS.md            # You are here
-├── README.md            # Project overview for humans
-├── LICENSE              # MIT
-├── SECURITY.md          # Vulnerability reporting + immutable storage warnings
-├── .specify/
-│   ├── memory/
-│   │   └── constitution.md  # Governance, development discipline
-│   ├── specs/               # Feature specs (spec-kit driven)
-│   │   └── 001-store-backend/
-│   │       └── spec.md      # First feature spec
-│   └── templates/           # Spec-kit templates
-├── .claude/commands/        # Spec-kit slash commands
-├── packages/
-│   ├── common/          # @wtfoc/common — pure contracts, schemas, types
-│   ├── store/           # @wtfoc/store — blob storage + manifest management
-│   ├── ingest/          # @wtfoc/ingest — source adapters + chunking + edges
-│   ├── search/          # @wtfoc/search — embedder + vector index + query + trace
-│   └── cli/             # @wtfoc/cli — CLI composing all packages
-├── fixtures/            # Golden demo dataset (synthetic only)
-└── .githooks/           # Git hooks (strip co-author lines)
-```
+## Quick Commands
 
-## How to Work on This Project (NON-NEGOTIABLE)
+Run from the repo root unless a nested `AGENTS.md` says otherwise.
 
-Every change follows the spec-kit flow. No exceptions.
-
-1. **`/speckit.specify`** — create the specification
-2. **`/speckit.clarify`** — clarify and de-risk ambiguities (run before /plan)
-3. **`/peer-review`** — spec reviewed by a different agent (Cursor or Codex). Address all feedback before ratifying.
-4. **`/speckit.plan`** — create implementation plan from ratified spec
-5. **`/speckit.checklist`** — generate quality checklists to validate spec (optional)
-6. **`/speckit.tasks`** — generate actionable tasks from plan
-7. **`/speckit.analyze`** — validate alignment & surface inconsistencies (optional, before /implement)
-8. **`/speckit.implement`** — execute implementation
-9. **`/speckit.taskstoissues`** — convert tasks to GitHub issues (optional)
-
-Other commands: `/speckit.constitution` — update project principles
-
-Do not skip steps. Do not "write the spec later." The spec is the shared source of truth.
-
-## Core Architecture Invariants
-
-These are restated from SPEC.md so you don't have to dig through external docs.
-
-1. **Every seam is an interface** in `@wtfoc/common`. Six seams: Embedder, VectorIndex, StorageBackend, SourceAdapter, ManifestStore, EdgeExtractor.
-2. **Storage results are backend-neutral.** `StorageResult.id` is always present. `ipfsCid` and `pieceCid` are optional.
-3. **Manifests and segments have `schemaVersion`.** Readers reject unknown versions. Writers always use latest.
-4. **Single writer per project.** Concurrent updates rejected via `prevHeadId` mismatch.
-5. **Ingest order:** chunks → embed → extract edges → bundle segment → upload → verify → update head → update local pointer.
-6. **Trace ≠ search.** Trace follows explicit edges. Search finds semantically similar chunks. Trace falls back to search when no edges exist.
-7. **`@wtfoc/common` is contracts only.** No I/O, no SDK wrappers, no business logic.
-
-## Developer Workflow
-
-### Bootstrap
 ```bash
-pnpm install                          # install all deps
-pnpm -r build                        # build all packages (common first)
-pnpm --filter @wtfoc/store build     # build one package
+pnpm install
+pnpm lint:fix
+pnpm test
+pnpm -r build
+pnpm --filter @wtfoc/store build
+pnpm --filter @wtfoc/search test
 ```
 
-### Test
-```bash
-pnpm test                            # run all tests from root (vitest)
-pnpm test -- --watch                 # watch mode
-```
+Do not run `pnpm lint` by itself after edits. Run `pnpm lint:fix`, then fix any remaining issues manually.
 
-### Lint & Format
-```bash
-pnpm lint:fix                        # auto-fix all fixable issues (ALWAYS run this, not lint)
-```
+## Repo Map
 
-**Never run `pnpm lint` by itself.** Always run `pnpm lint:fix` after completing code changes. Then fix any remaining non-auto-fixable errors manually.
+- `packages/common`: contracts, schemas, interfaces, typed errors only
+- `packages/store`: storage backends, manifest handling, artifact bundling
+- `packages/ingest`: source adapters, chunking, edge extraction, segment building
+- `packages/search`: embedders, vector index, query, trace
+- `packages/cli`: CLI wiring, output formatting, exit behavior
+- `.specify/specs`: ratified feature specs, plans, and tasks
+- `scripts`: issue dispatch, agent loop, repo maintenance helpers
+- `.github`: CI and GitHub-specific agent instructions
 
-### Build Order
-`common` → `store` → `ingest` / `search` (parallel) → `cli`
+## Non-Negotiables
 
-TypeScript project references handle this automatically.
+- Follow the spec-kit flow for every non-trivial change. Do not implement behavior first and spec it later.
+- Respect the six seams defined in [`SPEC.md`](SPEC.md). Do not introduce new interfaces casually.
+- Treat changes to `@wtfoc/common`, manifest shapes, segment shapes, CLI flags, and CI/workflow files as high-risk.
+- Never add I/O, SDK wrappers, or business logic to `@wtfoc/common`.
+- Never use real secrets, PII, wallet keys, or non-synthetic fixtures in the repo.
 
-## Code Style
+## Edit Checklist
 
-- TypeScript strict mode
-- Biome for formatting and linting
-- **No `any`** — use `unknown` and narrow
-- **No `as unknown as`** — if you need a double cast, the types are wrong. Fix the types.
-- **No non-null assertions (`!`)** — check existence, throw descriptive error if missing
-- **Named errors only** — use typed error classes from `@wtfoc/common` with stable `code` fields. Never `throw new Error("broke")`.
-- **No default exports** — named exports only
-- **ESM only** — `"type": "module"` in all packages
-- Long-running operations accept `AbortSignal` for cancellation
+Before editing:
+- Read the nearest `AGENTS.md` for the area you are changing.
+- Read the relevant spec if behavior or public contracts may change.
 
-## Commit Style
+While editing:
+- Reuse existing patterns before introducing new abstractions.
+- Keep changes scoped to the task. Do not opportunistically refactor unrelated code.
+- Update stale comments, docs, or examples in the touched area.
 
-- Conventional commits: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`
-- Scope with package name: `feat(store): add FOC upload support`
-- Keep commits atomic — one logical change per commit
-- Link issues: `Fixes #n` or `Refs #n`
-- Each commit must produce a working state
+After editing:
+- Run `pnpm lint:fix`.
+- Run targeted tests for the changed package, then `pnpm test` if behavior changed or cross-package impact is plausible.
+- Run `pnpm -r build` for cross-package or API changes.
+- Update [`SPEC.md`](SPEC.md), README files, or specs when public behavior or contracts changed.
 
-## Definition of Done (for PRs)
+## Comment Policy
 
-- [ ] Spec exists and is ratified (cross-reviewed)
-- [ ] Tests pass (`pnpm test`)
-- [ ] Tests test behavior, not implementation
-- [ ] Biome passes (`pnpm biome check .`)
-- [ ] Package builds (`pnpm -r build`)
-- [ ] Public API changes: update SPEC.md
-- [ ] No secrets, PII, or real customer data
-- [ ] README updated if user-visible behavior changes
+Prefer self-documenting code over explanatory comments.
 
-## Error Handling
+- Use precise names, small functions, strong types, and focused tests before adding comments.
+- Do not add comments that restate what the code already says.
+- Comments should explain why, invariants, protocol constraints, security implications, or non-obvious tradeoffs.
+- Use doc comments on exported APIs when the contract is not obvious from the type signature.
+- Remove or update stale comments when touching nearby code.
+- Do not leave TODOs without a linked spec, issue, or clear follow-up.
 
-- Typed error classes from `@wtfoc/common` with stable `code` field
-- Error codes: `MANIFEST_CONFLICT`, `STORAGE_UNREACHABLE`, `EMBED_FAILED`, `SCHEMA_UNKNOWN`, etc.
-- CLI exit codes: 0 success, 1 general, 2 usage, 3 storage, 4 conflict
-- Never throw raw strings — always use error classes
+## Style Rules Worth Repeating
 
-## Adding Dependencies
+- No `any`
+- No `as unknown as`
+- No non-null assertions
+- No default exports
+- ESM only
+- Named typed errors with stable `code` fields
+- Long-running async work accepts `AbortSignal`
+- Tests validate behavior, not implementation details
 
-Before adding a dependency, check:
-- [ ] Bundle size impact
-- [ ] License compatibility (MIT, Apache-2.0, BSD — no GPL)
-- [ ] Actively maintained?
-- [ ] Native addons? (bad for portability)
-- [ ] Belongs in `common` (only if pure schema/type helper) or leaf package?
+## Ask First
 
-## What NOT to Do
+Pause and ask the user before:
+- changing package scripts or CI semantics
+- changing manifest or segment schema versions
+- widening a public interface in `@wtfoc/common`
+- adding dependencies without a clear package-level need
+- changing issue/branch/worktree coordination rules
 
-- Don't skip the spec-kit flow
-- Don't add features not in a ratified spec
-- Don't put I/O or business logic in `@wtfoc/common`
-- Don't add GraphRAG, RAPTOR, ColBERT — future work
-- Don't build a web dashboard — CLI only for MVP
-- Don't over-abstract — three similar lines beats a premature abstraction
-- Don't scaffold `@wtfoc/memory` or `@wtfoc/mcp` until core is stable
+## Nested Instructions
 
-## Key Dependencies
+This repo uses nested `AGENTS.md` files for package-local guidance. The closest file to the edited code wins.
 
-```
-@filoz/synapse-sdk       — FOC storage (upload/download/datasets)
-filecoin-pin             — IPFS↔Filecoin bridge (CAR creation, dual CIDs)
-@huggingface/transformers — local embeddings (MiniLM-L6-v2)
-viem                     — wallet/chain interaction
-commander                — CLI
-```
+- [`packages/common/AGENTS.md`](packages/common/AGENTS.md)
+- [`packages/store/AGENTS.md`](packages/store/AGENTS.md)
+- [`packages/ingest/AGENTS.md`](packages/ingest/AGENTS.md)
+- [`packages/search/AGENTS.md`](packages/search/AGENTS.md)
+- [`packages/cli/AGENTS.md`](packages/cli/AGENTS.md)
 
-## Parallel Agent Work
-
-Multiple agents (Claude, Cursor, Codex) work in parallel on this project. **Read the full coordination protocol in [`.specify/memory/constitution.md`](.specify/memory/constitution.md) under "Parallel Agent Coordination".**
-
-Key rules:
-- **One agent per issue** — check labels before starting (`assigned-claude`, `assigned-cursor`, `assigned-codex`)
-- **Only pick up `ready` issues** — unlabeled or `blocked` are off-limits
-- **Each issue gets its own branch + worktree** — no shared working directories
-- **PRs for all changes** — no direct commits to main
-- **Respect dependencies** — if issue says "Depends on #X", wait until #X is merged
-
-## Links
-
-- [SPEC.md](SPEC.md) — foundational rules
-- [Constitution](.specify/memory/constitution.md) — governance
-- [Feature specs](.specify/specs/) — spec-kit specs
-- [Issue #1](https://github.com/SgtPooki/wtfoc/issues/1) — architecture history (6 review rounds)
-- [Issue #2](https://github.com/SgtPooki/wtfoc/issues/2) — Slack webhook (future)
+GitHub-hosted agents also read:
+- [`.github/copilot-instructions.md`](.github/copilot-instructions.md)
+- files in [`.github/instructions/`](.github/instructions/)

@@ -1,0 +1,18 @@
+Read `AGENTS.md`, `SPEC.md`, `.specify/memory/constitution.md`, and the relevant feature spec before making non-trivial changes.
+
+This repository is spec-first. Do not implement behavior changes without updating or creating the relevant spec artifacts in `.specify/specs/`.
+
+Prefer the nearest nested `AGENTS.md` when editing package code. Package-local instructions override root-level generalities.
+
+Run repository commands from the root unless package-local guidance says otherwise:
+- `pnpm lint:fix`
+- `pnpm test`
+- `pnpm -r build`
+
+Keep `@wtfoc/common` pure. Do not add I/O, SDK wrappers, or business logic there.
+
+Prefer self-documenting code over explanatory comments. Use comments only for invariants, non-obvious tradeoffs, security constraints, or protocol details. Remove stale comments when editing nearby code.
+
+Do not use `any`, `as unknown as`, non-null assertions, or default exports. Use typed errors with stable `code` fields. Long-running async operations accept `AbortSignal`.
+
+Treat manifest schemas, segment schemas, public CLI behavior, CI scripts, and package scripts as high-risk surfaces. Ask before changing them unless the task explicitly requires it.
