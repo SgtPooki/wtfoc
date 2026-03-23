@@ -747,8 +747,10 @@ ${diff}
 		rm -f "$review_file" 2>/dev/null || true
 
 		if [[ -n "$review_output" ]]; then
-			# Sanitize: strip ANSI codes, codex/cursor preamble, excessive whitespace
-			review_output=$(echo "$review_output" | \
+			# Sanitize: strip everything before the actual review response
+			# Look for the verdict line as the start of real output
+			local cleaned=""
+			cleaned=$(echo "$review_output" | \
 				sed 's/\x1b\[[0-9;]*m//g' | \
 				sed '/^OpenAI Codex/d' | \
 				sed '/^--------$/d' | \
@@ -763,9 +765,30 @@ ${diff}
 				sed '/^mcp startup/d' | \
 				sed '/^codex$/d' | \
 				sed '/^user$/d' | \
-				sed '/^exec$/d' | \
-				sed '/^--- DIFF ---$/d' | \
-				sed '/^--- END DIFF ---$/d')
+				sed '/^exec$/d')
+
+			# Strip the prompt echo — everything from "Review PR" or "IMPORTANT FORMAT" to "--- END DIFF ---"
+			cleaned=$(echo "$cleaned" | awk '
+				/^--- END DIFF ---/ { skip=0; next }
+				/^Review PR #|^IMPORTANT FORMAT/ { skip=1 }
+				/^--- DIFF ---/ { skip=1 }
+				/^diff --git/ { skip=1 }
+				skip { next }
+				{ print }
+			')
+
+			# Strip blank lines at start
+			cleaned=$(echo "$cleaned" | sed '/./,$!d')
+
+			# If we stripped everything (agent just echoed the prompt), skip posting
+			if [[ -z "$cleaned" ]] || [[ ${#cleaned} -lt 20 ]]; then
+				warn "PR #${pr_num}: agent output was empty or just echoed the prompt — skipping"
+				# Remove reviewing label without posting
+				gh_retry gh issue edit "$pr_num" --repo "$REPO" --remove-label "reviewing-${AGENT}" >/dev/null 2>&1 || true
+				continue
+			fi
+
+			review_output="$cleaned"
 
 			# Truncate if still too long (max 2000 chars for a comment)
 			if [[ ${#review_output} -gt 2000 ]]; then
