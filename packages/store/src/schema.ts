@@ -1,4 +1,4 @@
-import type { HeadManifest, Segment, SegmentSummary } from "@wtfoc/common";
+import type { BatchRecord, HeadManifest, Segment, SegmentSummary } from "@wtfoc/common";
 import { SchemaUnknownError, WtfocError } from "@wtfoc/common";
 
 /** Latest persisted manifest / segment format version. */
@@ -146,6 +146,49 @@ function validateSegmentSummary(raw: unknown, index: number): SegmentSummary {
 	return summary;
 }
 
+function validateBatchRecord(raw: unknown, index: number): BatchRecord {
+	if (!isRecord(raw)) {
+		throw new WtfocError(
+			`Invalid head manifest: batches[${index}] must be an object`,
+			"SCHEMA_INVALID",
+			{ field: `batches[${index}]` },
+		);
+	}
+	const pieceCid = requireField(
+		raw,
+		"pieceCid",
+		isNonEmptyString,
+		`batches[${index}].pieceCid must be a non-empty string`,
+		"headManifest",
+		`batches[${index}].pieceCid`,
+	);
+	const carRootCid = requireField(
+		raw,
+		"carRootCid",
+		isNonEmptyString,
+		`batches[${index}].carRootCid must be a non-empty string`,
+		"headManifest",
+		`batches[${index}].carRootCid`,
+	);
+	const segmentIds = requireField(
+		raw,
+		"segmentIds",
+		(v): v is string[] => Array.isArray(v) && v.length > 0 && v.every(isNonEmptyString),
+		`batches[${index}].segmentIds must be a non-empty array of non-empty strings`,
+		"headManifest",
+		`batches[${index}].segmentIds`,
+	);
+	const createdAt = requireField(
+		raw,
+		"createdAt",
+		isString,
+		`batches[${index}].createdAt must be a string`,
+		"headManifest",
+		`batches[${index}].createdAt`,
+	);
+	return { pieceCid, carRootCid, segmentIds, createdAt };
+}
+
 /**
  * Validates unknown JSON-compatible data as a {@link HeadManifest}.
  * Rejects unknown `schemaVersion` with {@link SchemaUnknownError}.
@@ -240,7 +283,7 @@ export function validateManifestSchema(data: unknown): HeadManifest {
 		"headManifest",
 	);
 
-	return {
+	const manifest: HeadManifest = {
 		schemaVersion: sv,
 		name,
 		prevHeadId,
@@ -251,6 +294,19 @@ export function validateManifestSchema(data: unknown): HeadManifest {
 		createdAt,
 		updatedAt,
 	};
+
+	if ("batches" in data && data.batches !== undefined) {
+		const batchesRaw = requireField(
+			data,
+			"batches",
+			isUnknownArray,
+			"batches must be an array",
+			"headManifest",
+		);
+		manifest.batches = batchesRaw.map((item, i) => validateBatchRecord(item, i));
+	}
+
+	return manifest;
 }
 
 function isNumberArray(v: unknown): v is number[] {
