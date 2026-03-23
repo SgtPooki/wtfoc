@@ -1,30 +1,25 @@
 import type { Segment } from "@wtfoc/common";
-import { SchemaUnknownError, WtfocError } from "@wtfoc/common";
+import { SchemaUnknownError } from "@wtfoc/common";
 import { describe, expect, it } from "vitest";
 import { deserializeSegment, serializeSegment } from "./segment.js";
+import { expectWtfocCode } from "./test-helpers.js";
 
-function expectWtfocCode(fn: () => void, code: string) {
-	let threw = false;
-	try {
-		fn();
-	} catch (e) {
-		threw = true;
-		expect(e).toBeInstanceOf(WtfocError);
-		expect((e as WtfocError).code).toBe(code);
-	}
-	expect(threw).toBe(true);
+/** Deterministic embedding vector of length `dim` (must match `embeddingDimensions`). */
+function embeddingOf(dim: number): number[] {
+	return Array.from({ length: dim }, (_, i) => (i % 10) / 10);
 }
 
 function minimalValidSegment(overrides?: Partial<Segment>): Segment {
+	const embeddingDimensions = 2;
 	return {
 		schemaVersion: 1,
 		embeddingModel: "Xenova/all-MiniLM-L6-v2",
-		embeddingDimensions: 384,
+		embeddingDimensions,
 		chunks: [
 			{
 				id: "chunk-1",
 				storageId: "blob-abc",
-				embedding: [0.1, 0.2],
+				embedding: embeddingOf(embeddingDimensions),
 				terms: ["a"],
 				source: "src",
 				sourceType: "slack",
@@ -46,6 +41,15 @@ function minimalValidSegment(overrides?: Partial<Segment>): Segment {
 }
 
 describe("serializeSegment / deserializeSegment", () => {
+	it("rejects invalid segments before serializing", () => {
+		const bad = {
+			...minimalValidSegment(),
+			embeddingDimensions: 384,
+			chunks: [{ ...minimalValidSegment().chunks[0], embedding: [0.1, 0.2] }],
+		} as Segment;
+		expectWtfocCode(() => serializeSegment(bad), "SCHEMA_INVALID");
+	});
+
 	it("round-trips a segment preserving all fields", () => {
 		const original = minimalValidSegment();
 		const bytes = serializeSegment(original);
@@ -55,9 +59,16 @@ describe("serializeSegment / deserializeSegment", () => {
 	});
 
 	it("preserves embeddingModel and embeddingDimensions", () => {
+		const embeddingDimensions = 768;
 		const original = minimalValidSegment({
 			embeddingModel: "custom-model",
-			embeddingDimensions: 768,
+			embeddingDimensions,
+			chunks: [
+				{
+					...minimalValidSegment().chunks[0],
+					embedding: embeddingOf(embeddingDimensions),
+				},
+			],
 		});
 		const back = deserializeSegment(serializeSegment(original));
 		expect(back.embeddingModel).toBe("custom-model");
@@ -68,6 +79,11 @@ describe("serializeSegment / deserializeSegment", () => {
 		const bad = JSON.stringify({ ...minimalValidSegment(), schemaVersion: 99 });
 		const bytes = new TextEncoder().encode(bad);
 		expect(() => deserializeSegment(bytes)).toThrow(SchemaUnknownError);
+	});
+
+	it("throws WtfocError when JSON is malformed", () => {
+		const bytes = new TextEncoder().encode("{ not valid json");
+		expectWtfocCode(() => deserializeSegment(bytes), "SCHEMA_INVALID");
 	});
 
 	it("throws when JSON is not an object", () => {
