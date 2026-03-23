@@ -152,6 +152,7 @@ ${body}
 - Commit atomically — each commit is one logical change
 - Push after each meaningful commit
 - Do NOT merge the PR — it needs peer review first
+- After opening the PR, request review by commenting: "Ready for /peer-review"
 PROMPT
 }
 
@@ -190,6 +191,7 @@ ${body}
 - Each commit produces a working state
 - Push after each meaningful commit
 - Do NOT merge the PR — it needs review first
+- After opening the PR, request review by commenting: "Ready for /peer-review"
 PROMPT
 }
 
@@ -251,17 +253,11 @@ run_agent() {
 			}
 			;;
 		claude)
-			# Claude is interactive — write prompt and tell user where it is
-			log "Claude prompt ready at: ${prompt_file}"
-			log "Start claude in the worktree:"
-			warn "  cd ${worktree_dir} && claude"
-			warn "  Then paste or reference: ${prompt_file}"
-			echo ""
-			echo "--- PROMPT (also saved to ${prompt_file}) ---"
-			echo "$prompt"
-			echo "--- END ---"
-			# Wait for user to finish (check if PR was created)
-			log "Waiting for PR from branch..."
+			log "Starting Claude agent in ${worktree_dir}..."
+			(cd "$worktree_dir" && claude -p "$(cat "$prompt_file")" --allowedTools Bash,Read,Write,Edit,Glob,Grep) || {
+				warn "Claude exited with code $?. Prompt is at: ${prompt_file}"
+				return 1
+			}
 			;;
 	esac
 
