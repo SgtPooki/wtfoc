@@ -113,6 +113,41 @@ export class PublishFailedError extends WtfocError {
 	}
 }
 
+export class GitHubRateLimitError extends WtfocError {
+	constructor(repo: string, retryAfterSeconds?: number) {
+		super(
+			`GitHub API rate limit exceeded for "${repo}"${retryAfterSeconds ? ` (retry after ${retryAfterSeconds}s)` : ""}`,
+			"GITHUB_RATE_LIMIT",
+			{ repo, retryAfterSeconds },
+		);
+		this.name = "GitHubRateLimitError";
+	}
+}
+
+export class GitHubNotFoundError extends WtfocError {
+	constructor(repo: string) {
+		super(`GitHub repository not found: "${repo}"`, "GITHUB_NOT_FOUND", { repo });
+		this.name = "GitHubNotFoundError";
+	}
+}
+
+export class GitHubCliMissingError extends WtfocError {
+	constructor() {
+		super(
+			"gh CLI not found. Install it from https://cli.github.com/ and run `gh auth login`",
+			"GITHUB_CLI_MISSING",
+		);
+		this.name = "GitHubCliMissingError";
+	}
+}
+
+export class GitHubApiError extends WtfocError {
+	constructor(message: string, repo: string, cause?: unknown) {
+		super(`GitHub API error for "${repo}": ${message}`, "GITHUB_API_ERROR", { repo, cause });
+		this.name = "GitHubApiError";
+	}
+}
+
 export class SchemaUnknownError extends WtfocError {
 	constructor(found: number, maxSupported: number) {
 		super(`Unknown schema version ${found} (max supported: ${maxSupported})`, "SCHEMA_UNKNOWN", {
