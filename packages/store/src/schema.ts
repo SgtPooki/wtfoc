@@ -157,15 +157,25 @@ export function validateManifestSchema(data: unknown): HeadManifest {
 
 	const sv = data.schemaVersion;
 	if (typeof sv !== "number" || !Number.isInteger(sv)) {
-		throw new WtfocError("Invalid head manifest: schemaVersion must be an integer", "SCHEMA_INVALID", {
-			field: "schemaVersion",
-		});
+		throw new WtfocError(
+			"Invalid head manifest: schemaVersion must be an integer",
+			"SCHEMA_INVALID",
+			{
+				field: "schemaVersion",
+			},
+		);
 	}
 	if (sv < 1 || sv > MAX_SUPPORTED_SCHEMA_VERSION) {
 		throw new SchemaUnknownError(sv, MAX_SUPPORTED_SCHEMA_VERSION);
 	}
 
-	const name = requireField(data, "name", isNonEmptyString, "name must be a non-empty string", "headManifest");
+	const name = requireField(
+		data,
+		"name",
+		isNonEmptyString,
+		"name must be a non-empty string",
+		"headManifest",
+	);
 
 	const prevHeadId = data.prevHeadId;
 	if (prevHeadId === undefined) {
@@ -176,9 +186,13 @@ export function validateManifestSchema(data: unknown): HeadManifest {
 		);
 	}
 	if (prevHeadId !== null && typeof prevHeadId !== "string") {
-		throw new WtfocError("Invalid head manifest: prevHeadId must be string or null", "SCHEMA_INVALID", {
-			field: "prevHeadId",
-		});
+		throw new WtfocError(
+			"Invalid head manifest: prevHeadId must be string or null",
+			"SCHEMA_INVALID",
+			{
+				field: "prevHeadId",
+			},
+		);
 	}
 
 	const segmentsRaw = requireField(

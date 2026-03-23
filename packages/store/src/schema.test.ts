@@ -1,7 +1,11 @@
 import type { HeadManifest } from "@wtfoc/common";
 import { SchemaUnknownError, WtfocError } from "@wtfoc/common";
 import { describe, expect, it } from "vitest";
-import { MAX_SUPPORTED_SCHEMA_VERSION, validateManifestSchema, validateSegmentSchema } from "./schema.js";
+import {
+	MAX_SUPPORTED_SCHEMA_VERSION,
+	validateManifestSchema,
+	validateSegmentSchema,
+} from "./schema.js";
 import { expectWtfocCode } from "./test-helpers.js";
 
 function minimalValidManifest(overrides?: Partial<HeadManifest>): HeadManifest {
@@ -93,7 +97,10 @@ describe("validateManifestSchema", () => {
 		const { schemaVersion: _s, ...withoutVersion } = base;
 		expectWtfocCode(() => validateManifestSchema(withoutVersion), "SCHEMA_INVALID");
 
-		expectWtfocCode(() => validateManifestSchema({ ...base, schemaVersion: 1.5 }), "SCHEMA_INVALID");
+		expectWtfocCode(
+			() => validateManifestSchema({ ...base, schemaVersion: 1.5 }),
+			"SCHEMA_INVALID",
+		);
 	});
 
 	it("throws when required top-level fields are missing", () => {
@@ -144,7 +151,10 @@ describe("validateSegmentSchema", () => {
 	});
 
 	it("throws SchemaUnknownError for unsupported schemaVersion", () => {
-		expectWtfocCode(() => validateSegmentSchema({ ...minimalValidSegmentRecord(), schemaVersion: 99 }), "SCHEMA_UNKNOWN");
+		expectWtfocCode(
+			() => validateSegmentSchema({ ...minimalValidSegmentRecord(), schemaVersion: 99 }),
+			"SCHEMA_UNKNOWN",
+		);
 	});
 
 	it("rejects embedding vector length that does not match embeddingDimensions", () => {
@@ -152,7 +162,7 @@ describe("validateSegmentSchema", () => {
 			embeddingDimensions: 384,
 			chunks: [
 				{
-					...(minimalValidSegmentRecord().chunks as unknown[])[0] as Record<string, unknown>,
+					...((minimalValidSegmentRecord().chunks as unknown[])[0] as Record<string, unknown>),
 					embedding: [0.1, 0.2],
 				},
 			],
@@ -181,7 +191,7 @@ describe("validateSegmentSchema", () => {
 
 	it("accepts optional chunk sourceUrl and timestamp", () => {
 		const chunk = {
-			...(minimalValidSegmentRecord().chunks as unknown[])[0] as Record<string, unknown>,
+			...((minimalValidSegmentRecord().chunks as unknown[])[0] as Record<string, unknown>),
 			sourceUrl: "https://example.com",
 			timestamp: "2026-01-01T00:00:00.000Z",
 		};
@@ -193,9 +203,12 @@ describe("validateSegmentSchema", () => {
 
 	it("rejects wrong type for optional chunk.sourceUrl", () => {
 		const chunk = {
-			...(minimalValidSegmentRecord().chunks as unknown[])[0] as Record<string, unknown>,
+			...((minimalValidSegmentRecord().chunks as unknown[])[0] as Record<string, unknown>),
 			sourceUrl: 123,
 		};
-		expectWtfocCode(() => validateSegmentSchema(minimalValidSegmentRecord({ chunks: [chunk] })), "SCHEMA_INVALID");
+		expectWtfocCode(
+			() => validateSegmentSchema(minimalValidSegmentRecord({ chunks: [chunk] })),
+			"SCHEMA_INVALID",
+		);
 	});
 });
