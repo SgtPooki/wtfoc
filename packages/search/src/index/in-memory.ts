@@ -1,4 +1,9 @@
-import type { ScoredEntry, VectorEntry, VectorIndex } from "@wtfoc/common";
+import {
+	type ScoredEntry,
+	VectorDimensionMismatchError,
+	type VectorEntry,
+	type VectorIndex,
+} from "@wtfoc/common";
 
 interface SerializedVectorEntry {
 	id: string;
@@ -93,17 +98,13 @@ export class InMemoryVectorIndex implements VectorIndex {
 		}
 
 		if (vector.length !== this.#dimensions) {
-			throw new Error(
-				`Vector dimension mismatch: expected ${this.#dimensions}, received ${vector.length}`,
-			);
+			throw new VectorDimensionMismatchError(this.#dimensions, vector.length, "entry");
 		}
 	}
 
 	#assertQueryDimensions(vector: Float32Array): void {
 		if (this.#dimensions !== null && vector.length !== this.#dimensions) {
-			throw new Error(
-				`Query vector dimension mismatch: expected ${this.#dimensions}, received ${vector.length}`,
-			);
+			throw new VectorDimensionMismatchError(this.#dimensions, vector.length, "query");
 		}
 	}
 }

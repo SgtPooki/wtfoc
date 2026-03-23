@@ -1,12 +1,16 @@
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+
+const rootDir = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
 	resolve: {
 		alias: {
-			"@wtfoc/common": "/packages/common/src/index.ts",
-			"@wtfoc/store": "/packages/store/src/index.ts",
-			"@wtfoc/ingest": "/packages/ingest/src/index.ts",
-			"@wtfoc/search": "/packages/search/src/index.ts",
+			"@wtfoc/common": resolve(rootDir, "packages/common/src/index.ts"),
+			"@wtfoc/store": resolve(rootDir, "packages/store/src/index.ts"),
+			"@wtfoc/ingest": resolve(rootDir, "packages/ingest/src/index.ts"),
+			"@wtfoc/search": resolve(rootDir, "packages/search/src/index.ts"),
 		},
 	},
 	test: {

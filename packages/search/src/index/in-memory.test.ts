@@ -1,4 +1,4 @@
-import type { VectorEntry } from "@wtfoc/common";
+import { VectorDimensionMismatchError, type VectorEntry } from "@wtfoc/common";
 import { describe, expect, it } from "vitest";
 import { InMemoryVectorIndex } from "./in-memory.js";
 
@@ -50,6 +50,33 @@ describe("InMemoryVectorIndex", () => {
 		const index = new InMemoryVectorIndex();
 
 		await expect(index.search(new Float32Array([1, 0]), 3)).resolves.toEqual([]);
+	});
+
+	it("returns an empty array when topK is zero or negative", async () => {
+		const index = new InMemoryVectorIndex();
+		await index.add([makeEntry("first", [1, 0])]);
+
+		await expect(index.search(new Float32Array([1, 0]), 0)).resolves.toEqual([]);
+		await expect(index.search(new Float32Array([1, 0]), -1)).resolves.toEqual([]);
+	});
+
+	it("rejects entries whose dimensions do not match the existing index", async () => {
+		const index = new InMemoryVectorIndex();
+		await index.add([makeEntry("first", [1, 0])]);
+
+		await expect(index.add([makeEntry("mismatch", [1, 0, 0])])).rejects.toEqual(
+			new VectorDimensionMismatchError(2, 3, "entry"),
+		);
+		expect(index.size).toBe(1);
+	});
+
+	it("rejects query vectors whose dimensions do not match the index", async () => {
+		const index = new InMemoryVectorIndex();
+		await index.add([makeEntry("first", [1, 0])]);
+
+		await expect(index.search(new Float32Array([1, 0, 0]), 1)).rejects.toEqual(
+			new VectorDimensionMismatchError(2, 3, "query"),
+		);
 	});
 
 	it("preserves search behavior across serialization round-trips", async () => {
