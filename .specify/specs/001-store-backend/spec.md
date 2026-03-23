@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-store-backend`
 **Created**: 2026-03-23
-**Status**: Draft
+**Status**: Revised (addressing Cursor + Codex cross-review)
 **Spec**: [`SPEC.md` rules 2-5, 7-8](../../SPEC.md)
 **Package**: `@wtfoc/store`
 
@@ -10,149 +10,167 @@
 
 Implement the `@wtfoc/store` package — the foundational storage layer that all other packages depend on. Provides pluggable blob storage and manifest management with backend-neutral artifact identity.
 
-Two built-in backends:
-1. **LocalStorageBackend** — filesystem, no wallet, no network (already scaffolded)
+Two built-in storage backends:
+1. **LocalStorageBackend** — filesystem, no wallet, no network
 2. **FocStorageBackend** — FOC via `@filoz/synapse-sdk` + `filecoin-pin`, dual CIDs
 
-Plus the manifest chain: head manifests (mutable pointers) over immutable segment blobs.
+One built-in manifest store:
+1. **LocalManifestStore** — JSON files on local filesystem
+
+FOC-backed ManifestStore is **out of scope** for this spec (deferred to a future spec when FOC manifest persistence is needed).
+
+## Definitions
+
+- **`StorageResult.id`** — a durable, backend-assigned identifier sufficient for retrieval after process restart. For local backend: content SHA-256 hash. For FOC backend: PieceCID string.
+- **`StoredHead.headId`** — a store-assigned identifier for a head manifest revision. Used for conflict detection. For local: content hash of the serialized manifest JSON.
+- **`schemaVersion`** — format version of persisted data (manifests, segments). Currently `1`. Not a chain revision counter.
 
 ## User Scenarios & Testing
 
 ### User Story 1 — Store and retrieve a blob locally (Priority: P1)
 
-A developer wants to store arbitrary bytes and retrieve them by ID without any FOC/network setup.
+A developer stores arbitrary bytes and retrieves them by ID without any network setup.
 
-**Why this priority**: Everything else depends on working put/get. This unblocks all downstream packages.
-
-**Independent Test**: Store bytes → get ID back → download by ID → bytes match.
+**Why this priority**: Everything else depends on working put/get.
 
 **Acceptance Scenarios**:
 
-1. **Given** a LocalStorageBackend configured with a temp directory, **When** I upload a `Uint8Array`, **Then** I receive a `StorageResult` with a non-empty `id` and no `ipfsCid`/`pieceCid`.
-2. **Given** a stored blob, **When** I download by the returned `id`, **Then** I get back the exact same bytes.
-3. **Given** a stored blob, **When** I call `verify(id)`, **Then** it returns `{ exists: true, size: N }` where N matches the original byte length.
-4. **Given** an ID that was never stored, **When** I download by that ID, **Then** it throws a `StorageUnreachableError` with code `STORAGE_UNREACHABLE`.
+1. **Given** a LocalStorageBackend with a temp directory, **When** I upload a `Uint8Array`, **Then** I receive a `StorageResult` with a non-empty `id` and no `ipfsCid`/`pieceCid`.
+2. **Given** a stored blob, **When** I download by `id`, **Then** I get the exact same bytes.
+3. **Given** a stored blob, **When** I call `verify(id)`, **Then** it returns `{ exists: true, size: N }`.
+4. **Given** an ID that was never stored, **When** I download, **Then** it throws `StorageNotFoundError` with code `STORAGE_NOT_FOUND`.
+5. **Given** a non-existent data directory, **When** I upload, **Then** the directory is created automatically.
+6. **Given** an AbortSignal that is already aborted, **When** I upload, **Then** it rejects immediately.
 
 ---
 
 ### User Story 2 — Store and retrieve a blob on FOC (Priority: P1)
 
-A developer wants to store bytes on FOC and get back both a PieceCID and IPFS CID for verification.
+A developer stores bytes on FOC and gets back dual CIDs for verification.
 
-**Why this priority**: This is the core value proposition — verifiable decentralized storage. Without this, wtfoc is just local RAG.
+**Why this priority**: Core value proposition — verifiable decentralized storage.
 
-**Independent Test**: Store bytes on calibration testnet → get dual CIDs → download by ID → bytes match → verify CID resolves.
+**Note**: FOC acceptance scenarios are **integration tests** (opt-in, require wallet + network). Unit tests mock the FOC SDK.
 
 **Acceptance Scenarios**:
 
-1. **Given** a FocStorageBackend configured with a valid wallet and calibration testnet, **When** I upload a `Uint8Array`, **Then** I receive a `StorageResult` with `id`, `pieceCid`, and `ipfsCid` all populated.
-2. **Given** a stored blob on FOC, **When** I download by `id`, **Then** I get back the exact same bytes.
-3. **Given** a stored blob on FOC, **When** I call `verify(id)`, **Then** it confirms the piece exists on-chain.
-4. **Given** no network access, **When** I try to upload, **Then** it throws `StorageUnreachableError` with context including the backend type.
+1. **Given** a FocStorageBackend with a valid wallet on calibration testnet, **When** I upload a `Uint8Array`, **Then** I receive a `StorageResult` with `id` (= PieceCID), `pieceCid`, and `ipfsCid` all populated.
+2. **Given** a stored blob on FOC, **When** I download by `id`, **Then** I get the exact same bytes.
+3. **Given** a stored blob on FOC, **When** I call `verify(id)`, **Then** it confirms the piece exists.
+4. **Given** no network access, **When** I upload, **Then** it throws `StorageUnreachableError`.
+5. **Given** insufficient wallet balance, **When** I upload, **Then** it throws `StorageInsufficientBalanceError`.
+6. **Given** `id` is a PieceCID string, **Then** it is durable across process restarts and sufficient for later retrieval.
 
 ---
 
-### User Story 3 — Manage head manifests locally (Priority: P1)
+### User Story 3 — Manage head manifests with conflict detection (Priority: P1)
 
-A developer wants to create and update head manifests that track the current state of a project's segments.
+A developer creates and updates head manifests with single-writer enforcement.
 
-**Why this priority**: The manifest chain is the mutable index over immutable data. Without it, there's no way to track what's been ingested.
-
-**Independent Test**: Create manifest → update manifest → verify prevHeadId links → reject stale update.
+**Why this priority**: The manifest chain is the mutable index over immutable data.
 
 **Acceptance Scenarios**:
 
 1. **Given** no existing manifest for project "test", **When** I call `getHead("test")`, **Then** it returns `null`.
-2. **Given** no existing manifest, **When** I call `putHead("test", manifest)`, **Then** subsequent `getHead("test")` returns that manifest.
-3. **Given** an existing manifest with version 1, **When** I putHead with version 2 and `prevHeadId` matching the current head's ID, **Then** it succeeds.
-4. **Given** an existing manifest, **When** I putHead with a `prevHeadId` that doesn't match the current head, **Then** it throws `ManifestConflictError`.
+2. **Given** no existing manifest, **When** I call `putHead("test", manifest, null)`, **Then** it returns a `StoredHead` with a non-empty `headId`.
+3. **Given** an existing head with `headId: "abc"`, **When** I `putHead("test", newManifest, "abc")`, **Then** it succeeds and returns a new `StoredHead` with a different `headId`.
+4. **Given** an existing head with `headId: "abc"`, **When** I `putHead("test", newManifest, "stale-id")`, **Then** it throws `ManifestConflictError` with `expected: "stale-id"` and `actual: "abc"`.
 5. **Given** multiple projects, **When** I call `listProjects()`, **Then** it returns all project names.
+6. **Given** a manifest with `schemaVersion: 1`, **When** stored and retrieved, **Then** `schemaVersion` is preserved.
 
 ---
 
-### User Story 4 — Upload segment blobs (Priority: P2)
+### User Story 4 — Upload and validate segment blobs (Priority: P2)
 
-A developer wants to upload a segment (JSON blob of chunks + embeddings + edges) and reference it from a head manifest.
-
-**Why this priority**: Segments are the immutable data that manifests point to. This connects storage to the ingest pipeline.
-
-**Independent Test**: Serialize segment → upload → get ID → download → deserialize → verify contents match.
+A developer uploads a segment and validates schema version handling.
 
 **Acceptance Scenarios**:
 
-1. **Given** a `Segment` object, **When** I serialize it to JSON bytes and upload, **Then** I get a `StorageResult` with an ID.
-2. **Given** a stored segment, **When** I download and deserialize, **Then** the `schemaVersion`, `chunks`, and `edges` match the original.
-3. **Given** a segment with `schemaVersion: 1`, **When** a reader supporting only version 1 loads it, **Then** it succeeds.
-4. **Given** a segment with `schemaVersion: 99`, **When** a reader supporting only version 1 loads it, **Then** it throws `SchemaUnknownError`.
+1. **Given** a `Segment` with `schemaVersion: 1`, `embeddingModel`, and `embeddingDimensions`, **When** serialized to JSON and uploaded, **Then** I get a `StorageResult`.
+2. **Given** a stored segment, **When** downloaded and deserialized, **Then** all fields match including `embeddingModel` and `embeddingDimensions`.
+3. **Given** a segment JSON with `schemaVersion: 99`, **When** a reader validates it, **Then** it throws `SchemaUnknownError`.
 
 ---
 
-### User Story 5 — Swap storage backend at initialization (Priority: P2)
+### User Story 5 — Swap backends at initialization (Priority: P2)
 
-A developer wants to choose between local and FOC storage at initialization time, or provide their own custom backend.
-
-**Why this priority**: This validates the pluggable seam — the core architectural promise of wtfoc.
-
-**Independent Test**: Initialize with local → works. Initialize with FOC → works. Initialize with custom → works.
+A developer chooses storage backend and manifest store at init time, or provides custom implementations.
 
 **Acceptance Scenarios**:
 
-1. **Given** `createStore({ backend: 'local', dataDir: '/tmp/test' })`, **When** I upload, **Then** it uses LocalStorageBackend.
-2. **Given** `createStore({ backend: 'foc', privateKey: '0x...', network: 'calibration' })`, **When** I upload, **Then** it uses FocStorageBackend.
-3. **Given** `createStore({ backend: myCustomBackend })`, where `myCustomBackend` implements `StorageBackend`, **When** I upload, **Then** it uses the custom backend.
+1. **Given** `createStore({ storage: 'local', dataDir: '/tmp/test' })`, **Then** it uses LocalStorageBackend and LocalManifestStore.
+2. **Given** `createStore({ storage: 'foc', privateKey: '0x...', network: 'calibration' })`, **Then** it uses FocStorageBackend and LocalManifestStore.
+3. **Given** `createStore({ storage: myCustomBackend, manifests: myCustomManifestStore })`, **Then** both custom implementations are used.
+4. **Given** a custom backend that doesn't implement `verify`, **Then** `verify()` calls return `undefined` gracefully.
 
 ### Edge Cases
 
-- What happens when the local data directory doesn't exist? → Create it automatically.
-- What happens when FOC wallet has insufficient balance? → Throw typed error with clear message and `code: 'STORAGE_INSUFFICIENT_BALANCE'`.
-- What happens when two processes try to update the same manifest simultaneously? → Single writer wins via `prevHeadId` check; loser gets `ManifestConflictError`.
-- What happens when a segment upload succeeds but manifest update fails? → Segment exists as orphan (harmless). Manifest state unchanged. Safe to retry.
-- What happens when downloading a segment that was stored on FOC but calibration testnet was reset? → `StorageUnreachableError` with clear context.
+- Non-existent local data directory → created automatically
+- FOC insufficient balance → `StorageInsufficientBalanceError`
+- Two processes updating same manifest → `ManifestConflictError` via `prevHeadId` mismatch
+- Segment upload succeeds but manifest update fails → orphan segment (harmless), manifest unchanged, safe to retry
+- Calibration testnet reset → `StorageUnreachableError` / `StorageNotFoundError`
+- AbortSignal fired mid-upload → operation rejected, no partial state
 
 ## Requirements
 
 ### Functional Requirements
 
-- **FR-001**: System MUST implement the `StorageBackend` interface from `@wtfoc/common`
-- **FR-002**: System MUST provide `LocalStorageBackend` that stores blobs as files named by content SHA-256 hash
-- **FR-003**: System MUST provide `FocStorageBackend` that stores blobs via `@filoz/synapse-sdk` and returns dual CIDs (PieceCID + IPFS CID)
-- **FR-004**: `FocStorageBackend` MUST use `filecoin-pin` for CAR creation to get IPFS CIDs alongside PieceCIDs
-- **FR-005**: System MUST implement `ManifestStore` interface with `getHead`, `putHead`, `listProjects`
-- **FR-006**: System MUST provide `LocalManifestStore` that persists head manifests as JSON files in `~/.wtfoc/projects/`
-- **FR-007**: `putHead` MUST verify `prevHeadId` matches current head before writing (single-writer enforcement)
-- **FR-008**: System MUST provide a `createStore()` factory that accepts backend configuration and returns a composed store
-- **FR-009**: All stored manifests and segments MUST include `schemaVersion: 1`
-- **FR-010**: Readers MUST reject manifests/segments with unknown `schemaVersion` by throwing `SchemaUnknownError`
-- **FR-011**: `FocStorageBackend` MUST use `source: 'wtfoc'` for synapse-sdk namespace isolation
+- **FR-001**: System MUST implement `StorageBackend` interface from `@wtfoc/common` (including `AbortSignal` support)
+- **FR-002**: `LocalStorageBackend` stores blobs as files named by content SHA-256 hash
+- **FR-003**: `FocStorageBackend` stores blobs via `@filoz/synapse-sdk`, returns `StorageResult` with `id` = PieceCID (durable, survives restarts)
+- **FR-004**: `FocStorageBackend` uses `filecoin-pin` for CAR creation to produce IPFS CIDs alongside PieceCIDs
+- **FR-005**: System MUST implement `ManifestStore` interface with `getHead`, `putHead(name, manifest, prevHeadId)`, `listProjects`
+- **FR-006**: `LocalManifestStore` persists head manifests as JSON files. Path is **configurable** (default provided by CLI, not hardcoded)
+- **FR-007**: `putHead` compares `prevHeadId` to current `StoredHead.headId`; rejects on mismatch with `ManifestConflictError`
+- **FR-008**: `createStore()` factory accepts storage backend config + optional `ManifestStore` instance
+- **FR-009**: All manifests and segments include `schemaVersion: 1`
+- **FR-010**: Readers reject unknown `schemaVersion` with `SchemaUnknownError`
+- **FR-011**: `FocStorageBackend` uses `source: 'wtfoc'` for synapse-sdk namespace isolation
+- **FR-012**: Segments include `embeddingModel` and `embeddingDimensions` metadata
+- **FR-013**: `StorageNotFoundError` for missing artifacts, `StorageUnreachableError` for backend connectivity failures
 
 ### Key Entities
 
-- **StorageResult**: `{ id, ipfsCid?, pieceCid?, proof? }` — returned from every upload
-- **HeadManifest**: Mutable pointer with `schemaVersion`, `segments[]`, `prevHeadId`, `embeddingModel`, `embeddingDimensions`
-- **Segment**: Immutable blob with `schemaVersion`, `chunks[]`, `edges[]`
-- **SegmentSummary**: Lightweight routing metadata in head manifest: `sourceTypes`, `timeRange`, `repoIds`, `chunkCount`
+- **StorageResult**: `{ id, ipfsCid?, pieceCid?, proof? }` — `id` is always durable and sufficient for later retrieval
+- **StoredHead**: `{ headId, manifest }` — returned from `getHead`/`putHead`, `headId` used for conflict detection
+- **HeadManifest**: `{ schemaVersion, name, prevHeadId, segments[], totalChunks, embeddingModel, embeddingDimensions, createdAt, updatedAt }`
+- **Segment**: `{ schemaVersion, embeddingModel, embeddingDimensions, chunks[], edges[] }`
+- **SegmentSummary**: `{ id, ipfsCid?, pieceCid?, sourceTypes[], timeRange?, repoIds?, chunkCount }`
 
 ## Success Criteria
 
-### Measurable Outcomes
+- **SC-001**: Local storage round-trip works (upload → download → verify match)
+- **SC-002**: FOC storage round-trip works on calibration (**integration test, opt-in**)
+- **SC-003**: Manifest conflict detection rejects stale writes 100% of the time
+- **SC-004**: Schema version rejection blocks unknown versions
+- **SC-005**: Custom backend + custom manifest store plug in with zero internal changes
+- **SC-006**: All unit tests pass with local backends only (no network, no wallet)
+- **SC-007**: Segment round-trip preserves `embeddingModel` and `embeddingDimensions`
 
-- **SC-001**: Local storage round-trip (upload → download → verify) works in <100ms for 1MB blobs
-- **SC-002**: FOC storage round-trip works on calibration testnet (upload → download → verify CID resolves)
-- **SC-003**: Manifest conflict detection correctly rejects stale writes 100% of the time
-- **SC-004**: Schema version rejection correctly blocks unknown versions
-- **SC-005**: Custom backend plugs in with zero changes to wtfoc internals — interface contract only
-- **SC-006**: All tests pass with `--local` mode (no network, no wallet)
+## Testing Strategy
+
+- **Unit tests**: LocalStorageBackend, LocalManifestStore, schema validation, error mapping. All use temp directories, no network.
+- **Integration tests** (opt-in, CI secret-gated): FocStorageBackend against calibration testnet. Skipped by default.
+- **Contract tests**: Custom backend mock implementing `StorageBackend` — verifies the interface contract is sufficient.
 
 ## Dependencies
 
-- `@wtfoc/common` — interfaces and schemas (already scaffolded)
+- `@wtfoc/common` — interfaces, schemas, errors
 - `@filoz/synapse-sdk` — FOC storage operations
 - `filecoin-pin` — CAR creation for dual CIDs
 - `viem` — wallet client for FOC
 
+## Out of Scope
+
+- FOC-backed `ManifestStore` (future spec)
+- Manifest compaction / garbage collection
+- Multi-writer / CAS semantics (MVP is single-writer)
+- BM25 / hybrid search (that's `@wtfoc/search`)
+
 ## References
 
-- [SPEC.md](../../SPEC.md) — rules 2 (credible exit), 4 (backend-neutral identity), 5 (immutable data), 7 (format compatibility)
-- [Issue #1](https://github.com/SgtPooki/wtfoc/issues/1) — architecture discussion, Codex R1 critique on manifest design
-- [synapse-sdk API](https://github.com/FilOzone/synapse-sdk) — `Synapse.create()`, `storage.upload()`, `storage.download()`
-- [filecoin-pin API](https://github.com/filecoin-project/filecoin-pin) — `createCarFromFile()`, `executeUpload()`
+- [SPEC.md](../../SPEC.md) — rules 2, 4, 5, 7, 8
+- [Issue #1](https://github.com/SgtPooki/wtfoc/issues/1) — architecture discussion
+- [synapse-sdk](https://github.com/FilOzone/synapse-sdk) — `Synapse.create()`, `storage.upload()`, `storage.download()`
+- [filecoin-pin](https://github.com/filecoin-project/filecoin-pin) — `createCarFromFile()`, `executeUpload()`
