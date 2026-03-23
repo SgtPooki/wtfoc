@@ -40,8 +40,11 @@ interface EmbedderOpts {
 /** Add --embedder flags to any command */
 function withEmbedderOptions<T extends Command>(cmd: T): T {
 	return cmd
-		.option("--embedder <type>", "Embedder: transformers (default), openai, lmstudio, ollama")
-		.option("--embedder-url <url>", "Embedder API URL (for openai/lmstudio)")
+		.option(
+			"--embedder <type>",
+			"Embedder: local (default), api (requires --embedder-url + --embedder-model)",
+		)
+		.option("--embedder-url <url>", "Embedder API URL (or shortcut: lmstudio, ollama)")
 		.option("--embedder-key <key>", "Embedder API key")
 		.option("--embedder-model <model>", "Embedder model name") as T;
 }
@@ -62,62 +65,84 @@ function getFormat(opts: { json?: boolean; quiet?: boolean }): OutputFormat {
  * Create an embedder based on CLI flags.
  * Supports: transformers (default, local), openai (API or LM Studio compatible).
  */
+/**
+ * Create an embedder based on CLI flags.
+ *
+ * --embedder-url determines the API endpoint. Well-known shortcuts:
+ *   "lmstudio" → http://localhost:1234/v1
+ *   "ollama"   → http://localhost:11434/v1
+ *   Any URL    → used directly
+ *
+ * --embedder-model is REQUIRED for API embedders (no guessing what model is loaded).
+ * --embedder local  → use transformers.js (default, no server needed)
+ */
 function createEmbedder(opts: {
 	embedder?: string;
 	embedderUrl?: string;
 	embedderKey?: string;
 	embedderModel?: string;
 }): { embedder: Embedder; modelName: string } {
-	const type = opts.embedder ?? "transformers";
+	const type = opts.embedder ?? "local";
 
-	const apiDefaults: Record<string, { url: string; key: string; model: string }> = {
-		lmstudio: {
-			url: "http://localhost:1234/v1",
-			key: "lm-studio",
-			model: "text-embedding-3-small",
-		},
-		ollama: { url: "http://localhost:11434/v1", key: "ollama", model: "nomic-embed-text" },
-		openai: { url: "https://api.openai.com/v1", key: "", model: "text-embedding-3-small" },
-	};
+	// API-based embedder (any OpenAI-compatible endpoint)
+	if (type === "api" || opts.embedderUrl || opts.embedderModel) {
+		// Resolve URL shortcuts
+		const urlShortcuts: Record<string, string> = {
+			lmstudio: "http://localhost:1234/v1",
+			ollama: "http://localhost:11434/v1",
+		};
+		const rawUrl = opts.embedderUrl ?? type;
+		const baseUrl = urlShortcuts[rawUrl] ?? rawUrl;
 
-	if (type in apiDefaults) {
-		const d = apiDefaults[type];
-		if (!d) throw new Error(`Unknown embedder type: ${type}`);
-		const apiKey = opts.embedderKey ?? process.env["WTFOC_OPENAI_API_KEY"] ?? d.key;
-		const baseUrl = opts.embedderUrl ?? d.url;
-		const model = opts.embedderModel ?? d.model;
-
-		if (type === "openai" && !apiKey) {
-			console.error("Error: OpenAI embedder requires --embedder-key or WTFOC_OPENAI_API_KEY");
+		if (!baseUrl.startsWith("http")) {
+			console.error(
+				`Error: --embedder-url must be a URL or shortcut (lmstudio, ollama). Got: "${rawUrl}"`,
+			);
 			process.exit(2);
 		}
 
+		const model = opts.embedderModel;
+		if (!model) {
+			console.error("Error: --embedder-model is required for API embedders.");
+			console.error("  The model name must match what the server has loaded.");
+			console.error("  Example: --embedder-url lmstudio --embedder-model mxbai-embed-large-v1");
+			process.exit(2);
+		}
+
+		const apiKey = opts.embedderKey ?? process.env["WTFOC_OPENAI_API_KEY"] ?? "no-key";
 		const embedder = new OpenAIEmbedder({ apiKey, baseUrl, model });
 		return { embedder, modelName: model };
 	}
 
-	// Default: local transformers.js (works everywhere, but lower quality)
-	try {
-		console.error(
-			"ℹ️  Using local MiniLM embedder (384d). For better results, use --embedder lmstudio or --embedder openai",
-		);
-		const embedder = new TransformersEmbedder();
-		return { embedder, modelName: "Xenova/all-MiniLM-L6-v2" };
-	} catch {
-		console.error("⚠️  TransformersEmbedder unavailable, using zero-vector fallback");
-		return {
-			embedder: {
-				dimensions: 384,
-				async embed(): Promise<Float32Array> {
-					return new Float32Array(384);
+	// Default: local transformers.js (works everywhere, lower quality)
+	if (type === "local" || type === "transformers") {
+		try {
+			console.error(
+				"ℹ️  Using local MiniLM embedder (384d). For better results, use --embedder-url lmstudio --embedder-model <model>",
+			);
+			const embedder = new TransformersEmbedder();
+			return { embedder, modelName: "Xenova/all-MiniLM-L6-v2" };
+		} catch {
+			console.error("⚠️  TransformersEmbedder unavailable, using zero-vector fallback");
+			return {
+				embedder: {
+					dimensions: 384,
+					async embed(): Promise<Float32Array> {
+						return new Float32Array(384);
+					},
+					async embedBatch(texts: string[]): Promise<Float32Array[]> {
+						return texts.map(() => new Float32Array(384));
+					},
 				},
-				async embedBatch(texts: string[]): Promise<Float32Array[]> {
-					return texts.map(() => new Float32Array(384));
-				},
-			},
-			modelName: "zero-vector-fallback",
-		};
+				modelName: "zero-vector-fallback",
+			};
+		}
 	}
+
+	console.error(
+		`Unknown embedder: "${type}". Use "local" or provide --embedder-url + --embedder-model.`,
+	);
+	process.exit(2);
 }
 
 // ─── wtfoc init ──────────────────────────────────────────────────────────────
@@ -293,7 +318,7 @@ withEmbedderOptions(
 		console.error(`   Collection was embedded with: ${head.manifest.embeddingModel}`);
 		console.error(`\n   To query this collection, use the same embedder:`);
 		console.error(
-			`   ./wtfoc trace "${queryText}" -c ${opts.collection} --embedder lmstudio --embedder-model ${head.manifest.embeddingModel}`,
+			`   ./wtfoc trace "${queryText}" -c ${opts.collection} --embedder-url lmstudio --embedder-model ${head.manifest.embeddingModel}`,
 		);
 		console.error(`\n   Or re-index with your current embedder (not yet supported).`);
 		process.exit(1);
@@ -347,7 +372,7 @@ withEmbedderOptions(
 		console.error(`   Collection was embedded with: ${head.manifest.embeddingModel}`);
 		console.error(`\n   Use --embedder to match, e.g.:`);
 		console.error(
-			`   ./wtfoc query "${queryText}" -c ${opts.collection} --embedder lmstudio --embedder-model ${head.manifest.embeddingModel}`,
+			`   ./wtfoc query "${queryText}" -c ${opts.collection} --embedder-url lmstudio --embedder-model ${head.manifest.embeddingModel}`,
 		);
 		process.exit(1);
 	}
