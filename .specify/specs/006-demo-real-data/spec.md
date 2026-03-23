@@ -34,11 +34,18 @@ Ingest real FOC ecosystem data for the hackathon demo. Use public GitHub repos a
 | PR reviews | `gh api repos/{owner}/{repo}/pulls/{n}/reviews` | Approval/rejection context |
 | Discussions | `gh api repos/{owner}/{repo}/discussions` (if enabled) | Design context, Q&A |
 
-### Website
+### Websites
 
 | Source | Method |
 |--------|--------|
 | docs.filecoin.cloud | Nova crawl or sitemap-based fetch |
+| docs.filecoin.io | Nova crawl or sitemap-based fetch |
+
+### Discord
+
+| Source | Channels | Method |
+|--------|----------|--------|
+| Filecoin Discord | TBD (foc-related channels) | Bot token + discord.js API, or DiscordChatExporter JSON |
 
 ## Rate Limit Strategy
 
@@ -91,8 +98,10 @@ GitHub API: 5000 requests/hour with PAT.
 ## Demo Script Outline
 
 ```bash
-# One-time ingest (takes ~5 minutes with 7 repos)
+# One-time ingest (takes ~10 minutes)
 wtfoc init foc-demo --local
+
+# GitHub repos
 wtfoc ingest github FilOzone/synapse-sdk --collection foc-demo --since 90d
 wtfoc ingest github FilOzone/dealbot --collection foc-demo --since 90d
 wtfoc ingest github FIL-Builders/foc-cli --collection foc-demo --since 90d
@@ -101,7 +110,14 @@ wtfoc ingest github FilOzone/pdp-explorer --collection foc-demo --since 90d
 wtfoc ingest github filecoin-project/curio --collection foc-demo --since 90d
 wtfoc ingest github FilOzone/filecoin-services --collection foc-demo --since 90d
 
-# Live demo (these run fast — just search + trace)
+# Docs sites
+wtfoc ingest website https://docs.filecoin.cloud --collection foc-demo
+wtfoc ingest website https://docs.filecoin.io --collection foc-demo
+
+# Discord (if bot token available)
+wtfoc ingest discord --server filecoin --channels foc-support,foc-dev --collection foc-demo --since 90d
+
+# Live demo (fast — just search + trace)
 wtfoc status --collection foc-demo
 wtfoc trace "upload timeout" --collection foc-demo
 wtfoc trace "PDP verification" --collection foc-demo
@@ -119,6 +135,5 @@ wtfoc verify <cid-from-result>
 ## Out of Scope (for hackathon)
 
 - Private repo access (all repos above are public)
-- Slack/Discord ingest (no export available for demo)
-- docs.filecoin.cloud crawl (nice-to-have stretch)
-- Real-time webhook ingestion
+- Real-time webhook ingestion (Slack, Discord)
+- Slack ingest (no export access confirmed)
