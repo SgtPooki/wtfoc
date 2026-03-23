@@ -14,7 +14,7 @@ export {
 export type { EdgeExtractor } from "./interfaces/edge-extractor.js";
 export type { Embedder } from "./interfaces/embedder.js";
 export type { ManifestStore, StoredHead } from "./interfaces/manifest-store.js";
-export type { SourceAdapter, SourceConfig } from "./interfaces/source-adapter.js";
+export type { SourceAdapter } from "./interfaces/source-adapter.js";
 export type { StorageBackend, StorageResult } from "./interfaces/storage-backend.js";
 export type { ScoredEntry, VectorEntry, VectorIndex } from "./interfaces/vector-index.js";
 export type { Chunk } from "./schemas/chunk.js";

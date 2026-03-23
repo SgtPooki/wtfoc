@@ -96,10 +96,8 @@ const ingestCmd = program
 			}
 			if (format !== "quiet") console.error(`⏳ Ingesting repo: ${repoSource}...`);
 			const adapter = new RepoAdapter();
-			for await (const chunk of adapter.ingest({
-				type: "repo",
-				options: { source: repoSource },
-			})) {
+			const repoConfig = adapter.parseConfig({ source: repoSource });
+			for await (const chunk of adapter.ingest(repoConfig)) {
 				chunks.push(chunk);
 			}
 			if (format !== "quiet") console.error(`   ${chunks.length} chunks extracted`);

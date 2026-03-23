@@ -10,10 +10,10 @@ describe("RepoAdapter", () => {
 	describe("ingest", () => {
 		it("yields chunks from a local directory", async () => {
 			const chunks = [];
-			for await (const chunk of adapter.ingest({
-				type: "repo",
-				options: { source: FIXTURE_PATH },
-			})) {
+			for await (const chunk of adapter.ingest(adapter.parseConfig({
+				
+				source: FIXTURE_PATH,
+			}))) {
 				chunks.push(chunk);
 			}
 
@@ -22,10 +22,10 @@ describe("RepoAdapter", () => {
 
 		it("produces code chunks for .ts files", async () => {
 			const chunks = [];
-			for await (const chunk of adapter.ingest({
-				type: "repo",
-				options: { source: FIXTURE_PATH },
-			})) {
+			for await (const chunk of adapter.ingest(adapter.parseConfig({
+				
+				source: FIXTURE_PATH,
+			}))) {
 				chunks.push(chunk);
 			}
 
@@ -36,10 +36,10 @@ describe("RepoAdapter", () => {
 
 		it("produces markdown chunks for .md files", async () => {
 			const chunks = [];
-			for await (const chunk of adapter.ingest({
-				type: "repo",
-				options: { source: FIXTURE_PATH },
-			})) {
+			for await (const chunk of adapter.ingest(adapter.parseConfig({
+				
+				source: FIXTURE_PATH,
+			}))) {
 				chunks.push(chunk);
 			}
 
@@ -49,10 +49,10 @@ describe("RepoAdapter", () => {
 
 		it("includes filePath and repo in metadata", async () => {
 			const chunks = [];
-			for await (const chunk of adapter.ingest({
-				type: "repo",
-				options: { source: FIXTURE_PATH },
-			})) {
+			for await (const chunk of adapter.ingest(adapter.parseConfig({
+				
+				source: FIXTURE_PATH,
+			}))) {
 				chunks.push(chunk);
 			}
 
@@ -64,16 +64,16 @@ describe("RepoAdapter", () => {
 		it("generates deterministic chunk IDs", async () => {
 			const chunks1 = [];
 			const chunks2 = [];
-			for await (const chunk of adapter.ingest({
-				type: "repo",
-				options: { source: FIXTURE_PATH },
-			})) {
+			for await (const chunk of adapter.ingest(adapter.parseConfig({
+				
+				source: FIXTURE_PATH,
+			}))) {
 				chunks1.push(chunk);
 			}
-			for await (const chunk of adapter.ingest({
-				type: "repo",
-				options: { source: FIXTURE_PATH },
-			})) {
+			for await (const chunk of adapter.ingest(adapter.parseConfig({
+				
+				source: FIXTURE_PATH,
+			}))) {
 				chunks2.push(chunk);
 			}
 
@@ -82,10 +82,10 @@ describe("RepoAdapter", () => {
 
 		it("skips excluded directories", async () => {
 			const chunks = [];
-			for await (const chunk of adapter.ingest({
-				type: "repo",
-				options: { source: FIXTURE_PATH },
-			})) {
+			for await (const chunk of adapter.ingest(adapter.parseConfig({
+				
+				source: FIXTURE_PATH,
+			}))) {
 				chunks.push(chunk);
 			}
 
@@ -99,10 +99,10 @@ describe("RepoAdapter", () => {
 	describe("extractEdges", () => {
 		it("extracts import references from code", async () => {
 			const chunks = [];
-			for await (const chunk of adapter.ingest({
-				type: "repo",
-				options: { source: FIXTURE_PATH },
-			})) {
+			for await (const chunk of adapter.ingest(adapter.parseConfig({
+				
+				source: FIXTURE_PATH,
+			}))) {
 				chunks.push(chunk);
 			}
 
@@ -115,10 +115,10 @@ describe("RepoAdapter", () => {
 
 		it("extracts issue references from comments", async () => {
 			const chunks = [];
-			for await (const chunk of adapter.ingest({
-				type: "repo",
-				options: { source: FIXTURE_PATH },
-			})) {
+			for await (const chunk of adapter.ingest(adapter.parseConfig({
+				
+				source: FIXTURE_PATH,
+			}))) {
 				chunks.push(chunk);
 			}
 
@@ -131,10 +131,10 @@ describe("RepoAdapter", () => {
 
 		it("extracts URL references from markdown", async () => {
 			const chunks = [];
-			for await (const chunk of adapter.ingest({
-				type: "repo",
-				options: { source: FIXTURE_PATH },
-			})) {
+			for await (const chunk of adapter.ingest(adapter.parseConfig({
+				
+				source: FIXTURE_PATH,
+			}))) {
 				chunks.push(chunk);
 			}
 
@@ -145,10 +145,10 @@ describe("RepoAdapter", () => {
 
 		it("all edges have confidence 1.0", async () => {
 			const chunks = [];
-			for await (const chunk of adapter.ingest({
-				type: "repo",
-				options: { source: FIXTURE_PATH },
-			})) {
+			for await (const chunk of adapter.ingest(adapter.parseConfig({
+				
+				source: FIXTURE_PATH,
+			}))) {
 				chunks.push(chunk);
 			}
 

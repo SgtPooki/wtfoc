@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 import { promisify } from "node:util";
-import type { Chunk, Edge, SourceAdapter, SourceConfig } from "@wtfoc/common";
+import type { Chunk, Edge, SourceAdapter } from "@wtfoc/common";
 import { chunkMarkdown, type MarkdownChunkerOptions } from "../chunker.js";
 
 const execFileAsync = promisify(execFile);
@@ -50,16 +50,24 @@ export interface RepoAdapterConfig {
  *
  * sourceType: 'code' for code files, 'markdown' for .md files
  */
-export class RepoAdapter implements SourceAdapter {
+export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 	readonly sourceType = "repo";
 
-	async *ingest(config: SourceConfig): AsyncIterable<Chunk> {
-		const opts: RepoAdapterConfig = {
-			source: String(config.options["source"] ?? ""),
-			include: config.options["include"] as string[] | undefined,
-			exclude: config.options["exclude"] as string[] | undefined,
-			maxFileSize: config.options["maxFileSize"] as number | undefined,
+	parseConfig(raw: Record<string, unknown>): RepoAdapterConfig {
+		const source = raw["source"];
+		if (typeof source !== "string" || !source) {
+			throw new Error("RepoAdapter requires a 'source' option (GitHub owner/repo or local path)");
+		}
+		return {
+			source,
+			include: Array.isArray(raw["include"]) ? raw["include"] as string[] : undefined,
+			exclude: Array.isArray(raw["exclude"]) ? raw["exclude"] as string[] : undefined,
+			maxFileSize: typeof raw["maxFileSize"] === "number" ? raw["maxFileSize"] : undefined,
 		};
+	}
+
+	async *ingest(config: RepoAdapterConfig): AsyncIterable<Chunk> {
+		const opts = config;
 		const repoPath = await resolveRepoPath(opts.source);
 		const repo = extractRepoName(opts.source);
 

@@ -51,8 +51,8 @@ describe("chunkMarkdown", () => {
 		for (let i = 0; i < chunks.length - 1; i++) {
 			const a = chunks[i]?.content;
 			const b = chunks[i + 1]?.content;
-			const suf = a.slice(-50);
-			expect(b.startsWith(suf)).toBe(true);
+			const suf = a!.slice(-50);
+			expect(b!.startsWith(suf)).toBe(true);
 		}
 	});
 
