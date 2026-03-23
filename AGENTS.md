@@ -85,9 +85,10 @@ pnpm test -- --watch                 # watch mode
 
 ### Lint & Format
 ```bash
-pnpm biome check .                   # lint + format check
-pnpm biome check . --fix             # auto-fix
+pnpm lint:fix                        # auto-fix all fixable issues (ALWAYS run this, not lint)
 ```
+
+**Never run `pnpm lint` by itself.** Always run `pnpm lint:fix` after completing code changes. Then fix any remaining non-auto-fixable errors manually.
 
 ### Build Order
 `common` → `store` → `ingest` / `search` (parallel) → `cli`
