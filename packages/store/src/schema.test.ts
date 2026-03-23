@@ -140,6 +140,139 @@ describe("validateManifestSchema", () => {
 		});
 		expectWtfocCode(() => validateManifestSchema(input), "SCHEMA_INVALID");
 	});
+
+	it("accepts a manifest without batches (pre-bundling / local-only)", () => {
+		const input = minimalValidManifest();
+		const out = validateManifestSchema(input);
+		expect(out.batches).toBeUndefined();
+	});
+
+	it("accepts a manifest with a valid batches array", () => {
+		const input = minimalValidManifest({
+			batches: [
+				{
+					pieceCid: "baga6ea4seaq1234",
+					carRootCid: "bafybeigdyrzt",
+					segmentIds: ["seg-1"],
+					createdAt: "2026-03-23T12:00:00.000Z",
+				},
+			],
+		});
+		const out = validateManifestSchema(input);
+		expect(out.batches).toHaveLength(1);
+		expect(out.batches?.[0].pieceCid).toBe("baga6ea4seaq1234");
+		expect(out.batches?.[0].carRootCid).toBe("bafybeigdyrzt");
+		expect(out.batches?.[0].segmentIds).toEqual(["seg-1"]);
+	});
+
+	it("accepts a manifest with an empty batches array", () => {
+		const input = minimalValidManifest({ batches: [] });
+		const out = validateManifestSchema(input);
+		expect(out.batches).toEqual([]);
+	});
+
+	it("throws when batch record has empty pieceCid", () => {
+		const input = minimalValidManifest({
+			batches: [
+				{
+					pieceCid: "",
+					carRootCid: "bafybeigdyrzt",
+					segmentIds: ["seg-1"],
+					createdAt: "2026-03-23T12:00:00.000Z",
+				},
+			],
+		});
+		expectWtfocCode(() => validateManifestSchema(input), "SCHEMA_INVALID");
+	});
+
+	it("throws when batch record has empty segmentIds", () => {
+		const input = minimalValidManifest({
+			batches: [
+				{
+					pieceCid: "baga6ea4seaq1234",
+					carRootCid: "bafybeigdyrzt",
+					segmentIds: [],
+					createdAt: "2026-03-23T12:00:00.000Z",
+				},
+			],
+		});
+		expectWtfocCode(() => validateManifestSchema(input), "SCHEMA_INVALID");
+	});
+
+	it("throws when batch record is not an object", () => {
+		const input = { ...minimalValidManifest(), batches: ["not-an-object"] };
+		expectWtfocCode(() => validateManifestSchema(input), "SCHEMA_INVALID");
+	});
+
+	it("throws when batch createdAt is not a valid date", () => {
+		const input = minimalValidManifest({
+			batches: [
+				{
+					pieceCid: "baga6ea4seaq1234",
+					carRootCid: "bafybeigdyrzt",
+					segmentIds: ["seg-1"],
+					createdAt: "not-a-date",
+				},
+			],
+		});
+		expectWtfocCode(() => validateManifestSchema(input), "SCHEMA_INVALID");
+	});
+
+	it("throws when batch segmentIds references unknown segment", () => {
+		const input = minimalValidManifest({
+			batches: [
+				{
+					pieceCid: "baga6ea4seaq1234",
+					carRootCid: "bafybeigdyrzt",
+					segmentIds: ["nonexistent-segment"],
+					createdAt: "2026-03-23T12:00:00.000Z",
+				},
+			],
+		});
+		expectWtfocCode(() => validateManifestSchema(input), "SCHEMA_INVALID");
+	});
+
+	it("throws when same segment appears in multiple batches", () => {
+		const input = minimalValidManifest({
+			segments: [{ id: "seg-1", sourceTypes: ["repo"], chunkCount: 1 }],
+			batches: [
+				{
+					pieceCid: "baga-batch1",
+					carRootCid: "bafy-root1",
+					segmentIds: ["seg-1"],
+					createdAt: "2026-03-23T12:00:00.000Z",
+				},
+				{
+					pieceCid: "baga-batch2",
+					carRootCid: "bafy-root2",
+					segmentIds: ["seg-1"],
+					createdAt: "2026-03-23T13:00:00.000Z",
+				},
+			],
+		});
+		expectWtfocCode(() => validateManifestSchema(input), "SCHEMA_INVALID");
+	});
+
+	it("accepts mixed-history manifest with pre-bundling pieceCid on segments and batch records", () => {
+		const input = minimalValidManifest({
+			segments: [
+				{ id: "seg-old", sourceTypes: ["repo"], chunkCount: 5, pieceCid: "old-piece-cid" },
+				{ id: "seg-new", sourceTypes: ["repo"], chunkCount: 10 },
+			],
+			batches: [
+				{
+					pieceCid: "new-batch-piece-cid",
+					carRootCid: "bafynewroot",
+					segmentIds: ["seg-new"],
+					createdAt: "2026-03-23T14:00:00.000Z",
+				},
+			],
+		});
+		const out = validateManifestSchema(input);
+		expect(out.segments[0].pieceCid).toBe("old-piece-cid");
+		expect(out.segments[1].pieceCid).toBeUndefined();
+		expect(out.batches).toHaveLength(1);
+	});
 });
 
 describe("validateSegmentSchema", () => {

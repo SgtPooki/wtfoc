@@ -14,7 +14,8 @@
 		"test": "vitest run"
 	},
 	"dependencies": {
-		"@wtfoc/common": "workspace:*"
+		"@wtfoc/common": "workspace:*",
+		"multiformats": "^13.4.2"
 	},
 	"devDependencies": {
 		"typescript": "^5.8.0"

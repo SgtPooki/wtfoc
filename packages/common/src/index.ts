@@ -19,5 +19,5 @@ export type { StorageBackend, StorageResult } from "./interfaces/storage-backend
 export type { ScoredEntry, VectorEntry, VectorIndex } from "./interfaces/vector-index.js";
 export type { Chunk } from "./schemas/chunk.js";
 export type { Edge } from "./schemas/edge.js";
-export type { HeadManifest, Segment, SegmentSummary } from "./schemas/manifest.js";
+export type { BatchRecord, HeadManifest, Segment, SegmentSummary } from "./schemas/manifest.js";
 export { CURRENT_SCHEMA_VERSION, MAX_SUPPORTED_SCHEMA_VERSION } from "./version.js";

@@ -20,6 +20,22 @@ export interface SegmentSummary {
 }
 
 /**
+ * Record of a single CAR bundle upload to FOC.
+ * Links one PieceCID to the segment IDs it contains.
+ * Each FOC ingest upload produces one batch record.
+ */
+export interface BatchRecord {
+	/** FOC PieceCID for the entire CAR bundle */
+	pieceCid: string;
+	/** IPFS root CID of the directory CAR */
+	carRootCid: string;
+	/** Segment IDs contained in this CAR (references segments[].id) */
+	segmentIds: string[];
+	/** ISO 8601 timestamp of the upload */
+	createdAt: string;
+}
+
+/**
  * Head manifest — the mutable pointer over immutable segments.
  * Small, updated on every ingest. Contains routing metadata
  * so queries can skip irrelevant segments.
@@ -36,6 +52,12 @@ export interface HeadManifest {
 	embeddingDimensions: number;
 	createdAt: string;
 	updatedAt: string;
+	/**
+	 * CAR bundle upload records. Each entry links one PieceCID to the
+	 * segment IDs it contains. Optional — absent for local-only or
+	 * pre-bundling manifests. No schemaVersion bump required.
+	 */
+	batches?: BatchRecord[];
 }
 
 /**

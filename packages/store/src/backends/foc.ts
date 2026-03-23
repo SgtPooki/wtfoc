@@ -33,7 +33,7 @@ export class FocStorageBackend implements StorageBackend {
 
 	async upload(
 		data: Uint8Array,
-		_metadata?: Record<string, string>,
+		metadata?: Record<string, string>,
 		signal?: AbortSignal,
 	): Promise<StorageResult> {
 		signal?.throwIfAborted();
@@ -57,17 +57,34 @@ export class FocStorageBackend implements StorageBackend {
 				chain,
 			});
 
-			// Create CAR for dual CIDs
-			const file = new File([Buffer.from(data)], "segment.json", { type: "application/json" });
-			const car = await fp.createCarFromFile(file, { bare: true });
-			const ipfsCid = car.rootCid.toString();
+			let carBytes: Uint8Array;
+			let ipfsCid: string;
+
+			if (metadata?.prebuiltCar === "true") {
+				// Pre-built CAR from bundler — skip internal CAR creation
+				const rootCid = metadata.carRootCid;
+				if (!rootCid) {
+					throw new Error("prebuiltCar requires carRootCid in metadata");
+				}
+				carBytes = data;
+				ipfsCid = rootCid;
+			} else {
+				// Single-file CAR creation (legacy path)
+				const file = new File([Buffer.from(data)], "segment.json", { type: "application/json" });
+				const car = await fp.createCarFromFile(file, { bare: true });
+				carBytes = car.carBytes;
+				ipfsCid = car.rootCid.toString();
+			}
 
 			// Create silent pino logger (required by filecoin-pin)
 			const pino = await import("pino");
 			const logger = pino.default({ level: "silent" });
 
-			// Upload
-			const result = await fp.executeUpload(synapse, car.carBytes, car.rootCid, {
+			// Upload — filecoin-pin needs a CID object for pre-built CARs too
+			const { CID } = await import("multiformats/cid");
+			const rootCidObj = CID.parse(ipfsCid);
+
+			const result = await fp.executeUpload(synapse, carBytes, rootCidObj, {
 				logger,
 			});
 
