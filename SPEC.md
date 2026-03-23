@@ -15,15 +15,42 @@ Each package under `@wtfoc/*` must be independently useful. A user should be abl
 - No circular dependencies between packages
 - Each package has its own README, entry point, and tests
 
-### 2. Interfaces over implementations
+### 2. Credible exit at every seam
 
-Every major component is defined as a TypeScript interface in `@wtfoc/common`. Built-in implementations are defaults; users can bring their own.
+Every component is an interface. Users can swap, replace, or eject any part of the stack at any time. This is not optional — it is the core design principle.
 
-Four seams:
-- **Embedder** — embed text to vectors (built-in: transformers.js, OpenAI)
-- **VectorIndex** — store and search vectors (built-in: in-memory brute-force)
-- **StorageBackend** — upload/download blobs (built-in: local filesystem, FOC via synapse-sdk)
-- **SourceAdapter** — ingest from a data source (built-in: Slack JSON, GitHub via gh CLI)
+**Why:** Open source thrives on credible exit. If users can't leave, they won't join. If they can leave easily, they'll stay because the defaults are good. Lock-in is a bug, not a feature.
+
+**Seams (all pluggable via interfaces in `@wtfoc/common`):**
+
+| Seam | Interface | Built-in default | User can swap to |
+|------|-----------|-----------------|-----------------|
+| **Embedder** | `Embedder` | transformers.js (local, no API key) | OpenAI, Ollama, Cohere, vLLM, any embedding service |
+| **VectorIndex** | `VectorIndex` | In-memory brute-force | Qdrant, Pinecone, Weaviate, Milvus, any vector DB |
+| **StorageBackend** | `StorageBackend` | FOC (synapse-sdk + filecoin-pin) | Local filesystem, S3, GCS, IPFS-only, any blob store |
+| **SourceAdapter** | `SourceAdapter` | Slack JSON, GitHub (gh CLI) | Jira, Discord, Linear, Confluence, any data source |
+| **Manifest** | `ManifestStore` | FOC-backed head+segments | Local-only, S3-backed, any mutable index |
+| **EdgeExtractor** | `EdgeExtractor` | Regex-based (refs, closes, changes) | LLM-based, AST-based, custom extractors |
+
+**Every seam follows the same pattern:**
+```typescript
+// Interface in @wtfoc/common
+interface StorageBackend {
+  upload(data: Uint8Array, metadata?: Record<string, string>): Promise<{ cid: string }>
+  download(cid: string): Promise<Uint8Array>
+  verify?(cid: string): Promise<{ exists: boolean; size: number }>
+}
+
+// User creates their own
+class MyS3Backend implements StorageBackend { ... }
+
+// Plugs in at initialization
+const rag = await createWtfoc({ storage: new MyS3Backend() })
+```
+
+**BYO RAG index:** Users with an existing RAG index (Qdrant collection, Pinecone namespace, etc.) should be able to plug it in as a `VectorIndex` and immediately use `wtfoc trace` and `wtfoc query` against their own data. wtfoc adds the edge extraction, cross-source correlation, and verifiable storage layer — it doesn't demand you throw away what you already have.
+
+**FOC is the best default, not the only option.** We ship FOC because content-addressable, verifiable, decentralized storage is genuinely better for this use case. But the architecture never assumes it.
 
 ### 3. Hackathon-first, future-aware
 
@@ -35,12 +62,13 @@ The primary goal is a compelling demo for FOC WG Hackathon #2 (March 23-27, 2026
 
 "Ship the demo, but make it worth extending."
 
-### 4. FOC is the default, not the requirement
+### 4. FOC is the best default, not the only option
 
-- Local storage mode (`--local`) works without a wallet or network
-- FOC storage mode is the default for production use
-- Storage backend is pluggable — FOC, local, S3, IPFS-only, etc.
+- Local storage mode (`--local`) works without a wallet or network — zero friction onboarding
+- FOC storage is the default for production because content-addressable + verifiable + decentralized is genuinely better
+- But the architecture never assumes FOC — every storage call goes through the `StorageBackend` interface
 - Users who don't know what FOC is should still find the tool useful
+- Users who already have S3/GCS/IPFS should be able to plug in their storage and get value from wtfoc's edge extraction and trace capabilities
 
 ### 5. Content-addressable everything
 
