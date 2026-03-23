@@ -4,3 +4,4 @@
 export type { OpenAIEmbedderOptions } from "./embedders/openai.js";
 export { OpenAIEmbedder } from "./embedders/openai.js";
 export { TransformersEmbedder } from "./embedders/transformers.js";
+export { InMemoryVectorIndex } from "./index/in-memory.js";

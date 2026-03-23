@@ -126,9 +126,19 @@ This project uses multiple AI agents (Claude, Cursor, Codex) working in parallel
 | `reviewing-claude` | PR is being reviewed by Claude — other agents skip | Agent loop |
 | `reviewing-cursor` | PR is being reviewed by Cursor | Agent loop |
 | `reviewing-codex` | PR is being reviewed by Codex | Agent loop |
+| `changes-requested` | PR has review feedback that needs to be addressed by the author | Agent loop or reviewer |
+| `ready-to-merge` | PR reviewed, approved, ready for merge | Human or reviewer agent |
+| `authored-claude` | PR/issue was created by Claude | Agent loop (on PR creation) |
+| `authored-cursor` | PR/issue was created by Cursor | Agent loop (on PR creation) |
+| `authored-codex` | PR/issue was created by Codex | Agent loop (on PR creation) |
+| `reviewed-by-claude` | PR was reviewed by Claude | Agent loop (after posting review) |
+| `reviewed-by-cursor` | PR was reviewed by Cursor | Agent loop (after posting review) |
+| `reviewed-by-codex` | PR was reviewed by Codex | Agent loop (after posting review) |
+| `reviewed-by-copilot` | PR was reviewed by GitHub Copilot | GitHub (automatic) |
 
 ### Rules
 
+- **ALL review comments must be responded to.** This includes GitHub Copilot inline comments. For each comment: either fix the issue, or reply explaining why no change is needed. Do not ignore any comment. Do not blindly accept — evaluate each on its merits. All comments must have a response before marking ready-to-merge.
 - **Review before new work.** Agents check for PRs to review BEFORE picking up new implementation issues. Reviewing unblocks the pipeline faster than starting new work.
 - **One reviewer per PR.** `reviewing-<agent>` label prevents duplicate reviews. 2+ reviews (including Copilot) = enough.
 - **One agent per issue.** If an issue has `assigned-<agent>`, no other agent touches it.

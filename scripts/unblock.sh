@@ -11,6 +11,10 @@ set -euo pipefail
 # checks if all referenced issues are closed, and moves blocked → ready.
 
 REPO="SgtPooki/wtfoc"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Source the shared cache
+source "${SCRIPT_DIR}/gh-cache.sh"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -101,14 +105,17 @@ check_blocked_issues() {
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 if [[ "${1:-}" == "--loop" ]]; then
-	interval="${2:-60}"
+	interval="${2:-300}"
 	log "Running in loop mode (every ${interval}s). Ctrl+C to stop."
 	while true; do
+		log "Refreshing GitHub cache..."
+		gh_cache_refresh
 		check_ready_with_prs
 		check_blocked_issues
 		sleep "$interval"
 	done
 else
+	gh_cache_refresh
 	check_ready_with_prs
 	check_blocked_issues
 fi

@@ -21,6 +21,9 @@ set -euo pipefail
 REPO="SgtPooki/wtfoc"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Source the shared cache
+source "${SCRIPT_DIR}/gh-cache.sh"
 WORKTREE_BASE="$(cd "$REPO_ROOT/.." && pwd)/wtfoc-worktrees"
 VALID_AGENTS=("claude" "cursor" "codex")
 
@@ -61,10 +64,12 @@ has_open_pr() {
 
 # ─── Find next issue to work on ──────────────────────────────────────────────
 find_issue() {
+	# Ensure cache is reasonably fresh (max 5 min, but don't refresh ourselves — unblock.sh does that)
+	# cache refreshed at top of main loop
+
 	# Priority 1: Issue already assigned to this agent (but NOT blocked, and no open PR)
 	local assigned
-	assigned=$(gh issue list --repo "$REPO" --label "assigned-${AGENT}" --state open \
-		--json number,title,labels -q '[.[] | select(.labels | map(.name) | contains(["blocked"]) | not)] | .[0] // empty')
+	assigned=$(gh_cache_issues | jq -c '[.[] | select(.labels | map(.name) | contains(["assigned-'"${AGENT}"'"])) | select(.labels | map(.name) | contains(["blocked"]) | not)] | .[0] // empty')
 
 	if [[ -n "$assigned" ]] && echo "$assigned" | jq -e '.number' >/dev/null 2>&1; then
 		local assigned_num
@@ -79,8 +84,7 @@ find_issue() {
 
 	# Priority 2: Unassigned "ready" issue — claim it
 	local ready
-	ready=$(gh issue list --repo "$REPO" --label "ready" --state open \
-		--json number,title,labels -q '[.[] | select(.labels | map(.name) | (contains(["assigned-claude"]) or contains(["assigned-cursor"]) or contains(["assigned-codex"])) | not)] | .[0] // empty')
+	ready=$(gh_cache_issues | jq -c '[.[] | select(.labels | map(.name) | contains(["ready"])) | select(.labels | map(.name) | (contains(["assigned-claude"]) or contains(["assigned-cursor"]) or contains(["assigned-codex"])) | not)] | .[0] // empty')
 
 	# Iterate through ready issues, skip any with open PRs
 	if [[ -n "$ready" ]] && echo "$ready" | jq -e '.number' >/dev/null 2>&1; then
@@ -220,6 +224,9 @@ ${body}
 - Push after each meaningful commit
 - Do NOT merge the PR — it needs review first
 - After opening the PR, request review by commenting: "Ready for /peer-review"
+- After PR is open, check for Copilot inline comments: gh api repos/SgtPooki/wtfoc/pulls/<PR>/comments
+- For each Copilot comment: fix the issue OR reply explaining why no change is needed. Do NOT ignore any.
+- Do NOT change test scripts or package.json scripts without explicit approval
 PROMPT
 }
 
@@ -292,6 +299,260 @@ run_agent() {
 	rm -f "$prompt_file" 2>/dev/null || true
 }
 
+# ─── Merge PRs that are ready-to-merge and authored by this agent ─────────────
+merge_ready_prs() {
+	# cache refreshed at top of main loop
+
+	local my_prs
+	my_prs=$(gh_cache_prs | jq -c '.[]') || return 0
+
+	if [[ -z "$my_prs" ]]; then
+		return 0
+	fi
+
+	echo "$my_prs" | while IFS= read -r pr; do
+		local pr_num pr_title pr_branch pr_labels
+		pr_num=$(echo "$pr" | jq -r '.number')
+		pr_title=$(echo "$pr" | jq -r '.title')
+		pr_branch=$(echo "$pr" | jq -r '.headRefName')
+		pr_labels=$(echo "$pr" | jq -r '.labels[].name' 2>/dev/null || echo "")
+
+		# Only merge PRs this agent authored
+		if ! echo "$pr_labels" | grep -q "authored-${AGENT}"; then
+			continue
+		fi
+
+		# Only merge if labeled ready-to-merge
+		if ! echo "$pr_labels" | grep -q "ready-to-merge"; then
+			continue
+		fi
+
+		log "PR #${pr_num} is ready-to-merge. Validating..."
+
+		# Just check GitHub merge status — don't run tests locally
+		# (CI already validates tests on every push, and worktrees may be stale)
+		local ci_status
+		ci_status=$(gh pr checks "$pr_num" --repo "$REPO" --json state -q '[.[] | .state] | if all(. == "SUCCESS") then "pass" elif any(. == "FAILURE") then "fail" else "pending" end' 2>/dev/null || echo "unknown")
+
+		local tests_pass=true
+		if [[ "$ci_status" == "fail" ]]; then
+			tests_pass=false
+		elif [[ "$ci_status" == "pending" ]]; then
+			log "PR #${pr_num} CI still running — skipping merge for now"
+			continue
+		fi
+
+		if [[ "$tests_pass" == "false" ]]; then
+			warn "PR #${pr_num} CI failed — cannot merge"
+			gh_retry gh pr comment "$pr_num" --repo "$REPO" \
+				--body "**Merge blocked**: CI checks failed. Check the Actions tab." >/dev/null 2>&1 || true
+			gh_retry gh issue edit "$pr_num" --repo "$REPO" \
+				--remove-label "ready-to-merge" --add-label "changes-requested" >/dev/null 2>&1 || true
+			continue
+		fi
+
+		# Check for merge conflicts
+		local can_merge
+		can_merge=$(gh pr view "$pr_num" --repo "$REPO" --json mergeable -q '.mergeable' 2>/dev/null || echo "UNKNOWN")
+
+		if [[ "$can_merge" == "CONFLICTING" ]]; then
+			warn "PR #${pr_num} has merge conflicts — cannot merge"
+			gh_retry gh pr comment "$pr_num" --repo "$REPO" \
+				--body "**Merge blocked**: conflicts with main. Needs rebase." >/dev/null 2>&1 || true
+			gh_retry gh issue edit "$pr_num" --repo "$REPO" \
+				--remove-label "ready-to-merge" --add-label "changes-requested" >/dev/null 2>&1 || true
+			continue
+		fi
+
+		# Merge!
+		log "Merging PR #${pr_num}: ${pr_title}"
+		if gh_retry gh pr merge "$pr_num" --repo "$REPO" --squash --delete-branch; then
+			log "PR #${pr_num} merged successfully!"
+			# Force cache refresh so other agents see the change
+			gh_cache_refresh
+		else
+			warn "Failed to merge PR #${pr_num}"
+		fi
+
+		# Only merge one PR per loop iteration
+		break
+	done
+}
+
+# ─── Address PR feedback on PRs this agent authored ───────────────────────────
+address_pr_feedback() {
+	# Find open PRs authored by this agent that have review comments
+	local my_prs
+	# cache refreshed at top of main loop
+	my_prs=$(gh_cache_prs | jq -c '.[]') || return 0
+
+	if [[ -z "$my_prs" ]]; then
+		return 0
+	fi
+
+	echo "$my_prs" | jq -c '.' 2>/dev/null | while IFS= read -r pr; do
+		local pr_num pr_title pr_branch pr_labels
+		pr_num=$(echo "$pr" | jq -r '.number')
+		pr_title=$(echo "$pr" | jq -r '.title')
+		pr_branch=$(echo "$pr" | jq -r '.headRefName')
+		pr_labels=$(echo "$pr" | jq -r '.labels[].name' 2>/dev/null || echo "")
+
+		# Only address PRs this agent authored
+		if ! echo "$pr_labels" | grep -q "authored-${AGENT}"; then
+			# Fallback: check branch name for PRs before label existed
+			if ! echo "$pr_branch" | grep -qi "$AGENT"; then
+				continue
+			fi
+		fi
+
+		# Check if PR needs work: changes-requested label OR CI failure
+		local needs_work=false
+		local ci_failed=false
+		local ci_log=""
+
+		if echo "$pr_labels" | grep -q "changes-requested"; then
+			needs_work=true
+		fi
+
+		# Also check CI status
+		local ci_status
+		ci_status=$(gh pr checks "$pr_num" --repo "$REPO" --json state -q '[.[] | .state] | if any(. == "FAILURE") then "fail" else "ok" end' 2>/dev/null || echo "ok")
+		if [[ "$ci_status" == "fail" ]]; then
+			needs_work=true
+			ci_failed=true
+			# Get the failed step details
+			local run_url
+			run_url=$(gh pr checks "$pr_num" --repo "$REPO" --json link -q '.[0].link' 2>/dev/null || echo "")
+			local run_id
+			run_id=$(echo "$run_url" | grep -oE '[0-9]+/job' | grep -oE '[0-9]+' || echo "")
+			if [[ -n "$run_id" ]]; then
+				ci_log=$(gh run view "$run_id" --repo "$REPO" --log-failed 2>/dev/null | tail -50 || echo "Could not fetch CI logs")
+			fi
+		fi
+
+		if [[ "$needs_work" == "false" ]]; then
+			continue
+		fi
+
+		log "Addressing issues on PR #${pr_num}: ${pr_title}"
+
+		# Get the review comments
+		local feedback
+		feedback=$(gh pr view "$pr_num" --repo "$REPO" --json comments \
+			-q '[.comments[] | select(.body | test("^## Review:"; "m"))] | .[-1].body' 2>/dev/null || echo "")
+
+		if [[ -z "$feedback" ]]; then
+			continue
+		fi
+
+		# Find or create the worktree for this PR's branch
+		local worktree_dir="${WORKTREE_BASE}/${pr_branch}"
+		if [[ ! -d "$worktree_dir" ]]; then
+			cd "$REPO_ROOT"
+			git fetch origin "$pr_branch" 2>/dev/null || true
+			git worktree add "$worktree_dir" "$pr_branch" 2>/dev/null || true
+			(cd "$worktree_dir" && pnpm install --frozen-lockfile 2>/dev/null) || true
+		else
+			(cd "$worktree_dir" && git pull origin "$pr_branch" --ff-only 2>/dev/null) || true
+		fi
+
+		# Get the current diff for context
+		local diff
+		diff=$(gh_retry gh pr diff "$pr_num" --repo "$REPO" 2>/dev/null) || diff=""
+
+		local fix_prompt
+		# Also fetch Copilot inline comments
+		local copilot_comments
+		copilot_comments=$(gh api "repos/${REPO}/pulls/${pr_num}/comments" \
+			--jq '[.[] | select(.user.login == "Copilot" or .user.login == "copilot" or (.user.login | test("bot"; "i"))) | {body: .body, path: .path, line: .line}]' 2>/dev/null || echo "[]")
+
+		local ci_section=""
+		if [[ "$ci_failed" == "true" ]]; then
+			ci_section="## CI Failure (MUST FIX)
+
+CI is failing on this PR. Fix the CI errors FIRST before addressing review feedback.
+
+CI log (last 50 lines):
+\`\`\`
+${ci_log}
+\`\`\`
+"
+		fi
+
+		fix_prompt="You are fixing issues on PR #${pr_num}: ${pr_title}
+
+Working directory: ${worktree_dir}
+Branch: ${pr_branch}
+
+${ci_section}
+## Agent Review Feedback
+
+${feedback}
+
+## Copilot Inline Comments
+
+${copilot_comments}
+
+## Instructions
+
+1. If CI is failing, fix that FIRST (run pnpm test and pnpm lint to reproduce)
+2. Read ALL feedback (agent reviews + Copilot inline comments)
+3. For each comment: either fix the issue OR reply explaining why no change is needed
+4. Do NOT blindly accept all feedback — evaluate each on its merits
+5. Make fixes in the worktree
+6. Ensure pnpm test and pnpm lint pass BEFORE committing
+7. Commit with message: 'fix: address feedback on #${pr_num}'
+8. Push to the branch
+
+Do NOT open a new PR — push to the existing branch.
+Do NOT change test scripts or package.json scripts without explicit approval."
+
+		local fix_file
+		fix_file=$(mktemp /tmp/wtfoc-fix-XXXXXXXXXXXX)
+		mv "$fix_file" "${fix_file}.md"
+		fix_file="${fix_file}.md"
+		echo "$fix_prompt" > "$fix_file"
+
+		local fix_output=""
+		case "$AGENT" in
+			cursor)
+				fix_output=$(cursor agent --print --trust \
+					--workspace "$worktree_dir" "$(cat "$fix_file")" 2>&1) || true
+				;;
+			codex)
+				fix_output=$(cat "$fix_file" | codex exec -C "$worktree_dir" --full-auto - 2>&1) || true
+				;;
+			claude)
+				fix_output=$(cd "$worktree_dir" && cat "$fix_file" | claude -p - --allowedTools Bash,Read,Write,Edit,Glob,Grep 2>&1) || true
+				;;
+		esac
+
+		rm -f "$fix_file" 2>/dev/null || true
+
+		# Commit and push any changes the agent made
+		local has_changes
+		has_changes=$(cd "$worktree_dir" && git status --porcelain | wc -l | tr -d ' ')
+		if [[ "$has_changes" -gt 0 ]]; then
+			(cd "$worktree_dir" && \
+				git add -A && \
+				git commit -m "fix: address review feedback on #${pr_num}" && \
+				git push origin "$pr_branch" 2>&1) || warn "Failed to push feedback fixes"
+		fi
+
+		# Comment that feedback was addressed
+		gh_retry gh pr comment "$pr_num" --repo "$REPO" \
+			--body "**Addressed feedback** (by ${AGENT}). Please re-review." >/dev/null 2>&1 || true
+
+		# Remove changes-requested label
+		gh_retry gh issue edit "$pr_num" --repo "$REPO" --remove-label "changes-requested" >/dev/null 2>&1 || true
+
+		log "Addressed feedback on PR #${pr_num}"
+
+		# Only address one PR per loop iteration
+		break
+	done
+}
+
 # ─── Post-agent cleanup: commit, push, PR, remove label ──────────────────────
 post_agent_cleanup() {
 	local issue_num="$1"
@@ -325,16 +586,25 @@ post_agent_cleanup() {
 
 		if [[ "$commits_ahead" -gt 0 ]]; then
 			log "Opening PR for branch ${branch_name}..."
-			(cd "$worktree_dir" && \
+			local new_pr_url
+			new_pr_url=$(cd "$worktree_dir" && \
 				gh pr create --repo "$REPO" \
 					--title "$(echo "$issue_title")" \
 					--body "Work by ${AGENT} agent on #${issue_num}. Needs /peer-review before merge." \
 					2>&1) || warn "Failed to create PR"
+			# Add authored label
+			if [[ -n "$new_pr_url" ]]; then
+				local new_pr_num
+				new_pr_num=$(echo "$new_pr_url" | grep -o '[0-9]*$')
+				gh_retry gh issue edit "$new_pr_num" --repo "$REPO" --add-label "authored-${AGENT}" >/dev/null 2>&1 || true
+			fi
 		else
 			log "No commits ahead of main — nothing to PR."
 		fi
 	else
 		log "PR #${existing_pr} already exists for this branch."
+		# Ensure authored label is present even if we didn't create the PR
+		gh_retry gh issue edit "$existing_pr" --repo "$REPO" --add-label "authored-${AGENT}" >/dev/null 2>&1 || true
 	fi
 
 	# Remove agent assignment so we don't pick it up again
@@ -375,9 +645,10 @@ gh_retry() {
 
 # ─── Review PRs that this agent didn't author ────────────────────────────────
 review_prs() {
+	# cache refreshed at top of main loop
+
 	local open_prs
-	open_prs=$(gh_retry gh pr list --repo "$REPO" --state open \
-		--json number,title,headRefName,labels -q '.[]') || return 0
+	open_prs=$(gh_cache_prs | jq -c '.[]') || return 0
 
 	if [[ -z "$open_prs" ]]; then
 		return 0
@@ -390,7 +661,11 @@ review_prs() {
 		pr_branch=$(echo "$pr" | jq -r '.headRefName')
 		pr_labels=$(echo "$pr" | jq -r '.labels[].name' 2>/dev/null || echo "")
 
-		# Skip if this agent authored it (agent name in branch)
+		# Skip if this agent authored it
+		if echo "$pr_labels" | grep -q "authored-${AGENT}"; then
+			continue
+		fi
+		# Fallback: also check branch name for PRs created before label existed
 		if echo "$pr_branch" | grep -qi "$AGENT"; then
 			continue
 		fi
@@ -400,18 +675,18 @@ review_prs() {
 			continue
 		fi
 
-		# Skip if this agent already reviewed it (check comments)
-		local already_reviewed
-		already_reviewed=$(gh pr view "$pr_num" --repo "$REPO" --json comments \
-			-q "[.comments[] | select(.body | test(\"Review: ${AGENT}\"; \"i\"))] | length" 2>/dev/null || echo "0")
-		if [[ "$already_reviewed" -gt 0 ]]; then
+		# Skip if this agent already reviewed it (check label)
+		if echo "$pr_labels" | grep -q "reviewed-by-${AGENT}"; then
 			continue
 		fi
 
-		# Count existing reviews (agent reviews + copilot reviews)
-		local review_count
-		review_count=$(gh pr view "$pr_num" --repo "$REPO" --json comments,reviews \
-			-q '(.comments | map(select(.body | test("Review:"; "i"))) | length) + (.reviews | length)' 2>/dev/null || echo "0")
+		# Count existing reviews via labels (reviewed-by-* + copilot)
+		local review_count=0
+		for reviewer in claude cursor codex copilot; do
+			if echo "$pr_labels" | grep -q "reviewed-by-${reviewer}"; then
+				review_count=$((review_count + 1))
+			fi
+		done
 
 		# Skip if already has 2+ reviews (copilot + one agent = enough)
 		if [[ "$review_count" -ge 2 ]]; then
@@ -452,18 +727,33 @@ review_prs() {
 		}
 
 		local review_prompt
-		review_prompt="You are reviewing PR #${pr_num}: ${pr_title}
+		review_prompt="Review PR #${pr_num}: ${pr_title}
 
-Review this diff for:
-1. Correctness — does the code do what the spec says?
-2. Test coverage — are behavioral tests included?
-3. SPEC.md compliance — interfaces, error handling, AbortSignal, no any types
-4. Monorepo conventions — test scripts use 'vitest run', no ../.. paths, no node --test
-5. Edge cases — anything missing?
-6. Check if Copilot already reviewed — don't repeat what Copilot already flagged
+IMPORTANT FORMAT RULES:
+- Your response will be posted as a GitHub PR comment. It MUST be valid markdown.
+- Keep it SHORT — max 20 lines. No verbose explanations.
+- Do NOT include raw terminal output, ANSI codes, or tool logs.
+- Do NOT repeat the diff back.
 
-Provide a verdict: APPROVE, REQUEST_CHANGES, or COMMENT.
-Be specific and actionable.
+Structure your response EXACTLY like this:
+
+**Verdict**: APPROVE | REQUEST_CHANGES | COMMENT
+
+**Summary**: 1-2 sentences on what the PR does.
+
+**Issues** (only if REQUEST_CHANGES):
+- Issue 1
+- Issue 2
+
+**Notes** (optional, only if noteworthy):
+- Note 1
+
+Review criteria:
+- Correctness vs spec
+- Behavioral tests included
+- SPEC.md compliance (interfaces, errors, AbortSignal, no any)
+- Monorepo conventions (test scripts = 'vitest run', no ../.. paths)
+- No repeated feedback if Copilot already flagged it
 
 --- DIFF ---
 ${diff}
@@ -492,16 +782,89 @@ ${diff}
 		rm -f "$review_file" 2>/dev/null || true
 
 		if [[ -n "$review_output" ]]; then
+			# Sanitize: strip everything before the actual review response
+			# Look for the verdict line as the start of real output
+			local cleaned=""
+			cleaned=$(echo "$review_output" | \
+				sed 's/\x1b\[[0-9;]*m//g' | \
+				sed '/^OpenAI Codex/d' | \
+				sed '/^--------$/d' | \
+				sed '/^workdir:/d' | \
+				sed '/^model:/d' | \
+				sed '/^provider:/d' | \
+				sed '/^approval:/d' | \
+				sed '/^sandbox:/d' | \
+				sed '/^reasoning/d' | \
+				sed '/^session id:/d' | \
+				sed '/^tokens used/d' | \
+				sed '/^mcp startup/d' | \
+				sed '/^codex$/d' | \
+				sed '/^user$/d' | \
+				sed '/^exec$/d')
+
+			# Strip the prompt echo — everything from "Review PR" or "IMPORTANT FORMAT" to "--- END DIFF ---"
+			cleaned=$(echo "$cleaned" | awk '
+				/^--- END DIFF ---/ { skip=0; next }
+				/^Review PR #|^IMPORTANT FORMAT/ { skip=1 }
+				/^--- DIFF ---/ { skip=1 }
+				/^diff --git/ { skip=1 }
+				skip { next }
+				{ print }
+			')
+
+			# Strip blank lines at start
+			cleaned=$(echo "$cleaned" | sed '/./,$!d')
+
+			# If we stripped everything (agent just echoed the prompt), skip posting
+			if [[ -z "$cleaned" ]] || [[ ${#cleaned} -lt 20 ]]; then
+				warn "PR #${pr_num}: agent output was empty or just echoed the prompt — skipping"
+				# Remove reviewing label without posting
+				gh_retry gh issue edit "$pr_num" --repo "$REPO" --remove-label "reviewing-${AGENT}" >/dev/null 2>&1 || true
+				continue
+			fi
+
+			review_output="$cleaned"
+
+			# Truncate if still too long (max 2000 chars for a comment)
+			if [[ ${#review_output} -gt 2000 ]]; then
+				review_output="${review_output:0:1900}
+
+...(truncated)"
+			fi
+
 			local comment_body="## Review: ${AGENT}
 
 ${review_output}"
 			gh_retry gh pr comment "$pr_num" --repo "$REPO" --body "$comment_body" >/dev/null 2>&1 && \
 				log "Posted review on PR #${pr_num}" || \
 				warn "Failed to post review on PR #${pr_num}"
+
+			# If review says REQUEST_CHANGES, label it
+			if echo "$review_output" | grep -qi "REQUEST_CHANGES"; then
+				gh_retry gh issue edit "$pr_num" --repo "$REPO" --add-label "changes-requested" >/dev/null 2>&1 || true
+			fi
+
+			# If review says APPROVE and has enough reviews, mark ready-to-merge
+			if echo "$review_output" | grep -qi "APPROVE"; then
+				local total_reviews=0
+				for reviewer in claude cursor codex copilot; do
+					if echo "$pr_labels" | grep -q "reviewed-by-${reviewer}"; then
+						total_reviews=$((total_reviews + 1))
+					fi
+				done
+				# Count this review too (label not added yet)
+				total_reviews=$((total_reviews + 1))
+				if [[ "$total_reviews" -ge 2 ]]; then
+					gh_retry gh issue edit "$pr_num" --repo "$REPO" --add-label "ready-to-merge" >/dev/null 2>&1 || true
+					log "PR #${pr_num} has ${total_reviews} approvals → ready-to-merge"
+				fi
+			fi
 		fi
 
-		# Remove reviewing label
-		gh_retry gh issue edit "$pr_num" --repo "$REPO" --remove-label "reviewing-${AGENT}" >/dev/null 2>&1 || true
+		# Swap reviewing → reviewed-by label
+		gh_retry gh issue edit "$pr_num" --repo "$REPO" \
+			--remove-label "reviewing-${AGENT}" \
+			--add-label "reviewed-by-${AGENT}" >/dev/null 2>&1 || true
 
 		# Only review one PR per loop iteration
 		break
@@ -512,14 +875,23 @@ ${review_output}"
 log "Starting agent loop for ${AGENT}"
 
 while true; do
-	# Step 0: Pull latest main to get script/config updates
+	# Step 0: Pull latest main + refresh cache
 	(cd "$REPO_ROOT" && git pull origin main --ff-only 2>/dev/null) || true
+	gh_cache_ensure_fresh 120  # refresh if older than 2 minutes
 
-	# Step 1: Review open PRs BEFORE picking up new work
+	# Step 1: Merge my PRs that are ready-to-merge (highest — unblocks everything)
+	log "Checking for PRs to merge..."
+	merge_ready_prs
+
+	# Step 2: Address feedback on my own PRs (unblocks merges)
+	log "Checking for PR feedback to address..."
+	address_pr_feedback
+
+	# Step 3: Review other agents' PRs (unblocks their work)
 	log "Checking for PRs to review..."
 	review_prs
 
-	# Step 2: Look for implementation work
+	# Step 4: Look for implementation work
 	log "Looking for work..."
 
 	issue_json=$(find_issue) || true

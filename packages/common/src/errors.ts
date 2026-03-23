@@ -44,6 +44,18 @@ export class EmbedFailedError extends WtfocError {
 	}
 }
 
+export class VectorDimensionMismatchError extends WtfocError {
+	constructor(expected: number, actual: number, target: "entry" | "query") {
+		const subject = target === "query" ? "Query vector" : "Vector";
+		super(
+			`${subject} dimension mismatch: expected ${expected}, received ${actual}`,
+			"VECTOR_DIMENSION_MISMATCH",
+			{ expected, actual, target },
+		);
+		this.name = "VectorDimensionMismatchError";
+	}
+}
+
 export class StorageNotFoundError extends WtfocError {
 	constructor(id: string, backend: string) {
 		super(`Artifact not found: ${id} (backend: ${backend})`, "STORAGE_NOT_FOUND", {
