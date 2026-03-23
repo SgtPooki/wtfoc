@@ -3,7 +3,7 @@
 
 export { FocStorageBackend, type FocStorageBackendOptions } from "./backends/foc.js";
 export { LocalStorageBackend } from "./backends/local.js";
-export { bundleAndUpload, type BundleSegment, type BundleUploadResult } from "./bundler.js";
+export { type BundleSegment, type BundleUploadResult, bundleAndUpload } from "./bundler.js";
 export type { Store, StoreConfig } from "./factory.js";
 export { createStore } from "./factory.js";
 export { LocalManifestStore } from "./manifest/local.js";

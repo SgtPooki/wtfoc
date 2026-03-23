@@ -4,16 +4,13 @@ import { describe, expect, it, vi } from "vitest";
 import { bundleAndUpload } from "./bundler.js";
 
 /** Creates a mock StorageBackend that records upload calls */
-function mockStorage(
-	result?: Partial<StorageResult>,
-): StorageBackend & { uploadCalls: Array<{ data: Uint8Array; metadata?: Record<string, string> }> } {
+function mockStorage(result?: Partial<StorageResult>): StorageBackend & {
+	uploadCalls: Array<{ data: Uint8Array; metadata?: Record<string, string> }>;
+} {
 	const uploadCalls: Array<{ data: Uint8Array; metadata?: Record<string, string> }> = [];
 	return {
 		uploadCalls,
-		async upload(
-			data: Uint8Array,
-			metadata?: Record<string, string>,
-		): Promise<StorageResult> {
+		async upload(data: Uint8Array, metadata?: Record<string, string>): Promise<StorageResult> {
 			uploadCalls.push({ data, metadata });
 			return {
 				id: "car-root-cid",
@@ -120,9 +117,7 @@ describe("bundleAndUpload", () => {
 		const controller = new AbortController();
 		controller.abort();
 
-		await expect(
-			bundleAndUpload(segments, storage, controller.signal),
-		).rejects.toThrow();
+		await expect(bundleAndUpload(segments, storage, controller.signal)).rejects.toThrow();
 		expect(storage.uploadCalls).toHaveLength(0);
 	});
 

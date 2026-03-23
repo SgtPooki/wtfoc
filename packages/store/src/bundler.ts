@@ -80,17 +80,10 @@ export async function bundleAndUpload(
 	// Step 3: Upload the pre-built CAR via storage backend
 	let result: StorageResult;
 	try {
-		result = await storage.upload(
-			dirCar.carBytes,
-			{ prebuiltCar: "true", carRootCid },
-			signal,
-		);
+		result = await storage.upload(dirCar.carBytes, { prebuiltCar: "true", carRootCid }, signal);
 	} catch (err) {
 		if (err instanceof StorageUnreachableError) throw err;
-		throw new StorageUnreachableError(
-			"foc",
-			err instanceof Error ? err : new Error(String(err)),
-		);
+		throw new StorageUnreachableError("foc", err instanceof Error ? err : new Error(String(err)));
 	}
 
 	// Step 4: Verify PieceCID (FR-011)

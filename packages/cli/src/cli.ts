@@ -9,7 +9,13 @@ import {
 	type VectorEntry,
 	type VectorIndex,
 } from "@wtfoc/common";
-import { buildSegment, chunkMarkdown, RegexEdgeExtractor, RepoAdapter, segmentId } from "@wtfoc/ingest";
+import {
+	buildSegment,
+	chunkMarkdown,
+	RegexEdgeExtractor,
+	RepoAdapter,
+	segmentId,
+} from "@wtfoc/ingest";
 import {
 	InMemoryVectorIndex,
 	OpenAIEmbedder,
@@ -274,13 +280,14 @@ const ingestCmd = withEmbedderOptions(
 				resultId = bundleResult.segmentCids.get(segId) ?? segId;
 				batchForManifest = bundleResult.batch;
 				if (format !== "quiet")
-					console.error(`   Segment bundled: ${resultId.slice(0, 16)}... (PieceCID: ${bundleResult.batch.pieceCid.slice(0, 16)}...)`);
+					console.error(
+						`   Segment bundled: ${resultId.slice(0, 16)}... (PieceCID: ${bundleResult.batch.pieceCid.slice(0, 16)}...)`,
+					);
 			} else {
 				// Local: direct upload (unchanged)
 				const segmentResult = await store.storage.upload(segmentBytes);
 				resultId = segmentResult.id;
-				if (format !== "quiet")
-					console.error(`   Segment stored: ${resultId.slice(0, 16)}...`);
+				if (format !== "quiet") console.error(`   Segment stored: ${resultId.slice(0, 16)}...`);
 			}
 
 			// Update manifest

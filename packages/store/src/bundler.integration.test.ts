@@ -12,10 +12,7 @@ function createMockFocStorage(): StorageBackend & {
 	const uploadCalls: Array<{ data: Uint8Array; metadata?: Record<string, string> }> = [];
 	return {
 		uploadCalls,
-		async upload(
-			data: Uint8Array,
-			metadata?: Record<string, string>,
-		): Promise<StorageResult> {
+		async upload(data: Uint8Array, metadata?: Record<string, string>): Promise<StorageResult> {
 			uploadCalls.push({ data, metadata });
 			return {
 				id: metadata?.carRootCid ?? "mock-root-cid",
@@ -57,10 +54,7 @@ describe("bundler → manifest integration", () => {
 		const storage = createMockFocStorage();
 		const segmentData = makeSegmentJson("seg-1");
 
-		const bundleResult = await bundleAndUpload(
-			[{ id: "seg-1", data: segmentData }],
-			storage,
-		);
+		const bundleResult = await bundleAndUpload([{ id: "seg-1", data: segmentData }], storage);
 
 		// Exactly one upload call
 		expect(storage.uploadCalls).toHaveLength(1);
@@ -102,10 +96,7 @@ describe("bundler → manifest integration", () => {
 		const storage = createMockFocStorage();
 		const segmentData = makeSegmentJson("seg-local");
 
-		await bundleAndUpload(
-			[{ id: "seg-local", data: segmentData }],
-			storage,
-		);
+		await bundleAndUpload([{ id: "seg-local", data: segmentData }], storage);
 
 		const call = storage.uploadCalls[0];
 		expect(call.metadata?.prebuiltCar).toBe("true");
@@ -116,10 +107,7 @@ describe("bundler → manifest integration", () => {
 		const storage = createMockFocStorage();
 		const segmentData = makeSegmentJson("seg-match");
 
-		const result = await bundleAndUpload(
-			[{ id: "seg-match", data: segmentData }],
-			storage,
-		);
+		const result = await bundleAndUpload([{ id: "seg-match", data: segmentData }], storage);
 
 		const cidFromBundler = result.segmentCids.get("seg-match");
 		expect(cidFromBundler).toBeTruthy();
@@ -134,10 +122,7 @@ describe("bundler → manifest integration", () => {
 		const storage = createMockFocStorage();
 		const segmentData = makeSegmentJson("seg-roundtrip");
 
-		await bundleAndUpload(
-			[{ id: "seg-roundtrip", data: segmentData }],
-			storage,
-		);
+		await bundleAndUpload([{ id: "seg-roundtrip", data: segmentData }], storage);
 
 		// The segment data uploaded to storage is inside the CAR, but the original
 		// bytes are what would be stored/retrieved. Verify they deserialize.
@@ -163,8 +148,16 @@ describe("bundler → manifest integration", () => {
 			name: "multi-ingest",
 			prevHeadId: null,
 			segments: [
-				{ id: result1.segmentCids.get("seg-ingest1") as string, sourceTypes: ["repo"], chunkCount: 1 },
-				{ id: result2.segmentCids.get("seg-ingest2") as string, sourceTypes: ["repo"], chunkCount: 1 },
+				{
+					id: result1.segmentCids.get("seg-ingest1") as string,
+					sourceTypes: ["repo"],
+					chunkCount: 1,
+				},
+				{
+					id: result2.segmentCids.get("seg-ingest2") as string,
+					sourceTypes: ["repo"],
+					chunkCount: 1,
+				},
 			],
 			totalChunks: 2,
 			embeddingModel: "test-model",
