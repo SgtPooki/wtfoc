@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { WtfocError } from "@wtfoc/common";
 import { describe, expect, it } from "vitest";
 import { chunkMarkdown, findMarkdownSplitEnd } from "./chunker.js";
 
@@ -76,8 +77,15 @@ describe("chunkMarkdown", () => {
 		expect(chunks[0]!.metadata.lang).toBe("en");
 	});
 
-	it("throws when chunkSize is below 1", () => {
-		expect(() => chunkMarkdown("a", { source: "s", chunkSize: 0 })).toThrow(/chunkSize/);
+	it("throws WtfocError with INVALID_CHUNK_SIZE when chunkSize is below 1", () => {
+		let thrown: unknown;
+		try {
+			chunkMarkdown("a", { source: "s", chunkSize: 0 });
+		} catch (e) {
+			thrown = e;
+		}
+		expect(thrown).toBeInstanceOf(WtfocError);
+		expect((thrown as WtfocError).code).toBe("INVALID_CHUNK_SIZE");
 	});
 });
 
@@ -96,5 +104,12 @@ describe("findMarkdownSplitEnd", () => {
 		const end = findMarkdownSplitEnd(text, 0, 25);
 		expect(text.slice(0, end).endsWith("two")).toBe(true);
 		expect(text[end]).toBe("\n");
+	});
+
+	it("falls back to sentence boundary when no paragraph or header in range", () => {
+		const text = "First sentence. Second sentence. Third sentence.";
+		const end = findMarkdownSplitEnd(text, 0, 22);
+		expect(text.slice(0, end)).toBe("First sentence.");
+		expect(text[end]).toBe(" ");
 	});
 });

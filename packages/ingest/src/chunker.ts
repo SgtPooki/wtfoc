@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Chunk } from "@wtfoc/common";
+import { WtfocError, type Chunk } from "@wtfoc/common";
 
 const DEFAULT_CHUNK_SIZE = 512;
 const DEFAULT_CHUNK_OVERLAP = 0;
@@ -78,7 +78,9 @@ export function chunkMarkdown(markdown: string, options: MarkdownChunkerOptions)
 	chunkOverlap = clampOverlap(chunkOverlap, chunkSize);
 
 	if (chunkSize < 1) {
-		throw new Error("chunkSize must be at least 1");
+		throw new WtfocError("chunkSize must be at least 1", "INVALID_CHUNK_SIZE", {
+			chunkSize,
+		});
 	}
 	if (markdown.length === 0) {
 		return [];
