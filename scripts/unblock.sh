@@ -20,6 +20,28 @@ NC='\033[0m'
 log() { echo -e "${GREEN}[unblock]${NC} $*"; }
 warn() { echo -e "${YELLOW}[unblock]${NC} $*"; }
 
+# Also check: ready issues that already have an open PR should be marked in-progress (not picked up again)
+check_ready_with_prs() {
+	local ready_issues
+	ready_issues=$(gh issue list --repo "$REPO" --label "ready" --state open \
+		--json number,title -q '.[]' 2>/dev/null) || return 0
+
+	echo "$ready_issues" | jq -c '.' 2>/dev/null | while IFS= read -r issue; do
+		local num title
+		num=$(echo "$issue" | jq -r '.number')
+		title=$(echo "$issue" | jq -r '.title')
+
+		# Check if there's an open PR referencing this issue
+		local pr_count
+		pr_count=$(gh pr list --repo "$REPO" --state open --json body,number -q "[.[] | select(.body | test(\"#${num}[^0-9]\|#${num}$\"))] | length" 2>/dev/null || echo "0")
+
+		if [[ "$pr_count" -gt 0 ]]; then
+			log "#${num} (${title}): has open PR — removing 'ready' label"
+			gh issue edit "$num" --repo "$REPO" --remove-label "ready" >/dev/null 2>&1
+		fi
+	done
+}
+
 check_blocked_issues() {
 	local blocked_issues
 	blocked_issues=$(gh issue list --repo "$REPO" --label "blocked" --state open \
@@ -82,9 +104,11 @@ if [[ "${1:-}" == "--loop" ]]; then
 	interval="${2:-60}"
 	log "Running in loop mode (every ${interval}s). Ctrl+C to stop."
 	while true; do
+		check_ready_with_prs
 		check_blocked_issues
 		sleep "$interval"
 	done
 else
+	check_ready_with_prs
 	check_blocked_issues
 fi

@@ -50,16 +50,31 @@ for a in "${VALID_AGENTS[@]}"; do
 done
 [[ "$valid" == "false" ]] && err "Invalid agent: ${AGENT}"
 
+# ─── Check if an issue already has an open PR addressing it ───────────────────
+has_open_pr() {
+	local issue_num="$1"
+	# Search open PRs for any that reference this issue in body (Fixes #N, Closes #N, for #N)
+	local pr_count
+	pr_count=$(gh pr list --repo "$REPO" --state open --json body,number -q "[.[] | select(.body | test(\"#${issue_num}[^0-9]\|#${issue_num}$\"))] | length" 2>/dev/null || echo "0")
+	[[ "$pr_count" -gt 0 ]]
+}
+
 # ─── Find next issue to work on ──────────────────────────────────────────────
 find_issue() {
-	# Priority 1: Issue already assigned to this agent (but NOT blocked)
+	# Priority 1: Issue already assigned to this agent (but NOT blocked, and no open PR)
 	local assigned
 	assigned=$(gh issue list --repo "$REPO" --label "assigned-${AGENT}" --state open \
 		--json number,title,labels -q '[.[] | select(.labels | map(.name) | contains(["blocked"]) | not)] | .[0] // empty')
 
 	if [[ -n "$assigned" ]] && echo "$assigned" | jq -e '.number' >/dev/null 2>&1; then
-		echo "$assigned"
-		return 0
+		local assigned_num
+		assigned_num=$(echo "$assigned" | jq -r '.number')
+		if ! has_open_pr "$assigned_num"; then
+			echo "$assigned"
+			return 0
+		else
+			log "Issue #${assigned_num} already has an open PR — skipping"
+		fi
 	fi
 
 	# Priority 2: Unassigned "ready" issue — claim it
@@ -67,13 +82,26 @@ find_issue() {
 	ready=$(gh issue list --repo "$REPO" --label "ready" --state open \
 		--json number,title,labels -q '[.[] | select(.labels | map(.name) | (contains(["assigned-claude"]) or contains(["assigned-cursor"]) or contains(["assigned-codex"])) | not)] | .[0] // empty')
 
+	# Iterate through ready issues, skip any with open PRs
 	if [[ -n "$ready" ]] && echo "$ready" | jq -e '.number' >/dev/null 2>&1; then
-		local num
-		num=$(echo "$ready" | jq -r '.number')
-		log "Claiming unassigned ready issue #${num}"
-		gh issue edit "$num" --repo "$REPO" --add-label "assigned-${AGENT}" >/dev/null 2>&1
-		echo "$ready"
-		return 0
+		# Get all unassigned ready issues (not just first)
+		local all_ready
+		all_ready=$(gh issue list --repo "$REPO" --label "ready" --state open \
+			--json number,title,labels -q '[.[] | select(.labels | map(.name) | (contains(["assigned-claude"]) or contains(["assigned-cursor"]) or contains(["assigned-codex"])) | not)]')
+
+		echo "$all_ready" | jq -c '.[]' 2>/dev/null | while IFS= read -r candidate; do
+			local cnum
+			cnum=$(echo "$candidate" | jq -r '.number')
+			if ! has_open_pr "$cnum"; then
+				log "Claiming unassigned ready issue #${cnum}"
+				gh issue edit "$cnum" --repo "$REPO" --add-label "assigned-${AGENT}" >/dev/null 2>&1
+				echo "$candidate"
+				return 0
+			else
+				log "Issue #${cnum} already has an open PR — skipping"
+			fi
+		done
+		return 1
 	fi
 
 	return 1
