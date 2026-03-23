@@ -1,31 +1,33 @@
 ---
 user-invocable: true
 allowed-tools: Bash, Read, Glob, Grep
-argument-hint: "[cursor|codex] <prompt>"
-description: Get cross-review from Cursor or Codex CLI agents
+argument-hint: "[cursor|codex|claude] <prompt>"
+description: Get cross-review from Cursor, Codex, or Claude CLI agents
 ---
 
 # /peer-review
 
-Get feedback on specs, plans, code changes, or design decisions from Cursor or Codex CLI agents.
+Get feedback on specs, plans, code changes, or design decisions from Cursor, Codex, or Claude CLI agents.
 
 **Per the wtfoc constitution:** every spec and significant change must be cross-reviewed by a different agent than the one that created it. Use this skill to run that review.
 
-**Takes arguments:** `[cursor|codex] <prompt>`
-- If first word is exactly `cursor` or `codex` (case-insensitive, followed by non-whitespace text), use only that tool
-- Otherwise, run both in parallel
+**Takes arguments:** `[cursor|codex|claude] <prompt>`
+- If first word is exactly `cursor`, `codex`, or `claude` (case-insensitive, followed by non-whitespace text), use only that tool
+- Otherwise, run all available tools in parallel
 - No prompt at all → summarize current conversation context as the review target
 
 Examples:
 - `/peer-review cursor Review the 001-store-backend spec for completeness`
 - `/peer-review codex What's wrong with this API design?`
-- `/peer-review Review this spec` (sends to both in parallel)
+- `/peer-review claude Review this PR for edge cases`
+- `/peer-review Review this spec` (sends to all available agents in parallel)
 
 ## Tools available
 
 | Tool | CLI | Best for |
 |------|-----|----------|
 | **Cursor** | `cursor agent` | UX review, design feedback, architecture, spec review |
+| **Claude** | `claude -p` | Deep code review, spec review, architecture analysis |
 | **Codex** | `codex exec` (plans/designs/arbitrary review) | Arbitrary review prompts with codebase context |
 | **Codex** | `codex review --uncommitted` (local code changes only) | Reviewing uncommitted code changes in a repo |
 
@@ -36,31 +38,34 @@ Examples:
 ## Steps
 
 1. **Parse arguments** — extract tool choice and prompt.
-   - Only match `cursor` or `codex` as first word if exactly that word (case-insensitive) AND followed by non-whitespace text
-   - `/peer-review cursor` alone (no prompt after tool name) → error, ask user for a prompt
-   - `/peer-review` alone → summarize conversation context as prompt, run both tools
+   - Match `cursor`, `codex`, or `claude` as first word if exactly that word (case-insensitive) AND followed by non-whitespace text
+   - `/peer-review claude` alone (no prompt after tool name) → error, ask user for a prompt
+   - `/peer-review` alone → summarize conversation context as prompt, run all available tools
 
 2. **Check prerequisites:**
    ```bash
    which cursor 2>/dev/null  # for cursor reviews
    which codex 2>/dev/null   # for codex reviews
+   which claude 2>/dev/null  # for claude reviews
    ```
-   If a tool is missing, skip it and tell the user. If both missing, error.
+   If a tool is missing, skip it and tell the user. If all missing, error.
 
 3. **Determine workspace path:**
    ```bash
    REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
    ```
 
-4. **Prepare the prompt** — external CLIs do NOT inherit Claude's conversation context. You MUST serialize all relevant content into the prompt:
+4. **Prepare the prompt** — external CLIs do NOT inherit the current session's conversation context. You MUST serialize all relevant content into the prompt:
    - If reviewing a spec, include the full spec text
    - If reviewing a GitHub issue, fetch the body with `gh issue view` and include it
    - If reviewing code, include file paths or diffs
    - Always include relevant context from SPEC.md and the constitution
    - The prompt should specify what kind of feedback you want
-   - **For large prompts** (full diffs, long specs): write the prompt to a temp file and reference it:
+   - **For large prompts** (full diffs, long specs): write the prompt to a temp file:
      ```bash
-     PROMPT_FILE=$(mktemp /tmp/peer-review-XXXXXX.md)
+     PROMPT_FILE=$(mktemp /tmp/peer-review-XXXXXXXXXXXX)
+     mv "$PROMPT_FILE" "${PROMPT_FILE}.md"
+     PROMPT_FILE="${PROMPT_FILE}.md"
      cat > "$PROMPT_FILE" <<'EOF'
      Your long review prompt here...
      EOF
@@ -72,19 +77,31 @@ Examples:
    **Cursor** (any review type):
    ```bash
    # Short prompts:
-   cursor agent --model composer-2 --mode ask --print --trust \
+   cursor agent --print --trust \
      --workspace "$REPO_ROOT" "Your prompt here"
 
    # Long prompts (avoid argv limits — write to temp file first):
-   cursor agent --model composer-2 --mode ask --print --trust \
+   cursor agent --print --trust \
      --workspace "$REPO_ROOT" "$(cat "$PROMPT_FILE")"
    ```
    Notes:
-   - `--model composer-2` — use Cursor's own model, NOT Claude/GPT pass-through
-   - `--mode ask` — Q&A/read-only intent
    - `--print --trust` — non-interactive, no GUI
    - Cursor has no stdin mode — `"$(cat file)"` is the best option for long prompts
    - If prompt exceeds ~100KB, split into a summary + "see file at $PROMPT_FILE for full context"
+
+   **Claude** (any review type):
+   ```bash
+   # Short prompts:
+   cd "$REPO_ROOT" && claude -p "Your prompt here" --allowedTools Bash,Read,Glob,Grep
+
+   # Long prompts (use stdin):
+   cd "$REPO_ROOT" && cat "$PROMPT_FILE" | claude -p - --allowedTools Bash,Read,Glob,Grep
+   ```
+   Notes:
+   - `claude -p` runs in non-interactive (print) mode — no human in the loop
+   - `--allowedTools Bash,Read,Glob,Grep` restricts to read-only operations for reviews
+   - Claude runs from the current working directory, so `cd` to the repo first
+   - For code reviews where Claude needs to read files, it will use its tools automatically
 
    **Codex** (plan/design/arbitrary review):
    ```bash
@@ -108,7 +125,7 @@ Examples:
    - `--uncommitted` is required to review local changes (without it, scope is ambiguous)
    - Only use this when reviewing actual changes in the working tree, not conversation content
 
-6. **When running both in parallel**, use `run_in_background: true` for both Bash calls. When both complete, present both results. If one fails, still present the other's results.
+6. **When running multiple in parallel**, use `run_in_background: true` for all Bash calls. When all complete, present results. If one fails, still present the others.
 
 7. **Handle failures gracefully:**
    - If a tool exits non-zero, show stderr output to the user
@@ -116,8 +133,8 @@ Examples:
    - Never silently swallow errors — surface them
 
 8. **Present results** clearly labeled:
-   - In conversation: `## Cursor feedback` and `## Codex feedback`
-   - For GitHub issues: post as separate comments with `## Review: Cursor` and `## Review: Codex`
+   - In conversation: `## Cursor feedback`, `## Claude feedback`, `## Codex feedback`
+   - For GitHub issues: post as separate comments with `## Review: Cursor`, `## Review: Claude`, `## Review: Codex`
 
 9. **Apply feedback as new comments — never edit the original spec/plan.**
    - The original spec preserves the starting context and must not be modified directly.
@@ -127,8 +144,9 @@ Examples:
 
 ## Important
 
-- **Serialize context into prompts** — external CLIs cannot see Claude's conversation
-- Both tools may take 1-3 minutes to respond
+- **Serialize context into prompts** — external CLIs cannot see the current session's conversation
+- All tools may take 1-5 minutes to respond
 - The prompt should specify what kind of feedback you want (spec completeness, API design, code quality, etc.)
 - **Git repo required for Codex** — `codex exec` fails outside a git repo unless `--skip-git-repo-check` is passed
-- **Large prompts** — Cursor has no stdin mode. For large content, write to a temp file first, then use `"$(cat $PROMPT_FILE)"`. Codex supports stdin natively via `codex exec -`.
+- **Large prompts** — Cursor has no stdin mode. For large content, write to a temp file first, then use `"$(cat $PROMPT_FILE)"`. Claude and Codex support stdin natively.
+- **Cross-agent rule** — the reviewer must be a DIFFERENT agent than the one that created the work. If Claude wrote a spec, review with Cursor or Codex. If Cursor implemented code, review with Claude or Codex.

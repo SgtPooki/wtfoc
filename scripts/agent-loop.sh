@@ -67,11 +67,11 @@ find_issue() {
 	ready=$(gh issue list --repo "$REPO" --label "ready" --state open \
 		--json number,title,labels -q '[.[] | select(.labels | map(.name) | (contains(["assigned-claude"]) or contains(["assigned-cursor"]) or contains(["assigned-codex"])) | not)] | .[0] // empty')
 
-	if [[ -n "$ready" ]]; then
+	if [[ -n "$ready" ]] && echo "$ready" | jq -e '.number' >/dev/null 2>&1; then
 		local num
 		num=$(echo "$ready" | jq -r '.number')
 		log "Claiming unassigned ready issue #${num}"
-		gh issue edit "$num" --repo "$REPO" --add-label "assigned-${AGENT}" 2>/dev/null
+		gh issue edit "$num" --repo "$REPO" --add-label "assigned-${AGENT}" >/dev/null 2>&1
 		echo "$ready"
 		return 0
 	fi
