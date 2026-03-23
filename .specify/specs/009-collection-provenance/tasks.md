@@ -113,16 +113,16 @@
 
 ### Tests for User Story 4 ⚠️
 
-- [ ] T034 [P] [US4] Add artifact-summary diff tests in `packages/store/src/schema.test.ts`
-- [ ] T035 [P] [US4] Add `contentIdentity` equality semantics tests (IPFS CID for FOC, SHA-256 hex for local) in `packages/store/src/schema.test.ts`
-- [ ] T036 [P] [US4] Add CLI diff output tests in `packages/cli/src/output.test.ts`
+- [x] T034 [P] [US4] Add artifact-summary diff tests in `packages/store/src/diff.test.ts`
+- [x] T035 [P] [US4] Add `contentIdentity` equality semantics tests (IPFS CID for FOC, SHA-256 hex for local) in `packages/store/src/diff.test.ts`
+- [ ] T036 [P] [US4] Add CLI diff output tests in `packages/cli/src/output.test.ts` (deferred to Phase 6 polish)
 
 ### Implementation for User Story 4
 
-- [ ] T037 [US4] Implement revision diff computation from `ArtifactSummaryEntry[]` in `packages/store/src/schema.ts`
-- [ ] T038 [US4] Implement backend-neutral `contentIdentity` generation (IPFS CID for FOC, SHA-256 hex for local) in `packages/store/src/schema.ts`
-- [ ] T039 [US4] Add collection diff command handling in `packages/cli/src/cli.ts` (follow SPEC.md §11 output conventions)
-- [ ] T040 [US4] Add revision diff rendering in `packages/cli/src/output.ts`
+- [x] T037 [US4] Implement revision diff computation from `ArtifactSummaryEntry[]` in `packages/store/src/diff.ts`
+- [x] T038 [US4] Implement backend-neutral `contentIdentity` generation (IPFS CID for FOC, SHA-256 hex for local) in `packages/store/src/diff.ts`
+- [ ] T039 [US4] Add collection diff command handling in `packages/cli/src/cli.ts` (deferred to Phase 6 polish)
+- [ ] T040 [US4] Add revision diff rendering in `packages/cli/src/output.ts` (deferred to Phase 6 polish)
 
 **Checkpoint**: Collection revision diffs are machine-readable, metadata-only, and based on explicit equality semantics.
 

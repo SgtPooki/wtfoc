@@ -4,6 +4,7 @@
 export { FocStorageBackend, type FocStorageBackendOptions } from "./backends/foc.js";
 export { LocalStorageBackend } from "./backends/local.js";
 export { type BundleSegment, type BundleUploadResult, bundleAndUpload } from "./bundler.js";
+export { type RevisionDiff, computeRevisionDiff, generateContentIdentity } from "./diff.js";
 export {
 	createCollectionDescriptor,
 	createCollectionHead,
