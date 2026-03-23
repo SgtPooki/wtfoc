@@ -11,7 +11,7 @@
 	],
 	"scripts": {
 		"build": "tsc -b",
-		"test": "vitest run --config ../../vitest.config.ts"
+		"test": "vitest run"
 	},
 	"dependencies": {
 		"@wtfoc/common": "workspace:*"

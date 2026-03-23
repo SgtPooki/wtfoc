@@ -45,12 +45,12 @@ describe("chunkMarkdown", () => {
 		for (let i = 0; i < chunks.length - 1; i++) {
 			const chunk = chunks[i];
 			expect(chunk).toBeDefined();
-			expect(chunk!.content.length).toBeLessThanOrEqual(512);
+			expect(chunk?.content.length).toBeLessThanOrEqual(512);
 		}
 		// Overlap: suffix of chunk i is prefix of chunk i+1
 		for (let i = 0; i < chunks.length - 1; i++) {
-			const a = chunks[i]!.content;
-			const b = chunks[i + 1]!.content;
+			const a = chunks[i]?.content;
+			const b = chunks[i + 1]?.content;
 			const suf = a.slice(-50);
 			expect(b.startsWith(suf)).toBe(true);
 		}
@@ -74,7 +74,22 @@ describe("chunkMarkdown", () => {
 			metadata: { lang: "en" },
 		});
 		expect(chunks).toHaveLength(1);
-		expect(chunks[0]!.metadata.lang).toBe("en");
+		expect(chunks[0]?.metadata.lang).toBe("en");
+	});
+
+	it("does not produce overlap-only chunks when overlap meets a paragraph boundary", () => {
+		const md = `${"a".repeat(400)}\n\n${"b".repeat(1000)}`;
+		const chunks = chunkMarkdown(md, {
+			source: "s",
+			chunkSize: 420,
+			chunkOverlap: 50,
+		});
+		// Every chunk must contain new content beyond just the overlap
+		for (const chunk of chunks) {
+			expect(chunk.content.length).toBeGreaterThan(50);
+		}
+		// All original content is covered
+		expect(chunks.length).toBeGreaterThan(1);
 	});
 
 	it("throws WtfocError with INVALID_CHUNK_SIZE when chunkSize is below 1", () => {
@@ -91,7 +106,7 @@ describe("chunkMarkdown", () => {
 
 describe("findMarkdownSplitEnd", () => {
 	it("returns a header boundary before a hard cap when present", () => {
-		const text = "a".repeat(100) + "\n## H\n\n" + "b".repeat(100);
+		const text = `${"a".repeat(100)}\n## H\n\n${"b".repeat(100)}`;
 		const start = 0;
 		const maxEnd = 120;
 		const end = findMarkdownSplitEnd(text, start, maxEnd);

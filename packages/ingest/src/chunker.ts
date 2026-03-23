@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { WtfocError, type Chunk } from "@wtfoc/common";
+import { type Chunk, WtfocError } from "@wtfoc/common";
 
 const DEFAULT_CHUNK_SIZE = 512;
 const DEFAULT_CHUNK_OVERLAP = 0;
@@ -88,6 +88,7 @@ export function chunkMarkdown(markdown: string, options: MarkdownChunkerOptions)
 
 	const rawChunks: string[] = [];
 	let start = 0;
+	let prevEnd = 0;
 	const maxIterations = markdown.length + 5;
 	for (let iter = 0; iter < maxIterations; iter++) {
 		if (start >= markdown.length) break;
@@ -98,6 +99,11 @@ export function chunkMarkdown(markdown: string, options: MarkdownChunkerOptions)
 			end = markdown.length;
 		} else {
 			end = findMarkdownSplitEnd(markdown, start, maxEnd);
+			// When overlap is active, ensure the split advances past the previous
+			// chunk boundary so every chunk contains new content beyond the overlap.
+			if (chunkOverlap > 0 && end <= prevEnd && prevEnd < maxEnd) {
+				end = findMarkdownSplitEnd(markdown, prevEnd, maxEnd);
+			}
 			if (end <= start) {
 				end = maxEnd;
 			}
@@ -108,6 +114,7 @@ export function chunkMarkdown(markdown: string, options: MarkdownChunkerOptions)
 
 		if (end >= markdown.length) break;
 
+		prevEnd = end;
 		const nextStart = end - chunkOverlap;
 		start = nextStart <= start ? end : nextStart;
 	}
