@@ -405,17 +405,41 @@ address_pr_feedback() {
 			fi
 		fi
 
-		# Only address PRs explicitly labeled changes-requested
-		if ! echo "$pr_labels" | grep -q "changes-requested"; then
+		# Check if PR needs work: changes-requested label OR CI failure
+		local needs_work=false
+		local ci_failed=false
+		local ci_log=""
+
+		if echo "$pr_labels" | grep -q "changes-requested"; then
+			needs_work=true
+		fi
+
+		# Also check CI status
+		local ci_status
+		ci_status=$(gh pr checks "$pr_num" --repo "$REPO" --json state -q '[.[] | .state] | if any(. == "FAILURE") then "fail" else "ok" end' 2>/dev/null || echo "ok")
+		if [[ "$ci_status" == "fail" ]]; then
+			needs_work=true
+			ci_failed=true
+			# Get the failed step details
+			local run_url
+			run_url=$(gh pr checks "$pr_num" --repo "$REPO" --json link -q '.[0].link' 2>/dev/null || echo "")
+			local run_id
+			run_id=$(echo "$run_url" | grep -oE '[0-9]+/job' | grep -oE '[0-9]+' || echo "")
+			if [[ -n "$run_id" ]]; then
+				ci_log=$(gh run view "$run_id" --repo "$REPO" --log-failed 2>/dev/null | tail -50 || echo "Could not fetch CI logs")
+			fi
+		fi
+
+		if [[ "$needs_work" == "false" ]]; then
 			continue
 		fi
 
-		log "Addressing feedback on PR #${pr_num}: ${pr_title}"
+		log "Addressing issues on PR #${pr_num}: ${pr_title}"
 
 		# Get the review comments
 		local feedback
 		feedback=$(gh pr view "$pr_num" --repo "$REPO" --json comments \
-			-q '[.comments[] | select(.body | test("Review:"; "i"))] | .[-1].body' 2>/dev/null || echo "")
+			-q '[.comments[] | select(.body | test("^## Review:"; "m"))] | .[-1].body' 2>/dev/null || echo "")
 
 		if [[ -z "$feedback" ]]; then
 			continue
@@ -442,11 +466,25 @@ address_pr_feedback() {
 		copilot_comments=$(gh api "repos/${REPO}/pulls/${pr_num}/comments" \
 			--jq '[.[] | select(.user.login == "Copilot" or .user.login == "copilot" or (.user.login | test("bot"; "i"))) | {body: .body, path: .path, line: .line}]' 2>/dev/null || echo "[]")
 
-		fix_prompt="You are addressing review feedback on PR #${pr_num}: ${pr_title}
+		local ci_section=""
+		if [[ "$ci_failed" == "true" ]]; then
+			ci_section="## CI Failure (MUST FIX)
+
+CI is failing on this PR. Fix the CI errors FIRST before addressing review feedback.
+
+CI log (last 50 lines):
+\`\`\`
+${ci_log}
+\`\`\`
+"
+		fi
+
+		fix_prompt="You are fixing issues on PR #${pr_num}: ${pr_title}
 
 Working directory: ${worktree_dir}
 Branch: ${pr_branch}
 
+${ci_section}
 ## Agent Review Feedback
 
 ${feedback}
@@ -457,13 +495,13 @@ ${copilot_comments}
 
 ## Instructions
 
-1. Read ALL feedback (agent reviews + Copilot inline comments)
-2. For each comment: either fix the issue OR reply to the comment explaining why no change is needed
-3. Do NOT blindly accept all feedback — evaluate each on its merits
-4. To reply to a Copilot inline comment: gh api repos/${REPO}/pulls/${pr_num}/comments/<comment_id>/replies -f body='Your response'
+1. If CI is failing, fix that FIRST (run pnpm test and pnpm lint to reproduce)
+2. Read ALL feedback (agent reviews + Copilot inline comments)
+3. For each comment: either fix the issue OR reply explaining why no change is needed
+4. Do NOT blindly accept all feedback — evaluate each on its merits
 5. Make fixes in the worktree
-6. Ensure pnpm test and pnpm lint pass
-7. Commit with message: 'fix: address review feedback on #${pr_num}'
+6. Ensure pnpm test and pnpm lint pass BEFORE committing
+7. Commit with message: 'fix: address feedback on #${pr_num}'
 8. Push to the branch
 
 Do NOT open a new PR — push to the existing branch.
