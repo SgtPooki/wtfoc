@@ -125,4 +125,35 @@ describe("bundleAndUpload", () => {
 		).rejects.toThrow();
 		expect(storage.uploadCalls).toHaveLength(0);
 	});
+
+	it("[US2] per-segment CID matches standalone bare CAR CID for same content", async () => {
+		// Verify the bundler's per-segment CID is the same as what createCarFromFile(bare: true) produces
+		// This ensures retrieval by per-segment CID works even though the segment lives in a directory CAR
+		const storage = mockStorage();
+		const data = makeSegmentData("round-trip content");
+		const segments = [{ id: "seg-rt", data }];
+
+		const bundleResult = await bundleAndUpload(segments, storage);
+		const cidFromBundle = bundleResult.segmentCids.get("seg-rt");
+
+		// Independently compute the CID the same way
+		const fp = await import("filecoin-pin");
+		const file = new File([Buffer.from(data)], "seg-rt.json", { type: "application/json" });
+		const bareCar = await fp.createCarFromFile(file, { bare: true });
+		const cidFromBare = bareCar.rootCid.toString();
+
+		expect(cidFromBundle).toBe(cidFromBare);
+	});
+
+	it("[US2] SegmentSummary.id from bundler is a valid IPFS CID", async () => {
+		const storage = mockStorage();
+		const segments = [{ id: "seg-cid", data: makeSegmentData("cid check") }];
+
+		const result = await bundleAndUpload(segments, storage);
+		const cid = result.segmentCids.get("seg-cid");
+
+		// IPFS CIDs start with "baf" (CIDv1 base32)
+		expect(cid).toBeTruthy();
+		expect(cid).toMatch(/^baf/);
+	});
 });
