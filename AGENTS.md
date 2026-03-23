@@ -111,3 +111,10 @@ This repo uses nested `AGENTS.md` files for package-local guidance. The closest 
 GitHub-hosted agents also read:
 - [`.github/copilot-instructions.md`](.github/copilot-instructions.md)
 - files in [`.github/instructions/`](.github/instructions/)
+
+## Active Technologies
+- TypeScript strict mode, ESM only, Node >=24 + `@wtfoc/common`, `@wtfoc/ingest`, `@wtfoc/store`, `@wtfoc/search` (workspace packages only) (012-e2e-integration-pipeline)
+- LocalStorageBackend + LocalManifestStore (temp directories, cleaned up after tests) (012-e2e-integration-pipeline)
+
+## Recent Changes
+- 012-e2e-integration-pipeline: Added TypeScript strict mode, ESM only, Node >=24 + `@wtfoc/common`, `@wtfoc/ingest`, `@wtfoc/store`, `@wtfoc/search` (workspace packages only)
