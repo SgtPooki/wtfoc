@@ -92,25 +92,7 @@ export class FocStorageBackend implements StorageBackend {
 	async download(id: string, signal?: AbortSignal): Promise<Uint8Array> {
 		signal?.throwIfAborted();
 
-		// Try SP direct IPFS endpoints first (fast, no public gateway dependency)
-		// SPs serve IPFS CIDs at <sp-url>/ipfs/<cid>
-		const spEndpoints =
-			this.#network === "calibration"
-				? ["https://caliberation-pdp.infrafolio.com", "https://calib2.ezpdpz.net"]
-				: [];
-
-		for (const sp of spEndpoints) {
-			try {
-				const response = await fetch(`${sp}/ipfs/${id}`, { signal });
-				if (response.ok) {
-					return new Uint8Array(await response.arrayBuffer());
-				}
-			} catch {
-				// Try next SP
-			}
-		}
-
-		// Fall back to public IPFS gateways
+		// Try public IPFS gateways first (works for any IPFS CID, returns content)
 		const gateways = ["https://dweb.link/ipfs/", "https://inbrowser.link/ipfs/"];
 		for (const gateway of gateways) {
 			try {
