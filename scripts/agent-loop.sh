@@ -405,23 +405,9 @@ address_pr_feedback() {
 			fi
 		fi
 
-		# Check if there's a changes-requested label or unresolved review comments
+		# Only address PRs explicitly labeled changes-requested
 		if ! echo "$pr_labels" | grep -q "changes-requested"; then
-			# Check for review comments we haven't addressed yet
-			local review_comments
-			review_comments=$(gh pr view "$pr_num" --repo "$REPO" --json comments \
-				-q '[.comments[] | select(.body | test("Review:"; "i")) | select(.body | test("REQUEST_CHANGES"; "i"))] | length' 2>/dev/null || echo "0")
-
-			local has_addressed
-			has_addressed=$(gh pr view "$pr_num" --repo "$REPO" --json comments \
-				-q '[.comments[] | select(.body | test("Addressed feedback"; "i"))] | length' 2>/dev/null || echo "0")
-
-			if [[ "$review_comments" -eq 0 ]] || [[ "$has_addressed" -ge "$review_comments" ]]; then
-				continue
-			fi
-
-			# Mark it so we track it
-			gh_retry gh issue edit "$pr_num" --repo "$REPO" --add-label "changes-requested" >/dev/null 2>&1 || true
+			continue
 		fi
 
 		log "Addressing feedback on PR #${pr_num}: ${pr_title}"
@@ -741,6 +727,27 @@ ${review_output}"
 			gh_retry gh pr comment "$pr_num" --repo "$REPO" --body "$comment_body" >/dev/null 2>&1 && \
 				log "Posted review on PR #${pr_num}" || \
 				warn "Failed to post review on PR #${pr_num}"
+
+			# If review says REQUEST_CHANGES, label it
+			if echo "$review_output" | grep -qi "REQUEST_CHANGES"; then
+				gh_retry gh issue edit "$pr_num" --repo "$REPO" --add-label "changes-requested" >/dev/null 2>&1 || true
+			fi
+
+			# If review says APPROVE and has enough reviews, mark ready-to-merge
+			if echo "$review_output" | grep -qi "APPROVE"; then
+				local total_reviews=0
+				for reviewer in claude cursor codex copilot; do
+					if echo "$pr_labels" | grep -q "reviewed-by-${reviewer}"; then
+						total_reviews=$((total_reviews + 1))
+					fi
+				done
+				# Count this review too (label not added yet)
+				total_reviews=$((total_reviews + 1))
+				if [[ "$total_reviews" -ge 2 ]]; then
+					gh_retry gh issue edit "$pr_num" --repo "$REPO" --add-label "ready-to-merge" >/dev/null 2>&1 || true
+					log "PR #${pr_num} has ${total_reviews} approvals → ready-to-merge"
+				fi
+			fi
 		fi
 
 		# Swap reviewing → reviewed-by label
