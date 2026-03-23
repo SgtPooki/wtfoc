@@ -170,7 +170,7 @@ Feature-level architecture, user stories, and implementation details live in spe
 | Spec | Description | Status |
 |------|-------------|--------|
 | [001-store-backend](.specify/specs/001-store-backend/spec.md) | Storage backends (local + FOC), manifest chain, dual CIDs | Draft |
-| 002-ingest-pipeline | Chunking, source adapters, edge extraction | Planned |
+| [5-001-ingest-pipeline](.specify/specs/5-001-ingest-pipeline/spec.md) | Chunking, source adapters, edge extraction | Draft |
 | 003-search-and-trace | Embedder, vector index, query, trace command | Planned |
 | 004-cli | CLI commands (init, source add, ingest, trace, query, verify) | Planned |
 | 005-golden-demo | Demo dataset, demo-smoke, demo script | Planned |
