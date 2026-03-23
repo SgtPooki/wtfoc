@@ -59,7 +59,7 @@ export class FocStorageBackend implements StorageBackend {
 
 			// Create CAR for dual CIDs
 			const file = new File([Buffer.from(data)], "segment.json", { type: "application/json" });
-			const car = await fp.createCarFromFile(file);
+			const car = await fp.createCarFromFile(file, { bare: true });
 			const ipfsCid = car.rootCid.toString();
 
 			// Create silent pino logger (required by filecoin-pin)
