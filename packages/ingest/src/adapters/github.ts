@@ -178,7 +178,9 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 	}
 
 	async #ghApi(path: string, signal?: AbortSignal, extraArgs?: string[]): Promise<unknown[]> {
-		const args = ["api", path, "--paginate", "--method", "GET", "--include"];
+		// No --include: rate limit info comes via stderr, not headers.
+		// --paginate handles Link-header pagination automatically.
+		const args = ["api", path, "--paginate", "--method", "GET"];
 		if (extraArgs) args.push(...extraArgs);
 
 		let totalWaitMs = 0;
@@ -188,11 +190,7 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 			signal?.throwIfAborted();
 			try {
 				const { stdout } = await this.#execFn("gh", args, signal);
-				// --include prepends HTTP headers before JSON body
-				// Strip headers (everything before first [ or {)
-				const jsonStart = stdout.search(/[[{]/);
-				const jsonBody = jsonStart >= 0 ? stdout.slice(jsonStart) : stdout;
-				return parsePaginatedJson(jsonBody);
+				return parsePaginatedJson(stdout);
 			} catch (err: unknown) {
 				const errMsg = err instanceof Error ? err.message : String(err);
 				const stderr = (err as { stderr?: string }).stderr ?? errMsg;
@@ -290,6 +288,13 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 			const rec = item as Record<string, unknown>;
 			if (!rec.title && !rec.body) continue;
 
+			// Client-side since filtering (pulls endpoint doesn't support since param)
+			if (config.since) {
+				const prDate = new Date(String(rec.updated_at ?? rec.created_at ?? ""));
+				const sinceDate = new Date(config.since);
+				if (prDate < sinceDate) continue;
+			}
+
 			const number = String(rec.number ?? "");
 			const body = String(rec.body ?? "");
 			const title = String(rec.title ?? "");
@@ -319,6 +324,12 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 	async #fetchPullNumbers(config: GitHubAdapterConfig, signal?: AbortSignal): Promise<number[]> {
 		const items = await this.#ghApi(`repos/${config.owner}/${config.repo}/pulls?state=all`, signal);
 		return items
+			.filter((item) => {
+				if (!config.since) return true;
+				const rec = item as Record<string, unknown>;
+				const prDate = new Date(String(rec.updated_at ?? rec.created_at ?? ""));
+				return prDate >= new Date(config.since);
+			})
 			.map((item) => (item as Record<string, unknown>).number)
 			.filter((n): n is number => typeof n === "number");
 	}

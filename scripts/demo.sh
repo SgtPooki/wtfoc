@@ -20,14 +20,14 @@ COLLECTION="foc-ecosystem"
 EMBEDDER_ARGS=""
 SKIP_INGEST=false
 
-# Parse args
-for arg in "$@"; do
-	case "$arg" in
-		--embedder) shift; EMBEDDER_ARGS="--embedder $1"; shift ;;
-		--embedder=*) EMBEDDER_ARGS="--embedder ${arg#*=}" ;;
-		--skip-ingest) SKIP_INGEST=true ;;
-		lmstudio) EMBEDDER_ARGS="--embedder-url lmstudio --embedder-model mxbai-embed-large-v1" ;;
-		*) ;;
+# Parse args — pass all embedder flags through
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+		--skip-ingest) SKIP_INGEST=true; shift ;;
+		lmstudio) EMBEDDER_ARGS="--embedder-url lmstudio --embedder-model mxbai-embed-large-v1"; shift ;;
+		--embedder-url|--embedder-model|--embedder-key|--embedder)
+			EMBEDDER_ARGS="$EMBEDDER_ARGS $1 $2"; shift 2 ;;
+		*) shift ;;
 	esac
 done
 
@@ -69,8 +69,10 @@ if [[ "$SKIP_INGEST" == "false" ]]; then
 	)
 
 	for repo in "${REPOS[@]}"; do
-		echo "   → $repo"
-		$CLI ingest repo "$repo" -c "$COLLECTION" $EMBEDDER_ARGS --quiet 2>&1 | grep -E "✅|⚠️|chunks|edges" || true
+		echo "   → $repo (github issues/PRs)"
+		if ! $CLI ingest github "$repo" -c "$COLLECTION" $EMBEDDER_ARGS --since 90d 2>&1; then
+			echo "   ⚠️  Failed to ingest $repo — continuing with remaining repos"
+		fi
 		echo ""
 	done
 
