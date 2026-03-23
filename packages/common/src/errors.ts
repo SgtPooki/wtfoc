@@ -44,6 +44,26 @@ export class EmbedFailedError extends WtfocError {
 	}
 }
 
+export class StorageNotFoundError extends WtfocError {
+	constructor(id: string, backend: string) {
+		super(`Artifact not found: ${id} (backend: ${backend})`, "STORAGE_NOT_FOUND", {
+			id,
+			backend,
+		});
+		this.name = "StorageNotFoundError";
+	}
+}
+
+export class StorageInsufficientBalanceError extends WtfocError {
+	constructor(backend: string, cause?: unknown) {
+		super(`Insufficient balance for storage operation (backend: ${backend})`, "STORAGE_INSUFFICIENT_BALANCE", {
+			backend,
+			cause,
+		});
+		this.name = "StorageInsufficientBalanceError";
+	}
+}
+
 export class SchemaUnknownError extends WtfocError {
 	constructor(found: number, maxSupported: number) {
 		super(

@@ -18,7 +18,7 @@ export interface StorageResult {
  * local filesystem, S3, GCS, IPFS-only, or any blob store.
  */
 export interface StorageBackend {
-	upload(data: Uint8Array, metadata?: Record<string, string>): Promise<StorageResult>;
-	download(id: string): Promise<Uint8Array>;
-	verify?(id: string): Promise<{ exists: boolean; size: number }>;
+	upload(data: Uint8Array, metadata?: Record<string, string>, signal?: AbortSignal): Promise<StorageResult>;
+	download(id: string, signal?: AbortSignal): Promise<Uint8Array>;
+	verify?(id: string, signal?: AbortSignal): Promise<{ exists: boolean; size: number }>;
 }

@@ -45,6 +45,10 @@ export interface HeadManifest {
  */
 export interface Segment {
 	schemaVersion: number;
+	/** Embedding model used to produce vectors in this segment */
+	embeddingModel: string;
+	/** Embedding dimensions (must match vectors in chunks) */
+	embeddingDimensions: number;
 	chunks: Array<{
 		id: string;
 		storageId: string;
