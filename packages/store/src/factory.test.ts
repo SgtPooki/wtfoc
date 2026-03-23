@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
-	HeadManifest,
+	CollectionHead,
 	ManifestStore,
 	StorageBackend,
 	StorageResult,
@@ -86,7 +86,7 @@ describe("createStore", () => {
 			},
 			async putHead(
 				name: string,
-				manifest: HeadManifest,
+				manifest: CollectionHead,
 				_prevHeadId: string | null,
 			): Promise<StoredHead> {
 				calls.push(`putHead:${name}`);

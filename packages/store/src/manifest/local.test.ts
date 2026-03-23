@@ -1,14 +1,16 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { HeadManifest } from "@wtfoc/common";
+import type { CollectionHead } from "@wtfoc/common";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { LocalManifestStore } from "./local.js";
 
-function makeManifest(overrides?: Partial<HeadManifest>): HeadManifest {
+function makeManifest(overrides?: Partial<CollectionHead>): CollectionHead {
 	return {
 		schemaVersion: 1,
+		collectionId: "test-collection-id",
 		name: "test",
+		currentRevisionId: null,
 		prevHeadId: null,
 		segments: [],
 		totalChunks: 0,

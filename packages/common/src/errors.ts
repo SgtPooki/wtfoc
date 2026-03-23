@@ -80,6 +80,39 @@ export class StorageInsufficientBalanceError extends WtfocError {
 	}
 }
 
+export class RevisionSchemaUnknownError extends WtfocError {
+	constructor(found: number, maxSupported: number) {
+		super(
+			`Unknown collection revision schema version ${found} (max supported: ${maxSupported})`,
+			"REVISION_SCHEMA_UNKNOWN",
+			{ found, maxSupported },
+		);
+		this.name = "RevisionSchemaUnknownError";
+	}
+}
+
+export class CollectionHeadConflictError extends WtfocError {
+	constructor(collectionId: string, expected: string | null, actual: string | null) {
+		super(
+			`Collection head conflict for "${collectionId}": expected prevHeadId "${expected}", got "${actual}"`,
+			"COLLECTION_HEAD_CONFLICT",
+			{ collectionId, expected, actual },
+		);
+		this.name = "CollectionHeadConflictError";
+	}
+}
+
+export class PublishFailedError extends WtfocError {
+	constructor(collectionId: string, revisionId: string, cause?: unknown) {
+		super(
+			`Publish failed for collection "${collectionId}": revision "${revisionId}" uploaded but head advancement failed`,
+			"PUBLISH_FAILED",
+			{ collectionId, revisionId, cause },
+		);
+		this.name = "PublishFailedError";
+	}
+}
+
 export class SchemaUnknownError extends WtfocError {
 	constructor(found: number, maxSupported: number) {
 		super(`Unknown schema version ${found} (max supported: ${maxSupported})`, "SCHEMA_UNKNOWN", {

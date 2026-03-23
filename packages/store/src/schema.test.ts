@@ -1,4 +1,4 @@
-import type { HeadManifest } from "@wtfoc/common";
+import type { CollectionHead } from "@wtfoc/common";
 import { SchemaUnknownError, WtfocError } from "@wtfoc/common";
 import { describe, expect, it } from "vitest";
 import {
@@ -8,10 +8,12 @@ import {
 } from "./schema.js";
 import { expectWtfocCode } from "./test-helpers.js";
 
-function minimalValidManifest(overrides?: Partial<HeadManifest>): HeadManifest {
+function minimalValidManifest(overrides?: Partial<CollectionHead>): CollectionHead {
 	return {
 		schemaVersion: 1,
+		collectionId: "test-collection-id",
 		name: "proj",
+		currentRevisionId: null,
 		prevHeadId: null,
 		segments: [
 			{

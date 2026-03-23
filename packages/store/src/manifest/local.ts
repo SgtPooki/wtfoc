@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { HeadManifest, ManifestStore, StoredHead } from "@wtfoc/common";
+import type { CollectionHead, ManifestStore, StoredHead } from "@wtfoc/common";
 import { ManifestConflictError } from "@wtfoc/common";
 
 /**
@@ -17,7 +17,7 @@ export class LocalManifestStore implements ManifestStore {
 	async getHead(projectName: string): Promise<StoredHead | null> {
 		try {
 			const data = await readFile(this.filePath(projectName), "utf-8");
-			const manifest = JSON.parse(data) as HeadManifest;
+			const manifest = JSON.parse(data) as CollectionHead;
 			const headId = this.computeHeadId(data);
 			return { headId, manifest };
 		} catch {
@@ -27,7 +27,7 @@ export class LocalManifestStore implements ManifestStore {
 
 	async putHead(
 		projectName: string,
-		manifest: HeadManifest,
+		manifest: CollectionHead,
 		prevHeadId: string | null,
 	): Promise<StoredHead> {
 		const current = await this.getHead(projectName);

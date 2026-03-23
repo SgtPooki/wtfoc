@@ -1,4 +1,4 @@
-import type { BatchRecord, HeadManifest, Segment, SegmentSummary } from "@wtfoc/common";
+import type { BatchRecord, CollectionHead, Segment, SegmentSummary } from "@wtfoc/common";
 import { SchemaUnknownError, WtfocError } from "@wtfoc/common";
 
 /** Latest persisted manifest / segment format version. */
@@ -190,10 +190,10 @@ function validateBatchRecord(raw: unknown, index: number): BatchRecord {
 }
 
 /**
- * Validates unknown JSON-compatible data as a {@link HeadManifest}.
+ * Validates unknown JSON-compatible data as a {@link CollectionHead}.
  * Rejects unknown `schemaVersion` with {@link SchemaUnknownError}.
  */
-export function validateManifestSchema(data: unknown): HeadManifest {
+export function validateManifestSchema(data: unknown): CollectionHead {
 	if (!isRecord(data)) {
 		throw new WtfocError("Invalid head manifest: expected an object", "SCHEMA_INVALID");
 	}
@@ -283,9 +283,35 @@ export function validateManifestSchema(data: unknown): HeadManifest {
 		"headManifest",
 	);
 
-	const manifest: HeadManifest = {
+	const collectionId = requireField(
+		data,
+		"collectionId",
+		isNonEmptyString,
+		"collectionId must be a non-empty string",
+		"headManifest",
+	);
+
+	const currentRevisionId = data.currentRevisionId;
+	if (currentRevisionId !== null && typeof currentRevisionId !== "string") {
+		throw new WtfocError(
+			"Invalid head manifest: currentRevisionId must be string or null",
+			"SCHEMA_INVALID",
+			{ field: "currentRevisionId" },
+		);
+	}
+	if (currentRevisionId === undefined) {
+		throw new WtfocError(
+			"Invalid head manifest: currentRevisionId is required (string or null)",
+			"SCHEMA_INVALID",
+			{ field: "currentRevisionId" },
+		);
+	}
+
+	const manifest: CollectionHead = {
 		schemaVersion: sv,
+		collectionId,
 		name,
+		currentRevisionId,
 		prevHeadId,
 		segments,
 		totalChunks,
