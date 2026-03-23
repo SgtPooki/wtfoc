@@ -1,4 +1,4 @@
-import type { HeadManifest, Segment, StorageBackend, StorageResult } from "@wtfoc/common";
+import type { CollectionHead, Segment, StorageBackend, StorageResult } from "@wtfoc/common";
 import { CURRENT_SCHEMA_VERSION } from "@wtfoc/common";
 import { describe, expect, it } from "vitest";
 import { bundleAndUpload } from "./bundler.js";
@@ -63,9 +63,11 @@ describe("bundler → manifest integration", () => {
 		const segCid = bundleResult.segmentCids.get("seg-1");
 		expect(segCid).toBeTruthy();
 
-		const manifest: HeadManifest = {
+		const manifest: CollectionHead = {
 			schemaVersion: CURRENT_SCHEMA_VERSION,
+			collectionId: "test-cid",
 			name: "test-collection",
+			currentRevisionId: null,
 			prevHeadId: null,
 			segments: [
 				{
@@ -144,9 +146,11 @@ describe("bundler → manifest integration", () => {
 		const result1 = await bundleAndUpload([{ id: "seg-ingest1", data: seg1Data }], storage);
 		const result2 = await bundleAndUpload([{ id: "seg-ingest2", data: seg2Data }], storage);
 
-		const manifest: HeadManifest = {
+		const manifest: CollectionHead = {
 			schemaVersion: CURRENT_SCHEMA_VERSION,
+			collectionId: "multi-cid",
 			name: "multi-ingest",
+			currentRevisionId: null,
 			prevHeadId: null,
 			segments: [
 				{

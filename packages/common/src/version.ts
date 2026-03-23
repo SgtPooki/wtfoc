@@ -2,7 +2,7 @@
  * Current schema version for manifests and segments.
  *
  * This is the single source of truth for the storage format version.
- * Bump this when the Segment or HeadManifest type changes.
+ * Bump this when the Segment or CollectionHead type changes.
  *
  * Rules (from SPEC.md):
  * - Writers always use CURRENT_SCHEMA_VERSION

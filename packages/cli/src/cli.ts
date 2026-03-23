@@ -2,9 +2,9 @@
 
 import {
 	type Chunk,
+	type CollectionHead,
 	CURRENT_SCHEMA_VERSION,
 	type Embedder,
-	type HeadManifest,
 	type Segment,
 	type VectorEntry,
 	type VectorIndex,
@@ -23,7 +23,7 @@ import {
 	TransformersEmbedder,
 	trace,
 } from "@wtfoc/search";
-import { bundleAndUpload, createStore } from "@wtfoc/store";
+import { bundleAndUpload, createStore, generateCollectionId } from "@wtfoc/store";
 import { Command } from "commander";
 import { formatQuery, formatStatus, formatTrace, type OutputFormat } from "./output.js";
 
@@ -161,10 +161,11 @@ program
 	.action(async (name: string, opts: { local?: boolean; foc?: boolean }) => {
 		const store = getStore();
 
-		// Create initial manifest
-		const manifest: HeadManifest = {
+		const manifest: CollectionHead = {
 			schemaVersion: CURRENT_SCHEMA_VERSION,
+			collectionId: generateCollectionId(name),
 			name,
+			currentRevisionId: null,
 			prevHeadId: null,
 			segments: [],
 			totalChunks: 0,
@@ -291,9 +292,11 @@ const ingestCmd = withEmbedderOptions(
 			}
 
 			// Update manifest
-			const manifest: HeadManifest = {
+			const manifest: CollectionHead = {
 				schemaVersion: CURRENT_SCHEMA_VERSION,
+				collectionId: head?.manifest.collectionId ?? generateCollectionId(opts.collection),
 				name: opts.collection,
+				currentRevisionId: head?.manifest.currentRevisionId ?? null,
 				prevHeadId,
 				segments: [
 					...(head?.manifest.segments ?? []),
@@ -503,7 +506,7 @@ interface LoadedCollection {
 
 async function loadCollection(
 	store: ReturnType<typeof createStore>,
-	manifest: HeadManifest,
+	manifest: CollectionHead,
 ): Promise<LoadedCollection> {
 	const vectorIndex = new InMemoryVectorIndex();
 	const segments: Segment[] = [];

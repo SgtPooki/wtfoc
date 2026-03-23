@@ -4,9 +4,18 @@
 export { FocStorageBackend, type FocStorageBackendOptions } from "./backends/foc.js";
 export { LocalStorageBackend } from "./backends/local.js";
 export { type BundleSegment, type BundleUploadResult, bundleAndUpload } from "./bundler.js";
+export {
+	createCollectionDescriptor,
+	createCollectionHead,
+	createCollectionRevision,
+	generateCollectionId,
+	validateRoutingMetadata,
+} from "./collection.js";
+export { computeRevisionDiff, generateContentIdentity, type RevisionDiff } from "./diff.js";
 export type { Store, StoreConfig } from "./factory.js";
 export { createStore } from "./factory.js";
 export { LocalManifestStore } from "./manifest/local.js";
+export { deserializeRevision, serializeRevision } from "./revision.js";
 export {
 	MAX_SUPPORTED_SCHEMA_VERSION,
 	validateManifestSchema,
