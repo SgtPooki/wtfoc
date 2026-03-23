@@ -1,6 +1,11 @@
 # AGENTS.md — wtfoc
 
-Instructions for AI agents working on this codebase. Read `SPEC.md` first — it defines the foundational rules.
+Instructions for AI agents working on this codebase.
+
+**Read these first, in order:**
+1. [`SPEC.md`](SPEC.md) — foundational rules (invariants that apply to everything)
+2. [`.specify/memory/constitution.md`](.specify/memory/constitution.md) — governance and development discipline
+3. Feature specs in `.specify/specs/` — what you're actually building
 
 ## Project Overview
 
@@ -10,9 +15,19 @@ Instructions for AI agents working on this codebase. Read `SPEC.md` first — it
 
 ```
 wtfoc/
-├── SPEC.md              # Foundational rules — READ THIS FIRST
+├── SPEC.md              # Foundational rules — project-wide invariants
 ├── AGENTS.md            # You are here
-├── LICENSE
+├── README.md            # Project overview for humans
+├── LICENSE              # MIT
+├── SECURITY.md          # Vulnerability reporting + immutable storage warnings
+├── .specify/
+│   ├── memory/
+│   │   └── constitution.md  # Governance, development discipline
+│   ├── specs/               # Feature specs (spec-kit driven)
+│   │   └── 001-store-backend/
+│   │       └── spec.md      # First feature spec
+│   └── templates/           # Spec-kit templates
+├── .claude/commands/        # Spec-kit slash commands
 ├── packages/
 │   ├── common/          # @wtfoc/common — pure contracts, schemas, types
 │   ├── store/           # @wtfoc/store — blob storage + manifest management
@@ -23,16 +38,29 @@ wtfoc/
 └── .githooks/           # Git hooks (strip co-author lines)
 ```
 
+## How to Work on This Project (NON-NEGOTIABLE)
+
+Every change follows the spec-kit flow. No exceptions.
+
+1. **`/speckit.specify`** — write a spec for the change
+2. **`/speckit.clarify`** — resolve ambiguities
+3. **Cross-review** — spec reviewed by a different agent (Cursor or Codex) before ratification
+4. **`/speckit.plan`** — create implementation plan from ratified spec
+5. **`/speckit.tasks`** — generate task breakdown
+6. **`/speckit.implement`** — execute implementation
+
+Do not skip steps. Do not "write the spec later." The spec is the shared source of truth.
+
 ## Core Architecture Invariants
 
-These are restated from SPEC.md so you don't have to dig through issue threads.
+These are restated from SPEC.md so you don't have to dig through external docs.
 
 1. **Every seam is an interface** in `@wtfoc/common`. Six seams: Embedder, VectorIndex, StorageBackend, SourceAdapter, ManifestStore, EdgeExtractor.
-2. **Storage results are backend-neutral.** `StorageResult.id` is always present. `ipfsCid` and `pieceCid` are optional — only populated when the backend supports them.
-3. **Manifests and segments have `schemaVersion`.** Readers reject unknown versions. Writers always use latest. Old segments remain readable.
-4. **Single writer per project.** Concurrent updates rejected via `prevHeadCid` mismatch.
-5. **Ingest order:** chunks first → embed → extract edges → bundle segment → upload segment → verify → update head manifest → update local pointer.
-6. **Trace ≠ search.** Trace follows explicit edges across source types. Search finds semantically similar chunks. Trace falls back to search when no edges exist.
+2. **Storage results are backend-neutral.** `StorageResult.id` is always present. `ipfsCid` and `pieceCid` are optional.
+3. **Manifests and segments have `schemaVersion`.** Readers reject unknown versions. Writers always use latest.
+4. **Single writer per project.** Concurrent updates rejected via `prevHeadId` mismatch.
+5. **Ingest order:** chunks → embed → extract edges → bundle segment → upload → verify → update head → update local pointer.
+6. **Trace ≠ search.** Trace follows explicit edges. Search finds semantically similar chunks. Trace falls back to search when no edges exist.
 7. **`@wtfoc/common` is contracts only.** No I/O, no SDK wrappers, no business logic.
 
 ## Developer Workflow
@@ -49,10 +77,6 @@ pnpm --filter @wtfoc/store build     # build one package
 pnpm -r test                         # run all tests
 pnpm --filter @wtfoc/search test     # test one package
 ```
-
-- Unit tests use local/in-memory backends — **no network calls**
-- Golden fixtures in `fixtures/` for integration tests
-- Test interfaces, not implementations
 
 ### Lint & Format
 ```bash
@@ -72,16 +96,7 @@ TypeScript project references handle this automatically.
 - **No `any`** — use `unknown` and narrow
 - **No default exports** — named exports only
 - **ESM only** — `"type": "module"` in all packages
-- Prefer interfaces over type aliases for public API shapes
-- Export types from `@wtfoc/common`, import everywhere else
 - Long-running operations accept `AbortSignal` for cancellation
-
-## Package Boundaries
-
-- **Library packages** (`common`, `store`, `ingest`, `search`): peer deps for cross-package refs
-- **Application packages** (`cli`): hard deps on libraries they compose
-- `@wtfoc/common` is the only allowed hard dependency for library packages
-- No circular dependencies — if you need one, the abstraction is wrong
 
 ## Commit Style
 
@@ -89,65 +104,44 @@ TypeScript project references handle this automatically.
 - Scope with package name: `feat(store): add FOC upload support`
 - Keep commits atomic — one logical change per commit
 - Link issues: `Fixes #n` or `Refs #n`
+- Each commit must produce a working state
 
 ## Definition of Done (for PRs)
 
+- [ ] Spec exists and is ratified (cross-reviewed)
 - [ ] Tests pass (`pnpm -r test`)
+- [ ] Tests test behavior, not implementation
 - [ ] Biome passes (`pnpm biome check .`)
 - [ ] Package builds (`pnpm -r build`)
-- [ ] Public API changes: update SPEC.md if interface shapes change
-- [ ] New seam implementations: test against the interface, not the implementation
-- [ ] No secrets, PII, or real customer data in fixtures
+- [ ] Public API changes: update SPEC.md
+- [ ] No secrets, PII, or real customer data
 - [ ] README updated if user-visible behavior changes
 
 ## Error Handling
 
 - Typed error classes from `@wtfoc/common` with stable `code` field
-- Error codes: `MANIFEST_CONFLICT`, `STORAGE_UNREACHABLE`, `EMBED_FAILED`, `EDGE_EXTRACT_FAILED`, `SCHEMA_UNKNOWN`, etc.
-- CLI exit codes: 0 = success, 1 = general, 2 = usage, 3 = storage, 4 = conflict
-- Include enough context to debug: artifact ID, operation, backend type
+- Error codes: `MANIFEST_CONFLICT`, `STORAGE_UNREACHABLE`, `EMBED_FAILED`, `SCHEMA_UNKNOWN`, etc.
+- CLI exit codes: 0 success, 1 general, 2 usage, 3 storage, 4 conflict
 - Never throw raw strings — always use error classes
-
-## Logging
-
-- `stderr` for logs, `stdout` for data
-- CLI: default human-readable, `--json` for machine, `--quiet` for errors only
-- **Never log secrets, tokens, wallet keys, or PII**
-
-## FOC/Storage Rules
-
-- Use `filecoin-pin` + `@filoz/synapse-sdk` for FOC operations
-- Never hardcode CIDs, chain IDs, or wallet keys
-- Support `--local` mode everywhere — must work without any FOC setup
-- Upload segments first, verify they resolve, then update head manifest
-- Testnet (Calibration) data may be reset — not archival. Warn users.
-
-## Edge Extraction Rules
-
-- Edge `type` is a string, not an enum — built-in: `references`, `closes`, `changes`
-- Always include `evidence` field explaining why the edge exists
-- `confidence: 1.0` for explicit edges (regex-extracted), `< 1.0` for semantic
-- Repo-scope all identifiers: `FilOzone/synapse-sdk#142`, not just `#142`
-- Custom edge types welcome: `myapp:depends-on`, `myapp:blocks`, etc.
 
 ## Adding Dependencies
 
 Before adding a dependency, check:
-- [ ] Bundle size impact (check with `npx package-size`)
-- [ ] License compatibility (MIT, Apache-2.0, BSD — no GPL for MIT-licensed project)
-- [ ] Is it actively maintained?
-- [ ] Does it require native addons? (bad for portability)
-- [ ] Does it belong in `common` (only if it's a pure schema/type helper) or a leaf package?
+- [ ] Bundle size impact
+- [ ] License compatibility (MIT, Apache-2.0, BSD — no GPL)
+- [ ] Actively maintained?
+- [ ] Native addons? (bad for portability)
+- [ ] Belongs in `common` (only if pure schema/type helper) or leaf package?
 
 ## What NOT to Do
 
-- Don't add GraphRAG, RAPTOR, ColBERT, or advanced retrieval — future work
-- Don't build a web dashboard — CLI only for MVP
-- Don't add PDF parsing — markdown and plain text only
-- Don't over-abstract — three similar lines beats a premature abstraction
-- Don't add features not in SPEC.md without discussion
-- Don't scaffold `@wtfoc/memory` or `@wtfoc/mcp` until core is stable
+- Don't skip the spec-kit flow
+- Don't add features not in a ratified spec
 - Don't put I/O or business logic in `@wtfoc/common`
+- Don't add GraphRAG, RAPTOR, ColBERT — future work
+- Don't build a web dashboard — CLI only for MVP
+- Don't over-abstract — three similar lines beats a premature abstraction
+- Don't scaffold `@wtfoc/memory` or `@wtfoc/mcp` until core is stable
 
 ## Key Dependencies
 
@@ -159,11 +153,10 @@ viem                     — wallet/chain interaction
 commander                — CLI
 ```
 
-## Demo Priority
+## Links
 
-If time is tight, ship in this order:
-1. FOC upload/download (`@wtfoc/store`)
-2. Chunking + edge extraction (`@wtfoc/ingest`)
-3. Trace command (`@wtfoc/search` + `@wtfoc/cli`)
-4. Verify command
-5. Everything else is stretch
+- [SPEC.md](SPEC.md) — foundational rules
+- [Constitution](.specify/memory/constitution.md) — governance
+- [Feature specs](.specify/specs/) — spec-kit specs
+- [Issue #1](https://github.com/SgtPooki/wtfoc/issues/1) — architecture history (6 review rounds)
+- [Issue #2](https://github.com/SgtPooki/wtfoc/issues/2) — Slack webhook (future)
