@@ -23,6 +23,12 @@ wtfoc trace "upload failures" --collection team-intel
 
 One query surfaces the Slack complaint, the GitHub issue, the PR that fixed it, and the code that changed — all with verifiable content-addressed citations.
 
+## FOC for RAG
+
+The right way to position FOC in `wtfoc` is as the immutable system of record for a knowledge base, not as the online query engine. In practice that means storing canonical source snapshots and segment snapshots on FOC so the same collection can be verified, rehydrated, and re-queried later, while embedders and vector indices stay swappable.
+
+Storing only embeddings on FOC is not enough: it weakens provenance, makes re-embedding harder when models change, and gives a poor CID story because a consumer cannot recover the evidence behind a result. The recommended storage layout and CID reuse story are documented in [docs/foc-rag-storage.md](docs/foc-rag-storage.md).
+
 ## Packages
 
 | Package | Description | Install |
