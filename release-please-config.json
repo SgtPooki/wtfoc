@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    "packages/common": {
+      "package-name": "@wtfoc/common",
+      "component": "common"
+    },
+    "packages/store": {
+      "package-name": "@wtfoc/store",
+      "component": "store"
+    },
+    "packages/ingest": {
+      "package-name": "@wtfoc/ingest",
+      "component": "ingest"
+    },
+    "packages/search": {
+      "package-name": "@wtfoc/search",
+      "component": "search"
+    },
+    "packages/cli": {
+      "package-name": "@wtfoc/cli",
+      "component": "cli"
+    }
+  },
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "release-type": "node",
+  "versioning": "default",
+  "changelog-sections": [
+    { "type": "feat", "section": "Features" },
+    { "type": "fix", "section": "Bug Fixes" },
+    { "type": "perf", "section": "Performance" },
+    { "type": "refactor", "section": "Refactoring" },
+    { "type": "docs", "section": "Documentation" },
+    { "type": "chore", "section": "Miscellaneous", "hidden": true }
+  ]
+}
