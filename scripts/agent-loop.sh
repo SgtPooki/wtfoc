@@ -292,6 +292,95 @@ run_agent() {
 	rm -f "$prompt_file" 2>/dev/null || true
 }
 
+# ─── Review PRs that this agent didn't author ────────────────────────────────
+review_prs() {
+	# Find open PRs with "Ready for /peer-review" or "Needs /peer-review" in body/comments
+	local open_prs
+	open_prs=$(gh pr list --repo "$REPO" --state open --json number,title,body,headRefName -q '.[]' 2>/dev/null) || return 0
+
+	if [[ -z "$open_prs" ]]; then
+		return 0
+	fi
+
+	echo "$open_prs" | jq -c '.' 2>/dev/null | while IFS= read -r pr; do
+		local pr_num pr_title pr_branch
+		pr_num=$(echo "$pr" | jq -r '.number')
+		pr_title=$(echo "$pr" | jq -r '.title')
+		pr_branch=$(echo "$pr" | jq -r '.headRefName')
+
+		# Skip if this agent's name is in the branch (we authored it)
+		if echo "$pr_branch" | grep -qi "$AGENT"; then
+			continue
+		fi
+
+		# Check if already reviewed by this agent (look for our review comment)
+		local already_reviewed
+		already_reviewed=$(gh pr view "$pr_num" --repo "$REPO" --json comments -q "[.comments[] | select(.body | test(\"Review: ${AGENT}\"; \"i\"))] | length" 2>/dev/null || echo "0")
+
+		if [[ "$already_reviewed" -gt 0 ]]; then
+			continue
+		fi
+
+		log "Reviewing PR #${pr_num}: ${pr_title}"
+
+		# Get the diff
+		local diff
+		diff=$(gh pr diff "$pr_num" --repo "$REPO" 2>/dev/null)
+
+		# Build review prompt
+		local review_prompt
+		review_prompt="You are reviewing PR #${pr_num}: ${pr_title}
+
+Review this diff for:
+1. Correctness — does the code do what the spec says?
+2. Test coverage — are behavioral tests included?
+3. SPEC.md compliance — interfaces, error handling, AbortSignal, no any types
+4. Edge cases — anything missing?
+
+Provide a verdict: APPROVE, REQUEST_CHANGES, or COMMENT.
+Be specific and actionable.
+
+--- DIFF ---
+${diff}
+--- END DIFF ---"
+
+		local review_file
+		review_file=$(mktemp /tmp/wtfoc-review-XXXXXXXXXXXX)
+		mv "$review_file" "${review_file}.md"
+		review_file="${review_file}.md"
+		echo "$review_prompt" > "$review_file"
+
+		local review_output=""
+		case "$AGENT" in
+			cursor)
+				review_output=$(cursor agent --print --trust \
+					--workspace "$REPO_ROOT" "$(cat "$review_file")" 2>&1) || true
+				;;
+			codex)
+				review_output=$(cat "$review_file" | codex exec -C "$REPO_ROOT" - 2>&1) || true
+				;;
+			claude)
+				review_output=$(cd "$REPO_ROOT" && cat "$review_file" | claude -p - --allowedTools Bash,Read,Glob,Grep 2>&1) || true
+				;;
+		esac
+
+		rm -f "$review_file" 2>/dev/null || true
+
+		if [[ -n "$review_output" ]]; then
+			# Post review as PR comment
+			local comment_body="## Review: ${AGENT}
+
+${review_output}"
+			gh pr comment "$pr_num" --repo "$REPO" --body "$comment_body" >/dev/null 2>&1 && \
+				log "Posted review on PR #${pr_num}" || \
+				warn "Failed to post review on PR #${pr_num}"
+		fi
+
+		# Only review one PR per loop iteration to stay responsive
+		break
+	done
+}
+
 # ─── Main loop ────────────────────────────────────────────────────────────────
 log "Starting agent loop for ${AGENT}"
 
@@ -372,6 +461,9 @@ while true; do
 		log "Exiting (--once mode)."
 		exit 0
 	fi
+
+	# Before looking for next task, check if any PRs need review
+	review_prs
 
 	log "Looking for next task in 10s..."
 	sleep 10
