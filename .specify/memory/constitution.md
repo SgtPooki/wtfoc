@@ -43,7 +43,7 @@ Ship the demo, but make it worth extending. Every decision optimizes for: (1) wo
 - **AbortSignal on all async interfaces** — every long-running operation accepts `signal?: AbortSignal` for proper cancellation
 - **Conventional commits** scoped by package: `feat(store): add FOC upload`
 - **SemVer 0.x** — all packages experimental, `bump-minor-pre-major` via release-please
-- **Node >=18**
+- **Node >=24**
 
 ## Security
 

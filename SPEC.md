@@ -155,7 +155,7 @@ Deferred: `@wtfoc/memory` (agent memory), `@wtfoc/mcp` (MCP server) — scaffold
 - pnpm workspaces + TypeScript project references
 - Biome for formatting/linting
 - release-please for versioning
-- Node >=18
+- Node >=24
 - MIT license
 
 ## Feature Specs

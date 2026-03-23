@@ -53,7 +53,7 @@ See [SPEC.md](SPEC.md) for the full architecture.
 
 ```bash
 # Prerequisites
-node >= 18, pnpm
+node >= 24, pnpm
 
 # Setup
 pnpm install
