@@ -8,6 +8,7 @@ export {
 	StorageInsufficientBalanceError,
 	StorageNotFoundError,
 	StorageUnreachableError,
+	VectorDimensionMismatchError,
 	WtfocError,
 } from "./errors.js";
 export type { EdgeExtractor } from "./interfaces/edge-extractor.js";
