@@ -342,42 +342,94 @@ post_agent_cleanup() {
 	gh issue edit "$issue_num" --repo "$REPO" --remove-label "assigned-${AGENT}" >/dev/null 2>&1 || true
 }
 
+# ─── GitHub API call with retry ───────────────────────────────────────────────
+gh_retry() {
+	local attempt=0
+	local max_attempts=3
+	local delay=5
+
+	while [[ $attempt -lt $max_attempts ]]; do
+		if output=$("$@" 2>&1); then
+			echo "$output"
+			return 0
+		fi
+
+		attempt=$((attempt + 1))
+		if echo "$output" | grep -qi "rate limit\|api rate\|connection\|connect"; then
+			warn "GitHub API error (attempt ${attempt}/${max_attempts}): ${output:0:100}"
+			if [[ $attempt -lt $max_attempts ]]; then
+				log "Retrying in ${delay}s..."
+				sleep "$delay"
+				delay=$((delay * 2))
+			fi
+		else
+			# Non-retryable error
+			echo "$output"
+			return 1
+		fi
+	done
+
+	warn "GitHub API failed after ${max_attempts} attempts"
+	return 1
+}
+
 # ─── Review PRs that this agent didn't author ────────────────────────────────
 review_prs() {
-	# Find open PRs with "Ready for /peer-review" or "Needs /peer-review" in body/comments
 	local open_prs
-	open_prs=$(gh pr list --repo "$REPO" --state open --json number,title,body,headRefName -q '.[]' 2>/dev/null) || return 0
+	open_prs=$(gh_retry gh pr list --repo "$REPO" --state open \
+		--json number,title,headRefName,labels -q '.[]') || return 0
 
 	if [[ -z "$open_prs" ]]; then
 		return 0
 	fi
 
 	echo "$open_prs" | jq -c '.' 2>/dev/null | while IFS= read -r pr; do
-		local pr_num pr_title pr_branch
+		local pr_num pr_title pr_branch pr_labels
 		pr_num=$(echo "$pr" | jq -r '.number')
 		pr_title=$(echo "$pr" | jq -r '.title')
 		pr_branch=$(echo "$pr" | jq -r '.headRefName')
+		pr_labels=$(echo "$pr" | jq -r '.labels[].name' 2>/dev/null || echo "")
 
-		# Skip if this agent's name is in the branch (we authored it)
+		# Skip if this agent authored it (agent name in branch)
 		if echo "$pr_branch" | grep -qi "$AGENT"; then
 			continue
 		fi
 
-		# Check if already reviewed by this agent (look for our review comment)
-		local already_reviewed
-		already_reviewed=$(gh pr view "$pr_num" --repo "$REPO" --json comments -q "[.comments[] | select(.body | test(\"Review: ${AGENT}\"; \"i\"))] | length" 2>/dev/null || echo "0")
+		# Skip if already being reviewed by another agent
+		if echo "$pr_labels" | grep -q "reviewing-"; then
+			continue
+		fi
 
+		# Skip if this agent already reviewed it (check comments)
+		local already_reviewed
+		already_reviewed=$(gh pr view "$pr_num" --repo "$REPO" --json comments \
+			-q "[.comments[] | select(.body | test(\"Review: ${AGENT}\"; \"i\"))] | length" 2>/dev/null || echo "0")
 		if [[ "$already_reviewed" -gt 0 ]]; then
 			continue
 		fi
 
+		# Count existing reviews (agent reviews + copilot reviews)
+		local review_count
+		review_count=$(gh pr view "$pr_num" --repo "$REPO" --json comments,reviews \
+			-q '(.comments | map(select(.body | test("Review:"; "i"))) | length) + (.reviews | length)' 2>/dev/null || echo "0")
+
+		# Skip if already has 2+ reviews (copilot + one agent = enough)
+		if [[ "$review_count" -ge 2 ]]; then
+			continue
+		fi
+
+		# Claim the review
 		log "Reviewing PR #${pr_num}: ${pr_title}"
+		gh_retry gh pr edit "$pr_num" --repo "$REPO" --add-label "reviewing-${AGENT}" >/dev/null 2>&1 || true
 
 		# Get the diff
 		local diff
-		diff=$(gh pr diff "$pr_num" --repo "$REPO" 2>/dev/null)
+		diff=$(gh_retry gh pr diff "$pr_num" --repo "$REPO") || {
+			warn "Failed to get diff for PR #${pr_num}"
+			gh_retry gh pr edit "$pr_num" --repo "$REPO" --remove-label "reviewing-${AGENT}" >/dev/null 2>&1 || true
+			continue
+		}
 
-		# Build review prompt
 		local review_prompt
 		review_prompt="You are reviewing PR #${pr_num}: ${pr_title}
 
@@ -385,7 +437,9 @@ Review this diff for:
 1. Correctness — does the code do what the spec says?
 2. Test coverage — are behavioral tests included?
 3. SPEC.md compliance — interfaces, error handling, AbortSignal, no any types
-4. Edge cases — anything missing?
+4. Monorepo conventions — test scripts use 'vitest run', no ../.. paths, no node --test
+5. Edge cases — anything missing?
+6. Check if Copilot already reviewed — don't repeat what Copilot already flagged
 
 Provide a verdict: APPROVE, REQUEST_CHANGES, or COMMENT.
 Be specific and actionable.
@@ -417,16 +471,18 @@ ${diff}
 		rm -f "$review_file" 2>/dev/null || true
 
 		if [[ -n "$review_output" ]]; then
-			# Post review as PR comment
 			local comment_body="## Review: ${AGENT}
 
 ${review_output}"
-			gh pr comment "$pr_num" --repo "$REPO" --body "$comment_body" >/dev/null 2>&1 && \
+			gh_retry gh pr comment "$pr_num" --repo "$REPO" --body "$comment_body" >/dev/null 2>&1 && \
 				log "Posted review on PR #${pr_num}" || \
 				warn "Failed to post review on PR #${pr_num}"
 		fi
 
-		# Only review one PR per loop iteration to stay responsive
+		# Remove reviewing label
+		gh_retry gh pr edit "$pr_num" --repo "$REPO" --remove-label "reviewing-${AGENT}" >/dev/null 2>&1 || true
+
+		# Only review one PR per loop iteration
 		break
 	done
 }
@@ -435,6 +491,14 @@ ${review_output}"
 log "Starting agent loop for ${AGENT}"
 
 while true; do
+	# Step 0: Pull latest main to get script/config updates
+	(cd "$REPO_ROOT" && git pull origin main --ff-only 2>/dev/null) || true
+
+	# Step 1: Review open PRs BEFORE picking up new work
+	log "Checking for PRs to review..."
+	review_prs
+
+	# Step 2: Look for implementation work
 	log "Looking for work..."
 
 	issue_json=$(find_issue) || true
@@ -469,9 +533,6 @@ while true; do
 		log "Exiting (--once mode)."
 		exit 0
 	fi
-
-	# Before looking for next task, check if any PRs need review
-	review_prs
 
 	log "Looking for next task in 10s..."
 	sleep 10

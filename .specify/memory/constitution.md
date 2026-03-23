@@ -123,9 +123,14 @@ This project uses multiple AI agents (Claude, Cursor, Codex) working in parallel
 | `assigned-cursor` | Claimed by Cursor | Agent loop or `dispatch.sh assign` |
 | `assigned-codex` | Claimed by Codex | Agent loop or `dispatch.sh assign` |
 | `blocked` | Issue cannot proceed (missing dependency, needs decision) | Any agent or human |
+| `reviewing-claude` | PR is being reviewed by Claude — other agents skip | Agent loop |
+| `reviewing-cursor` | PR is being reviewed by Cursor | Agent loop |
+| `reviewing-codex` | PR is being reviewed by Codex | Agent loop |
 
 ### Rules
 
+- **Review before new work.** Agents check for PRs to review BEFORE picking up new implementation issues. Reviewing unblocks the pipeline faster than starting new work.
+- **One reviewer per PR.** `reviewing-<agent>` label prevents duplicate reviews. 2+ reviews (including Copilot) = enough.
 - **One agent per issue.** If an issue has `assigned-<agent>`, no other agent touches it.
 - **Claim before working.** Agents must label an issue `assigned-<agent>` before starting work.
 - **One branch per issue.** Each issue gets its own branch and worktree (`../wtfoc-worktrees/<branch>/`).
