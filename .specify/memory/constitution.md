@@ -127,6 +127,7 @@ This project uses multiple AI agents (Claude, Cursor, Codex) working in parallel
 | `reviewing-cursor` | PR is being reviewed by Cursor | Agent loop |
 | `reviewing-codex` | PR is being reviewed by Codex | Agent loop |
 | `changes-requested` | PR has review feedback that needs to be addressed by the author | Agent loop or reviewer |
+| `ready-to-merge` | PR reviewed, approved, ready for merge | Human or reviewer agent |
 | `authored-claude` | PR/issue was created by Claude | Agent loop (on PR creation) |
 | `authored-cursor` | PR/issue was created by Cursor | Agent loop (on PR creation) |
 | `authored-codex` | PR/issue was created by Codex | Agent loop (on PR creation) |

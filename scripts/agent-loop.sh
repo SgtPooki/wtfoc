@@ -21,6 +21,9 @@ set -euo pipefail
 REPO="SgtPooki/wtfoc"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Source the shared cache
+source "${SCRIPT_DIR}/gh-cache.sh"
 WORKTREE_BASE="$(cd "$REPO_ROOT/.." && pwd)/wtfoc-worktrees"
 VALID_AGENTS=("claude" "cursor" "codex")
 
@@ -61,10 +64,12 @@ has_open_pr() {
 
 # ─── Find next issue to work on ──────────────────────────────────────────────
 find_issue() {
+	# Ensure cache is reasonably fresh (max 5 min, but don't refresh ourselves — unblock.sh does that)
+	gh_cache_ensure_fresh 600
+
 	# Priority 1: Issue already assigned to this agent (but NOT blocked, and no open PR)
 	local assigned
-	assigned=$(gh issue list --repo "$REPO" --label "assigned-${AGENT}" --state open \
-		--json number,title,labels -q '[.[] | select(.labels | map(.name) | contains(["blocked"]) | not)] | .[0] // empty')
+	assigned=$(gh_cache_issues | jq -c '[.[] | select(.labels | map(.name) | contains(["assigned-'"${AGENT}"'"])) | select(.labels | map(.name) | contains(["blocked"]) | not)] | .[0] // empty')
 
 	if [[ -n "$assigned" ]] && echo "$assigned" | jq -e '.number' >/dev/null 2>&1; then
 		local assigned_num
@@ -79,8 +84,7 @@ find_issue() {
 
 	# Priority 2: Unassigned "ready" issue — claim it
 	local ready
-	ready=$(gh issue list --repo "$REPO" --label "ready" --state open \
-		--json number,title,labels -q '[.[] | select(.labels | map(.name) | (contains(["assigned-claude"]) or contains(["assigned-cursor"]) or contains(["assigned-codex"])) | not)] | .[0] // empty')
+	ready=$(gh_cache_issues | jq -c '[.[] | select(.labels | map(.name) | contains(["ready"])) | select(.labels | map(.name) | (contains(["assigned-claude"]) or contains(["assigned-cursor"]) or contains(["assigned-codex"])) | not)] | .[0] // empty')
 
 	# Iterate through ready issues, skip any with open PRs
 	if [[ -n "$ready" ]] && echo "$ready" | jq -e '.number' >/dev/null 2>&1; then
@@ -292,12 +296,95 @@ run_agent() {
 	rm -f "$prompt_file" 2>/dev/null || true
 }
 
+# ─── Merge PRs that are ready-to-merge and authored by this agent ─────────────
+merge_ready_prs() {
+	gh_cache_ensure_fresh 600
+
+	local my_prs
+	my_prs=$(gh_cache_prs | jq -c '.[]') || return 0
+
+	if [[ -z "$my_prs" ]]; then
+		return 0
+	fi
+
+	echo "$my_prs" | while IFS= read -r pr; do
+		local pr_num pr_title pr_branch pr_labels
+		pr_num=$(echo "$pr" | jq -r '.number')
+		pr_title=$(echo "$pr" | jq -r '.title')
+		pr_branch=$(echo "$pr" | jq -r '.headRefName')
+		pr_labels=$(echo "$pr" | jq -r '.labels[].name' 2>/dev/null || echo "")
+
+		# Only merge PRs this agent authored
+		if ! echo "$pr_labels" | grep -q "authored-${AGENT}"; then
+			continue
+		fi
+
+		# Only merge if labeled ready-to-merge
+		if ! echo "$pr_labels" | grep -q "ready-to-merge"; then
+			continue
+		fi
+
+		log "PR #${pr_num} is ready-to-merge. Validating..."
+
+		# Find or create worktree
+		local worktree_dir="${WORKTREE_BASE}/${pr_branch}"
+		if [[ ! -d "$worktree_dir" ]]; then
+			cd "$REPO_ROOT"
+			git fetch origin "$pr_branch" 2>/dev/null || true
+			git worktree add "$worktree_dir" "$pr_branch" 2>/dev/null || true
+			(cd "$worktree_dir" && pnpm install --frozen-lockfile 2>/dev/null) || true
+		else
+			(cd "$worktree_dir" && git pull origin "$pr_branch" --ff-only 2>/dev/null) || true
+		fi
+
+		# Run tests and lint locally
+		local tests_pass=true
+		(cd "$worktree_dir" && pnpm test 2>/dev/null) || tests_pass=false
+		(cd "$worktree_dir" && pnpm lint 2>/dev/null) || tests_pass=false
+
+		if [[ "$tests_pass" == "false" ]]; then
+			warn "PR #${pr_num} tests/lint failed — cannot merge"
+			gh_retry gh pr comment "$pr_num" --repo "$REPO" \
+				--body "**Merge blocked**: tests or lint failed locally. Needs fixes." >/dev/null 2>&1 || true
+			gh_retry gh issue edit "$pr_num" --repo "$REPO" \
+				--remove-label "ready-to-merge" --add-label "changes-requested" >/dev/null 2>&1 || true
+			continue
+		fi
+
+		# Check for merge conflicts
+		local can_merge
+		can_merge=$(gh pr view "$pr_num" --repo "$REPO" --json mergeable -q '.mergeable' 2>/dev/null || echo "UNKNOWN")
+
+		if [[ "$can_merge" == "CONFLICTING" ]]; then
+			warn "PR #${pr_num} has merge conflicts — cannot merge"
+			gh_retry gh pr comment "$pr_num" --repo "$REPO" \
+				--body "**Merge blocked**: conflicts with main. Needs rebase." >/dev/null 2>&1 || true
+			gh_retry gh issue edit "$pr_num" --repo "$REPO" \
+				--remove-label "ready-to-merge" --add-label "changes-requested" >/dev/null 2>&1 || true
+			continue
+		fi
+
+		# Merge!
+		log "Merging PR #${pr_num}: ${pr_title}"
+		if gh_retry gh pr merge "$pr_num" --repo "$REPO" --squash --delete-branch; then
+			log "PR #${pr_num} merged successfully!"
+			# Force cache refresh so other agents see the change
+			gh_cache_refresh
+		else
+			warn "Failed to merge PR #${pr_num}"
+		fi
+
+		# Only merge one PR per loop iteration
+		break
+	done
+}
+
 # ─── Address PR feedback on PRs this agent authored ───────────────────────────
 address_pr_feedback() {
 	# Find open PRs authored by this agent that have review comments
 	local my_prs
-	my_prs=$(gh_retry gh pr list --repo "$REPO" --state open \
-		--json number,title,headRefName,labels -q '.[]' 2>/dev/null) || return 0
+	gh_cache_ensure_fresh 600
+	my_prs=$(gh_cache_prs | jq -c '.[]') || return 0
 
 	if [[ -z "$my_prs" ]]; then
 		return 0
@@ -526,9 +613,10 @@ gh_retry() {
 
 # ─── Review PRs that this agent didn't author ────────────────────────────────
 review_prs() {
+	gh_cache_ensure_fresh 600
+
 	local open_prs
-	open_prs=$(gh_retry gh pr list --repo "$REPO" --state open \
-		--json number,title,headRefName,labels -q '.[]') || return 0
+	open_prs=$(gh_cache_prs | jq -c '.[]') || return 0
 
 	if [[ -z "$open_prs" ]]; then
 		return 0
@@ -672,15 +760,19 @@ while true; do
 	# Step 0: Pull latest main to get script/config updates
 	(cd "$REPO_ROOT" && git pull origin main --ff-only 2>/dev/null) || true
 
-	# Step 1: Address feedback on my own PRs (highest priority — unblocks merges)
+	# Step 1: Merge my PRs that are ready-to-merge (highest — unblocks everything)
+	log "Checking for PRs to merge..."
+	merge_ready_prs
+
+	# Step 2: Address feedback on my own PRs (unblocks merges)
 	log "Checking for PR feedback to address..."
 	address_pr_feedback
 
-	# Step 2: Review other agents' PRs (unblocks their work)
+	# Step 3: Review other agents' PRs (unblocks their work)
 	log "Checking for PRs to review..."
 	review_prs
 
-	# Step 3: Look for implementation work
+	# Step 4: Look for implementation work
 	log "Looking for work..."
 
 	issue_json=$(find_issue) || true
