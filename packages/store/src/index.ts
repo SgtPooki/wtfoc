@@ -3,3 +3,5 @@
 
 export { LocalStorageBackend } from "./backends/local.js";
 export { LocalManifestStore } from "./manifest/local.js";
+export { createStore } from "./factory.js";
+export type { StoreConfig, Store } from "./factory.js";

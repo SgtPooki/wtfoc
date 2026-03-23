@@ -9,7 +9,7 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsc -b",
-    "test": "node --test dist/**/*.test.js"
+    "test": "node --test 'dist/**/*.test.js' 'dist/*.test.js'"
   },
   "dependencies": {
     "@wtfoc/common": "workspace:*"
