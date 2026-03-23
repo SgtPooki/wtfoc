@@ -29,6 +29,22 @@ program
 	.option("--json", "Output as JSON")
 	.option("--quiet", "Suppress output (errors only)");
 
+interface EmbedderOpts {
+	embedder?: string;
+	embedderUrl?: string;
+	embedderKey?: string;
+	embedderModel?: string;
+}
+
+/** Add --embedder flags to any command */
+function withEmbedderOptions<T extends Command>(cmd: T): T {
+	return cmd
+		.option("--embedder <type>", "Embedder: transformers (default), openai, lmstudio")
+		.option("--embedder-url <url>", "Embedder API URL (for openai/lmstudio)")
+		.option("--embedder-key <key>", "Embedder API key")
+		.option("--embedder-model <model>", "Embedder model name") as T;
+}
+
 function getFormat(opts: { json?: boolean; quiet?: boolean }): OutputFormat {
 	if (opts.json) return "json";
 	if (opts.quiet) return "quiet";
@@ -106,185 +122,174 @@ program
 	});
 
 // ─── wtfoc ingest <source-type> ──────────────────────────────────────────────
-const ingestCmd = program
-	.command("ingest <sourceType> [args...]")
-	.description("Ingest from a source (repo, slack, github, website)")
-	.requiredOption("-c, --collection <name>", "Collection name")
-	.option("--since <duration>", "Only fetch items newer than duration (e.g. 90d)")
-	.option("--embedder <type>", "Embedder: transformers (default), openai, lmstudio")
-	.option("--embedder-url <url>", "Embedder API URL (for openai/lmstudio)")
-	.option("--embedder-key <key>", "Embedder API key")
-	.option("--embedder-model <model>", "Embedder model name")
-	.action(
-		async (
-			sourceType: string,
-			args: string[],
-			opts: {
-				collection: string;
-				embedder?: string;
-				embedderUrl?: string;
-				embedderKey?: string;
-				embedderModel?: string;
-			},
-		) => {
-			const store = createStore({ storage: "local" });
-			const format = getFormat(program.opts());
+const ingestCmd = withEmbedderOptions(
+	program
+		.command("ingest <sourceType> [args...]")
+		.description("Ingest from a source (repo, slack, github, website)")
+		.requiredOption("-c, --collection <name>", "Collection name")
+		.option("--since <duration>", "Only fetch items newer than duration (e.g. 90d)"),
+).action(
+	async (sourceType: string, args: string[], opts: { collection: string } & EmbedderOpts) => {
+		const store = createStore({ storage: "local" });
+		const format = getFormat(program.opts());
 
-			// Get or create manifest
-			const head = await store.manifests.getHead(opts.collection);
-			let prevHeadId: string | null = null;
-			if (head) {
-				prevHeadId = head.headId;
-			}
+		// Get or create manifest
+		const head = await store.manifests.getHead(opts.collection);
+		let prevHeadId: string | null = null;
+		if (head) {
+			prevHeadId = head.headId;
+		}
 
-			// Initialize embedder
-			if (format !== "quiet") console.error("⏳ Loading embedder...");
-			const { embedder, modelName } = createEmbedder(opts);
+		// Initialize embedder
+		if (format !== "quiet") console.error("⏳ Loading embedder...");
+		const { embedder, modelName } = createEmbedder(opts);
 
-			// Detect model mismatch
-			if (
-				head &&
-				head.manifest.embeddingModel !== "pending" &&
-				head.manifest.embeddingModel !== modelName
-			) {
-				console.error(
-					`⚠️  Model mismatch: collection uses "${head.manifest.embeddingModel}" but you're using "${modelName}".`,
-				);
-				console.error(
-					"   Mixed embeddings will produce poor search results. Use --embedder to match, or re-index the collection.",
-				);
-				process.exit(1);
-			}
+		// Detect model mismatch
+		if (
+			head &&
+			head.manifest.embeddingModel !== "pending" &&
+			head.manifest.embeddingModel !== modelName
+		) {
+			console.error(
+				`⚠️  Model mismatch: collection uses "${head.manifest.embeddingModel}" but you're using "${modelName}".`,
+			);
+			console.error(
+				"   Mixed embeddings will produce poor search results. Use --embedder to match, or re-index the collection.",
+			);
+			process.exit(1);
+		}
 
-			// Collect chunks based on source type
-			const chunks: Chunk[] = [];
-			if (sourceType === "repo") {
-				const repoSource = args[0];
-				if (!repoSource) {
-					console.error("Error: repo source required (e.g. FilOzone/synapse-sdk or ./path)");
-					process.exit(2);
-				}
-				if (format !== "quiet") console.error(`⏳ Ingesting repo: ${repoSource}...`);
-				const adapter = new RepoAdapter();
-				const repoConfig = adapter.parseConfig({ source: repoSource });
-				for await (const chunk of adapter.ingest(repoConfig)) {
-					chunks.push(chunk);
-				}
-				if (format !== "quiet") console.error(`   ${chunks.length} chunks extracted`);
-
-				// Extract edges
-				const edgeExtractor = new RegexEdgeExtractor();
-				const edges = [...adapter.extractEdges(chunks), ...edgeExtractor.extract(chunks)];
-				if (format !== "quiet") console.error(`   ${edges.length} edges extracted`);
-
-				// Embed chunks
-				if (format !== "quiet") console.error("⏳ Embedding chunks...");
-				const embeddings = await embedder.embedBatch(chunks.map((c) => c.content));
-
-				// Build segment
-				const segmentChunks = chunks.map((chunk, i) => {
-					const emb = embeddings[i];
-					if (!emb)
-						throw new Error(
-							`Missing embedding for chunk ${i} — expected ${chunks.length} embeddings`,
-						);
-					return { chunk, embedding: Array.from(emb) };
-				});
-
-				const segment = buildSegment(segmentChunks, edges, {
-					embeddingModel: modelName,
-					embeddingDimensions: embedder.dimensions,
-				});
-
-				// Store segment
-				const segmentBytes = new TextEncoder().encode(JSON.stringify(segment));
-				const segmentResult = await store.storage.upload(segmentBytes);
-				if (format !== "quiet")
-					console.error(`   Segment stored: ${segmentResult.id.slice(0, 16)}...`);
-
-				// Update manifest
-				const manifest: HeadManifest = {
-					schemaVersion: 1,
-					name: opts.collection,
-					prevHeadId,
-					segments: [
-						...(head?.manifest.segments ?? []),
-						{
-							id: segmentResult.id,
-							sourceTypes: [...new Set(chunks.map((c) => c.sourceType))],
-							chunkCount: chunks.length,
-						},
-					],
-					totalChunks: (head?.manifest.totalChunks ?? 0) + chunks.length,
-					embeddingModel: modelName,
-					embeddingDimensions: embedder.dimensions,
-					createdAt: head?.manifest.createdAt ?? new Date().toISOString(),
-					updatedAt: new Date().toISOString(),
-				};
-
-				await store.manifests.putHead(opts.collection, manifest, prevHeadId);
-				if (format !== "quiet") {
-					console.error(
-						`✅ Ingested ${chunks.length} chunks from ${repoSource} into "${opts.collection}"`,
-					);
-				}
-			} else {
-				console.error(`Unknown source type: ${sourceType}`);
-				console.error("Available: repo");
+		// Collect chunks based on source type
+		const chunks: Chunk[] = [];
+		if (sourceType === "repo") {
+			const repoSource = args[0];
+			if (!repoSource) {
+				console.error("Error: repo source required (e.g. FilOzone/synapse-sdk or ./path)");
 				process.exit(2);
 			}
-		},
-	);
+			if (format !== "quiet") console.error(`⏳ Ingesting repo: ${repoSource}...`);
+			const adapter = new RepoAdapter();
+			const repoConfig = adapter.parseConfig({ source: repoSource });
+			for await (const chunk of adapter.ingest(repoConfig)) {
+				chunks.push(chunk);
+			}
+			if (format !== "quiet") console.error(`   ${chunks.length} chunks extracted`);
+
+			// Extract edges
+			const edgeExtractor = new RegexEdgeExtractor();
+			const edges = [...adapter.extractEdges(chunks), ...edgeExtractor.extract(chunks)];
+			if (format !== "quiet") console.error(`   ${edges.length} edges extracted`);
+
+			// Embed chunks
+			if (format !== "quiet") console.error("⏳ Embedding chunks...");
+			const embeddings = await embedder.embedBatch(chunks.map((c) => c.content));
+
+			// Build segment
+			const segmentChunks = chunks.map((chunk, i) => {
+				const emb = embeddings[i];
+				if (!emb)
+					throw new Error(
+						`Missing embedding for chunk ${i} — expected ${chunks.length} embeddings`,
+					);
+				return { chunk, embedding: Array.from(emb) };
+			});
+
+			const segment = buildSegment(segmentChunks, edges, {
+				embeddingModel: modelName,
+				embeddingDimensions: embedder.dimensions,
+			});
+
+			// Store segment
+			const segmentBytes = new TextEncoder().encode(JSON.stringify(segment));
+			const segmentResult = await store.storage.upload(segmentBytes);
+			if (format !== "quiet")
+				console.error(`   Segment stored: ${segmentResult.id.slice(0, 16)}...`);
+
+			// Update manifest
+			const manifest: HeadManifest = {
+				schemaVersion: 1,
+				name: opts.collection,
+				prevHeadId,
+				segments: [
+					...(head?.manifest.segments ?? []),
+					{
+						id: segmentResult.id,
+						sourceTypes: [...new Set(chunks.map((c) => c.sourceType))],
+						chunkCount: chunks.length,
+					},
+				],
+				totalChunks: (head?.manifest.totalChunks ?? 0) + chunks.length,
+				embeddingModel: modelName,
+				embeddingDimensions: embedder.dimensions,
+				createdAt: head?.manifest.createdAt ?? new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
+
+			await store.manifests.putHead(opts.collection, manifest, prevHeadId);
+			if (format !== "quiet") {
+				console.error(
+					`✅ Ingested ${chunks.length} chunks from ${repoSource} into "${opts.collection}"`,
+				);
+			}
+		} else {
+			console.error(`Unknown source type: ${sourceType}`);
+			console.error("Available: repo");
+			process.exit(2);
+		}
+	},
+);
 
 // ─── wtfoc trace ─────────────────────────────────────────────────────────────
-program
-	.command("trace <query>")
-	.description("Trace evidence-backed connections across sources")
-	.requiredOption("-c, --collection <name>", "Collection name")
-	.action(async (queryText: string, opts: { collection: string }) => {
-		const store = createStore({ storage: "local" });
-		const format = getFormat(program.opts());
+withEmbedderOptions(
+	program
+		.command("trace <query>")
+		.description("Trace evidence-backed connections across sources")
+		.requiredOption("-c, --collection <name>", "Collection name"),
+).action(async (queryText: string, opts: { collection: string } & EmbedderOpts) => {
+	const store = createStore({ storage: "local" });
+	const format = getFormat(program.opts());
 
-		const head = await store.manifests.getHead(opts.collection);
-		if (!head) {
-			console.error(`Error: collection "${opts.collection}" not found`);
-			process.exit(1);
-		}
+	const head = await store.manifests.getHead(opts.collection);
+	if (!head) {
+		console.error(`Error: collection "${opts.collection}" not found`);
+		process.exit(1);
+	}
 
-		if (format !== "quiet") console.error("⏳ Loading embedder + index...");
+	if (format !== "quiet") console.error("⏳ Loading embedder + index...");
+	const { embedder } = createEmbedder(opts);
+	const { vectorIndex, segments } = await loadCollection(store, head.manifest);
 
-		// Load all segments and build vector index
-		const { embedder, vectorIndex, segments } = await loadCollection(store, head.manifest);
-
-		const result = await trace(queryText, embedder, vectorIndex, segments);
-		console.log(formatTrace(result, format));
-	});
+	const result = await trace(queryText, embedder, vectorIndex, segments);
+	console.log(formatTrace(result, format));
+});
 
 // ─── wtfoc query ─────────────────────────────────────────────────────────────
-program
-	.command("query <queryText>")
-	.description("Semantic search across collection")
-	.requiredOption("-c, --collection <name>", "Collection name")
-	.option("-k, --top-k <number>", "Number of results", "10")
-	.action(async (queryText: string, opts: { collection: string; topK: string }) => {
-		const store = createStore({ storage: "local" });
-		const format = getFormat(program.opts());
+program;
+withEmbedderOptions(
+	program
+		.command("query <queryText>")
+		.description("Semantic search across collection")
+		.requiredOption("-c, --collection <name>", "Collection name")
+		.option("-k, --top-k <number>", "Number of results", "10"),
+).action(async (queryText: string, opts: { collection: string; topK: string } & EmbedderOpts) => {
+	const store = createStore({ storage: "local" });
+	const format = getFormat(program.opts());
 
-		const head = await store.manifests.getHead(opts.collection);
-		if (!head) {
-			console.error(`Error: collection "${opts.collection}" not found`);
-			process.exit(1);
-		}
+	const head = await store.manifests.getHead(opts.collection);
+	if (!head) {
+		console.error(`Error: collection "${opts.collection}" not found`);
+		process.exit(1);
+	}
 
-		if (format !== "quiet") console.error("⏳ Loading embedder + index...");
+	if (format !== "quiet") console.error("⏳ Loading embedder + index...");
+	const { embedder } = createEmbedder(opts);
+	const { vectorIndex } = await loadCollection(store, head.manifest);
 
-		const { embedder, vectorIndex } = await loadCollection(store, head.manifest);
-
-		const result = await query(queryText, embedder, vectorIndex, {
-			topK: Number.parseInt(opts.topK, 10),
-		});
-		console.log(formatQuery(result, format));
+	const result = await query(queryText, embedder, vectorIndex, {
+		topK: Number.parseInt(opts.topK, 10),
 	});
+	console.log(formatQuery(result, format));
+});
 
 // ─── wtfoc status ────────────────────────────────────────────────────────────
 program
@@ -344,7 +349,6 @@ program
 // ─── Helper: load collection into embedder + vector index ────────────────────
 
 interface LoadedCollection {
-	embedder: Embedder;
 	vectorIndex: VectorIndex;
 	segments: Segment[];
 }
@@ -353,21 +357,6 @@ async function loadCollection(
 	store: ReturnType<typeof createStore>,
 	manifest: HeadManifest,
 ): Promise<LoadedCollection> {
-	let embedder: Embedder;
-	try {
-		embedder = new TransformersEmbedder();
-	} catch {
-		embedder = {
-			dimensions: manifest.embeddingDimensions,
-			async embed(): Promise<Float32Array> {
-				return new Float32Array(manifest.embeddingDimensions);
-			},
-			async embedBatch(texts: string[]): Promise<Float32Array[]> {
-				return texts.map(() => new Float32Array(manifest.embeddingDimensions));
-			},
-		};
-	}
-
 	const vectorIndex = new InMemoryVectorIndex();
 	const segments: Segment[] = [];
 
@@ -392,7 +381,7 @@ async function loadCollection(
 		await vectorIndex.add(entries);
 	}
 
-	return { embedder, vectorIndex, segments };
+	return { vectorIndex, segments };
 }
 
 // ─── Run ─────────────────────────────────────────────────────────────────────
