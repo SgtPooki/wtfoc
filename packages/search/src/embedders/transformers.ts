@@ -32,8 +32,11 @@ export class TransformersEmbedder implements Embedder {
 					const pipelineFn = mod.pipeline as (
 						task: string,
 						model: string,
+						options?: Record<string, unknown>,
 					) => Promise<FeatureExtractionPipeline>;
-					this.#pipeline = await pipelineFn("feature-extraction", this.model);
+					this.#pipeline = await pipelineFn("feature-extraction", this.model, {
+						dtype: "fp32",
+					} as Record<string, unknown>);
 				} catch (err) {
 					this.#initPromise = null;
 					throw new EmbedFailedError(this.model, err);

@@ -284,8 +284,37 @@ withEmbedderOptions(
 	const { embedder } = createEmbedder(opts);
 	const { vectorIndex, segments } = await loadCollection(store, head.manifest);
 
-	const result = await trace(queryText, embedder, vectorIndex, segments);
-	console.log(formatTrace(result, format));
+	// Check dimension compatibility before querying
+	const collectionDims = head.manifest.embeddingDimensions;
+	if (collectionDims > 0 && embedder.dimensions > 0 && collectionDims !== embedder.dimensions) {
+		console.error(
+			`\n❌ Dimension mismatch: collection uses ${collectionDims}d embeddings but your embedder produces ${embedder.dimensions}d.`,
+		);
+		console.error(`   Collection was embedded with: ${head.manifest.embeddingModel}`);
+		console.error(`\n   To query this collection, use the same embedder:`);
+		console.error(
+			`   ./wtfoc trace "${queryText}" -c ${opts.collection} --embedder lmstudio --embedder-model ${head.manifest.embeddingModel}`,
+		);
+		console.error(`\n   Or re-index with your current embedder (not yet supported).`);
+		process.exit(1);
+	}
+
+	try {
+		const result = await trace(queryText, embedder, vectorIndex, segments);
+		console.log(formatTrace(result, format));
+	} catch (err) {
+		if (
+			err instanceof Error &&
+			"code" in err &&
+			(err as { code: string }).code === "VECTOR_DIMENSION_MISMATCH"
+		) {
+			console.error(`\n❌ ${err.message}`);
+			console.error(`   Collection model: ${head.manifest.embeddingModel} (${collectionDims}d)`);
+			console.error(`   Use --embedder to match the collection's model.`);
+			process.exit(1);
+		}
+		throw err;
+	}
 });
 
 // ─── wtfoc query ─────────────────────────────────────────────────────────────
@@ -310,10 +339,36 @@ withEmbedderOptions(
 	const { embedder } = createEmbedder(opts);
 	const { vectorIndex } = await loadCollection(store, head.manifest);
 
-	const result = await query(queryText, embedder, vectorIndex, {
-		topK: Number.parseInt(opts.topK, 10),
-	});
-	console.log(formatQuery(result, format));
+	const collectionDims = head.manifest.embeddingDimensions;
+	if (collectionDims > 0 && embedder.dimensions > 0 && collectionDims !== embedder.dimensions) {
+		console.error(
+			`\n❌ Dimension mismatch: collection uses ${collectionDims}d embeddings but your embedder produces ${embedder.dimensions}d.`,
+		);
+		console.error(`   Collection was embedded with: ${head.manifest.embeddingModel}`);
+		console.error(`\n   Use --embedder to match, e.g.:`);
+		console.error(
+			`   ./wtfoc query "${queryText}" -c ${opts.collection} --embedder lmstudio --embedder-model ${head.manifest.embeddingModel}`,
+		);
+		process.exit(1);
+	}
+
+	try {
+		const result = await query(queryText, embedder, vectorIndex, {
+			topK: Number.parseInt(opts.topK, 10),
+		});
+		console.log(formatQuery(result, format));
+	} catch (err) {
+		if (
+			err instanceof Error &&
+			"code" in err &&
+			(err as { code: string }).code === "VECTOR_DIMENSION_MISMATCH"
+		) {
+			console.error(`\n❌ ${err.message}`);
+			console.error(`   Use --embedder to match the collection's model.`);
+			process.exit(1);
+		}
+		throw err;
+	}
 });
 
 // ─── wtfoc status ────────────────────────────────────────────────────────────

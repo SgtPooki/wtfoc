@@ -50,7 +50,11 @@ describe("TransformersEmbedder", () => {
 
 		await embedder.embed("first");
 		expect(mockPipeline).toHaveBeenCalledOnce();
-		expect(mockPipeline).toHaveBeenCalledWith("feature-extraction", "Xenova/all-MiniLM-L6-v2");
+		expect(mockPipeline).toHaveBeenCalledWith(
+			"feature-extraction",
+			"Xenova/all-MiniLM-L6-v2",
+			expect.objectContaining({ dtype: "fp32" }),
+		);
 
 		await embedder.embed("second");
 		expect(mockPipeline).toHaveBeenCalledOnce(); // not called again
