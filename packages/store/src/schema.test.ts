@@ -38,6 +38,7 @@ function minimalValidSegmentRecord(overrides?: Record<string, unknown>): Record<
 			{
 				id: "chunk-1",
 				storageId: "blob-abc",
+				content: "test chunk content",
 				embedding: [0.1, 0.2],
 				terms: ["a"],
 				source: "src",

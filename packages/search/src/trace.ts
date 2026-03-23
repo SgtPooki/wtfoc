@@ -161,7 +161,7 @@ function buildChunkLookup(segments: Segment[]): Map<string, ChunkData> {
 	for (const seg of segments) {
 		for (const chunk of seg.chunks) {
 			lookup.set(chunk.id, {
-				content: chunk.metadata["content"] ?? "",
+				content: chunk.content,
 				sourceType: chunk.sourceType,
 				source: chunk.source,
 				sourceUrl: chunk.sourceUrl,

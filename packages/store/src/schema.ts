@@ -334,6 +334,14 @@ function validateChunk(
 		"segment",
 		`chunks[${index}].sourceType`,
 	);
+	const content = requireField(
+		raw,
+		"content",
+		isString,
+		`chunks[${index}].content must be a string`,
+		"segment",
+		`chunks[${index}].content`,
+	);
 	const metadata = requireField(
 		raw,
 		"metadata",
@@ -346,6 +354,7 @@ function validateChunk(
 	const chunk: Segment["chunks"][number] = {
 		id,
 		storageId,
+		content,
 		embedding,
 		terms,
 		source,

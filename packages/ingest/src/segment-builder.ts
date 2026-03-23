@@ -31,6 +31,7 @@ export function buildSegment(
 		chunks: chunks.map((c) => ({
 			id: c.chunk.id,
 			storageId: "", // filled after upload
+			content: c.chunk.content,
 			embedding: c.embedding,
 			terms: c.terms ?? extractTerms(c.chunk.content),
 			source: c.chunk.source,

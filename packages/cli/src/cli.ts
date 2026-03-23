@@ -321,7 +321,7 @@ async function loadCollection(
 				sourceType: c.sourceType,
 				source: c.source,
 				sourceUrl: c.sourceUrl ?? "",
-				content: c.metadata["content"] ?? "",
+				content: c.content,
 				...c.metadata,
 			},
 		}));

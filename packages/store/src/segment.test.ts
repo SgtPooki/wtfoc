@@ -19,6 +19,7 @@ function minimalValidSegment(overrides?: Partial<Segment>): Segment {
 			{
 				id: "chunk-1",
 				storageId: "blob-abc",
+				content: "test chunk content",
 				embedding: embeddingOf(embeddingDimensions),
 				terms: ["a"],
 				source: "src",

@@ -52,6 +52,8 @@ export interface Segment {
 	chunks: Array<{
 		id: string;
 		storageId: string;
+		/** The actual text content of this chunk (for display in results) */
+		content: string;
 		embedding: number[];
 		terms: string[];
 		source: string;
