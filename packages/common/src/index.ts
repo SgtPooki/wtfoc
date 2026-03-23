@@ -4,6 +4,10 @@
 export {
 	CollectionHeadConflictError,
 	EmbedFailedError,
+	GitHubApiError,
+	GitHubCliMissingError,
+	GitHubNotFoundError,
+	GitHubRateLimitError,
 	ManifestConflictError,
 	PublishFailedError,
 	RevisionSchemaUnknownError,
