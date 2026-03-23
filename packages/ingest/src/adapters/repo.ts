@@ -54,7 +54,12 @@ export class RepoAdapter implements SourceAdapter {
 	readonly sourceType = "repo";
 
 	async *ingest(config: SourceConfig): AsyncIterable<Chunk> {
-		const opts = config.options as RepoAdapterConfig;
+		const opts: RepoAdapterConfig = {
+			source: String(config.options["source"] ?? ""),
+			include: config.options["include"] as string[] | undefined,
+			exclude: config.options["exclude"] as string[] | undefined,
+			maxFileSize: config.options["maxFileSize"] as number | undefined,
+		};
 		const repoPath = await resolveRepoPath(opts.source);
 		const repo = extractRepoName(opts.source);
 
@@ -78,7 +83,7 @@ export class RepoAdapter implements SourceAdapter {
 			const sourceUrl = `https://github.com/${repo}/blob/main/${relPath}`;
 
 			if (isMarkdown) {
-				const chunks = chunkMarkdown(content, `${repo}/${relPath}`, opts.chunkerOptions);
+				const chunks = chunkMarkdown(content, { source: `${repo}/${relPath}`, ...opts.chunkerOptions });
 				for (const chunk of chunks) {
 					yield {
 						...chunk,
