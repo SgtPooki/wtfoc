@@ -130,6 +130,10 @@ This project uses multiple AI agents (Claude, Cursor, Codex) working in parallel
 | `authored-claude` | PR/issue was created by Claude | Agent loop (on PR creation) |
 | `authored-cursor` | PR/issue was created by Cursor | Agent loop (on PR creation) |
 | `authored-codex` | PR/issue was created by Codex | Agent loop (on PR creation) |
+| `reviewed-by-claude` | PR was reviewed by Claude | Agent loop (after posting review) |
+| `reviewed-by-cursor` | PR was reviewed by Cursor | Agent loop (after posting review) |
+| `reviewed-by-codex` | PR was reviewed by Codex | Agent loop (after posting review) |
+| `reviewed-by-copilot` | PR was reviewed by GitHub Copilot | GitHub (automatic) |
 
 ### Rules
 

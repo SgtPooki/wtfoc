@@ -555,18 +555,18 @@ review_prs() {
 			continue
 		fi
 
-		# Skip if this agent already reviewed it (check for "## Review: <agent>" header)
-		local already_reviewed
-		already_reviewed=$(gh pr view "$pr_num" --repo "$REPO" --json comments \
-			-q "[.comments[] | select(.body | test(\"^## Review: ${AGENT}\"; \"mi\"))] | length" 2>/dev/null || echo "0")
-		if [[ "$already_reviewed" -gt 0 ]]; then
+		# Skip if this agent already reviewed it (check label)
+		if echo "$pr_labels" | grep -q "reviewed-by-${AGENT}"; then
 			continue
 		fi
 
-		# Count existing reviews (agent reviews with "## Review:" header + formal GH reviews)
-		local review_count
-		review_count=$(gh pr view "$pr_num" --repo "$REPO" --json comments,reviews \
-			-q '(.comments | map(select(.body | test("^## Review:"; "m"))) | length) + (.reviews | length)' 2>/dev/null || echo "0")
+		# Count existing reviews via labels (reviewed-by-* + copilot)
+		local review_count=0
+		for reviewer in claude cursor codex copilot; do
+			if echo "$pr_labels" | grep -q "reviewed-by-${reviewer}"; then
+				review_count=$((review_count + 1))
+			fi
+		done
 
 		# Skip if already has 2+ reviews (copilot + one agent = enough)
 		if [[ "$review_count" -ge 2 ]]; then
@@ -655,8 +655,10 @@ ${review_output}"
 				warn "Failed to post review on PR #${pr_num}"
 		fi
 
-		# Remove reviewing label
-		gh_retry gh issue edit "$pr_num" --repo "$REPO" --remove-label "reviewing-${AGENT}" >/dev/null 2>&1 || true
+		# Swap reviewing → reviewed-by label
+		gh_retry gh issue edit "$pr_num" --repo "$REPO" \
+			--remove-label "reviewing-${AGENT}" \
+			--add-label "reviewed-by-${AGENT}" >/dev/null 2>&1 || true
 
 		# Only review one PR per loop iteration
 		break
