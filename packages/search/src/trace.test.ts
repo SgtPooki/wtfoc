@@ -1,0 +1,223 @@
+import type { Embedder, Segment, VectorEntry, VectorIndex } from "@wtfoc/common";
+import { describe, expect, it } from "vitest";
+import { trace } from "./trace.js";
+
+// ─── Mock embedder ───────────────────────────────────────────────────────────
+const mockEmbedder: Embedder = {
+	dimensions: 3,
+	async embed(): Promise<Float32Array> {
+		return new Float32Array([1.0, 0.0, 0.0]);
+	},
+	async embedBatch(texts: string[]): Promise<Float32Array[]> {
+		return texts.map(() => new Float32Array([1.0, 0.0, 0.0]));
+	},
+};
+
+// ─── Mock vector index ───────────────────────────────────────────────────────
+function createMockIndex(entries: VectorEntry[]): VectorIndex {
+	return {
+		size: entries.length,
+		async add(newEntries: VectorEntry[]): Promise<void> {
+			entries.push(...newEntries);
+		},
+		async search(_query: Float32Array, topK: number) {
+			// Return all entries with decreasing scores
+			return entries.slice(0, topK).map((entry, i) => ({
+				entry,
+				score: 1.0 - i * 0.1,
+			}));
+		},
+		async serialize(): Promise<Uint8Array> {
+			return new Uint8Array(0);
+		},
+		async deserialize(): Promise<void> {},
+	};
+}
+
+// ─── Test fixtures ───────────────────────────────────────────────────────────
+const slackChunk: VectorEntry = {
+	id: "slack-msg-1",
+	vector: new Float32Array([1.0, 0.0, 0.0]),
+	storageId: "storage-slack-1",
+	metadata: {
+		sourceType: "slack-message",
+		source: "#foc-support",
+		content: "users are seeing upload timeouts on files >1GB. See #142",
+	},
+};
+
+const issueChunk: VectorEntry = {
+	id: "issue-142",
+	vector: new Float32Array([0.9, 0.1, 0.0]),
+	storageId: "storage-issue-142",
+	metadata: {
+		sourceType: "github-issue",
+		source: "FilOzone/synapse-sdk#142",
+		sourceUrl: "https://github.com/FilOzone/synapse-sdk/issues/142",
+		content: "Upload timeout on large files",
+	},
+};
+
+const prChunk: VectorEntry = {
+	id: "pr-156",
+	vector: new Float32Array([0.8, 0.2, 0.0]),
+	storageId: "storage-pr-156",
+	metadata: {
+		sourceType: "github-pr",
+		source: "FilOzone/synapse-sdk#156",
+		sourceUrl: "https://github.com/FilOzone/synapse-sdk/pull/156",
+		content: "Fix upload retry logic",
+	},
+};
+
+const codeChunk: VectorEntry = {
+	id: "code-manager-ts",
+	vector: new Float32Array([0.7, 0.3, 0.0]),
+	storageId: "storage-code-1",
+	metadata: {
+		sourceType: "code",
+		source: "FilOzone/synapse-sdk",
+		sourceUrl:
+			"https://github.com/FilOzone/synapse-sdk/blob/main/packages/synapse-sdk/src/storage/manager.ts",
+		content: "export class StorageManager { async upload(data) { ... } }",
+	},
+};
+
+const testSegment: Segment = {
+	schemaVersion: 1,
+	embeddingModel: "test",
+	embeddingDimensions: 3,
+	chunks: [
+		{
+			id: "slack-msg-1",
+			storageId: "storage-slack-1",
+			embedding: [1.0, 0.0, 0.0],
+			terms: ["upload", "timeout"],
+			source: "#foc-support",
+			sourceType: "slack-message",
+			metadata: { content: "users are seeing upload timeouts" },
+		},
+		{
+			id: "issue-142",
+			storageId: "storage-issue-142",
+			embedding: [0.9, 0.1, 0.0],
+			terms: ["upload", "timeout", "large"],
+			source: "FilOzone/synapse-sdk#142",
+			sourceType: "github-issue",
+			sourceUrl: "https://github.com/FilOzone/synapse-sdk/issues/142",
+			metadata: { content: "Upload timeout on large files" },
+		},
+		{
+			id: "pr-156",
+			storageId: "storage-pr-156",
+			embedding: [0.8, 0.2, 0.0],
+			terms: ["upload", "retry"],
+			source: "FilOzone/synapse-sdk#156",
+			sourceType: "github-pr",
+			sourceUrl: "https://github.com/FilOzone/synapse-sdk/pull/156",
+			metadata: { content: "Fix upload retry logic" },
+		},
+	],
+	edges: [
+		{
+			type: "references",
+			sourceId: "slack-msg-1",
+			targetType: "issue",
+			targetId: "FilOzone/synapse-sdk#142",
+			evidence: "#142 in message",
+			confidence: 1.0,
+		},
+		{
+			type: "closes",
+			sourceId: "pr-156",
+			targetType: "issue",
+			targetId: "FilOzone/synapse-sdk#142",
+			evidence: "Closes #142 in PR body",
+			confidence: 1.0,
+		},
+	],
+};
+
+// ─── Tests ───────────────────────────────────────────────────────────────────
+
+describe("trace", () => {
+	it("returns results grouped by sourceType", async () => {
+		const index = createMockIndex([slackChunk, issueChunk, prChunk, codeChunk]);
+		const result = await trace("upload failures", mockEmbedder, index, [testSegment]);
+
+		expect(result.groups).toBeDefined();
+		expect(result.stats.sourceTypes.length).toBeGreaterThan(0);
+	});
+
+	it("follows explicit edges from seed chunks", async () => {
+		const index = createMockIndex([slackChunk]);
+		const result = await trace("upload failures", mockEmbedder, index, [testSegment]);
+
+		const edgeHops = result.hops.filter((h) => h.connection.method === "edge");
+		expect(edgeHops.length).toBeGreaterThan(0);
+		expect(result.stats.edgeHops).toBeGreaterThan(0);
+	});
+
+	it("annotates edge hops with evidence", async () => {
+		const index = createMockIndex([slackChunk]);
+		const result = await trace("upload failures", mockEmbedder, index, [testSegment]);
+
+		const edgeHop = result.hops.find((h) => h.connection.method === "edge");
+		expect(edgeHop?.connection.evidence).toBeTruthy();
+		expect(edgeHop?.connection.edgeType).toBeTruthy();
+		expect(edgeHop?.connection.confidence).toBe(1.0);
+	});
+
+	it("includes semantic search results as fallback", async () => {
+		const index = createMockIndex([slackChunk, codeChunk]);
+		const result = await trace("upload failures", mockEmbedder, index, [testSegment]);
+
+		const semanticHops = result.hops.filter((h) => h.connection.method === "semantic");
+		expect(semanticHops.length).toBeGreaterThan(0);
+	});
+
+	it("detects cycles — does not visit same chunk twice", async () => {
+		const index = createMockIndex([slackChunk, issueChunk]);
+		const result = await trace("upload failures", mockEmbedder, index, [testSegment]);
+
+		const ids = result.hops.map((h) => h.storageId);
+		const uniqueIds = new Set(ids);
+		expect(ids.length).toBe(uniqueIds.size);
+	});
+
+	it("respects maxTotal limit", async () => {
+		const index = createMockIndex([slackChunk, issueChunk, prChunk, codeChunk]);
+		const result = await trace("upload failures", mockEmbedder, index, [testSegment], {
+			maxTotal: 2,
+		});
+
+		expect(result.hops.length).toBeLessThanOrEqual(2);
+	});
+
+	it("returns empty results for no matches", async () => {
+		const index = createMockIndex([]);
+		const result = await trace("nonexistent query", mockEmbedder, index, [testSegment]);
+
+		expect(result.hops).toHaveLength(0);
+		expect(result.stats.totalHops).toBe(0);
+	});
+
+	it("includes the query in results", async () => {
+		const index = createMockIndex([slackChunk]);
+		const result = await trace("upload failures", mockEmbedder, index, [testSegment]);
+
+		expect(result.query).toBe("upload failures");
+	});
+
+	it("respects AbortSignal", async () => {
+		const controller = new AbortController();
+		controller.abort();
+
+		const index = createMockIndex([slackChunk]);
+		await expect(
+			trace("upload failures", mockEmbedder, index, [testSegment], {
+				signal: controller.signal,
+			}),
+		).rejects.toThrow();
+	});
+});
