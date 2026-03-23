@@ -418,9 +418,30 @@ review_prs() {
 			continue
 		fi
 
-		# Claim the review
-		log "Reviewing PR #${pr_num}: ${pr_title}"
+		# Claim the review (optimistic lock)
 		gh_retry gh pr edit "$pr_num" --repo "$REPO" --add-label "reviewing-${AGENT}" >/dev/null 2>&1 || true
+
+		# Wait a moment then re-check — if another agent also claimed it, back off
+		sleep 2
+		local all_reviewing
+		all_reviewing=$(gh pr view "$pr_num" --repo "$REPO" --json labels \
+			-q '[.labels[].name | select(startswith("reviewing-"))]' 2>/dev/null || echo "[]")
+		local reviewer_count
+		reviewer_count=$(echo "$all_reviewing" | jq 'length' 2>/dev/null || echo "0")
+
+		if [[ "$reviewer_count" -gt 1 ]]; then
+			# Another agent also claimed it — check if we should back off
+			# Lower alphabetical agent name wins (deterministic tiebreak)
+			local first_reviewer
+			first_reviewer=$(echo "$all_reviewing" | jq -r 'sort | .[0]' 2>/dev/null || echo "")
+			if [[ "$first_reviewer" != "reviewing-${AGENT}" ]]; then
+				log "PR #${pr_num} also claimed by another agent — backing off"
+				gh_retry gh pr edit "$pr_num" --repo "$REPO" --remove-label "reviewing-${AGENT}" >/dev/null 2>&1 || true
+				continue
+			fi
+		fi
+
+		log "Reviewing PR #${pr_num}: ${pr_title}"
 
 		# Get the diff
 		local diff
