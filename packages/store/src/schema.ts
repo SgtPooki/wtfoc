@@ -211,8 +211,20 @@ export function validateManifestSchema(data: unknown): HeadManifest {
 		"embeddingDimensions must be a positive integer",
 		"headManifest",
 	);
-	const createdAt = requireField(data, "createdAt", isString, "createdAt must be a string", "headManifest");
-	const updatedAt = requireField(data, "updatedAt", isString, "updatedAt must be a string", "headManifest");
+	const createdAt = requireField(
+		data,
+		"createdAt",
+		isString,
+		"createdAt must be a string",
+		"headManifest",
+	);
+	const updatedAt = requireField(
+		data,
+		"updatedAt",
+		isString,
+		"updatedAt must be a string",
+		"headManifest",
+	);
 
 	return {
 		schemaVersion: sv,
@@ -444,7 +456,13 @@ export function validateSegmentSchema(data: unknown): Segment {
 		"segment",
 	);
 
-	const chunksRaw = requireField(data, "chunks", isUnknownArray, "chunks must be an array", "segment");
+	const chunksRaw = requireField(
+		data,
+		"chunks",
+		isUnknownArray,
+		"chunks must be an array",
+		"segment",
+	);
 	const chunks = chunksRaw.map((c, i) => validateChunk(c, i, embeddingDimensions));
 
 	const edgesRaw = requireField(data, "edges", isUnknownArray, "edges must be an array", "segment");
