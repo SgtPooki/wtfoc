@@ -30,7 +30,13 @@ Cross-source connections are explicit typed edges, not just semantic similarity.
 
 Tests written before implementation where practical. Unit tests use local/in-memory backends — no network calls. Golden fixtures for integration tests. Test interfaces, not implementations.
 
-### VII. Hackathon-First, Future-Aware
+### VII. Bundle Uploads — Never Spam Small Pieces
+
+**NON-NEGOTIABLE.** Never upload individual chunks or small segments as separate FOC pieces. Always bundle into a single CAR file per ingest batch. Each `wtfoc ingest` command produces at most ONE PieceCID on-chain.
+
+Why: Each piece costs the SP gas for PDP proofs. Uploading thousands of small pieces is expensive and makes us a bad ecosystem citizen. Bundle into CAR, upload once, track internal CIDs in the manifest.
+
+### VIII. Hackathon-First, Future-Aware
 
 Ship the demo, but make it worth extending. Every decision optimizes for: (1) working demo that tells a story, (2) clean architecture showing what's possible, (3) code quality that doesn't embarrass us.
 
