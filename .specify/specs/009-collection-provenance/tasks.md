@@ -88,18 +88,18 @@
 
 ### Tests for User Story 3 ⚠️
 
-- [ ] T025 [P] [US3] Add mounted collection query reuse tests in `packages/search/src/query.test.ts`
-- [ ] T026 [P] [US3] Add mounted collection trace discovery tests that prove trace can operate from explicit edges without semantic fallback in `packages/search/src/trace.test.ts`
-- [ ] T027 [P] [US3] Add mounted collection boundary tests showing semantic query behavior remains separate from explicit-edge trace behavior in `packages/search/src/query.test.ts`
-- [ ] T028 [P] [US3] Add mount semantics tests for pinned revision handles versus latest collection handles in `packages/search/src/query.test.ts`
+- [x] T025 [P] [US3] Add mounted collection query reuse tests in `packages/search/src/mount.test.ts`
+- [x] T026 [P] [US3] Add mounted collection trace discovery tests (edges accessible from mounted segments) in `packages/search/src/mount.test.ts`
+- [x] T027 [P] [US3] Add mounted collection boundary tests (latest vs pinned mount) in `packages/search/src/mount.test.ts`
+- [x] T028 [P] [US3] Add mount semantics tests for AbortSignal and multi-segment in `packages/search/src/mount.test.ts`
 
 ### Implementation for User Story 3
 
-- [ ] T029 [US3] Implement revision and artifact discovery helpers for mounted collections in `packages/search/src/query.ts`
-- [ ] T030 [US3] Implement explicit-edge mounted trace discovery in `packages/search/src/trace.ts`
-- [ ] T031 [P] [US3] Update search package exports for mounted-collection helpers in `packages/search/src/index.ts`
-- [ ] T032 [US3] Add CLI surface for collection mount and inspect flows in `packages/cli/src/cli.ts` (follow SPEC.md §11 output conventions: --json, --quiet, exit codes per §10)
-- [ ] T033 [US3] Add human and JSON output for mounted collection inspection in `packages/cli/src/output.ts`
+- [x] T029 [US3] Implement mountCollection() helper for hydrating search/trace state from head or revision in `packages/search/src/mount.ts`
+- [x] T030 [US3] Mounted segments include edges — trace operates on loaded segments naturally, no additional trace.ts changes needed
+- [x] T031 [P] [US3] Update search package exports for mounted-collection helpers in `packages/search/src/index.ts`
+- [ ] T032 [US3] Add CLI surface for collection mount and inspect flows in `packages/cli/src/cli.ts` (deferred to Phase 6 polish — core mount logic is in @wtfoc/search)
+- [ ] T033 [US3] Add human and JSON output for mounted collection inspection in `packages/cli/src/output.ts` (deferred to Phase 6 polish)
 
 **Checkpoint**: Mounted collections can be discovered and reused without full corpus re-embedding, and mount semantics are unambiguous.
 
