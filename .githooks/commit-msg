@@ -1,5 +1,8 @@
 #!/bin/sh
-# Strip "Co-Authored-By: Claude" lines from commit messages
-sed -i '' '/^Co-Authored-By:.*[Cc]laude.*$/d' "$1"
+# Strip ALL Co-Authored-By / Co-authored-by lines from commit messages
+# Agents (Claude, Cursor, Codex) add these automatically — we don't want them
+sed -i '' '/^[Cc]o-[Aa]uthored-[Bb]y:/d' "$1"
+# Strip any remaining email addresses (e.g. <noreply@anthropic.com>)
+sed -i '' 's/<[^>]*@[^>]*>//g' "$1"
 # Strip trailing blank lines left behind
 sed -i '' -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$1"
