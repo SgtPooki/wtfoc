@@ -247,7 +247,7 @@ run_agent() {
 			;;
 		codex)
 			log "Starting Codex agent in ${worktree_dir}..."
-			(cd "$worktree_dir" && cat "$prompt_file" | codex exec -) || {
+			cat "$prompt_file" | codex exec -C "$worktree_dir" --full-auto - || {
 				warn "Codex exited with code $?. Prompt is at: ${prompt_file}"
 				return 1
 			}
