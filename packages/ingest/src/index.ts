@@ -4,3 +4,4 @@
 export { chunkMarkdown, type MarkdownChunkerOptions } from "./chunker.js";
 export type { ChangedFile } from "./edges/extractor.js";
 export { extractChangedFileEdges, RegexEdgeExtractor } from "./edges/extractor.js";
+export { buildSegment, segmentId, type SegmentBuilderOptions, type SegmentChunk } from "./segment-builder.js";
