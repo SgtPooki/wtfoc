@@ -1,0 +1,5 @@
+#!/bin/sh
+# Strip "Co-Authored-By: Claude" lines from commit messages
+sed -i '' '/^Co-Authored-By:.*[Cc]laude.*$/d' "$1"
+# Strip trailing blank lines left behind
+sed -i '' -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$1"
