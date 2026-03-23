@@ -226,26 +226,44 @@ run_agent() {
 	local prompt="$1"
 	local worktree_dir="$2"
 
+	# Write prompt to temp file (avoids argv limits for all agents)
+	local prompt_file
+	prompt_file=$(mktemp /tmp/wtfoc-agent-prompt-XXXXXX.md)
+	echo "$prompt" > "$prompt_file"
+	log "Prompt written to: ${prompt_file}"
+
 	case "$AGENT" in
 		cursor)
-			log "Starting Cursor agent..."
-			cursor agent --model composer-2 --mode agent --print --trust \
-				--workspace "$worktree_dir" "$prompt"
+			log "Starting Cursor agent in ${worktree_dir}..."
+			cursor agent --print --trust \
+				--workspace "$worktree_dir" "$(cat "$prompt_file")" || {
+				warn "Cursor exited with code $?. Prompt is at: ${prompt_file}"
+				return 1
+			}
 			;;
 		codex)
-			log "Starting Codex agent..."
-			echo "$prompt" | (cd "$worktree_dir" && codex exec -)
+			log "Starting Codex agent in ${worktree_dir}..."
+			(cd "$worktree_dir" && cat "$prompt_file" | codex exec -) || {
+				warn "Codex exited with code $?. Prompt is at: ${prompt_file}"
+				return 1
+			}
 			;;
 		claude)
-			# Claude is interactive — output the prompt for the user to paste
-			log "Claude prompt ready. Start claude in the worktree:"
+			# Claude is interactive — write prompt and tell user where it is
+			log "Claude prompt ready at: ${prompt_file}"
+			log "Start claude in the worktree:"
 			warn "  cd ${worktree_dir} && claude"
+			warn "  Then paste or reference: ${prompt_file}"
 			echo ""
-			echo "--- PROMPT START ---"
+			echo "--- PROMPT (also saved to ${prompt_file}) ---"
 			echo "$prompt"
-			echo "--- PROMPT END ---"
+			echo "--- END ---"
+			# Wait for user to finish (check if PR was created)
+			log "Waiting for PR from branch..."
 			;;
 	esac
+
+	rm -f "$prompt_file" 2>/dev/null || true
 }
 
 # ─── Main loop ────────────────────────────────────────────────────────────────
