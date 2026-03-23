@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 import { promisify } from "node:util";
@@ -60,8 +60,8 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 		}
 		return {
 			source,
-			include: Array.isArray(raw["include"]) ? raw["include"] as string[] : undefined,
-			exclude: Array.isArray(raw["exclude"]) ? raw["exclude"] as string[] : undefined,
+			include: Array.isArray(raw["include"]) ? (raw["include"] as string[]) : undefined,
+			exclude: Array.isArray(raw["exclude"]) ? (raw["exclude"] as string[]) : undefined,
 			maxFileSize: typeof raw["maxFileSize"] === "number" ? raw["maxFileSize"] : undefined,
 		};
 	}
@@ -91,7 +91,10 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 			const sourceUrl = `https://github.com/${repo}/blob/main/${relPath}`;
 
 			if (isMarkdown) {
-				const chunks = chunkMarkdown(content, { source: `${repo}/${relPath}`, ...opts.chunkerOptions });
+				const chunks = chunkMarkdown(content, {
+					source: `${repo}/${relPath}`,
+					...opts.chunkerOptions,
+				});
 				for (const chunk of chunks) {
 					yield {
 						...chunk,
@@ -136,9 +139,7 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 			}
 
 			// Extract issue/PR references from comments
-			const issueRefs = chunk.content.match(
-				/(?:\/\/|#|\/\*)\s*(?:TODO|FIXME|See|Ref)?\s*#(\d+)/gi,
-			);
+			const issueRefs = chunk.content.match(/(?:\/\/|#|\/\*)\s*(?:TODO|FIXME|See|Ref)?\s*#(\d+)/gi);
 			if (issueRefs) {
 				for (const ref of issueRefs) {
 					const num = ref.match(/#(\d+)/)?.[1];
@@ -235,12 +236,7 @@ async function walkFiles(
 	return files.sort();
 }
 
-function chunkCode(
-	content: string,
-	filePath: string,
-	repo: string,
-	sourceUrl: string,
-): Chunk[] {
+function chunkCode(content: string, filePath: string, repo: string, sourceUrl: string): Chunk[] {
 	const chunkSize = 512;
 	const overlap = 50;
 	const chunks: Chunk[] = [];

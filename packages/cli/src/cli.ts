@@ -1,11 +1,18 @@
 #!/usr/bin/env node
 
-import { Command } from "commander";
+import type {
+	Chunk,
+	Embedder,
+	HeadManifest,
+	Segment,
+	VectorEntry,
+	VectorIndex,
+} from "@wtfoc/common";
+import { buildSegment, chunkMarkdown, RegexEdgeExtractor, RepoAdapter } from "@wtfoc/ingest";
+import { InMemoryVectorIndex, query, TransformersEmbedder, trace } from "@wtfoc/search";
 import { createStore } from "@wtfoc/store";
-import { chunkMarkdown, RepoAdapter, buildSegment, RegexEdgeExtractor } from "@wtfoc/ingest";
-import { InMemoryVectorIndex, TransformersEmbedder, trace, query } from "@wtfoc/search";
-import type { Chunk, Embedder, HeadManifest, Segment, VectorEntry, VectorIndex } from "@wtfoc/common";
-import { formatTrace, formatQuery, formatStatus, type OutputFormat } from "./output.js";
+import { Command } from "commander";
+import { formatQuery, formatStatus, formatTrace, type OutputFormat } from "./output.js";
 
 const program = new Command();
 
@@ -60,7 +67,7 @@ const ingestCmd = program
 		const format = getFormat(program.opts());
 
 		// Get or create manifest
-		let head = await store.manifests.getHead(opts.collection);
+		const head = await store.manifests.getHead(opts.collection);
 		let prevHeadId: string | null = null;
 		if (head) {
 			prevHeadId = head.headId;
@@ -104,23 +111,22 @@ const ingestCmd = program
 
 			// Extract edges
 			const edgeExtractor = new RegexEdgeExtractor();
-			const edges = [
-				...adapter.extractEdges(chunks),
-				...edgeExtractor.extract(chunks),
-			];
+			const edges = [...adapter.extractEdges(chunks), ...edgeExtractor.extract(chunks)];
 			if (format !== "quiet") console.error(`   ${edges.length} edges extracted`);
 
 			// Embed chunks
 			if (format !== "quiet") console.error("⏳ Embedding chunks...");
-			const embeddings = await embedder.embedBatch(
-				chunks.map((c) => c.content),
-			);
+			const embeddings = await embedder.embedBatch(chunks.map((c) => c.content));
 
 			// Build segment
-			const segmentChunks = chunks.map((chunk, i) => ({
-				chunk,
-				embedding: Array.from(embeddings[i]!),
-			}));
+			const segmentChunks = chunks.map((chunk, i) => {
+				const emb = embeddings[i];
+				if (!emb)
+					throw new Error(
+						`Missing embedding for chunk ${i} — expected ${chunks.length} embeddings`,
+					);
+				return { chunk, embedding: Array.from(emb) };
+			});
 
 			const segment = buildSegment(segmentChunks, edges, {
 				embeddingModel: "Xenova/all-MiniLM-L6-v2",
@@ -130,7 +136,8 @@ const ingestCmd = program
 			// Store segment
 			const segmentBytes = new TextEncoder().encode(JSON.stringify(segment));
 			const segmentResult = await store.storage.upload(segmentBytes);
-			if (format !== "quiet") console.error(`   Segment stored: ${segmentResult.id.slice(0, 16)}...`);
+			if (format !== "quiet")
+				console.error(`   Segment stored: ${segmentResult.id.slice(0, 16)}...`);
 
 			// Update manifest
 			const manifest: HeadManifest = {
@@ -154,7 +161,9 @@ const ingestCmd = program
 
 			await store.manifests.putHead(opts.collection, manifest, prevHeadId);
 			if (format !== "quiet") {
-				console.error(`✅ Ingested ${chunks.length} chunks from ${repoSource} into "${opts.collection}"`);
+				console.error(
+					`✅ Ingested ${chunks.length} chunks from ${repoSource} into "${opts.collection}"`,
+				);
 			}
 		} else {
 			console.error(`Unknown source type: ${sourceType}`);
@@ -229,12 +238,16 @@ program
 		}
 
 		console.log(
-			formatStatus(opts.collection, {
-				totalChunks: head.manifest.totalChunks,
-				segments: head.manifest.segments.length,
-				embeddingModel: head.manifest.embeddingModel,
-				updatedAt: head.manifest.updatedAt,
-			}, format),
+			formatStatus(
+				opts.collection,
+				{
+					totalChunks: head.manifest.totalChunks,
+					segments: head.manifest.segments.length,
+					embeddingModel: head.manifest.embeddingModel,
+					updatedAt: head.manifest.updatedAt,
+				},
+				format,
+			),
 		);
 	});
 

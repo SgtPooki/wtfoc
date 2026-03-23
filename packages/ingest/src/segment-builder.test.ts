@@ -1,6 +1,6 @@
 import type { Chunk, Edge } from "@wtfoc/common";
 import { describe, expect, it } from "vitest";
-import { buildSegment, segmentId, type SegmentChunk } from "./segment-builder.js";
+import { buildSegment, type SegmentChunk, segmentId } from "./segment-builder.js";
 
 const defaultOptions = {
 	embeddingModel: "Xenova/all-MiniLM-L6-v2",
@@ -99,9 +99,7 @@ describe("buildSegment", () => {
 		const segment = buildSegment(chunks, [], defaultOptions);
 
 		expect(segment.chunks[0]!.sourceType).toBe("github-issue");
-		expect(segment.chunks[0]!.sourceUrl).toBe(
-			"https://github.com/FilOzone/synapse-sdk/issues/42",
-		);
+		expect(segment.chunks[0]!.sourceUrl).toBe("https://github.com/FilOzone/synapse-sdk/issues/42");
 	});
 
 	it("handles empty chunks and edges", () => {
@@ -113,9 +111,7 @@ describe("buildSegment", () => {
 
 describe("segmentId", () => {
 	it("produces deterministic ID for same content", () => {
-		const chunks: SegmentChunk[] = [
-			{ chunk: makeChunk({ id: "a" }), embedding: [1, 2, 3] },
-		];
+		const chunks: SegmentChunk[] = [{ chunk: makeChunk({ id: "a" }), embedding: [1, 2, 3] }];
 		const segment1 = buildSegment(chunks, [], defaultOptions);
 		const segment2 = buildSegment(chunks, [], defaultOptions);
 

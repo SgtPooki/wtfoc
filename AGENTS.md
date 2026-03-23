@@ -99,6 +99,9 @@ TypeScript project references handle this automatically.
 - TypeScript strict mode
 - Biome for formatting and linting
 - **No `any`** — use `unknown` and narrow
+- **No `as unknown as`** — if you need a double cast, the types are wrong. Fix the types.
+- **No non-null assertions (`!`)** — check existence, throw descriptive error if missing
+- **Named errors only** — use typed error classes from `@wtfoc/common` with stable `code` fields. Never `throw new Error("broke")`.
 - **No default exports** — named exports only
 - **ESM only** — `"type": "module"` in all packages
 - Long-running operations accept `AbortSignal` for cancellation

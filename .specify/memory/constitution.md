@@ -40,6 +40,9 @@ Ship the demo, but make it worth extending. Every decision optimizes for: (1) wo
 - **pnpm workspaces** with TypeScript project references
 - **Biome** for formatting and linting
 - **No `any`** — use `unknown` and narrow
+- **No `as unknown as`** — if you need a double cast, the types are wrong. Fix the types.
+- **No non-null assertions (`!`)** — check the value exists, throw a descriptive error if it doesn't. `if (!x) throw new Error(...)` not `x!`
+- **Named, documented errors only** — never `throw new Error("something broke")`. Use typed error classes from `@wtfoc/common` (e.g. `StorageNotFoundError`, `EmbedFailedError`) with stable `code` fields. Every error must be traceable: include the operation attempted, the artifact ID, and the backend/component that failed. Consumers should be able to programmatically handle errors via `error.code` without parsing messages.
 - **AbortSignal on all async interfaces** — every long-running operation accepts `signal?: AbortSignal` for proper cancellation
 - **Conventional commits** scoped by package: `feat(store): add FOC upload`
 - **SemVer 0.x** — all packages experimental, `bump-minor-pre-major` via release-please

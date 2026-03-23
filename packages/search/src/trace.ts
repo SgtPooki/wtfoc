@@ -114,16 +114,7 @@ export async function trace(
 		});
 
 		// Follow edges from this chunk
-		followEdges(
-			seed.entry.id,
-			edgeIndex,
-			chunkLookup,
-			visited,
-			hops,
-			0,
-			maxHops,
-			options?.signal,
-		);
+		followEdges(seed.entry.id, edgeIndex, chunkLookup, visited, hops, 0, maxHops, options?.signal);
 
 		if (hops.length >= maxTotal) break;
 	}
@@ -133,8 +124,9 @@ export async function trace(
 	for (const hop of hops) {
 		const key = hop.sourceType;
 		if (!groups[key]) groups[key] = [];
-		if (groups[key]!.length < maxPerSource) {
-			groups[key]!.push(hop);
+		const group = groups[key];
+		if (group && group.length < maxPerSource) {
+			group.push(hop);
 		}
 	}
 

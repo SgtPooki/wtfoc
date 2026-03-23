@@ -1,5 +1,4 @@
-import type { TraceResult } from "@wtfoc/search";
-import type { QueryResult } from "@wtfoc/search";
+import type { QueryResult, TraceResult } from "@wtfoc/search";
 
 export type OutputFormat = "human" | "json" | "quiet";
 
@@ -36,9 +35,7 @@ export function formatTrace(result: TraceResult, format: OutputFormat): string {
 			lines.push(`         ${snippet}${hop.content.length > 120 ? "..." : ""}`);
 
 			if (hop.connection.method === "edge") {
-				lines.push(
-					`         🔗 ${hop.connection.edgeType}: ${hop.connection.evidence ?? ""}`,
-				);
+				lines.push(`         🔗 ${hop.connection.edgeType}: ${hop.connection.evidence ?? ""}`);
 			}
 
 			if (hop.sourceUrl) {

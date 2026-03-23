@@ -27,15 +27,11 @@ export class TransformersEmbedder implements Embedder {
 		if (!this.#initPromise) {
 			this.#initPromise = (async () => {
 				try {
-					type PipelineFn = (
-						task: "feature-extraction",
-						model: string,
-					) => Promise<FeatureExtractionPipeline>;
-					const { pipeline } = await import("@huggingface/transformers");
-					this.#pipeline = await (pipeline as unknown as PipelineFn)(
+					const mod = await import("@huggingface/transformers");
+					this.#pipeline = (await mod.pipeline(
 						"feature-extraction",
 						this.model,
-					);
+					)) as FeatureExtractionPipeline;
 				} catch (err) {
 					this.#initPromise = null;
 					throw new EmbedFailedError(this.model, err);
@@ -45,15 +41,29 @@ export class TransformersEmbedder implements Embedder {
 		await this.#initPromise;
 	}
 
+	#getPipeline(): FeatureExtractionPipeline {
+		if (!this.#pipeline) {
+			throw new EmbedFailedError(
+				this.model,
+				new Error("Pipeline not initialized — call #ensureReady first"),
+			);
+		}
+		return this.#pipeline;
+	}
+
 	async embed(text: string, signal?: AbortSignal): Promise<Float32Array> {
 		await this.#ensureReady(signal);
 		signal?.throwIfAborted();
 		try {
-			const output = await this.#pipeline!(text, {
+			const pipeline = this.#getPipeline();
+			const output = await pipeline(text, {
 				pooling: "mean",
 				normalize: true,
 			});
-			return new Float32Array(output.data as Float32Array);
+			if (!(output.data instanceof Float32Array)) {
+				throw new Error(`Expected Float32Array from pipeline, got ${typeof output.data}`);
+			}
+			return new Float32Array(output.data);
 		} catch (err) {
 			if (err instanceof DOMException && err.name === "AbortError") throw err;
 			if (err instanceof EmbedFailedError) throw err;
@@ -65,11 +75,15 @@ export class TransformersEmbedder implements Embedder {
 		await this.#ensureReady(signal);
 		signal?.throwIfAborted();
 		try {
-			const output = await this.#pipeline!(texts, {
+			const pipeline = this.#getPipeline();
+			const output = await pipeline(texts, {
 				pooling: "mean",
 				normalize: true,
 			});
-			const data = output.data as Float32Array;
+			if (!(output.data instanceof Float32Array)) {
+				throw new Error(`Expected Float32Array from pipeline, got ${typeof output.data}`);
+			}
+			const data = output.data;
 			const results: Float32Array[] = [];
 			for (let i = 0; i < texts.length; i++) {
 				results.push(new Float32Array(data.buffer, i * this.dimensions * 4, this.dimensions));

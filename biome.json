@@ -13,6 +13,9 @@
 			"recommended": true,
 			"suspicious": {
 				"noExplicitAny": "error"
+			},
+			"style": {
+				"noNonNullAssertion": "warn"
 			}
 		}
 	},
