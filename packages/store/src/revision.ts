@@ -53,11 +53,41 @@ export function deserializeRevision(data: Uint8Array): CollectionRevision {
 	if (!Array.isArray(record.artifactSummaries)) {
 		throw new WtfocError("Invalid revision: artifactSummaries must be an array", "SCHEMA_INVALID");
 	}
-	if (!Array.isArray(record.segmentRefs)) {
-		throw new WtfocError("Invalid revision: segmentRefs must be an array", "SCHEMA_INVALID");
+	for (let i = 0; i < record.artifactSummaries.length; i++) {
+		const entry = record.artifactSummaries[i] as Record<string, unknown> | undefined;
+		if (!entry || typeof entry !== "object") {
+			throw new WtfocError(
+				`Invalid revision: artifactSummaries[${i}] must be an object`,
+				"SCHEMA_INVALID",
+			);
+		}
+		if (typeof entry.artifactId !== "string" || typeof entry.contentIdentity !== "string") {
+			throw new WtfocError(
+				`Invalid revision: artifactSummaries[${i}] missing required fields`,
+				"SCHEMA_INVALID",
+			);
+		}
 	}
-	if (!Array.isArray(record.bundleRefs)) {
-		throw new WtfocError("Invalid revision: bundleRefs must be an array", "SCHEMA_INVALID");
+	if (
+		!Array.isArray(record.segmentRefs) ||
+		!record.segmentRefs.every((r: unknown) => typeof r === "string")
+	) {
+		throw new WtfocError(
+			"Invalid revision: segmentRefs must be an array of strings",
+			"SCHEMA_INVALID",
+		);
+	}
+	if (
+		!Array.isArray(record.bundleRefs) ||
+		!record.bundleRefs.every((r: unknown) => typeof r === "string")
+	) {
+		throw new WtfocError(
+			"Invalid revision: bundleRefs must be an array of strings",
+			"SCHEMA_INVALID",
+		);
+	}
+	if (!Array.isArray(record.provenance)) {
+		throw new WtfocError("Invalid revision: provenance must be an array", "SCHEMA_INVALID");
 	}
 
 	return parsed as CollectionRevision;

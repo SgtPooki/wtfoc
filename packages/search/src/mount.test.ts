@@ -240,4 +240,70 @@ describe("mountCollection", () => {
 		expect(mounted.segments).toHaveLength(2);
 		expect(index.entries).toHaveLength(2);
 	});
+
+	it("resolves through currentRevisionId when head has one and resolveRevision is provided", async () => {
+		const seg = makeSegment("seg-via-rev");
+		const storage = makeStorage({ "seg-via-rev": seg });
+		const index = makeVectorIndex();
+
+		const revision: CollectionRevision = {
+			schemaVersion: 1,
+			revisionId: "rev-resolved",
+			collectionId: "test-col",
+			prevRevisionId: null,
+			artifactSummaries: [],
+			segmentRefs: ["seg-via-rev"],
+			bundleRefs: [],
+			provenance: [],
+			createdAt: new Date().toISOString(),
+			publishedBy: "test",
+		};
+
+		const head: CollectionHead = {
+			schemaVersion: 1,
+			collectionId: "test-col",
+			name: "resolve-test",
+			currentRevisionId: "rev-resolved",
+			prevHeadId: null,
+			segments: [{ id: "seg-should-not-use", sourceTypes: ["repo"], chunkCount: 1 }],
+			totalChunks: 1,
+			embeddingModel: "test-model",
+			embeddingDimensions: 3,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		};
+
+		const mounted = await mountCollection(head, storage, index, {
+			resolveRevision: async () => revision,
+		});
+
+		expect(mounted.revision).toBe(revision);
+		expect(mounted.segments).toHaveLength(1);
+		expect(index.entries[0]?.id).toBe("chunk-seg-via-rev");
+	});
+
+	it("falls back to head segments when no resolveRevision provided", async () => {
+		const seg = makeSegment("seg-direct");
+		const storage = makeStorage({ "seg-direct": seg });
+		const index = makeVectorIndex();
+
+		const head: CollectionHead = {
+			schemaVersion: 1,
+			collectionId: "test-col",
+			name: "fallback-test",
+			currentRevisionId: "rev-exists-but-no-resolver",
+			prevHeadId: null,
+			segments: [{ id: "seg-direct", sourceTypes: ["repo"], chunkCount: 1 }],
+			totalChunks: 1,
+			embeddingModel: "test-model",
+			embeddingDimensions: 3,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		};
+
+		const mounted = await mountCollection(head, storage, index);
+
+		expect(mounted.revision).toBeNull();
+		expect(mounted.segments).toHaveLength(1);
+	});
 });

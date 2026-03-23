@@ -87,6 +87,30 @@ describe("revision serialization", () => {
 		const bytes = new TextEncoder().encode(JSON.stringify({ schemaVersion: 1 }));
 		expect(() => deserializeRevision(bytes)).toThrow(WtfocError);
 	});
+
+	it("rejects segmentRefs with non-string elements", () => {
+		const rev = makeRevision();
+		const raw = JSON.parse(new TextDecoder().decode(serializeRevision(rev)));
+		raw.segmentRefs = [123, 456];
+		const bytes = new TextEncoder().encode(JSON.stringify(raw));
+		expect(() => deserializeRevision(bytes)).toThrow(WtfocError);
+	});
+
+	it("rejects malformed artifactSummaries entries", () => {
+		const rev = makeRevision();
+		const raw = JSON.parse(new TextDecoder().decode(serializeRevision(rev)));
+		raw.artifactSummaries = [{ notAnArtifact: true }];
+		const bytes = new TextEncoder().encode(JSON.stringify(raw));
+		expect(() => deserializeRevision(bytes)).toThrow(WtfocError);
+	});
+
+	it("rejects missing provenance array", () => {
+		const rev = makeRevision();
+		const raw = JSON.parse(new TextDecoder().decode(serializeRevision(rev)));
+		delete raw.provenance;
+		const bytes = new TextEncoder().encode(JSON.stringify(raw));
+		expect(() => deserializeRevision(bytes)).toThrow(WtfocError);
+	});
 });
 
 describe("revision provenance", () => {

@@ -89,10 +89,14 @@ export function createCollectionRevision(
 	head: CollectionHead,
 	publishedBy = "wtfoc-cli",
 ): CollectionRevision {
-	const revisionId = createHash("sha256")
-		.update(`${head.collectionId}/${head.updatedAt}/${head.segments.length}`)
-		.digest("hex")
-		.slice(0, 32);
+	// Hash all segment IDs + content into revisionId to prevent collisions
+	const revisionHash = createHash("sha256");
+	revisionHash.update(head.collectionId);
+	revisionHash.update(head.updatedAt);
+	for (const seg of head.segments) {
+		revisionHash.update(seg.id);
+	}
+	const revisionId = revisionHash.digest("hex").slice(0, 32);
 
 	return {
 		schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -103,7 +107,8 @@ export function createCollectionRevision(
 			artifactId: seg.id,
 			artifactRole: "segment" as const,
 			sourceScope: seg.sourceTypes.join(","),
-			contentIdentity: seg.ipfsCid ?? seg.id,
+			// Use IPFS CID for FOC, SHA-256 of segment ID for local (spec 009 FR-010b)
+			contentIdentity: seg.ipfsCid ?? createHash("sha256").update(seg.id).digest("hex"),
 			storageId: seg.id,
 			ipfsCid: seg.ipfsCid,
 			pieceCid: seg.pieceCid,

@@ -264,8 +264,8 @@ export function validateManifestSchema(data: unknown): CollectionHead {
 	const embeddingDimensions = requireField(
 		data,
 		"embeddingDimensions",
-		isPositiveFiniteInt,
-		"embeddingDimensions must be a positive integer",
+		isFiniteNonNegativeInt,
+		"embeddingDimensions must be a non-negative integer",
 		"headManifest",
 	);
 	const createdAt = requireField(

@@ -152,11 +152,26 @@ describe("createCollectionRevision", () => {
 		expect(rev.artifactSummaries[0].contentIdentity).toBe("bafyipfs123");
 	});
 
-	it("falls back to segment id for contentIdentity when no ipfsCid", () => {
+	it("uses SHA-256 of segment id for contentIdentity when no ipfsCid (local backend)", () => {
 		const head = createCollectionHead("test");
 		head.segments = [{ id: "local-seg-1", sourceTypes: ["repo"], chunkCount: 1 }];
 
 		const rev = createCollectionRevision(head);
-		expect(rev.artifactSummaries[0].contentIdentity).toBe("local-seg-1");
+		expect(rev.artifactSummaries[0]?.contentIdentity).toMatch(/^[a-f0-9]{64}$/);
+		expect(rev.artifactSummaries[0]?.contentIdentity).not.toBe("local-seg-1");
+	});
+
+	it("produces distinct revisionIds for heads with same timestamp/count but different segments", () => {
+		const head1 = createCollectionHead("test");
+		head1.updatedAt = "2026-03-23T12:00:00.000Z";
+		head1.segments = [{ id: "seg-alpha", sourceTypes: ["repo"], chunkCount: 1 }];
+
+		const head2 = createCollectionHead("test");
+		head2.updatedAt = "2026-03-23T12:00:00.000Z";
+		head2.segments = [{ id: "seg-beta", sourceTypes: ["repo"], chunkCount: 1 }];
+
+		const rev1 = createCollectionRevision(head1);
+		const rev2 = createCollectionRevision(head2);
+		expect(rev1.revisionId).not.toBe(rev2.revisionId);
 	});
 });

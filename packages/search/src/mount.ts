@@ -1,7 +1,6 @@
 import type {
 	CollectionHead,
 	CollectionRevision,
-	Embedder,
 	Segment,
 	StorageBackend,
 	VectorEntry,
@@ -17,17 +16,23 @@ export interface MountedCollection {
 
 export interface MountOptions {
 	signal?: AbortSignal;
+	/**
+	 * Optional resolver for loading a CollectionRevision by ID.
+	 * Required when mounting from a CollectionHead that has currentRevisionId.
+	 * If not provided and the head has a currentRevisionId, falls back to
+	 * loading segments directly from the head (pre-publication state).
+	 */
+	resolveRevision?: (revisionId: string, signal?: AbortSignal) => Promise<CollectionRevision>;
 }
 
 /**
- * Mount a collection for query/trace by hydrating segments from a revision.
+ * Mount a collection for query/trace by hydrating segments.
  *
- * Supports two modes:
- * - Latest: pass a CollectionHead → resolves current revision's segments
- * - Pinned: pass a CollectionRevision directly → uses that exact state
- *
- * Reuses stored corpus embeddings from segments — only query-time
- * embedding requires an embedder. No full re-embedding needed.
+ * - If a CollectionRevision is passed: uses that exact pinned state (FR-013a)
+ * - If a CollectionHead is passed with currentRevisionId + resolveRevision:
+ *   resolves through the revision first (FR-013a "stable handle resolves to latest revision")
+ * - If a CollectionHead is passed without currentRevisionId: mounts directly
+ *   from head segments (pre-publication state, no revision yet)
  */
 export async function mountCollection(
 	source: CollectionHead | CollectionRevision,
@@ -39,9 +44,20 @@ export async function mountCollection(
 	signal?.throwIfAborted();
 
 	const isRevision = "revisionId" in source;
-	const segmentRefs = isRevision ? source.segmentRefs : source.segments.map((s) => s.id);
 
-	const revision = isRevision ? source : null;
+	let revision: CollectionRevision | null = null;
+	let segmentRefs: string[];
+
+	if (isRevision) {
+		revision = source;
+		segmentRefs = source.segmentRefs;
+	} else if (source.currentRevisionId && options?.resolveRevision) {
+		revision = await options.resolveRevision(source.currentRevisionId, signal);
+		segmentRefs = revision.segmentRefs;
+	} else {
+		segmentRefs = source.segments.map((s) => s.id);
+	}
+
 	const segments: Segment[] = [];
 
 	for (const segRef of segmentRefs) {

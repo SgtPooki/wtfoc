@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { CollectionHead, ManifestStore, StoredHead } from "@wtfoc/common";
-import { ManifestConflictError } from "@wtfoc/common";
+import { ManifestConflictError, WtfocError } from "@wtfoc/common";
+import { validateManifestSchema } from "../schema.js";
 
 /**
  * Local filesystem manifest store. Persists head manifests as JSON files.
@@ -15,14 +16,16 @@ export class LocalManifestStore implements ManifestStore {
 	constructor(private readonly manifestDir: string) {}
 
 	async getHead(projectName: string): Promise<StoredHead | null> {
+		let data: string;
 		try {
-			const data = await readFile(this.filePath(projectName), "utf-8");
-			const manifest = JSON.parse(data) as CollectionHead;
-			const headId = this.computeHeadId(data);
-			return { headId, manifest };
+			data = await readFile(this.filePath(projectName), "utf-8");
 		} catch {
 			return null;
 		}
+		const parsed: unknown = JSON.parse(data);
+		const manifest = validateManifestSchema(parsed);
+		const headId = this.computeHeadId(data);
+		return { headId, manifest };
 	}
 
 	async putHead(
