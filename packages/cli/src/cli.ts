@@ -9,7 +9,13 @@ import type {
 	VectorIndex,
 } from "@wtfoc/common";
 import { buildSegment, chunkMarkdown, RegexEdgeExtractor, RepoAdapter } from "@wtfoc/ingest";
-import { InMemoryVectorIndex, query, TransformersEmbedder, trace } from "@wtfoc/search";
+import {
+	InMemoryVectorIndex,
+	OpenAIEmbedder,
+	query,
+	TransformersEmbedder,
+	trace,
+} from "@wtfoc/search";
 import { createStore } from "@wtfoc/store";
 import { Command } from "commander";
 import { formatQuery, formatStatus, formatTrace, type OutputFormat } from "./output.js";
@@ -29,6 +35,49 @@ function getFormat(opts: { json?: boolean; quiet?: boolean }): OutputFormat {
 	return "human";
 }
 
+/**
+ * Create an embedder based on CLI flags.
+ * Supports: transformers (default, local), openai (API or LM Studio compatible).
+ */
+function createEmbedder(opts: {
+	embedder?: string;
+	embedderUrl?: string;
+	embedderKey?: string;
+	embedderModel?: string;
+}): { embedder: Embedder; modelName: string } {
+	const type = opts.embedder ?? "transformers";
+
+	if (type === "openai" || type === "lmstudio") {
+		const apiKey = opts.embedderKey ?? process.env["WTFOC_OPENAI_API_KEY"] ?? "lm-studio";
+		const baseUrl =
+			opts.embedderUrl ?? (type === "lmstudio" ? "http://localhost:1234/v1" : undefined);
+		const model = opts.embedderModel ?? "text-embedding-3-small";
+
+		const embedder = new OpenAIEmbedder({ apiKey, baseUrl, model });
+		return { embedder, modelName: model };
+	}
+
+	// Default: local transformers.js
+	try {
+		const embedder = new TransformersEmbedder();
+		return { embedder, modelName: "Xenova/all-MiniLM-L6-v2" };
+	} catch {
+		console.error("⚠️  TransformersEmbedder unavailable, using zero-vector fallback");
+		return {
+			embedder: {
+				dimensions: 384,
+				async embed(): Promise<Float32Array> {
+					return new Float32Array(384);
+				},
+				async embedBatch(texts: string[]): Promise<Float32Array[]> {
+					return texts.map(() => new Float32Array(384));
+				},
+			},
+			modelName: "zero-vector-fallback",
+		};
+	}
+}
+
 // ─── wtfoc init ──────────────────────────────────────────────────────────────
 program
 	.command("init <name>")
@@ -46,8 +95,8 @@ program
 			prevHeadId: null,
 			segments: [],
 			totalChunks: 0,
-			embeddingModel: "Xenova/all-MiniLM-L6-v2",
-			embeddingDimensions: 384,
+			embeddingModel: "pending",
+			embeddingDimensions: 0,
 			createdAt: new Date().toISOString(),
 			updatedAt: new Date().toISOString(),
 		};
@@ -62,115 +111,115 @@ const ingestCmd = program
 	.description("Ingest from a source (repo, slack, github, website)")
 	.requiredOption("-c, --collection <name>", "Collection name")
 	.option("--since <duration>", "Only fetch items newer than duration (e.g. 90d)")
-	.action(async (sourceType: string, args: string[], opts: { collection: string }) => {
-		const store = createStore({ storage: "local" });
-		const format = getFormat(program.opts());
+	.option("--embedder <type>", "Embedder: transformers (default), openai, lmstudio")
+	.option("--embedder-url <url>", "Embedder API URL (for openai/lmstudio)")
+	.option("--embedder-key <key>", "Embedder API key")
+	.option("--embedder-model <model>", "Embedder model name")
+	.action(
+		async (
+			sourceType: string,
+			args: string[],
+			opts: {
+				collection: string;
+				embedder?: string;
+				embedderUrl?: string;
+				embedderKey?: string;
+				embedderModel?: string;
+			},
+		) => {
+			const store = createStore({ storage: "local" });
+			const format = getFormat(program.opts());
 
-		// Get or create manifest
-		const head = await store.manifests.getHead(opts.collection);
-		let prevHeadId: string | null = null;
-		if (head) {
-			prevHeadId = head.headId;
-		}
+			// Get or create manifest
+			const head = await store.manifests.getHead(opts.collection);
+			let prevHeadId: string | null = null;
+			if (head) {
+				prevHeadId = head.headId;
+			}
 
-		// Initialize embedder
-		if (format !== "quiet") console.error("⏳ Loading embedder...");
-		let embedder: Embedder;
-		try {
-			embedder = new TransformersEmbedder();
-		} catch {
-			// Fallback: create a simple embedder that returns zero vectors
-			// (for environments where transformers.js isn't available)
-			console.error("⚠️  TransformersEmbedder unavailable, using zero-vector fallback");
-			embedder = {
-				dimensions: 384,
-				async embed(): Promise<Float32Array> {
-					return new Float32Array(384);
-				},
-				async embedBatch(texts: string[]): Promise<Float32Array[]> {
-					return texts.map(() => new Float32Array(384));
-				},
-			};
-		}
+			// Initialize embedder
+			if (format !== "quiet") console.error("⏳ Loading embedder...");
+			const { embedder, modelName } = createEmbedder(opts);
 
-		// Collect chunks based on source type
-		const chunks: Chunk[] = [];
-		if (sourceType === "repo") {
-			const repoSource = args[0];
-			if (!repoSource) {
-				console.error("Error: repo source required (e.g. FilOzone/synapse-sdk or ./path)");
+			// Collect chunks based on source type
+			const chunks: Chunk[] = [];
+			if (sourceType === "repo") {
+				const repoSource = args[0];
+				if (!repoSource) {
+					console.error("Error: repo source required (e.g. FilOzone/synapse-sdk or ./path)");
+					process.exit(2);
+				}
+				if (format !== "quiet") console.error(`⏳ Ingesting repo: ${repoSource}...`);
+				const adapter = new RepoAdapter();
+				const repoConfig = adapter.parseConfig({ source: repoSource });
+				for await (const chunk of adapter.ingest(repoConfig)) {
+					chunks.push(chunk);
+				}
+				if (format !== "quiet") console.error(`   ${chunks.length} chunks extracted`);
+
+				// Extract edges
+				const edgeExtractor = new RegexEdgeExtractor();
+				const edges = [...adapter.extractEdges(chunks), ...edgeExtractor.extract(chunks)];
+				if (format !== "quiet") console.error(`   ${edges.length} edges extracted`);
+
+				// Embed chunks
+				if (format !== "quiet") console.error("⏳ Embedding chunks...");
+				const embeddings = await embedder.embedBatch(chunks.map((c) => c.content));
+
+				// Build segment
+				const segmentChunks = chunks.map((chunk, i) => {
+					const emb = embeddings[i];
+					if (!emb)
+						throw new Error(
+							`Missing embedding for chunk ${i} — expected ${chunks.length} embeddings`,
+						);
+					return { chunk, embedding: Array.from(emb) };
+				});
+
+				const segment = buildSegment(segmentChunks, edges, {
+					embeddingModel: modelName,
+					embeddingDimensions: embedder.dimensions,
+				});
+
+				// Store segment
+				const segmentBytes = new TextEncoder().encode(JSON.stringify(segment));
+				const segmentResult = await store.storage.upload(segmentBytes);
+				if (format !== "quiet")
+					console.error(`   Segment stored: ${segmentResult.id.slice(0, 16)}...`);
+
+				// Update manifest
+				const manifest: HeadManifest = {
+					schemaVersion: 1,
+					name: opts.collection,
+					prevHeadId,
+					segments: [
+						...(head?.manifest.segments ?? []),
+						{
+							id: segmentResult.id,
+							sourceTypes: [...new Set(chunks.map((c) => c.sourceType))],
+							chunkCount: chunks.length,
+						},
+					],
+					totalChunks: (head?.manifest.totalChunks ?? 0) + chunks.length,
+					embeddingModel: modelName,
+					embeddingDimensions: embedder.dimensions,
+					createdAt: head?.manifest.createdAt ?? new Date().toISOString(),
+					updatedAt: new Date().toISOString(),
+				};
+
+				await store.manifests.putHead(opts.collection, manifest, prevHeadId);
+				if (format !== "quiet") {
+					console.error(
+						`✅ Ingested ${chunks.length} chunks from ${repoSource} into "${opts.collection}"`,
+					);
+				}
+			} else {
+				console.error(`Unknown source type: ${sourceType}`);
+				console.error("Available: repo");
 				process.exit(2);
 			}
-			if (format !== "quiet") console.error(`⏳ Ingesting repo: ${repoSource}...`);
-			const adapter = new RepoAdapter();
-			const repoConfig = adapter.parseConfig({ source: repoSource });
-			for await (const chunk of adapter.ingest(repoConfig)) {
-				chunks.push(chunk);
-			}
-			if (format !== "quiet") console.error(`   ${chunks.length} chunks extracted`);
-
-			// Extract edges
-			const edgeExtractor = new RegexEdgeExtractor();
-			const edges = [...adapter.extractEdges(chunks), ...edgeExtractor.extract(chunks)];
-			if (format !== "quiet") console.error(`   ${edges.length} edges extracted`);
-
-			// Embed chunks
-			if (format !== "quiet") console.error("⏳ Embedding chunks...");
-			const embeddings = await embedder.embedBatch(chunks.map((c) => c.content));
-
-			// Build segment
-			const segmentChunks = chunks.map((chunk, i) => {
-				const emb = embeddings[i];
-				if (!emb)
-					throw new Error(
-						`Missing embedding for chunk ${i} — expected ${chunks.length} embeddings`,
-					);
-				return { chunk, embedding: Array.from(emb) };
-			});
-
-			const segment = buildSegment(segmentChunks, edges, {
-				embeddingModel: "Xenova/all-MiniLM-L6-v2",
-				embeddingDimensions: embedder.dimensions,
-			});
-
-			// Store segment
-			const segmentBytes = new TextEncoder().encode(JSON.stringify(segment));
-			const segmentResult = await store.storage.upload(segmentBytes);
-			if (format !== "quiet")
-				console.error(`   Segment stored: ${segmentResult.id.slice(0, 16)}...`);
-
-			// Update manifest
-			const manifest: HeadManifest = {
-				schemaVersion: 1,
-				name: opts.collection,
-				prevHeadId,
-				segments: [
-					...(head?.manifest.segments ?? []),
-					{
-						id: segmentResult.id,
-						sourceTypes: [...new Set(chunks.map((c) => c.sourceType))],
-						chunkCount: chunks.length,
-					},
-				],
-				totalChunks: (head?.manifest.totalChunks ?? 0) + chunks.length,
-				embeddingModel: "Xenova/all-MiniLM-L6-v2",
-				embeddingDimensions: embedder.dimensions,
-				createdAt: head?.manifest.createdAt ?? new Date().toISOString(),
-				updatedAt: new Date().toISOString(),
-			};
-
-			await store.manifests.putHead(opts.collection, manifest, prevHeadId);
-			if (format !== "quiet") {
-				console.error(
-					`✅ Ingested ${chunks.length} chunks from ${repoSource} into "${opts.collection}"`,
-				);
-			}
-		} else {
-			console.error(`Unknown source type: ${sourceType}`);
-			console.error("Available: repo");
-			process.exit(2);
-		}
-	});
+		},
+	);
 
 // ─── wtfoc trace ─────────────────────────────────────────────────────────────
 program
