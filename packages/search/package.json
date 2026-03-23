@@ -11,9 +11,10 @@
 	],
 	"scripts": {
 		"build": "tsc -b",
-		"test": "pnpm --dir ../.. exec vitest run packages/search/src"
+		"test": "vitest run"
 	},
 	"dependencies": {
+		"@huggingface/transformers": "^3.8.1",
 		"@wtfoc/common": "workspace:*"
 	},
 	"peerDependencies": {
