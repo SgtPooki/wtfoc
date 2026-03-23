@@ -681,18 +681,33 @@ review_prs() {
 		}
 
 		local review_prompt
-		review_prompt="You are reviewing PR #${pr_num}: ${pr_title}
+		review_prompt="Review PR #${pr_num}: ${pr_title}
 
-Review this diff for:
-1. Correctness — does the code do what the spec says?
-2. Test coverage — are behavioral tests included?
-3. SPEC.md compliance — interfaces, error handling, AbortSignal, no any types
-4. Monorepo conventions — test scripts use 'vitest run', no ../.. paths, no node --test
-5. Edge cases — anything missing?
-6. Check if Copilot already reviewed — don't repeat what Copilot already flagged
+IMPORTANT FORMAT RULES:
+- Your response will be posted as a GitHub PR comment. It MUST be valid markdown.
+- Keep it SHORT — max 20 lines. No verbose explanations.
+- Do NOT include raw terminal output, ANSI codes, or tool logs.
+- Do NOT repeat the diff back.
 
-Provide a verdict: APPROVE, REQUEST_CHANGES, or COMMENT.
-Be specific and actionable.
+Structure your response EXACTLY like this:
+
+**Verdict**: APPROVE | REQUEST_CHANGES | COMMENT
+
+**Summary**: 1-2 sentences on what the PR does.
+
+**Issues** (only if REQUEST_CHANGES):
+- Issue 1
+- Issue 2
+
+**Notes** (optional, only if noteworthy):
+- Note 1
+
+Review criteria:
+- Correctness vs spec
+- Behavioral tests included
+- SPEC.md compliance (interfaces, errors, AbortSignal, no any)
+- Monorepo conventions (test scripts = 'vitest run', no ../.. paths)
+- No repeated feedback if Copilot already flagged it
 
 --- DIFF ---
 ${diff}
@@ -721,6 +736,33 @@ ${diff}
 		rm -f "$review_file" 2>/dev/null || true
 
 		if [[ -n "$review_output" ]]; then
+			# Sanitize: strip ANSI codes, codex/cursor preamble, excessive whitespace
+			review_output=$(echo "$review_output" | \
+				sed 's/\x1b\[[0-9;]*m//g' | \
+				sed '/^OpenAI Codex/d' | \
+				sed '/^--------$/d' | \
+				sed '/^workdir:/d' | \
+				sed '/^model:/d' | \
+				sed '/^provider:/d' | \
+				sed '/^approval:/d' | \
+				sed '/^sandbox:/d' | \
+				sed '/^reasoning/d' | \
+				sed '/^session id:/d' | \
+				sed '/^tokens used/d' | \
+				sed '/^mcp startup/d' | \
+				sed '/^codex$/d' | \
+				sed '/^user$/d' | \
+				sed '/^exec$/d' | \
+				sed '/^--- DIFF ---$/d' | \
+				sed '/^--- END DIFF ---$/d')
+
+			# Truncate if still too long (max 2000 chars for a comment)
+			if [[ ${#review_output} -gt 2000 ]]; then
+				review_output="${review_output:0:1900}
+
+...(truncated)"
+			fi
+
 			local comment_body="## Review: ${AGENT}
 
 ${review_output}"
