@@ -1,4 +1,5 @@
 import type { ManifestStore, StorageBackend } from "@wtfoc/common";
+import { FocStorageBackend } from "./backends/foc.js";
 import { LocalStorageBackend } from "./backends/local.js";
 import { LocalManifestStore } from "./manifest/local.js";
 
@@ -56,9 +57,6 @@ export function createStore(config: StoreConfig): Store {
 				"FOC storage requires a private key. Set PRIVATE_KEY or WTFOC_PRIVATE_KEY env var, or pass privateKey in config.",
 			);
 		}
-		// Dynamic import to avoid pulling synapse-sdk for local-only users
-		const { FocStorageBackend } =
-			require("./backends/foc.js") as typeof import("./backends/foc.js");
 		storage = new FocStorageBackend({
 			privateKey,
 			network: config.network ?? "calibration",

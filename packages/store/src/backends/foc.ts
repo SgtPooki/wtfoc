@@ -76,7 +76,9 @@ export class FocStorageBackend implements StorageBackend {
 				throw new Error("Upload succeeded but no PieceCID returned");
 			}
 
-			return { id: pieceCid, pieceCid, ipfsCid };
+			// Use ipfsCid as the primary id for retrieval (returns unwrapped content)
+			// PieceCID returns the CAR container which needs parsing
+			return { id: ipfsCid, pieceCid, ipfsCid };
 		} catch (err) {
 			if (err instanceof StorageUnreachableError) throw err;
 			const message = err instanceof Error ? err.message : String(err);
@@ -90,6 +92,38 @@ export class FocStorageBackend implements StorageBackend {
 	async download(id: string, signal?: AbortSignal): Promise<Uint8Array> {
 		signal?.throwIfAborted();
 
+		// Try SP direct IPFS endpoints first (fast, no public gateway dependency)
+		// SPs serve IPFS CIDs at <sp-url>/ipfs/<cid>
+		const spEndpoints =
+			this.#network === "calibration"
+				? ["https://caliberation-pdp.infrafolio.com", "https://calib2.ezpdpz.net"]
+				: [];
+
+		for (const sp of spEndpoints) {
+			try {
+				const response = await fetch(`${sp}/ipfs/${id}`, { signal });
+				if (response.ok) {
+					return new Uint8Array(await response.arrayBuffer());
+				}
+			} catch {
+				// Try next SP
+			}
+		}
+
+		// Fall back to public IPFS gateways
+		const gateways = ["https://dweb.link/ipfs/", "https://inbrowser.link/ipfs/"];
+		for (const gateway of gateways) {
+			try {
+				const response = await fetch(`${gateway}${id}`, { signal });
+				if (response.ok) {
+					return new Uint8Array(await response.arrayBuffer());
+				}
+			} catch {
+				// Try next gateway
+			}
+		}
+
+		// Fall back to synapse-sdk direct download (PieceCID)
 		try {
 			const { Synapse } = await import("@filoz/synapse-sdk");
 			const { privateKeyToAccount } = await import("viem/accounts");
@@ -105,6 +139,7 @@ export class FocStorageBackend implements StorageBackend {
 				source: this.#source,
 			});
 
+			// Try downloading with the id as pieceCid
 			const data = await synapse.storage.download({ pieceCid: id });
 			return new Uint8Array(data);
 		} catch (err) {
