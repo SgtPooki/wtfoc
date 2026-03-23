@@ -17,6 +17,9 @@ importers:
       filecoin-pin:
         specifier: ^0.19.0
         version: 0.19.0(react-native@0.84.1(@babel/core@7.29.0)(react@19.2.4))(typescript@5.9.3)(zod@4.3.6)
+      pino:
+        specifier: ^10.3.1
+        version: 10.3.1
       viem:
         specifier: ^2.47.6
         version: 2.47.6(typescript@5.9.3)(zod@4.3.6)

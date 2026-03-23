@@ -27,7 +27,8 @@ program
 	.description("What the FOC happened? Trace it.")
 	.version("0.0.1")
 	.option("--json", "Output as JSON")
-	.option("--quiet", "Suppress output (errors only)");
+	.option("--quiet", "Suppress output (errors only)")
+	.option("--storage <type>", "Storage: local (default) or foc", "local");
 
 interface EmbedderOpts {
 	embedder?: string;
@@ -43,6 +44,12 @@ function withEmbedderOptions<T extends Command>(cmd: T): T {
 		.option("--embedder-url <url>", "Embedder API URL (for openai/lmstudio)")
 		.option("--embedder-key <key>", "Embedder API key")
 		.option("--embedder-model <model>", "Embedder model name") as T;
+}
+
+function getStore() {
+	const globalOpts = program.opts();
+	const storageType = (globalOpts.storage ?? "local") as "local" | "foc";
+	return createStore({ storage: storageType });
 }
 
 function getFormat(opts: { json?: boolean; quiet?: boolean }): OutputFormat {
@@ -120,8 +127,7 @@ program
 	.option("--local", "Use local storage (default)")
 	.option("--foc", "Use FOC storage")
 	.action(async (name: string, opts: { local?: boolean; foc?: boolean }) => {
-		const backend = opts.foc ? "foc" : "local";
-		const store = createStore({ storage: backend as "local" | "foc" });
+		const store = getStore();
 
 		// Create initial manifest
 		const manifest: HeadManifest = {
@@ -137,7 +143,7 @@ program
 		};
 
 		await store.manifests.putHead(name, manifest, null);
-		console.log(`✅ Project "${name}" created (${backend} storage)`);
+		console.log(`✅ Project "${name}" created (${program.opts().storage} storage)`);
 	});
 
 // ─── wtfoc ingest <source-type> ──────────────────────────────────────────────
@@ -149,7 +155,7 @@ const ingestCmd = withEmbedderOptions(
 		.option("--since <duration>", "Only fetch items newer than duration (e.g. 90d)"),
 ).action(
 	async (sourceType: string, args: string[], opts: { collection: string } & EmbedderOpts) => {
-		const store = createStore({ storage: "local" });
+		const store = getStore();
 		const format = getFormat(program.opts());
 
 		// Get or create manifest
@@ -265,7 +271,7 @@ withEmbedderOptions(
 		.description("Trace evidence-backed connections across sources")
 		.requiredOption("-c, --collection <name>", "Collection name"),
 ).action(async (queryText: string, opts: { collection: string } & EmbedderOpts) => {
-	const store = createStore({ storage: "local" });
+	const store = getStore();
 	const format = getFormat(program.opts());
 
 	const head = await store.manifests.getHead(opts.collection);
@@ -291,7 +297,7 @@ withEmbedderOptions(
 		.requiredOption("-c, --collection <name>", "Collection name")
 		.option("-k, --top-k <number>", "Number of results", "10"),
 ).action(async (queryText: string, opts: { collection: string; topK: string } & EmbedderOpts) => {
-	const store = createStore({ storage: "local" });
+	const store = getStore();
 	const format = getFormat(program.opts());
 
 	const head = await store.manifests.getHead(opts.collection);
@@ -316,7 +322,7 @@ program
 	.description("Show collection status")
 	.requiredOption("-c, --collection <name>", "Collection name")
 	.action(async (opts: { collection: string }) => {
-		const store = createStore({ storage: "local" });
+		const store = getStore();
 		const format = getFormat(program.opts());
 
 		const head = await store.manifests.getHead(opts.collection);
@@ -344,7 +350,7 @@ program
 	.command("verify <id>")
 	.description("Verify an artifact exists in storage")
 	.action(async (id: string) => {
-		const store = createStore({ storage: "local" });
+		const store = getStore();
 		const format = getFormat(program.opts());
 
 		if (!store.storage.verify) {
