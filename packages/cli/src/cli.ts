@@ -9,7 +9,7 @@ import {
 	type VectorEntry,
 	type VectorIndex,
 } from "@wtfoc/common";
-import { buildSegment, chunkMarkdown, RegexEdgeExtractor, RepoAdapter } from "@wtfoc/ingest";
+import { buildSegment, chunkMarkdown, RegexEdgeExtractor, RepoAdapter, segmentId } from "@wtfoc/ingest";
 import {
 	InMemoryVectorIndex,
 	OpenAIEmbedder,
@@ -17,7 +17,7 @@ import {
 	TransformersEmbedder,
 	trace,
 } from "@wtfoc/search";
-import { createStore } from "@wtfoc/store";
+import { bundleAndUpload, createStore } from "@wtfoc/store";
 import { Command } from "commander";
 import { formatQuery, formatStatus, formatTrace, type OutputFormat } from "./output.js";
 
@@ -250,11 +250,38 @@ const ingestCmd = withEmbedderOptions(
 				embeddingDimensions: embedder.dimensions,
 			});
 
-			// Store segment
+			// Skip upload if zero chunks (FR-008)
+			if (chunks.length === 0) {
+				if (format !== "quiet") console.error("⚠️  No chunks produced — skipping upload");
+				return;
+			}
+
+			// Store segment — use bundler for FOC, direct upload for local
 			const segmentBytes = new TextEncoder().encode(JSON.stringify(segment));
-			const segmentResult = await store.storage.upload(segmentBytes);
-			if (format !== "quiet")
-				console.error(`   Segment stored: ${segmentResult.id.slice(0, 16)}...`);
+			const segId = segmentId(segment);
+			const storageType = (program.opts().storage ?? "local") as string;
+
+			let resultId: string;
+			let batchForManifest: import("@wtfoc/common").BatchRecord | undefined;
+
+			if (storageType === "foc") {
+				// FOC: bundle into CAR and upload once
+				if (format !== "quiet") console.error("⏳ Bundling into CAR...");
+				const bundleResult = await bundleAndUpload(
+					[{ id: segId, data: segmentBytes }],
+					store.storage,
+				);
+				resultId = bundleResult.segmentCids.get(segId) ?? segId;
+				batchForManifest = bundleResult.batch;
+				if (format !== "quiet")
+					console.error(`   Segment bundled: ${resultId.slice(0, 16)}... (PieceCID: ${bundleResult.batch.pieceCid.slice(0, 16)}...)`);
+			} else {
+				// Local: direct upload (unchanged)
+				const segmentResult = await store.storage.upload(segmentBytes);
+				resultId = segmentResult.id;
+				if (format !== "quiet")
+					console.error(`   Segment stored: ${resultId.slice(0, 16)}...`);
+			}
 
 			// Update manifest
 			const manifest: HeadManifest = {
@@ -264,7 +291,7 @@ const ingestCmd = withEmbedderOptions(
 				segments: [
 					...(head?.manifest.segments ?? []),
 					{
-						id: segmentResult.id,
+						id: resultId,
 						sourceTypes: [...new Set(chunks.map((c) => c.sourceType))],
 						chunkCount: chunks.length,
 					},
@@ -274,6 +301,10 @@ const ingestCmd = withEmbedderOptions(
 				embeddingDimensions: embedder.dimensions,
 				createdAt: head?.manifest.createdAt ?? new Date().toISOString(),
 				updatedAt: new Date().toISOString(),
+				batches: [
+					...(head?.manifest.batches ?? []),
+					...(batchForManifest ? [batchForManifest] : []),
+				],
 			};
 
 			await store.manifests.putHead(opts.collection, manifest, prevHeadId);
