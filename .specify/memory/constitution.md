@@ -50,6 +50,7 @@ Ship the demo, but make it worth extending. Every decision optimizes for: (1) wo
 - **No non-null assertions (`!`)** — check the value exists, throw a descriptive error if it doesn't. `if (!x) throw new Error(...)` not `x!`
 - **Named, documented errors only** — never `throw new Error("something broke")`. Use typed error classes from `@wtfoc/common` (e.g. `StorageNotFoundError`, `EmbedFailedError`) with stable `code` fields. Every error must be traceable: include the operation attempted, the artifact ID, and the backend/component that failed. Consumers should be able to programmatically handle errors via `error.code` without parsing messages.
 - **AbortSignal on all async interfaces** — every long-running operation accepts `signal?: AbortSignal` for proper cancellation
+- **Self-documenting code over comments** — code should be readable without comments. Use comments only when the *why* isn't obvious from the code itself. Don't add comments that restate what the code does. Don't add JSDoc that just restates the function signature or parameter types. Don't add comments to code you didn't change. Three well-named variables beat one variable with a comment.
 - **Conventional commits** scoped by package: `feat(store): add FOC upload`
 - **SemVer 0.x** — all packages experimental, `bump-minor-pre-major` via release-please
 - **Node >=24**
