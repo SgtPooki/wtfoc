@@ -180,10 +180,18 @@ Human creates spec issues (dispatch.sh spec)
 - `scripts/dispatch.sh cleanup` — remove merged worktrees
 - `scripts/agent-loop.sh <agent>` — autonomous work loop (picks up assigned or ready issues)
 
+## What wtfoc Is NOT
+
+- **Not a vector database.** We provide pluggable seams for vector stores, not a competing implementation.
+- **Not an agent framework.** Agents use wtfoc as a knowledge layer — we don't orchestrate them.
+- **Not a multi-writer database.** Single writer per project for now. Don't promise distributed coordination too early.
+- **Never store opaque summaries without evidence links.** Every fact traces back to stored, verifiable source artifacts.
+- **The differentiator is verifiable, portable knowledge state — not embeddings.** Embeddings are compute. CID-addressed evidence is the product.
+
 ## Governance
 
 - This constitution and `SPEC.md` are the source of truth
 - Changes to interfaces in `@wtfoc/common` require SPEC.md update
 - Features not in SPEC.md require discussion before implementation
 
-**Version**: 1.1.0 | **Ratified**: 2026-03-23 | **Last Amended**: 2026-03-23
+**Version**: 1.2.0 | **Ratified**: 2026-03-23 | **Last Amended**: 2026-03-23
