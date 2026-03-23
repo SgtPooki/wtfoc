@@ -419,7 +419,7 @@ review_prs() {
 		fi
 
 		# Claim the review (optimistic lock)
-		gh_retry gh pr edit "$pr_num" --repo "$REPO" --add-label "reviewing-${AGENT}" >/dev/null 2>&1 || true
+		gh_retry gh issue edit "$pr_num" --repo "$REPO" --add-label "reviewing-${AGENT}" >/dev/null 2>&1 || true
 
 		# Wait a moment then re-check — if another agent also claimed it, back off
 		sleep 2
@@ -436,7 +436,7 @@ review_prs() {
 			first_reviewer=$(echo "$all_reviewing" | jq -r 'sort | .[0]' 2>/dev/null || echo "")
 			if [[ "$first_reviewer" != "reviewing-${AGENT}" ]]; then
 				log "PR #${pr_num} also claimed by another agent — backing off"
-				gh_retry gh pr edit "$pr_num" --repo "$REPO" --remove-label "reviewing-${AGENT}" >/dev/null 2>&1 || true
+				gh_retry gh issue edit "$pr_num" --repo "$REPO" --remove-label "reviewing-${AGENT}" >/dev/null 2>&1 || true
 				continue
 			fi
 		fi
@@ -447,7 +447,7 @@ review_prs() {
 		local diff
 		diff=$(gh_retry gh pr diff "$pr_num" --repo "$REPO") || {
 			warn "Failed to get diff for PR #${pr_num}"
-			gh_retry gh pr edit "$pr_num" --repo "$REPO" --remove-label "reviewing-${AGENT}" >/dev/null 2>&1 || true
+			gh_retry gh issue edit "$pr_num" --repo "$REPO" --remove-label "reviewing-${AGENT}" >/dev/null 2>&1 || true
 			continue
 		}
 
@@ -501,7 +501,7 @@ ${review_output}"
 		fi
 
 		# Remove reviewing label
-		gh_retry gh pr edit "$pr_num" --repo "$REPO" --remove-label "reviewing-${AGENT}" >/dev/null 2>&1 || true
+		gh_retry gh issue edit "$pr_num" --repo "$REPO" --remove-label "reviewing-${AGENT}" >/dev/null 2>&1 || true
 
 		# Only review one PR per loop iteration
 		break
