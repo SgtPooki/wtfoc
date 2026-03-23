@@ -5,12 +5,12 @@ set -euo pipefail
 #
 # Usage:
 #   ./scripts/demo.sh                    # ingest + demo with default embedder
-#   ./scripts/demo.sh --embedder lmstudio  # use LM Studio for better quality
+#   ./scripts/demo.sh --embedder-url lmstudio --embedder-model mxbai-embed-large-v1  # use LM Studio for better quality
 #   ./scripts/demo.sh --skip-ingest      # skip ingest, just run queries
 #
 # Prerequisites:
 #   - Node >= 24, pnpm
-#   - For --embedder lmstudio: LM Studio running with an embedding model loaded
+#   - For --embedder-url lmstudio --embedder-model mxbai-embed-large-v1: LM Studio running with an embedding model loaded
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -26,7 +26,7 @@ for arg in "$@"; do
 		--embedder) shift; EMBEDDER_ARGS="--embedder $1"; shift ;;
 		--embedder=*) EMBEDDER_ARGS="--embedder ${arg#*=}" ;;
 		--skip-ingest) SKIP_INGEST=true ;;
-		lmstudio) EMBEDDER_ARGS="--embedder lmstudio" ;;
+		lmstudio) EMBEDDER_ARGS="--embedder-url lmstudio --embedder-model mxbai-embed-large-v1" ;;
 		*) ;;
 	esac
 done
@@ -110,4 +110,4 @@ echo "✅ Demo complete"
 echo ""
 echo "All results include source file paths and storage IDs."
 echo "Every chunk is content-addressed and verifiable."
-echo "Swap embedders with --embedder lmstudio for better quality."
+echo "Swap embedders with --embedder-url lmstudio --embedder-model mxbai-embed-large-v1 for better quality."
