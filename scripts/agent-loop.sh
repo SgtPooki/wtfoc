@@ -329,26 +329,23 @@ merge_ready_prs() {
 
 		log "PR #${pr_num} is ready-to-merge. Validating..."
 
-		# Find or create worktree
-		local worktree_dir="${WORKTREE_BASE}/${pr_branch}"
-		if [[ ! -d "$worktree_dir" ]]; then
-			cd "$REPO_ROOT"
-			git fetch origin "$pr_branch" 2>/dev/null || true
-			git worktree add "$worktree_dir" "$pr_branch" 2>/dev/null || true
-			(cd "$worktree_dir" && pnpm install --frozen-lockfile 2>/dev/null) || true
-		else
-			(cd "$worktree_dir" && git pull origin "$pr_branch" --ff-only 2>/dev/null) || true
+		# Just check GitHub merge status — don't run tests locally
+		# (CI already validates tests on every push, and worktrees may be stale)
+		local ci_status
+		ci_status=$(gh pr checks "$pr_num" --repo "$REPO" --json state -q '[.[] | .state] | if all(. == "SUCCESS") then "pass" elif any(. == "FAILURE") then "fail" else "pending" end' 2>/dev/null || echo "unknown")
+
+		local tests_pass=true
+		if [[ "$ci_status" == "fail" ]]; then
+			tests_pass=false
+		elif [[ "$ci_status" == "pending" ]]; then
+			log "PR #${pr_num} CI still running — skipping merge for now"
+			continue
 		fi
 
-		# Run tests and lint locally
-		local tests_pass=true
-		(cd "$worktree_dir" && pnpm test 2>/dev/null) || tests_pass=false
-		(cd "$worktree_dir" && pnpm lint 2>/dev/null) || tests_pass=false
-
 		if [[ "$tests_pass" == "false" ]]; then
-			warn "PR #${pr_num} tests/lint failed — cannot merge"
+			warn "PR #${pr_num} CI failed — cannot merge"
 			gh_retry gh pr comment "$pr_num" --repo "$REPO" \
-				--body "**Merge blocked**: tests or lint failed locally. Needs fixes." >/dev/null 2>&1 || true
+				--body "**Merge blocked**: CI checks failed. Check the Actions tab." >/dev/null 2>&1 || true
 			gh_retry gh issue edit "$pr_num" --repo "$REPO" \
 				--remove-label "ready-to-merge" --add-label "changes-requested" >/dev/null 2>&1 || true
 			continue
