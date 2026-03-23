@@ -94,6 +94,15 @@ Each commit is a discrete, isolated change. One logical thing per commit.
 - Unit tests use local/in-memory backends — no network calls
 - Golden fixtures for integration tests
 
+### Monorepo Script Conventions (NON-NEGOTIABLE)
+- **All npm scripts must work from both the package directory AND the root**
+- `pnpm test` from root runs all tests. `pnpm --filter @wtfoc/store test` runs one package.
+- **Package-level test scripts must NOT reference parent directories** (no `../..`, no `--dir ../..`)
+- **Package-level test scripts must NOT reference the root vitest config** — the root config handles discovery
+- **Standard package test script**: `"test": "vitest run"` — vitest auto-discovers `.test.ts` files in the package
+- **Do NOT change test commands to use `node --test`** — we use vitest, not the Node test runner
+- **Do NOT modify package.json scripts without explicit approval** — script changes affect all developers and CI
+
 ### CI Gates
 - All code changes are gated by CI checks
 - PRs must pass: tests, biome, build
@@ -114,9 +123,24 @@ This project uses multiple AI agents (Claude, Cursor, Codex) working in parallel
 | `assigned-cursor` | Claimed by Cursor | Agent loop or `dispatch.sh assign` |
 | `assigned-codex` | Claimed by Codex | Agent loop or `dispatch.sh assign` |
 | `blocked` | Issue cannot proceed (missing dependency, needs decision) | Any agent or human |
+| `reviewing-claude` | PR is being reviewed by Claude — other agents skip | Agent loop |
+| `reviewing-cursor` | PR is being reviewed by Cursor | Agent loop |
+| `reviewing-codex` | PR is being reviewed by Codex | Agent loop |
+| `changes-requested` | PR has review feedback that needs to be addressed by the author | Agent loop or reviewer |
+| `ready-to-merge` | PR reviewed, approved, ready for merge | Human or reviewer agent |
+| `authored-claude` | PR/issue was created by Claude | Agent loop (on PR creation) |
+| `authored-cursor` | PR/issue was created by Cursor | Agent loop (on PR creation) |
+| `authored-codex` | PR/issue was created by Codex | Agent loop (on PR creation) |
+| `reviewed-by-claude` | PR was reviewed by Claude | Agent loop (after posting review) |
+| `reviewed-by-cursor` | PR was reviewed by Cursor | Agent loop (after posting review) |
+| `reviewed-by-codex` | PR was reviewed by Codex | Agent loop (after posting review) |
+| `reviewed-by-copilot` | PR was reviewed by GitHub Copilot | GitHub (automatic) |
 
 ### Rules
 
+- **ALL review comments must be responded to.** This includes GitHub Copilot inline comments. For each comment: either fix the issue, or reply explaining why no change is needed. Do not ignore any comment. Do not blindly accept — evaluate each on its merits. All comments must have a response before marking ready-to-merge.
+- **Review before new work.** Agents check for PRs to review BEFORE picking up new implementation issues. Reviewing unblocks the pipeline faster than starting new work.
+- **One reviewer per PR.** `reviewing-<agent>` label prevents duplicate reviews. 2+ reviews (including Copilot) = enough.
 - **One agent per issue.** If an issue has `assigned-<agent>`, no other agent touches it.
 - **Claim before working.** Agents must label an issue `assigned-<agent>` before starting work.
 - **One branch per issue.** Each issue gets its own branch and worktree (`../wtfoc-worktrees/<branch>/`).

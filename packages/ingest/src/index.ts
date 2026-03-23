@@ -2,3 +2,5 @@
 // See SPEC.md for ingest architecture
 
 export { chunkMarkdown, type MarkdownChunkerOptions } from "./chunker.js";
+export type { ChangedFile } from "./edges/extractor.js";
+export { extractChangedFileEdges, RegexEdgeExtractor } from "./edges/extractor.js";

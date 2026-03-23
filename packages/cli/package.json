@@ -14,7 +14,7 @@
 	],
 	"scripts": {
 		"build": "tsc -b",
-		"test": "node --test dist/**/*.test.js"
+		"test": "vitest run"
 	},
 	"dependencies": {
 		"@wtfoc/common": "workspace:*",
