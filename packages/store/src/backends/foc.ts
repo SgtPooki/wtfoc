@@ -17,14 +17,18 @@ export interface FocStorageBackendOptions {
 	source?: string;
 }
 
+// Lazy-loaded types to avoid pulling heavy deps for local-only users
+type SynapseInstance = Awaited<ReturnType<typeof import("filecoin-pin").initializeSynapse>>;
+
 /**
- * FOC storage backend using @filoz/synapse-sdk.
- * Stores blobs on Filecoin Onchain Cloud with dual CIDs.
+ * FOC storage backend using filecoin-pin for CAR creation + synapse-sdk for storage.
+ * Produces BOTH PieceCID (FOC) and IPFS CID (gateway-accessible) for every upload.
  *
- * id = PieceCID (durable, content-addressed, survives process restarts)
+ * id = PieceCID (durable, content-addressed)
+ * ipfsCid = IPFS root CID (gateway-accessible via dweb.link)
  */
 export class FocStorageBackend implements StorageBackend {
-	#synapse: ReturnType<typeof import("@filoz/synapse-sdk").Synapse.create> | null = null;
+	#synapse: SynapseInstance | null = null;
 	#initPromise: Promise<void> | null = null;
 	readonly #privateKey: string;
 	readonly #network: "calibration" | "mainnet";
@@ -41,19 +45,10 @@ export class FocStorageBackend implements StorageBackend {
 		if (!this.#initPromise) {
 			this.#initPromise = (async () => {
 				try {
-					const { Synapse } = await import("@filoz/synapse-sdk");
-					const { privateKeyToAccount } = await import("viem/accounts");
-					const { http } = await import("viem");
-					const chains = await import("@filoz/synapse-core/chains");
-
-					const chain = this.#network === "mainnet" ? chains.mainnet : chains.calibration;
-					const account = privateKeyToAccount(this.#privateKey as `0x${string}`);
-
-					this.#synapse = Synapse.create({
-						account,
-						chain,
-						transport: http(),
-						source: this.#source,
+					const { initializeSynapse } = await import("filecoin-pin");
+					this.#synapse = await initializeSynapse({
+						privateKey: this.#privateKey,
+						chainId: this.#network === "mainnet" ? 314 : 314159,
 					});
 				} catch (err) {
 					this.#initPromise = null;
@@ -64,7 +59,7 @@ export class FocStorageBackend implements StorageBackend {
 		await this.#initPromise;
 	}
 
-	#getSynapse() {
+	#getSynapse(): SynapseInstance {
 		if (!this.#synapse) {
 			throw new StorageUnreachableError("foc", new Error("Not initialized"));
 		}
@@ -80,7 +75,6 @@ export class FocStorageBackend implements StorageBackend {
 		await this.#ensureReady();
 		const synapse = this.#getSynapse();
 
-		// Validate size
 		if (data.byteLength < MIN_PIECE_SIZE) {
 			throw new StorageUnreachableError(
 				"foc",
@@ -91,16 +85,27 @@ export class FocStorageBackend implements StorageBackend {
 		}
 
 		try {
-			// Prepare payment if needed
-			const prep = await synapse.storage.prepare({ dataSize: BigInt(data.byteLength) });
-			if (prep.transaction) {
-				await prep.transaction.execute();
-			}
+			const { createCarFromFile, executeUpload } = await import("filecoin-pin");
 
-			// Upload
-			const result = await synapse.storage.upload(data);
+			// Create CAR file for dual CIDs (IPFS + PieceCID)
+			const car = await createCarFromFile(new File([data], "segment.json"));
+			const ipfsCid = car.rootCid.toString();
+
+			// Minimal logger (filecoin-pin requires one)
+			const logger = {
+				info: () => {},
+				debug: () => {},
+				warn: (msg: unknown) => console.error("[foc-warn]", msg),
+				error: (msg: unknown) => console.error("[foc-error]", msg),
+			};
+
+			// Upload CAR to FOC
+			const result = await executeUpload(synapse, car.carBytes, car.rootCid, {
+				copies: 2,
+				logger,
+			});
+
 			const pieceCid = result.pieceCid?.toString();
-
 			if (!pieceCid) {
 				throw new Error("Upload succeeded but no PieceCID returned");
 			}
@@ -108,7 +113,7 @@ export class FocStorageBackend implements StorageBackend {
 			return {
 				id: pieceCid,
 				pieceCid,
-				// TODO: get IPFS CID from filecoin-pin CAR creation (#41)
+				ipfsCid,
 			};
 		} catch (err) {
 			if (err instanceof StorageUnreachableError) throw err;
@@ -125,9 +130,18 @@ export class FocStorageBackend implements StorageBackend {
 	async download(id: string, signal?: AbortSignal): Promise<Uint8Array> {
 		signal?.throwIfAborted();
 		await this.#ensureReady();
-		const synapse = this.#getSynapse();
 
 		try {
+			// Try downloading via synapse-sdk (PieceCID)
+			const { Synapse } = await import("@filoz/synapse-sdk");
+			const { privateKeyToAccount } = await import("viem/accounts");
+			const { http } = await import("viem");
+			const chains = await import("@filoz/synapse-core/chains");
+
+			const chain = this.#network === "mainnet" ? chains.mainnet : chains.calibration;
+			const account = privateKeyToAccount(this.#privateKey as `0x${string}`);
+			const synapse = Synapse.create({ account, chain, transport: http(), source: this.#source });
+
 			const data = await synapse.storage.download({ pieceCid: id });
 			return new Uint8Array(data);
 		} catch (err) {
