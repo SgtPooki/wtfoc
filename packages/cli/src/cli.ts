@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
-import type {
-	Chunk,
-	Embedder,
-	HeadManifest,
-	Segment,
-	VectorEntry,
-	VectorIndex,
+import {
+	type Chunk,
+	CURRENT_SCHEMA_VERSION,
+	type Embedder,
+	type HeadManifest,
+	type Segment,
+	type VectorEntry,
+	type VectorIndex,
 } from "@wtfoc/common";
 import { buildSegment, chunkMarkdown, RegexEdgeExtractor, RepoAdapter } from "@wtfoc/ingest";
 import {
@@ -156,7 +157,7 @@ program
 
 		// Create initial manifest
 		const manifest: HeadManifest = {
-			schemaVersion: 1,
+			schemaVersion: CURRENT_SCHEMA_VERSION,
 			name,
 			prevHeadId: null,
 			segments: [],
@@ -257,7 +258,7 @@ const ingestCmd = withEmbedderOptions(
 
 			// Update manifest
 			const manifest: HeadManifest = {
-				schemaVersion: 1,
+				schemaVersion: CURRENT_SCHEMA_VERSION,
 				name: opts.collection,
 				prevHeadId,
 				segments: [

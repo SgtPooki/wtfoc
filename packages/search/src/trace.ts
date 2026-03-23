@@ -172,13 +172,29 @@ function buildChunkLookup(segments: Segment[]): Map<string, ChunkData> {
 	return lookup;
 }
 
+/**
+ * Build bidirectional edge index — edges can be traversed from
+ * sourceId → targetId AND targetId → sourceId.
+ */
 function buildEdgeIndex(segments: Segment[]): Map<string, Edge[]> {
 	const index = new Map<string, Edge[]>();
 	for (const seg of segments) {
 		for (const edge of seg.edges) {
-			const existing = index.get(edge.sourceId) ?? [];
-			existing.push(edge as Edge);
-			index.set(edge.sourceId, existing);
+			// Forward: sourceId → target
+			const fwd = index.get(edge.sourceId) ?? [];
+			fwd.push(edge as Edge);
+			index.set(edge.sourceId, fwd);
+
+			// Reverse: targetId → source (for bidirectional traversal)
+			const rev = index.get(edge.targetId) ?? [];
+			rev.push({
+				...edge,
+				// Swap source/target for reverse traversal
+				sourceId: edge.targetId,
+				targetId: edge.sourceId,
+				evidence: `← ${edge.evidence}`,
+			} as Edge);
+			index.set(edge.targetId, rev);
 		}
 	}
 	return index;

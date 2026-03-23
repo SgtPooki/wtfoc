@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Chunk, Edge, Segment } from "@wtfoc/common";
-
-const CURRENT_SCHEMA_VERSION = 1;
+import { CURRENT_SCHEMA_VERSION } from "@wtfoc/common";
 
 export interface SegmentBuilderOptions {
 	embeddingModel: string;
