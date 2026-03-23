@@ -29,14 +29,18 @@ import { Command } from "commander";
 import { formatQuery, formatStatus, formatTrace, type OutputFormat } from "./output.js";
 
 function parseSinceDuration(duration: string): string {
-	const match = duration.match(/^(\d+)([dhm])$/);
-	if (!match?.[1] || !match[2]) return duration;
+	const match = duration.match(/^(\d+)([dh])$/);
+	if (!match?.[1] || !match[2]) {
+		console.error(
+			`Invalid --since format: "${duration}". Use <number>d (days) or <number>h (hours). Example: 90d`,
+		);
+		process.exit(2);
+	}
 	const value = Number.parseInt(match[1], 10);
 	const unit = match[2];
 	const now = new Date();
 	if (unit === "d") now.setDate(now.getDate() - value);
 	else if (unit === "h") now.setHours(now.getHours() - value);
-	else if (unit === "m") now.setMonth(now.getMonth() - value);
 	return now.toISOString();
 }
 
