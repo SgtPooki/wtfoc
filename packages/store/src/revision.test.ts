@@ -101,7 +101,12 @@ describe("revision provenance", () => {
 		const head = createCollectionHead("bundle-test");
 		head.segments = [{ id: "seg-1", sourceTypes: ["repo"], chunkCount: 1 }];
 		head.batches = [
-			{ pieceCid: "piece-1", carRootCid: "car-root-1", segmentIds: ["seg-1"], createdAt: new Date().toISOString() },
+			{
+				pieceCid: "piece-1",
+				carRootCid: "car-root-1",
+				segmentIds: ["seg-1"],
+				createdAt: new Date().toISOString(),
+			},
 		];
 
 		const rev = createCollectionRevision(head);

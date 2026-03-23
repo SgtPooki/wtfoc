@@ -132,10 +132,10 @@
 
 **Purpose**: Final consistency, docs, and regression coverage across the new collection publication model.
 
-- [ ] T041 [P] Add CLI publish command surface in `packages/cli/src/cli.ts` (follow SPEC.md §11 output conventions: --json, --quiet, exit codes per §10)
-- [ ] T042 [P] Validate quickstart flows against implemented CLI surface in `.specify/specs/009-collection-provenance/quickstart.md`
-- [ ] T043 [P] Update user-facing README for collection publication terminology in `README.md`
-- [ ] T044 Run `pnpm test`, `pnpm lint:fix`, and `pnpm -r build`
+- [ ] T041 [P] Add CLI publish/mount/diff command surface in `packages/cli/src/cli.ts` (follow-on PR — library layer is complete)
+- [ ] T042 [P] Validate quickstart flows against implemented CLI surface (follow-on PR)
+- [ ] T043 [P] Update user-facing README for collection publication terminology (follow-on PR)
+- [x] T044 Run `pnpm test`, `pnpm lint:fix`, and `pnpm -r build`
 
 ---
 

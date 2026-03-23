@@ -106,7 +106,12 @@ describe("createCollectionRevision", () => {
 			{ id: "seg-2", sourceTypes: ["slack"], chunkCount: 3 },
 		];
 		head.batches = [
-			{ pieceCid: "piece-1", carRootCid: "car-root-1", segmentIds: ["seg-1", "seg-2"], createdAt: new Date().toISOString() },
+			{
+				pieceCid: "piece-1",
+				carRootCid: "car-root-1",
+				segmentIds: ["seg-1", "seg-2"],
+				createdAt: new Date().toISOString(),
+			},
 		];
 
 		const rev = createCollectionRevision(head);

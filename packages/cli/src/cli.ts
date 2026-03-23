@@ -2,9 +2,9 @@
 
 import {
 	type Chunk,
+	type CollectionHead,
 	CURRENT_SCHEMA_VERSION,
 	type Embedder,
-	type CollectionHead,
 	type Segment,
 	type VectorEntry,
 	type VectorIndex,

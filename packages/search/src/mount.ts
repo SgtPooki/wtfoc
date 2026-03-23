@@ -39,9 +39,7 @@ export async function mountCollection(
 	signal?.throwIfAborted();
 
 	const isRevision = "revisionId" in source;
-	const segmentRefs = isRevision
-		? source.segmentRefs
-		: source.segments.map((s) => s.id);
+	const segmentRefs = isRevision ? source.segmentRefs : source.segments.map((s) => s.id);
 
 	const revision = isRevision ? source : null;
 	const segments: Segment[] = [];
@@ -54,11 +52,9 @@ export async function mountCollection(
 		try {
 			parsed = JSON.parse(text);
 		} catch {
-			throw new WtfocError(
-				`Failed to parse segment ${segRef}`,
-				"SCHEMA_INVALID",
-				{ segmentRef: segRef },
-			);
+			throw new WtfocError(`Failed to parse segment ${segRef}`, "SCHEMA_INVALID", {
+				segmentRef: segRef,
+			});
 		}
 		const segment = parsed as Segment;
 		segments.push(segment);

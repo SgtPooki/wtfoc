@@ -24,24 +24,31 @@ export function deserializeRevision(data: Uint8Array): CollectionRevision {
 	const record = parsed as Record<string, unknown>;
 	const sv = record.schemaVersion;
 	if (typeof sv !== "number" || !Number.isInteger(sv)) {
-		throw new WtfocError(
-			"Invalid revision: schemaVersion must be an integer",
-			"SCHEMA_INVALID",
-			{ field: "schemaVersion" },
-		);
+		throw new WtfocError("Invalid revision: schemaVersion must be an integer", "SCHEMA_INVALID", {
+			field: "schemaVersion",
+		});
 	}
 	if (sv < 1 || sv > MAX_SUPPORTED_SCHEMA_VERSION) {
 		throw new RevisionSchemaUnknownError(sv, MAX_SUPPORTED_SCHEMA_VERSION);
 	}
 
 	if (typeof record.revisionId !== "string" || record.revisionId.length === 0) {
-		throw new WtfocError("Invalid revision: revisionId must be a non-empty string", "SCHEMA_INVALID");
+		throw new WtfocError(
+			"Invalid revision: revisionId must be a non-empty string",
+			"SCHEMA_INVALID",
+		);
 	}
 	if (typeof record.collectionId !== "string" || record.collectionId.length === 0) {
-		throw new WtfocError("Invalid revision: collectionId must be a non-empty string", "SCHEMA_INVALID");
+		throw new WtfocError(
+			"Invalid revision: collectionId must be a non-empty string",
+			"SCHEMA_INVALID",
+		);
 	}
 	if (record.prevRevisionId !== null && typeof record.prevRevisionId !== "string") {
-		throw new WtfocError("Invalid revision: prevRevisionId must be string or null", "SCHEMA_INVALID");
+		throw new WtfocError(
+			"Invalid revision: prevRevisionId must be string or null",
+			"SCHEMA_INVALID",
+		);
 	}
 	if (!Array.isArray(record.artifactSummaries)) {
 		throw new WtfocError("Invalid revision: artifactSummaries must be an array", "SCHEMA_INVALID");

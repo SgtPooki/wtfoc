@@ -16,7 +16,12 @@ export function generateCollectionId(name: string, namespace = "default"): strin
 }
 
 /** Allowed keys in dataset routing metadata */
-const ROUTING_METADATA_KEYS = new Set(["collectionId", "artifactKind", "sourceNamespace", "indexingFlags"]);
+const ROUTING_METADATA_KEYS = new Set([
+	"collectionId",
+	"artifactKind",
+	"sourceNamespace",
+	"indexingFlags",
+]);
 
 /** Validate that dataset routing metadata contains only allowed keys */
 export function validateRoutingMetadata(metadata: DatasetRoutingMetadata): void {
@@ -63,10 +68,7 @@ export function createCollectionDescriptor(
 }
 
 /** Create an initial (empty) CollectionHead for a new collection */
-export function createCollectionHead(
-	name: string,
-	namespace = "default",
-): CollectionHead {
+export function createCollectionHead(name: string, namespace = "default"): CollectionHead {
 	return {
 		schemaVersion: CURRENT_SCHEMA_VERSION,
 		collectionId: generateCollectionId(name, namespace),

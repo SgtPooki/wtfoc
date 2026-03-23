@@ -1,5 +1,5 @@
-import type { ArtifactSummaryEntry, CollectionRevision } from "@wtfoc/common";
 import { createHash } from "node:crypto";
+import type { ArtifactSummaryEntry, CollectionRevision } from "@wtfoc/common";
 
 export interface RevisionDiff {
 	added: ArtifactSummaryEntry[];
@@ -16,12 +16,8 @@ export function computeRevisionDiff(
 	left: CollectionRevision,
 	right: CollectionRevision,
 ): RevisionDiff {
-	const leftMap = new Map(
-		left.artifactSummaries.map((s) => [s.artifactId, s]),
-	);
-	const rightMap = new Map(
-		right.artifactSummaries.map((s) => [s.artifactId, s]),
-	);
+	const leftMap = new Map(left.artifactSummaries.map((s) => [s.artifactId, s]));
+	const rightMap = new Map(right.artifactSummaries.map((s) => [s.artifactId, s]));
 
 	const added: ArtifactSummaryEntry[] = [];
 	const removed: ArtifactSummaryEntry[] = [];
@@ -62,10 +58,7 @@ export function computeRevisionDiff(
  * - FOC-backed: use the IPFS CID
  * - Local: SHA-256 hex of the canonical serialized bytes
  */
-export function generateContentIdentity(
-	data: Uint8Array,
-	ipfsCid?: string,
-): string {
+export function generateContentIdentity(data: Uint8Array, ipfsCid?: string): string {
 	if (ipfsCid) return ipfsCid;
 	return createHash("sha256").update(data).digest("hex");
 }

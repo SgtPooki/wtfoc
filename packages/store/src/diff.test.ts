@@ -91,10 +91,7 @@ describe("computeRevisionDiff", () => {
 			makeSummary("seg-2", "cid-2"),
 			makeSummary("seg-3", "cid-3"),
 		]);
-		const right = makeRevision([
-			makeSummary("seg-2", "cid-2"),
-			makeSummary("seg-4", "cid-4"),
-		]);
+		const right = makeRevision([makeSummary("seg-2", "cid-2"), makeSummary("seg-4", "cid-4")]);
 
 		const diff = computeRevisionDiff(left, right);
 
