@@ -1,9 +1,8 @@
-import { describe, it, before, after } from "node:test";
-import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HeadManifest } from "@wtfoc/common";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { LocalManifestStore } from "./local.js";
 
 function makeManifest(overrides?: Partial<HeadManifest>): HeadManifest {
@@ -25,19 +24,19 @@ describe("LocalManifestStore", () => {
 	let manifestDir: string;
 	let store: LocalManifestStore;
 
-	before(async () => {
+	beforeAll(async () => {
 		manifestDir = await mkdtemp(join(tmpdir(), "wtfoc-manifest-test-"));
 		store = new LocalManifestStore(manifestDir);
 	});
 
-	after(async () => {
+	afterAll(async () => {
 		await rm(manifestDir, { recursive: true, force: true });
 	});
 
 	describe("getHead", () => {
 		it("returns null for non-existent project", async () => {
 			const result = await store.getHead("nonexistent");
-			assert.equal(result, null);
+			expect(result).toBeNull();
 		});
 	});
 
@@ -46,8 +45,8 @@ describe("LocalManifestStore", () => {
 			const manifest = makeManifest({ name: "new-project" });
 			const result = await store.putHead("new-project", manifest, null);
 
-			assert.ok(result.headId, "headId must be non-empty");
-			assert.deepEqual(result.manifest, manifest);
+			expect(result.headId).toBeTruthy();
+			expect(result.manifest).toEqual(manifest);
 		});
 
 		it("returns the stored head on subsequent getHead", async () => {
@@ -55,9 +54,9 @@ describe("LocalManifestStore", () => {
 			const putResult = await store.putHead("get-test", manifest, null);
 			const getResult = await store.getHead("get-test");
 
-			assert.ok(getResult);
-			assert.equal(getResult.headId, putResult.headId);
-			assert.deepEqual(getResult.manifest, manifest);
+			expect(getResult).not.toBeNull();
+			expect(getResult!.headId).toBe(putResult.headId);
+			expect(getResult!.manifest).toEqual(manifest);
 		});
 
 		it("succeeds when prevHeadId matches current head", async () => {
@@ -71,34 +70,25 @@ describe("LocalManifestStore", () => {
 			});
 			const second = await store.putHead("chain-test", manifest2, first.headId);
 
-			assert.notEqual(second.headId, first.headId, "new head should have different headId");
-			assert.equal(second.manifest.totalChunks, 10);
+			expect(second.headId).not.toBe(first.headId);
+			expect(second.manifest.totalChunks).toBe(10);
 		});
 
 		it("throws ManifestConflictError when prevHeadId is stale", async () => {
 			const manifest = makeManifest({ name: "conflict-test" });
 			await store.putHead("conflict-test", manifest, null);
 
-			await assert.rejects(
-				() => store.putHead("conflict-test", manifest, "stale-id"),
-				(err: unknown) => {
-					assert.ok(err instanceof Error);
-					assert.equal((err as { code?: string }).code, "MANIFEST_CONFLICT");
-					return true;
-				},
-			);
+			await expect(store.putHead("conflict-test", manifest, "stale-id")).rejects.toMatchObject({
+				code: "MANIFEST_CONFLICT",
+			});
 		});
 
 		it("throws ManifestConflictError when head exists but prevHeadId is null", async () => {
 			const manifest = makeManifest({ name: "null-conflict-test" });
 			await store.putHead("null-conflict-test", manifest, null);
 
-			await assert.rejects(
-				() => store.putHead("null-conflict-test", makeManifest(), null),
-				(err: unknown) => {
-					assert.equal((err as { code?: string }).code, "MANIFEST_CONFLICT");
-					return true;
-				},
+			await expect(store.putHead("null-conflict-test", makeManifest(), null)).rejects.toMatchObject(
+				{ code: "MANIFEST_CONFLICT" },
 			);
 		});
 
@@ -107,8 +97,8 @@ describe("LocalManifestStore", () => {
 			await store.putHead("schema-test", manifest, null);
 			const result = await store.getHead("schema-test");
 
-			assert.ok(result);
-			assert.equal(result.manifest.schemaVersion, 1);
+			expect(result).not.toBeNull();
+			expect(result!.manifest.schemaVersion).toBe(1);
 		});
 	});
 
@@ -117,7 +107,7 @@ describe("LocalManifestStore", () => {
 			const emptyDir = join(manifestDir, "empty-sub");
 			const emptyStore = new LocalManifestStore(emptyDir);
 			const projects = await emptyStore.listProjects();
-			assert.deepEqual(projects, []);
+			expect(projects).toEqual([]);
 		});
 
 		it("returns all project names", async () => {
@@ -128,8 +118,8 @@ describe("LocalManifestStore", () => {
 			await listStore.putHead("beta", makeManifest({ name: "beta" }), null);
 
 			const projects = await listStore.listProjects();
-			assert.ok(projects.includes("alpha"));
-			assert.ok(projects.includes("beta"));
+			expect(projects).toContain("alpha");
+			expect(projects).toContain("beta");
 		});
 	});
 
@@ -140,7 +130,7 @@ describe("LocalManifestStore", () => {
 			const manifest = makeManifest({ name: "nested-test" });
 			const result = await nestedStore.putHead("nested-test", manifest, null);
 
-			assert.ok(result.headId);
+			expect(result.headId).toBeTruthy();
 		});
 	});
 });

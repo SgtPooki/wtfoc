@@ -1,17 +1,19 @@
 {
-  "name": "@wtfoc/common",
-  "version": "0.0.0",
-  "type": "module",
-  "exports": {
-    ".": "./dist/index.js"
-  },
-  "types": "./dist/index.d.ts",
-  "files": ["dist"],
-  "scripts": {
-    "build": "tsc -b",
-    "test": "node --test dist/**/*.test.js"
-  },
-  "devDependencies": {
-    "typescript": "^5.8.0"
-  }
+	"name": "@wtfoc/common",
+	"version": "0.0.0",
+	"type": "module",
+	"exports": {
+		".": "./dist/index.js"
+	},
+	"types": "./dist/index.d.ts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc -b",
+		"test": "node --test dist/**/*.test.js"
+	},
+	"devDependencies": {
+		"typescript": "^5.8.0"
+	}
 }

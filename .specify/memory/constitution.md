@@ -66,12 +66,17 @@ Ship the demo, but make it worth extending. Every decision optimizes for: (1) wo
 Every change requires a spec. No implementation without a ratified specification.
 
 **Flow:**
-1. `/speckit.specify` — write the spec for the change
-2. `/speckit.clarify` — resolve ambiguities
-3. **Cross-review** — spec must be reviewed by a different agent (Cursor or Codex) before ratification. If Claude wrote the spec, Cursor or Codex reviews it. If Codex wrote it, Cursor or Claude reviews it.
-4. `/speckit.plan` — create implementation plan from ratified spec
-5. `/speckit.tasks` — generate task breakdown
-6. `/speckit.implement` — execute implementation
+1. `/speckit.specify` — create the specification
+2. `/speckit.clarify` — clarify and de-risk (run before /plan)
+3. **Cross-review** — spec must be reviewed by a different agent (Cursor or Codex) before ratification
+4. `/speckit.plan` — create implementation plan
+5. `/speckit.checklist` — generate quality checklists (optional)
+6. `/speckit.tasks` — generate actionable tasks
+7. `/speckit.analyze` — validate alignment & surface inconsistencies (optional)
+8. `/speckit.implement` — execute implementation
+9. `/speckit.taskstoissues` — convert tasks to GitHub issues (optional)
+
+See also: `/speckit.constitution` — update project principles
 
 No skipping steps. No "I'll write the spec later." The spec is the shared source of truth that prevents wasted work.
 
@@ -84,6 +89,8 @@ Each commit is a discrete, isolated change. One logical thing per commit.
 ### Tests
 - All changes must have tests
 - Tests test **behavior**, not implementation — if the implementation changes but behavior doesn't, tests should still pass
+- **vitest** runs TypeScript test files directly — no build step before testing
+- `pnpm test` from root runs all tests across all packages
 - Unit tests use local/in-memory backends — no network calls
 - Golden fixtures for integration tests
 

@@ -116,12 +116,17 @@ Manifests and segments include `schemaVersion`. Readers reject unknown versions.
 
 Every change requires a spec. No implementation without a ratified specification.
 
-1. Write spec (`/speckit.specify`)
-2. Clarify ambiguities (`/speckit.clarify`)
-3. **Cross-review by a different agent** — if Claude wrote the spec, Cursor or Codex must review it before ratification
-4. Plan implementation (`/speckit.plan`)
-5. Generate tasks (`/speckit.tasks`)
-6. Implement (`/speckit.implement`)
+1. `/speckit.specify` — create the specification
+2. `/speckit.clarify` — clarify and de-risk (before /plan)
+3. **Cross-review** — spec reviewed by a different agent before ratification
+4. `/speckit.plan` — create implementation plan
+5. `/speckit.checklist` — quality checklists (optional)
+6. `/speckit.tasks` — generate actionable tasks
+7. `/speckit.analyze` — validate alignment (optional, before /implement)
+8. `/speckit.implement` — execute implementation
+9. `/speckit.taskstoissues` — convert tasks to GitHub issues (optional)
+
+See also: `/speckit.constitution` for updating project principles.
 
 Feature specs live in `.specify/specs/`. See [spec-kit](https://github.com/github/spec-kit) for the full workflow.
 

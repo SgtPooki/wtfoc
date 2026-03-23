@@ -1,9 +1,14 @@
-import { describe, it, after } from "node:test";
-import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ManifestStore, StorageBackend, StorageResult, StoredHead, HeadManifest } from "@wtfoc/common";
+import type {
+	HeadManifest,
+	ManifestStore,
+	StorageBackend,
+	StorageResult,
+	StoredHead,
+} from "@wtfoc/common";
+import { afterAll, describe, expect, it } from "vitest";
 import { createStore } from "./factory.js";
 
 describe("createStore", () => {
@@ -15,7 +20,7 @@ describe("createStore", () => {
 		return dir;
 	}
 
-	after(async () => {
+	afterAll(async () => {
 		for (const dir of tempDirs) {
 			await rm(dir, { recursive: true, force: true });
 		}
@@ -30,19 +35,17 @@ describe("createStore", () => {
 			manifestDir,
 		});
 
-		assert.ok(store.storage, "storage backend exists");
-		assert.ok(store.manifests, "manifest store exists");
+		expect(store.storage).toBeTruthy();
+		expect(store.manifests).toBeTruthy();
 
-		// Verify storage works
 		const data = new TextEncoder().encode("factory test");
 		const result = await store.storage.upload(data);
 		const downloaded = await store.storage.download(result.id);
-		assert.deepEqual(new Uint8Array(downloaded), data);
+		expect(new Uint8Array(downloaded)).toEqual(data);
 	});
 
 	it("throws for foc backend (not yet implemented)", () => {
-		assert.throws(
-			() => createStore({ storage: "foc", privateKey: "0xtest" }),
+		expect(() => createStore({ storage: "foc", privateKey: "0xtest" })).toThrow(
 			/not yet implemented/i,
 		);
 	});
@@ -63,7 +66,7 @@ describe("createStore", () => {
 		const store = createStore({ storage: customBackend });
 		await store.storage.upload(new TextEncoder().encode("custom"));
 
-		assert.equal(uploaded.length, 1);
+		expect(uploaded).toHaveLength(1);
 	});
 
 	it("accepts a custom ManifestStore instance", async () => {
@@ -74,9 +77,13 @@ describe("createStore", () => {
 				calls.push(`getHead:${name}`);
 				return null;
 			},
-			async putHead(name: string, _manifest: HeadManifest, _prevHeadId: string | null): Promise<StoredHead> {
+			async putHead(
+				name: string,
+				manifest: HeadManifest,
+				_prevHeadId: string | null,
+			): Promise<StoredHead> {
 				calls.push(`putHead:${name}`);
-				return { headId: "custom-head", manifest: _manifest };
+				return { headId: "custom-head", manifest };
 			},
 			async listProjects(): Promise<string[]> {
 				return [];
@@ -90,7 +97,7 @@ describe("createStore", () => {
 		});
 
 		await store.manifests.getHead("test");
-		assert.deepEqual(calls, ["getHead:test"]);
+		expect(calls).toEqual(["getHead:test"]);
 	});
 
 	it("uses custom backend when verify is not implemented", async () => {
@@ -101,10 +108,9 @@ describe("createStore", () => {
 			async download(): Promise<Uint8Array> {
 				return new Uint8Array(0);
 			},
-			// verify intentionally omitted
 		};
 
 		const store = createStore({ storage: customBackend });
-		assert.equal(store.storage.verify, undefined);
+		expect(store.storage.verify).toBeUndefined();
 	});
 });

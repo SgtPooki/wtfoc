@@ -2,6 +2,6 @@
 // See SPEC.md for storage architecture
 
 export { LocalStorageBackend } from "./backends/local.js";
-export { LocalManifestStore } from "./manifest/local.js";
+export type { Store, StoreConfig } from "./factory.js";
 export { createStore } from "./factory.js";
-export type { StoreConfig, Store } from "./factory.js";
+export { LocalManifestStore } from "./manifest/local.js";

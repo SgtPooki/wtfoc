@@ -20,6 +20,10 @@ export interface StoredHead {
  */
 export interface ManifestStore {
 	getHead(projectName: string): Promise<StoredHead | null>;
-	putHead(projectName: string, manifest: HeadManifest, prevHeadId: string | null): Promise<StoredHead>;
+	putHead(
+		projectName: string,
+		manifest: HeadManifest,
+		prevHeadId: string | null,
+	): Promise<StoredHead>;
 	listProjects(): Promise<string[]>;
 }

@@ -56,21 +56,24 @@ export class StorageNotFoundError extends WtfocError {
 
 export class StorageInsufficientBalanceError extends WtfocError {
 	constructor(backend: string, cause?: unknown) {
-		super(`Insufficient balance for storage operation (backend: ${backend})`, "STORAGE_INSUFFICIENT_BALANCE", {
-			backend,
-			cause,
-		});
+		super(
+			`Insufficient balance for storage operation (backend: ${backend})`,
+			"STORAGE_INSUFFICIENT_BALANCE",
+			{
+				backend,
+				cause,
+			},
+		);
 		this.name = "StorageInsufficientBalanceError";
 	}
 }
 
 export class SchemaUnknownError extends WtfocError {
 	constructor(found: number, maxSupported: number) {
-		super(
-			`Unknown schema version ${found} (max supported: ${maxSupported})`,
-			"SCHEMA_UNKNOWN",
-			{ found, maxSupported },
-		);
+		super(`Unknown schema version ${found} (max supported: ${maxSupported})`, "SCHEMA_UNKNOWN", {
+			found,
+			maxSupported,
+		});
 		this.name = "SchemaUnknownError";
 	}
 }

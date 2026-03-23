@@ -42,12 +42,17 @@ wtfoc/
 
 Every change follows the spec-kit flow. No exceptions.
 
-1. **`/speckit.specify`** — write a spec for the change
-2. **`/speckit.clarify`** — resolve ambiguities
+1. **`/speckit.specify`** — create the specification
+2. **`/speckit.clarify`** — clarify and de-risk ambiguities (run before /plan)
 3. **Cross-review** — spec reviewed by a different agent (Cursor or Codex) before ratification
 4. **`/speckit.plan`** — create implementation plan from ratified spec
-5. **`/speckit.tasks`** — generate task breakdown
-6. **`/speckit.implement`** — execute implementation
+5. **`/speckit.checklist`** — generate quality checklists to validate spec (optional)
+6. **`/speckit.tasks`** — generate actionable tasks from plan
+7. **`/speckit.analyze`** — validate alignment & surface inconsistencies (optional, before /implement)
+8. **`/speckit.implement`** — execute implementation
+9. **`/speckit.taskstoissues`** — convert tasks to GitHub issues (optional)
+
+Other commands: `/speckit.constitution` — update project principles
 
 Do not skip steps. Do not "write the spec later." The spec is the shared source of truth.
 
@@ -74,8 +79,8 @@ pnpm --filter @wtfoc/store build     # build one package
 
 ### Test
 ```bash
-pnpm -r test                         # run all tests
-pnpm --filter @wtfoc/search test     # test one package
+pnpm test                            # run all tests from root (vitest)
+pnpm test -- --watch                 # watch mode
 ```
 
 ### Lint & Format
@@ -109,7 +114,7 @@ TypeScript project references handle this automatically.
 ## Definition of Done (for PRs)
 
 - [ ] Spec exists and is ratified (cross-reviewed)
-- [ ] Tests pass (`pnpm -r test`)
+- [ ] Tests pass (`pnpm test`)
 - [ ] Tests test behavior, not implementation
 - [ ] Biome passes (`pnpm biome check .`)
 - [ ] Package builds (`pnpm -r build`)

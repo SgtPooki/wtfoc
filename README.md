@@ -71,11 +71,15 @@ pnpm biome check .
 This project uses [spec-kit](https://github.com/github/spec-kit) for spec-driven development. Every change requires a spec, cross-reviewed by a different AI agent before implementation.
 
 ```
-/speckit.specify  → write the spec
-/speckit.clarify  → resolve ambiguities
-/speckit.plan     → create implementation plan
-/speckit.tasks    → generate task breakdown
-/speckit.implement → execute
+/speckit.constitution  → establish project principles
+/speckit.specify       → create specifications
+/speckit.clarify       → clarify and de-risk (before /plan)
+/speckit.plan          → create implementation plans
+/speckit.checklist     → generate quality checklists (optional)
+/speckit.tasks         → generate actionable tasks
+/speckit.analyze       → validate alignment & surface inconsistencies (optional)
+/speckit.implement     → execute implementation
+/speckit.taskstoissues → convert tasks to GitHub issues (optional)
 ```
 
 Feature specs: [`.specify/specs/`](.specify/specs/)

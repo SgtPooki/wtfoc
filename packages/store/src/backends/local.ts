@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { StorageNotFoundError } from "@wtfoc/common";
 import type { StorageBackend, StorageResult } from "@wtfoc/common";
+import { StorageNotFoundError } from "@wtfoc/common";
 
 /**
  * Local filesystem storage backend. No wallet, no network.
