@@ -44,10 +44,17 @@ describe("createStore", () => {
 		expect(new Uint8Array(downloaded)).toEqual(data);
 	});
 
-	it("throws for foc backend (not yet implemented)", () => {
-		expect(() => createStore({ storage: "foc", privateKey: "0xtest" })).toThrow(
-			/not yet implemented/i,
-		);
+	it("throws for foc backend without private key", () => {
+		const origKey = process.env["PRIVATE_KEY"];
+		const origWtfocKey = process.env["WTFOC_PRIVATE_KEY"];
+		process.env["PRIVATE_KEY"] = "";
+		process.env["WTFOC_PRIVATE_KEY"] = "";
+		try {
+			expect(() => createStore({ storage: "foc" })).toThrow(/private key/i);
+		} finally {
+			if (origKey) process.env["PRIVATE_KEY"] = origKey;
+			if (origWtfocKey) process.env["WTFOC_PRIVATE_KEY"] = origWtfocKey;
+		}
 	});
 
 	it("accepts a custom StorageBackend instance", async () => {

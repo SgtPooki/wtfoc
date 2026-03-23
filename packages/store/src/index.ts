@@ -1,6 +1,7 @@
 // @wtfoc/store — Blob storage + manifest management
 // See SPEC.md for storage architecture
 
+export { FocStorageBackend, type FocStorageBackendOptions } from "./backends/foc.js";
 export { LocalStorageBackend } from "./backends/local.js";
 export type { Store, StoreConfig } from "./factory.js";
 export { createStore } from "./factory.js";

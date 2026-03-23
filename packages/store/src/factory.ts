@@ -49,11 +49,20 @@ export function createStore(config: StoreConfig): Store {
 	} else if (config.storage === "local") {
 		storage = new LocalStorageBackend(config.dataDir ?? defaultDataDir);
 	} else if (config.storage === "foc") {
-		// FOC backend — import dynamically to avoid pulling synapse-sdk for local-only users
-		// For now, throw until FocStorageBackend is implemented
-		throw new Error(
-			"FocStorageBackend not yet implemented. Use 'local' or provide a custom StorageBackend instance.",
-		);
+		const privateKey =
+			config.privateKey ?? process.env["PRIVATE_KEY"] ?? process.env["WTFOC_PRIVATE_KEY"];
+		if (!privateKey) {
+			throw new Error(
+				"FOC storage requires a private key. Set PRIVATE_KEY or WTFOC_PRIVATE_KEY env var, or pass privateKey in config.",
+			);
+		}
+		// Dynamic import to avoid pulling synapse-sdk for local-only users
+		const { FocStorageBackend } =
+			require("./backends/foc.js") as typeof import("./backends/foc.js");
+		storage = new FocStorageBackend({
+			privateKey,
+			network: config.network ?? "calibration",
+		});
 	} else {
 		throw new Error(`Unknown storage backend: ${config.storage as string}`);
 	}
