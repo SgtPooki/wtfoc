@@ -86,7 +86,8 @@ describe("bundler → manifest integration", () => {
 		const validated = validateManifestSchema(manifest);
 		expect(validated.batches).toHaveLength(1);
 		expect(validated.batches?.[0].pieceCid).toBe("baga6ea4seaq-integration-test");
-		expect(validated.batches?.[0].segmentIds).toEqual(["seg-1"]);
+		// segmentIds now contain IPFS CIDs matching segments[].id
+		expect(validated.batches?.[0].segmentIds).toEqual([segCid]);
 		expect(validated.segments[0].id).toBe(segCid);
 		// SegmentSummary.pieceCid should NOT be set for bundled ingests (FR-007)
 		expect(validated.segments[0].pieceCid).toBeUndefined();
@@ -171,8 +172,9 @@ describe("bundler → manifest integration", () => {
 
 		// Two separate batches — each ingest is its own CAR
 		expect(validated.batches).toHaveLength(2);
-		expect(validated.batches?.[0].segmentIds).toEqual(["seg-ingest1"]);
-		expect(validated.batches?.[1].segmentIds).toEqual(["seg-ingest2"]);
+		// segmentIds contain IPFS CIDs matching the manifest segments[].id
+		expect(validated.batches?.[0].segmentIds).toEqual([validated.segments[0].id]);
+		expect(validated.batches?.[1].segmentIds).toEqual([validated.segments[1].id]);
 
 		// Each segment has its own retrievable CID
 		expect(validated.segments[0].id).not.toBe(validated.segments[1].id);

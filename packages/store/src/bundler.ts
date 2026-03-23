@@ -78,13 +78,7 @@ export async function bundleAndUpload(
 	const carRootCid = dirCar.rootCid.toString();
 
 	// Step 3: Upload the pre-built CAR via storage backend
-	let result: StorageResult;
-	try {
-		result = await storage.upload(dirCar.carBytes, { prebuiltCar: "true", carRootCid }, signal);
-	} catch (err) {
-		if (err instanceof StorageUnreachableError) throw err;
-		throw new StorageUnreachableError("foc", err instanceof Error ? err : new Error(String(err)));
-	}
+	const result = await storage.upload(dirCar.carBytes, { prebuiltCar: "true", carRootCid }, signal);
 
 	// Step 4: Verify PieceCID (FR-011)
 	if (!result.pieceCid) {
@@ -98,7 +92,11 @@ export async function bundleAndUpload(
 	const batch: BatchRecord = {
 		pieceCid: result.pieceCid,
 		carRootCid,
-		segmentIds: segments.map((s) => s.id),
+		segmentIds: segments.map((s) => {
+			const cid = segmentCids.get(s.id);
+			if (!cid) throw new WtfocError(`Missing CID for segment ${s.id}`, "BUNDLE_INTERNAL");
+			return cid;
+		}),
 		createdAt: new Date().toISOString(),
 	};
 

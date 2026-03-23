@@ -41,7 +41,11 @@ describe("bundleAndUpload", () => {
 
 		expect(storage.uploadCalls).toHaveLength(1);
 		expect(result.batch.pieceCid).toBe("baga6ea4seaq-test-piece");
-		expect(result.batch.segmentIds).toEqual(["seg-1", "seg-2"]);
+		// segmentIds contain IPFS CIDs (not input IDs) matching manifest segments[].id
+		expect(result.batch.segmentIds).toHaveLength(2);
+		for (const sid of result.batch.segmentIds) {
+			expect(sid).toMatch(/^baf/);
+		}
 		expect(result.batch.carRootCid).toBeTruthy();
 		expect(result.batch.createdAt).toBeTruthy();
 	});

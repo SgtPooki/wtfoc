@@ -308,11 +308,15 @@ const ingestCmd = withEmbedderOptions(
 				embeddingDimensions: embedder.dimensions,
 				createdAt: head?.manifest.createdAt ?? new Date().toISOString(),
 				updatedAt: new Date().toISOString(),
-				batches: [
+			};
+
+			// Only set batches when there's batch data (FOC path) or existing batches to preserve
+			if (batchForManifest || head?.manifest.batches) {
+				manifest.batches = [
 					...(head?.manifest.batches ?? []),
 					...(batchForManifest ? [batchForManifest] : []),
-				],
-			};
+				];
+			}
 
 			await store.manifests.putHead(opts.collection, manifest, prevHeadId);
 			if (format !== "quiet") {
