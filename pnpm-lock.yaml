@@ -99,6 +99,9 @@ importers:
       '@wtfoc/common':
         specifier: workspace:*
         version: link:../common
+      multiformats:
+        specifier: ^13.4.2
+        version: 13.4.2
     devDependencies:
       typescript:
         specifier: ^5.8.0
