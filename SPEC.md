@@ -235,6 +235,28 @@ The demo tells this story:
 - Web dashboard with visual trace explorer
 - LangChain/LlamaIndex adapters
 
+## Development Discipline
+
+### Atomic commits
+
+Each commit is a discrete, isolated change. One logical thing per commit.
+- Setting up tooling is not the same commit as scaffolding packages
+- Scaffolding one package is separate from scaffolding another
+- Each commit should produce a working state — no broken intermediate states
+
+### Tests
+
+- All changes must have tests
+- Tests test **behavior**, not implementation — if the implementation changes but behavior stays the same, tests should still pass
+- Unit tests use local/in-memory backends — no network calls
+- Golden fixtures in `fixtures/` for integration tests
+
+### CI gates
+
+- All code changes are gated by CI checks
+- PRs must pass: tests, biome, build
+- No merging with red CI
+
 ## Technical Decisions
 
 - **Language:** TypeScript strict mode
