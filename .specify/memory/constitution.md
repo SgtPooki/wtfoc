@@ -1,50 +1,86 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+# wtfoc Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Credible Exit at Every Seam
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+Every major component is an interface. Users can swap, replace, or eject any part of the stack at any time. Lock-in is a bug, not a feature.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+Six defined seams: Embedder, VectorIndex, StorageBackend, SourceAdapter, ManifestStore, EdgeExtractor. All interfaces live in `@wtfoc/common`. Built-in implementations are defaults — never requirements.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### II. Standalone Packages
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+Each `@wtfoc/*` package is independently useful. Library packages use peer deps for cross-package refs. Application packages (`cli`) hard-depend on what they compose. `@wtfoc/common` is contracts only — no I/O, no business logic.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+Five packages for hackathon: `common`, `store`, `ingest`, `search`, `cli`. Memory and MCP are deferred until core is stable.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### III. Backend-Neutral Identity
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+Storage results use `id` (always present) with optional `ipfsCid?` and `pieceCid?`. Not every backend can produce CIDs. The public API never assumes FOC — it's the best default, not a requirement.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+### IV. Immutable Data, Mutable Index
+
+All persisted data (manifests, segments) includes `schemaVersion`. Readers reject unknown versions. Writers use latest. Old segments remain readable forever. Single writer per project for MVP.
+
+### V. Edges Are First-Class
+
+Cross-source connections are explicit typed edges, not just semantic similarity. Three built-in types (`references`, `closes`, `changes`) with string-typed `type` field for extensibility. Every edge includes `evidence` explaining why it exists.
+
+### VI. Test-First
+
+Tests written before implementation where practical. Unit tests use local/in-memory backends — no network calls. Golden fixtures for integration tests. Test interfaces, not implementations.
+
+### VII. Hackathon-First, Future-Aware
+
+Ship the demo, but make it worth extending. Every decision optimizes for: (1) working demo that tells a story, (2) clean architecture showing what's possible, (3) code quality that doesn't embarrass us.
+
+## Technical Constraints
+
+- **TypeScript strict mode**, ESM only, no default exports
+- **pnpm workspaces** with TypeScript project references
+- **Biome** for formatting and linting
+- **No `any`** — use `unknown` and narrow
+- **Conventional commits** scoped by package: `feat(store): add FOC upload`
+- **SemVer 0.x** — all packages experimental, `bump-minor-pre-major` via release-please
+- **Node >=18**
+
+## Security
+
+- Never commit secrets (wallet keys, API tokens)
+- Redact PII before upload — data on FOC/IPFS is permanent and public
+- Fixtures must be synthetic — no real customer data
+- `--local` mode requires no wallet or network
+
+## SDK Policy
+
+- Use `filecoin-pin` + `@filoz/synapse-sdk` for FOC storage
+- Use `foc-cli` only for features the SDKs don't provide
+- Use `filecoin-nova` for website crawling
+- Don't reinvent what the FOC ecosystem ships
+
+## Development Discipline
+
+### Atomic Commits
+Each commit is a discrete, isolated change. One logical thing per commit.
+- Setting up tooling ≠ scaffolding packages
+- Scaffolding one package ≠ scaffolding another
+- Each commit should work by itself — no broken intermediate states
+
+### Tests
+- All changes must have tests
+- Tests test **behavior**, not implementation — if the implementation changes but behavior doesn't, tests should still pass
+- Unit tests use local/in-memory backends — no network calls
+- Golden fixtures for integration tests
+
+### CI Gates
+- All code changes are gated by CI checks
+- PRs must pass: tests, biome, build
+- No merging with red CI
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+- This constitution and `SPEC.md` are the source of truth
+- Changes to interfaces in `@wtfoc/common` require SPEC.md update
+- Features not in SPEC.md require discussion before implementation
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.1.0 | **Ratified**: 2026-03-23 | **Last Amended**: 2026-03-23
