@@ -52,12 +52,12 @@ done
 
 # ─── Find next issue to work on ──────────────────────────────────────────────
 find_issue() {
-	# Priority 1: Issue already assigned to this agent
+	# Priority 1: Issue already assigned to this agent (but NOT blocked)
 	local assigned
 	assigned=$(gh issue list --repo "$REPO" --label "assigned-${AGENT}" --state open \
-		--json number,title,labels -q '.[0] // empty')
+		--json number,title,labels -q '[.[] | select(.labels | map(.name) | contains(["blocked"]) | not)] | .[0] // empty')
 
-	if [[ -n "$assigned" ]]; then
+	if [[ -n "$assigned" ]] && echo "$assigned" | jq -e '.number' >/dev/null 2>&1; then
 		echo "$assigned"
 		return 0
 	fi
