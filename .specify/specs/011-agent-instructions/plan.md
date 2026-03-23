@@ -1,7 +1,7 @@
 # Implementation Plan: Agent Instructions And Repo Setup
 
 **Branch**: `011-agent-instructions` | **Date**: 2026-03-23 | **Spec**: [spec.md](spec.md)
-**Input**: Feature specification from `/specs/011-agent-instructions/spec.md`
+**Input**: Feature specification from `/.specify/specs/011-agent-instructions/spec.md`
 
 ## Summary
 

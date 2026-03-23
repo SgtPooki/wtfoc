@@ -1,6 +1,6 @@
 # Tasks: Agent Instructions And Repo Setup
 
-**Input**: Design documents from `/specs/011-agent-instructions/`
+**Input**: Design documents from `.specify/specs/011-agent-instructions/`
 
 ## Phase 1: Research And Design
 
