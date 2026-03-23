@@ -94,6 +94,15 @@ Each commit is a discrete, isolated change. One logical thing per commit.
 - Unit tests use local/in-memory backends — no network calls
 - Golden fixtures for integration tests
 
+### Monorepo Script Conventions (NON-NEGOTIABLE)
+- **All npm scripts must work from both the package directory AND the root**
+- `pnpm test` from root runs all tests. `pnpm --filter @wtfoc/store test` runs one package.
+- **Package-level test scripts must NOT reference parent directories** (no `../..`, no `--dir ../..`)
+- **Package-level test scripts must NOT reference the root vitest config** — the root config handles discovery
+- **Standard package test script**: `"test": "vitest run"` — vitest auto-discovers `.test.ts` files in the package
+- **Do NOT change test commands to use `node --test`** — we use vitest, not the Node test runner
+- **Do NOT modify package.json scripts without explicit approval** — script changes affect all developers and CI
+
 ### CI Gates
 - All code changes are gated by CI checks
 - PRs must pass: tests, biome, build

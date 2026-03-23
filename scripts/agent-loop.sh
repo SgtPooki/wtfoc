@@ -292,6 +292,56 @@ run_agent() {
 	rm -f "$prompt_file" 2>/dev/null || true
 }
 
+# ─── Post-agent cleanup: commit, push, PR, remove label ──────────────────────
+post_agent_cleanup() {
+	local issue_num="$1"
+	local issue_title="$2"
+	local worktree_dir="$3"
+
+	log "Agent finished work on #${issue_num}. Checking for uncommitted changes..."
+
+	local branch_name
+	branch_name=$(cd "$worktree_dir" && git branch --show-current)
+
+	# Check if there are uncommitted changes the agent left behind
+	local has_changes
+	has_changes=$(cd "$worktree_dir" && git status --porcelain | wc -l | tr -d ' ')
+
+	if [[ "$has_changes" -gt 0 ]]; then
+		log "Found ${has_changes} uncommitted changes. Committing on behalf of agent..."
+		(cd "$worktree_dir" && \
+			git add -A && \
+			git commit -m "feat: ${AGENT} work on #${issue_num} — $(echo "$issue_title" | sed 's/\[spec\] //' | sed 's/\[impl\] //')" && \
+			git push -u origin "$branch_name" 2>&1) || warn "Failed to commit/push"
+	fi
+
+	# Check if PR exists for this branch
+	local existing_pr
+	existing_pr=$(gh pr list --repo "$REPO" --head "$branch_name" --json number -q '.[0].number // empty' 2>/dev/null || echo "")
+
+	if [[ -z "$existing_pr" ]]; then
+		local commits_ahead
+		commits_ahead=$(cd "$worktree_dir" && git rev-list --count origin/main..HEAD 2>/dev/null || echo "0")
+
+		if [[ "$commits_ahead" -gt 0 ]]; then
+			log "Opening PR for branch ${branch_name}..."
+			(cd "$worktree_dir" && \
+				gh pr create --repo "$REPO" \
+					--title "$(echo "$issue_title")" \
+					--body "Work by ${AGENT} agent on #${issue_num}. Needs /peer-review before merge." \
+					2>&1) || warn "Failed to create PR"
+		else
+			log "No commits ahead of main — nothing to PR."
+		fi
+	else
+		log "PR #${existing_pr} already exists for this branch."
+	fi
+
+	# Remove agent assignment so we don't pick it up again
+	log "Removing assignment from #${issue_num}..."
+	gh issue edit "$issue_num" --repo "$REPO" --remove-label "assigned-${AGENT}" >/dev/null 2>&1 || true
+}
+
 # ─── Review PRs that this agent didn't author ────────────────────────────────
 review_prs() {
 	# Find open PRs with "Ready for /peer-review" or "Needs /peer-review" in body/comments
@@ -412,50 +462,8 @@ while true; do
 	# Run the agent
 	run_agent "$prompt_output" "$worktree_dir"
 
-	# After agent finishes, handle git operations if the agent couldn't
-	log "Agent finished work on #${issue_num}. Checking for uncommitted changes..."
-
-	local branch_name
-	branch_name=$(cd "$worktree_dir" && git branch --show-current)
-
-	# Check if there are uncommitted changes the agent left behind
-	local has_changes
-	has_changes=$(cd "$worktree_dir" && git status --porcelain | wc -l | tr -d ' ')
-
-	if [[ "$has_changes" -gt 0 ]]; then
-		log "Found ${has_changes} uncommitted changes. Committing on behalf of agent..."
-		(cd "$worktree_dir" && \
-			git add -A && \
-			git commit -m "feat: ${AGENT} work on #${issue_num} — $(echo "$issue_title" | sed 's/\[spec\] //' | sed 's/\[impl\] //')" && \
-			git push -u origin "$branch_name" 2>&1) || warn "Failed to commit/push"
-	fi
-
-	# Check if PR exists for this branch
-	local existing_pr
-	existing_pr=$(gh pr list --repo "$REPO" --head "$branch_name" --json number -q '.[0].number // empty' 2>/dev/null || echo "")
-
-	if [[ -z "$existing_pr" ]]; then
-		# Check if there are any commits on the branch ahead of main
-		local commits_ahead
-		commits_ahead=$(cd "$worktree_dir" && git rev-list --count origin/main..HEAD 2>/dev/null || echo "0")
-
-		if [[ "$commits_ahead" -gt 0 ]]; then
-			log "Opening PR for branch ${branch_name}..."
-			(cd "$worktree_dir" && \
-				gh pr create --repo "$REPO" \
-					--title "$(echo "$issue_title")" \
-					--body "Work by ${AGENT} agent on #${issue_num}. Needs /peer-review before merge." \
-					2>&1) || warn "Failed to create PR"
-		else
-			log "No commits ahead of main — nothing to PR."
-		fi
-	else
-		log "PR #${existing_pr} already exists for this branch."
-	fi
-
-	# Remove agent assignment so we don't pick it up again
-	log "Removing assignment from #${issue_num}..."
-	gh issue edit "$issue_num" --repo "$REPO" --remove-label "assigned-${AGENT}" >/dev/null 2>&1 || true
+	# After agent finishes, handle git + PR + label cleanup
+	post_agent_cleanup "$issue_num" "$issue_title" "$worktree_dir"
 
 	if [[ "$ONCE" == "--once" ]]; then
 		log "Exiting (--once mode)."
