@@ -555,18 +555,18 @@ review_prs() {
 			continue
 		fi
 
-		# Skip if this agent already reviewed it (check comments)
+		# Skip if this agent already reviewed it (check for "## Review: <agent>" header)
 		local already_reviewed
 		already_reviewed=$(gh pr view "$pr_num" --repo "$REPO" --json comments \
-			-q "[.comments[] | select(.body | test(\"Review: ${AGENT}\"; \"i\"))] | length" 2>/dev/null || echo "0")
+			-q "[.comments[] | select(.body | test(\"^## Review: ${AGENT}\"; \"mi\"))] | length" 2>/dev/null || echo "0")
 		if [[ "$already_reviewed" -gt 0 ]]; then
 			continue
 		fi
 
-		# Count existing reviews (agent reviews + copilot reviews)
+		# Count existing reviews (agent reviews with "## Review:" header + formal GH reviews)
 		local review_count
 		review_count=$(gh pr view "$pr_num" --repo "$REPO" --json comments,reviews \
-			-q '(.comments | map(select(.body | test("Review:"; "i"))) | length) + (.reviews | length)' 2>/dev/null || echo "0")
+			-q '(.comments | map(select(.body | test("^## Review:"; "m"))) | length) + (.reviews | length)' 2>/dev/null || echo "0")
 
 		# Skip if already has 2+ reviews (copilot + one agent = enough)
 		if [[ "$review_count" -ge 2 ]]; then
