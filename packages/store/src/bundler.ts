@@ -41,15 +41,18 @@ export async function bundleAndUpload(
 
 	const fp = await import("filecoin-pin");
 
-	// Step 1: Compute per-segment CIDs deterministically via bare CAR creation
+	// Step 1: Compute per-segment CIDs deterministically via wrapped (non-bare) CAR creation.
+	// IMPORTANT: Must NOT use { bare: true } — bare mode uses addByteStream which produces
+	// a raw content CID, while directory CARs use addFile/addAll which produces a UnixFS
+	// file CID. The CIDs must match what's inside the directory CAR for retrieval to work.
 	const segmentCids = new Map<string, string>();
 	for (const seg of segments) {
 		signal?.throwIfAborted();
 		const file = new File([Buffer.from(seg.data)], `${seg.id}.json`, {
 			type: "application/json",
 		});
-		const bareCar = await fp.createCarFromFile(file, { bare: true });
-		segmentCids.set(seg.id, bareCar.rootCid.toString());
+		const wrappedCar = await fp.createCarFromFile(file);
+		segmentCids.set(seg.id, wrappedCar.rootCid.toString());
 	}
 
 	signal?.throwIfAborted();

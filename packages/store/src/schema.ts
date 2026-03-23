@@ -181,8 +181,8 @@ function validateBatchRecord(raw: unknown, index: number): BatchRecord {
 	const createdAt = requireField(
 		raw,
 		"createdAt",
-		isString,
-		`batches[${index}].createdAt must be a string`,
+		(v): v is string => isString(v) && !Number.isNaN(Date.parse(v)),
+		`batches[${index}].createdAt must be a valid ISO 8601 date string`,
 		"headManifest",
 		`batches[${index}].createdAt`,
 	);
@@ -304,6 +304,32 @@ export function validateManifestSchema(data: unknown): HeadManifest {
 			"headManifest",
 		);
 		manifest.batches = batchesRaw.map((item, i) => validateBatchRecord(item, i));
+
+		// Cross-reference: segmentIds must reference actual manifest segments
+		const segmentIdSet = new Set(manifest.segments.map((s) => s.id));
+		const seenSegmentIds = new Set<string>();
+		const batches = manifest.batches;
+		for (let i = 0; i < batches.length; i++) {
+			const batch = batches[i];
+			if (!batch) continue;
+			for (const sid of batch.segmentIds) {
+				if (!segmentIdSet.has(sid)) {
+					throw new WtfocError(
+						`Invalid head manifest: batches[${i}].segmentIds references unknown segment "${sid}"`,
+						"SCHEMA_INVALID",
+						{ field: `batches[${i}].segmentIds` },
+					);
+				}
+				if (seenSegmentIds.has(sid)) {
+					throw new WtfocError(
+						`Invalid head manifest: segment "${sid}" appears in multiple batch records`,
+						"SCHEMA_INVALID",
+						{ field: `batches[${i}].segmentIds` },
+					);
+				}
+				seenSegmentIds.add(sid);
+			}
+		}
 	}
 
 	return manifest;

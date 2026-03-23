@@ -2,7 +2,7 @@
 
 **Feature Branch**: `010-car-bundle-uploads`
 **Created**: 2026-03-23
-**Status**: Draft (addressing Cursor + Codex cross-review)
+**Status**: Implemented (cross-reviewed by Cursor + Codex)
 **Input**: User description: "Bundle all segments from a single ingest command into one CAR file before uploading to FOC, preventing small-piece gas abuse. Each wtfoc ingest produces at most one PieceCID on-chain. Track per-segment CIDs within the CAR for granular retrieval. Refs issue #41."
 
 ## Clarifications

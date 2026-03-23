@@ -204,6 +204,55 @@ describe("validateManifestSchema", () => {
 		expectWtfocCode(() => validateManifestSchema(input), "SCHEMA_INVALID");
 	});
 
+	it("throws when batch createdAt is not a valid date", () => {
+		const input = minimalValidManifest({
+			batches: [
+				{
+					pieceCid: "baga6ea4seaq1234",
+					carRootCid: "bafybeigdyrzt",
+					segmentIds: ["seg-1"],
+					createdAt: "not-a-date",
+				},
+			],
+		});
+		expectWtfocCode(() => validateManifestSchema(input), "SCHEMA_INVALID");
+	});
+
+	it("throws when batch segmentIds references unknown segment", () => {
+		const input = minimalValidManifest({
+			batches: [
+				{
+					pieceCid: "baga6ea4seaq1234",
+					carRootCid: "bafybeigdyrzt",
+					segmentIds: ["nonexistent-segment"],
+					createdAt: "2026-03-23T12:00:00.000Z",
+				},
+			],
+		});
+		expectWtfocCode(() => validateManifestSchema(input), "SCHEMA_INVALID");
+	});
+
+	it("throws when same segment appears in multiple batches", () => {
+		const input = minimalValidManifest({
+			segments: [{ id: "seg-1", sourceTypes: ["repo"], chunkCount: 1 }],
+			batches: [
+				{
+					pieceCid: "baga-batch1",
+					carRootCid: "bafy-root1",
+					segmentIds: ["seg-1"],
+					createdAt: "2026-03-23T12:00:00.000Z",
+				},
+				{
+					pieceCid: "baga-batch2",
+					carRootCid: "bafy-root2",
+					segmentIds: ["seg-1"],
+					createdAt: "2026-03-23T13:00:00.000Z",
+				},
+			],
+		});
+		expectWtfocCode(() => validateManifestSchema(input), "SCHEMA_INVALID");
+	});
+
 	it("accepts mixed-history manifest with pre-bundling pieceCid on segments and batch records", () => {
 		const input = minimalValidManifest({
 			segments: [

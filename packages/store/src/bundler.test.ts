@@ -125,9 +125,10 @@ describe("bundleAndUpload", () => {
 		expect(storage.uploadCalls).toHaveLength(0);
 	});
 
-	it("[US2] per-segment CID matches standalone bare CAR CID for same content", async () => {
-		// Verify the bundler's per-segment CID is the same as what createCarFromFile(bare: true) produces
-		// This ensures retrieval by per-segment CID works even though the segment lives in a directory CAR
+	it("[US2] per-segment CID matches wrapped (non-bare) CAR CID for same content", async () => {
+		// Verify the bundler's per-segment CID matches what createCarFromFile (non-bare) produces.
+		// MUST use non-bare mode — bare mode produces raw content CIDs that differ from
+		// the UnixFS file CIDs inside directory CARs.
 		const storage = mockStorage();
 		const data = makeSegmentData("round-trip content");
 		const segments = [{ id: "seg-rt", data }];
@@ -135,13 +136,13 @@ describe("bundleAndUpload", () => {
 		const bundleResult = await bundleAndUpload(segments, storage);
 		const cidFromBundle = bundleResult.segmentCids.get("seg-rt");
 
-		// Independently compute the CID the same way
+		// Independently compute the CID using non-bare mode (matching bundler)
 		const fp = await import("filecoin-pin");
 		const file = new File([Buffer.from(data)], "seg-rt.json", { type: "application/json" });
-		const bareCar = await fp.createCarFromFile(file, { bare: true });
-		const cidFromBare = bareCar.rootCid.toString();
+		const wrappedCar = await fp.createCarFromFile(file);
+		const cidFromWrapped = wrappedCar.rootCid.toString();
 
-		expect(cidFromBundle).toBe(cidFromBare);
+		expect(cidFromBundle).toBe(cidFromWrapped);
 	});
 
 	it("[US2] SegmentSummary.id from bundler is a valid IPFS CID", async () => {
