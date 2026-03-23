@@ -138,6 +138,7 @@ This project uses multiple AI agents (Claude, Cursor, Codex) working in parallel
 
 ### Rules
 
+- **ALL review comments must be responded to.** This includes GitHub Copilot inline comments. For each comment: either fix the issue, or reply explaining why no change is needed. Do not ignore any comment. Do not blindly accept — evaluate each on its merits. All comments must have a response before marking ready-to-merge.
 - **Review before new work.** Agents check for PRs to review BEFORE picking up new implementation issues. Reviewing unblocks the pipeline faster than starting new work.
 - **One reviewer per PR.** `reviewing-<agent>` label prevents duplicate reviews. 2+ reviews (including Copilot) = enough.
 - **One agent per issue.** If an issue has `assigned-<agent>`, no other agent touches it.

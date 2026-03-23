@@ -224,6 +224,9 @@ ${body}
 - Push after each meaningful commit
 - Do NOT merge the PR — it needs review first
 - After opening the PR, request review by commenting: "Ready for /peer-review"
+- After PR is open, check for Copilot inline comments: gh api repos/SgtPooki/wtfoc/pulls/<PR>/comments
+- For each Copilot comment: fix the issue OR reply explaining why no change is needed. Do NOT ignore any.
+- Do NOT change test scripts or package.json scripts without explicit approval
 PROMPT
 }
 
@@ -437,26 +440,34 @@ address_pr_feedback() {
 		diff=$(gh_retry gh pr diff "$pr_num" --repo "$REPO" 2>/dev/null) || diff=""
 
 		local fix_prompt
+		# Also fetch Copilot inline comments
+		local copilot_comments
+		copilot_comments=$(gh api "repos/${REPO}/pulls/${pr_num}/comments" \
+			--jq '[.[] | select(.user.login == "Copilot" or .user.login == "copilot" or (.user.login | test("bot"; "i"))) | {body: .body, path: .path, line: .line}]' 2>/dev/null || echo "[]")
+
 		fix_prompt="You are addressing review feedback on PR #${pr_num}: ${pr_title}
 
 Working directory: ${worktree_dir}
 Branch: ${pr_branch}
 
-## Review Feedback to Address
+## Agent Review Feedback
 
 ${feedback}
 
-## Current PR Diff
+## Copilot Inline Comments
 
-${diff}
+${copilot_comments}
 
 ## Instructions
 
-1. Read the review feedback carefully
-2. Make the requested changes in the worktree
-3. Ensure pnpm test and pnpm lint pass
-4. Commit with message: 'fix: address review feedback on #${pr_num}'
-5. Push to the branch
+1. Read ALL feedback (agent reviews + Copilot inline comments)
+2. For each comment: either fix the issue OR reply to the comment explaining why no change is needed
+3. Do NOT blindly accept all feedback — evaluate each on its merits
+4. To reply to a Copilot inline comment: gh api repos/${REPO}/pulls/${pr_num}/comments/<comment_id>/replies -f body='Your response'
+5. Make fixes in the worktree
+6. Ensure pnpm test and pnpm lint pass
+7. Commit with message: 'fix: address review feedback on #${pr_num}'
+8. Push to the branch
 
 Do NOT open a new PR — push to the existing branch.
 Do NOT change test scripts or package.json scripts without explicit approval."
