@@ -228,7 +228,7 @@ run_agent() {
 
 	# Write prompt to temp file (avoids argv limits for all agents)
 	local prompt_file
-	prompt_file=$(mktemp /tmp/wtfoc-agent-prompt-XXXXXX.md)
+	prompt_file=$(mktemp /tmp/wtfoc-agent-prompt-XXXXXXXXXXXX.md)
 	echo "$prompt" > "$prompt_file"
 	log "Prompt written to: ${prompt_file}"
 
