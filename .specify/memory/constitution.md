@@ -99,6 +99,54 @@ Each commit is a discrete, isolated change. One logical thing per commit.
 - PRs must pass: tests, biome, build
 - No merging with red CI
 
+## Parallel Agent Coordination
+
+This project uses multiple AI agents (Claude, Cursor, Codex) working in parallel. Coordination happens via GitHub issues, labels, and isolated git worktrees.
+
+### Labels
+
+| Label | Meaning | Who applies it |
+|-------|---------|---------------|
+| `spec` | Issue tracks a specification (not implementation) | `dispatch.sh spec` |
+| `implementation` | Issue tracks implementation work | `dispatch.sh implement` or manual |
+| `ready` | Issue is available for any agent to pick up | Human (after spec is ratified) |
+| `assigned-claude` | Claimed by Claude — other agents must not work on this | Agent loop or `dispatch.sh assign` |
+| `assigned-cursor` | Claimed by Cursor | Agent loop or `dispatch.sh assign` |
+| `assigned-codex` | Claimed by Codex | Agent loop or `dispatch.sh assign` |
+| `blocked` | Issue cannot proceed (missing dependency, needs decision) | Any agent or human |
+
+### Rules
+
+- **One agent per issue.** If an issue has `assigned-<agent>`, no other agent touches it.
+- **Claim before working.** Agents must label an issue `assigned-<agent>` before starting work.
+- **One branch per issue.** Each issue gets its own branch and worktree (`../wtfoc-worktrees/<branch>/`).
+- **PRs for all changes.** No direct commits to main. Agents push to their branch and open a PR.
+- **`ready` means available.** Only pick up issues labeled `ready`. Unlabeled or `blocked` issues are off-limits.
+- **Don't work ahead of dependencies.** If an issue says "Depends on #X", wait until #X is merged before starting.
+
+### Workflow
+
+```
+Human creates spec issues (dispatch.sh spec)
+  → Claude writes specs + plans + tasks
+  → Tasks converted to GitHub issues (labeled: implementation, ready)
+  → Agents pick up ready issues via agent-loop.sh
+  → Each agent works in isolated worktree
+  → Agent opens PR when done
+  → Human (or /peer-review) reviews PR
+  → Merge to main
+  → Agent loops back for next issue
+```
+
+### Scripts
+
+- `scripts/dispatch.sh spec <title> [desc] [agent]` — create spec issue + worktree
+- `scripts/dispatch.sh implement <issue> [agent]` — create impl issue + worktree
+- `scripts/dispatch.sh assign <issue> <agent>` — assign issue to agent
+- `scripts/dispatch.sh status` — show all agent assignments
+- `scripts/dispatch.sh cleanup` — remove merged worktrees
+- `scripts/agent-loop.sh <agent>` — autonomous work loop (picks up assigned or ready issues)
+
 ## Governance
 
 - This constitution and `SPEC.md` are the source of truth

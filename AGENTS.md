@@ -158,6 +158,17 @@ viem                     — wallet/chain interaction
 commander                — CLI
 ```
 
+## Parallel Agent Work
+
+Multiple agents (Claude, Cursor, Codex) work in parallel on this project. **Read the full coordination protocol in [`.specify/memory/constitution.md`](.specify/memory/constitution.md) under "Parallel Agent Coordination".**
+
+Key rules:
+- **One agent per issue** — check labels before starting (`assigned-claude`, `assigned-cursor`, `assigned-codex`)
+- **Only pick up `ready` issues** — unlabeled or `blocked` are off-limits
+- **Each issue gets its own branch + worktree** — no shared working directories
+- **PRs for all changes** — no direct commits to main
+- **Respect dependencies** — if issue says "Depends on #X", wait until #X is merged
+
 ## Links
 
 - [SPEC.md](SPEC.md) — foundational rules
