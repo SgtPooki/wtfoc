@@ -484,6 +484,8 @@ post_agent_cleanup() {
 		fi
 	else
 		log "PR #${existing_pr} already exists for this branch."
+		# Ensure authored label is present even if we didn't create the PR
+		gh_retry gh issue edit "$existing_pr" --repo "$REPO" --add-label "authored-${AGENT}" >/dev/null 2>&1 || true
 	fi
 
 	# Remove agent assignment so we don't pick it up again
