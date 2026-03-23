@@ -1,0 +1,27 @@
+{
+  "name": "@wtfoc/cli",
+  "version": "0.0.0",
+  "type": "module",
+  "bin": {
+    "wtfoc": "./dist/cli.js"
+  },
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b",
+    "test": "node --test dist/**/*.test.js"
+  },
+  "dependencies": {
+    "@wtfoc/common": "workspace:*",
+    "@wtfoc/store": "workspace:*",
+    "@wtfoc/ingest": "workspace:*",
+    "@wtfoc/search": "workspace:*",
+    "commander": "^14.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0"
+  }
+}
