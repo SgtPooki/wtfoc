@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+exec node packages/cli/dist/cli.js "$@"

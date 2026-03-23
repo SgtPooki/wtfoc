@@ -28,10 +28,12 @@ export class TransformersEmbedder implements Embedder {
 			this.#initPromise = (async () => {
 				try {
 					const mod = await import("@huggingface/transformers");
-					this.#pipeline = (await mod.pipeline(
-						"feature-extraction",
-						this.model,
-					)) as FeatureExtractionPipeline;
+					// Use explicit function reference to avoid TS2590 union type complexity
+					const pipelineFn = mod.pipeline as (
+						task: string,
+						model: string,
+					) => Promise<FeatureExtractionPipeline>;
+					this.#pipeline = await pipelineFn("feature-extraction", this.model);
 				} catch (err) {
 					this.#initPromise = null;
 					throw new EmbedFailedError(this.model, err);

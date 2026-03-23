@@ -31,7 +31,8 @@ for arg in "$@"; do
 	esac
 done
 
-CLI="npx tsx packages/cli/src/cli.ts"
+# Use built CLI (run pnpm -r build first)
+CLI="$REPO_ROOT/wtfoc"
 
 echo "╔══════════════════════════════════════════════════════╗"
 echo "║  wtfoc — What the FOC happened? Trace it.           ║"
@@ -51,11 +52,20 @@ if [[ "$SKIP_INGEST" == "false" ]]; then
 	echo ""
 
 	REPOS=(
-		"FIL-Builders/foc-cli"
-		"filecoin-project/filecoin-pin"
+		# Core SDKs
 		"FilOzone/synapse-sdk"
+		"filecoin-project/filecoin-pin"
+		"FIL-Builders/foc-cli"
+		# Payment
 		"FilOzone/filecoin-pay"
 		"FilOzone/filecoin-pay-explorer"
+		# Infrastructure
+		"FilOzone/filecoin-services"
+		"filecoin-project/curio"
+		# Explorers & Tools
+		"FilOzone/pdp-explorer"
+		"FilOzone/dealbot"
+		"FilOzone/filecoin-nova"
 	)
 
 	for repo in "${REPOS[@]}"; do
