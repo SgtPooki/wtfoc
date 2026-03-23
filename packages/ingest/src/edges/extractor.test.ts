@@ -15,12 +15,45 @@ function makeChunk(content: string, overrides: Partial<Chunk> = {}): Chunk {
 	};
 }
 
+function makeSlackChunk(content: string, overrides: Partial<Chunk> = {}): Chunk {
+	return makeChunk(content, {
+		sourceType: "slack-message",
+		source: "#foc-support",
+		...overrides,
+	});
+}
+
 describe("RegexEdgeExtractor", () => {
 	const extractor = new RegexEdgeExtractor();
 
-	describe("references — local issue refs (#123)", () => {
-		it("extracts a local issue reference", () => {
+	describe("references — local issue refs (#123) — GitHub chunks", () => {
+		it("repo-scopes a local issue reference using chunk source", () => {
 			const chunk = makeChunk("This relates to #123");
+			const edges = extractor.extract([chunk]);
+
+			expect(edges).toHaveLength(1);
+			expect(edges[0]).toEqual({
+				type: "references",
+				sourceId: "chunk-1",
+				targetType: "issue",
+				targetId: "owner/repo#123",
+				evidence: "#123",
+				confidence: 1.0,
+			});
+		});
+
+		it("extracts multiple local refs from one chunk, all repo-scoped", () => {
+			const chunk = makeChunk("See #10 and #20 for context");
+			const edges = extractor.extract([chunk]);
+
+			expect(edges).toHaveLength(2);
+			expect(edges.map((e) => e.targetId)).toEqual(["owner/repo#10", "owner/repo#20"]);
+		});
+	});
+
+	describe("references — local issue refs (#123) — non-GitHub chunks", () => {
+		it("keeps bare #123 for Slack chunks (no repo context)", () => {
+			const chunk = makeSlackChunk("This relates to #123");
 			const edges = extractor.extract([chunk]);
 
 			expect(edges).toHaveLength(1);
@@ -34,8 +67,8 @@ describe("RegexEdgeExtractor", () => {
 			});
 		});
 
-		it("extracts multiple local refs from one chunk", () => {
-			const chunk = makeChunk("See #10 and #20 for context");
+		it("extracts multiple bare local refs from a Slack chunk", () => {
+			const chunk = makeSlackChunk("See #10 and #20 for context");
 			const edges = extractor.extract([chunk]);
 
 			expect(edges).toHaveLength(2);
@@ -64,6 +97,14 @@ describe("RegexEdgeExtractor", () => {
 			const edges = extractor.extract([chunk]);
 
 			// Should get exactly 1 edge (the cross-repo ref), not 2
+			expect(edges).toHaveLength(1);
+			expect(edges[0]?.targetId).toBe("FilOzone/synapse-sdk#142");
+		});
+
+		it("extracts cross-repo refs from Slack chunks too", () => {
+			const chunk = makeSlackChunk("See FilOzone/synapse-sdk#142");
+			const edges = extractor.extract([chunk]);
+
 			expect(edges).toHaveLength(1);
 			expect(edges[0]?.targetId).toBe("FilOzone/synapse-sdk#142");
 		});
@@ -106,16 +147,25 @@ describe("RegexEdgeExtractor", () => {
 			"Resolves",
 			"resolved",
 		]) {
-			it(`extracts 'closes' edge for keyword "${keyword}"`, () => {
+			it(`extracts repo-scoped 'closes' edge for keyword "${keyword}" (GitHub chunk)`, () => {
 				const chunk = makeChunk(`${keyword} #42`);
 				const edges = extractor.extract([chunk]);
 
 				expect(edges).toHaveLength(1);
 				expect(edges[0]?.type).toBe("closes");
-				expect(edges[0]?.targetId).toBe("#42");
+				expect(edges[0]?.targetId).toBe("owner/repo#42");
 				expect(edges[0]?.confidence).toBe(1.0);
 			});
 		}
+
+		it("keeps bare #42 for non-GitHub closes", () => {
+			const chunk = makeSlackChunk("Fixes #42");
+			const edges = extractor.extract([chunk]);
+
+			expect(edges).toHaveLength(1);
+			expect(edges[0]?.type).toBe("closes");
+			expect(edges[0]?.targetId).toBe("#42");
+		});
 
 		it("extracts cross-repo closes", () => {
 			const chunk = makeChunk("Fixes owner/repo#99");
@@ -140,15 +190,33 @@ describe("RegexEdgeExtractor", () => {
 			const refs = edges.filter((e) => e.type === "references");
 
 			expect(closes).toHaveLength(1);
-			expect(closes[0]?.targetId).toBe("#42");
+			expect(closes[0]?.targetId).toBe("owner/repo#42");
 			expect(refs).toHaveLength(1);
-			expect(refs[0]?.targetId).toBe("#99");
+			expect(refs[0]?.targetId).toBe("owner/repo#99");
 		});
 	});
 
 	describe("mixed content", () => {
-		it("extracts all edge types from a PR body", () => {
+		it("extracts all edge types from a PR body (GitHub chunk)", () => {
 			const chunk = makeChunk(
+				"Fixes #9\n\nRelated to SgtPooki/wtfoc#1 and see https://github.com/other/repo/issues/5",
+			);
+			const edges = extractor.extract([chunk]);
+
+			expect(edges).toHaveLength(3);
+
+			const closes = edges.filter((e) => e.type === "closes");
+			const refs = edges.filter((e) => e.type === "references");
+
+			expect(closes).toHaveLength(1);
+			expect(closes[0]?.targetId).toBe("owner/repo#9");
+
+			expect(refs).toHaveLength(2);
+			expect(refs.map((e) => e.targetId).sort()).toEqual(["SgtPooki/wtfoc#1", "other/repo#5"]);
+		});
+
+		it("extracts mixed edges from Slack chunk (local refs stay bare)", () => {
+			const chunk = makeSlackChunk(
 				"Fixes #9\n\nRelated to SgtPooki/wtfoc#1 and see https://github.com/other/repo/issues/5",
 			);
 			const edges = extractor.extract([chunk]);
