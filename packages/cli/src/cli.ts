@@ -12,6 +12,7 @@ import {
 import {
 	buildSegment,
 	chunkMarkdown,
+	GitHubAdapter,
 	RegexEdgeExtractor,
 	RepoAdapter,
 	segmentId,
@@ -26,6 +27,18 @@ import {
 import { bundleAndUpload, createStore, generateCollectionId } from "@wtfoc/store";
 import { Command } from "commander";
 import { formatQuery, formatStatus, formatTrace, type OutputFormat } from "./output.js";
+
+function parseSinceDuration(duration: string): string {
+	const match = duration.match(/^(\d+)([dhm])$/);
+	if (!match?.[1] || !match[2]) return duration;
+	const value = Number.parseInt(match[1], 10);
+	const unit = match[2];
+	const now = new Date();
+	if (unit === "d") now.setDate(now.getDate() - value);
+	else if (unit === "h") now.setHours(now.getHours() - value);
+	else if (unit === "m") now.setMonth(now.getMonth() - value);
+	return now.toISOString();
+}
 
 const program = new Command();
 
@@ -187,7 +200,11 @@ const ingestCmd = withEmbedderOptions(
 		.requiredOption("-c, --collection <name>", "Collection name")
 		.option("--since <duration>", "Only fetch items newer than duration (e.g. 90d)"),
 ).action(
-	async (sourceType: string, args: string[], opts: { collection: string } & EmbedderOpts) => {
+	async (
+		sourceType: string,
+		args: string[],
+		opts: { collection: string; since?: string } & EmbedderOpts,
+	) => {
 		const store = getStore();
 		const format = getFormat(program.opts());
 
@@ -327,9 +344,110 @@ const ingestCmd = withEmbedderOptions(
 					`✅ Ingested ${chunks.length} chunks from ${repoSource} into "${opts.collection}"`,
 				);
 			}
+		} else if (sourceType === "github") {
+			const ghSource = args[0];
+			if (!ghSource || !ghSource.includes("/")) {
+				console.error("Error: github source required (e.g. FilOzone/synapse-sdk)");
+				process.exit(2);
+			}
+			if (format !== "quiet") console.error(`⏳ Ingesting github: ${ghSource}...`);
+
+			const adapter = new GitHubAdapter();
+			const sinceDate = opts.since ? parseSinceDuration(opts.since) : undefined;
+			const ghConfig = adapter.parseConfig({
+				source: ghSource,
+				since: sinceDate,
+			});
+
+			const chunks: Chunk[] = [];
+			for await (const chunk of adapter.ingest(ghConfig)) {
+				chunks.push(chunk);
+			}
+			if (format !== "quiet") console.error(`   ${chunks.length} chunks extracted`);
+
+			if (chunks.length === 0) {
+				if (format !== "quiet") console.error("⚠️  No chunks produced — skipping upload");
+				return;
+			}
+
+			const edges = adapter.extractEdges(chunks);
+			if (format !== "quiet") console.error(`   ${edges.length} edges extracted`);
+
+			if (format !== "quiet") console.error("⏳ Embedding chunks...");
+			const embeddings = await embedder.embedBatch(chunks.map((c) => c.content));
+
+			const segmentChunks = chunks.map((chunk, i) => {
+				const emb = embeddings[i];
+				if (!emb)
+					throw new Error(
+						`Missing embedding for chunk ${i} — expected ${chunks.length} embeddings`,
+					);
+				return { chunk, embedding: Array.from(emb) };
+			});
+
+			const segment = buildSegment(segmentChunks, edges, {
+				embeddingModel: modelName,
+				embeddingDimensions: embedder.dimensions,
+			});
+
+			const segmentBytes = new TextEncoder().encode(JSON.stringify(segment));
+			const segId = segmentId(segment);
+			const storageType = (program.opts().storage ?? "local") as string;
+
+			let resultId: string;
+			let batchForManifest: import("@wtfoc/common").BatchRecord | undefined;
+
+			if (storageType === "foc") {
+				if (format !== "quiet") console.error("⏳ Bundling into CAR...");
+				const bundleResult = await bundleAndUpload(
+					[{ id: segId, data: segmentBytes }],
+					store.storage,
+				);
+				resultId = bundleResult.segmentCids.get(segId) ?? segId;
+				batchForManifest = bundleResult.batch;
+			} else {
+				const segmentResult = await store.storage.upload(segmentBytes);
+				resultId = segmentResult.id;
+				if (format !== "quiet") console.error(`   Segment stored: ${resultId.slice(0, 16)}...`);
+			}
+
+			const manifest: CollectionHead = {
+				schemaVersion: CURRENT_SCHEMA_VERSION,
+				collectionId: head?.manifest.collectionId ?? generateCollectionId(opts.collection),
+				name: opts.collection,
+				currentRevisionId: head?.manifest.currentRevisionId ?? null,
+				prevHeadId,
+				segments: [
+					...(head?.manifest.segments ?? []),
+					{
+						id: resultId,
+						sourceTypes: [...new Set(chunks.map((c) => c.sourceType))],
+						chunkCount: chunks.length,
+					},
+				],
+				totalChunks: (head?.manifest.totalChunks ?? 0) + chunks.length,
+				embeddingModel: modelName,
+				embeddingDimensions: embedder.dimensions,
+				createdAt: head?.manifest.createdAt ?? new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
+
+			if (batchForManifest || head?.manifest.batches) {
+				manifest.batches = [
+					...(head?.manifest.batches ?? []),
+					...(batchForManifest ? [batchForManifest] : []),
+				];
+			}
+
+			await store.manifests.putHead(opts.collection, manifest, prevHeadId);
+			if (format !== "quiet") {
+				console.error(
+					`✅ Ingested ${chunks.length} chunks from ${ghSource} into "${opts.collection}"`,
+				);
+			}
 		} else {
 			console.error(`Unknown source type: ${sourceType}`);
-			console.error("Available: repo");
+			console.error("Available: repo, github");
 			process.exit(2);
 		}
 	},

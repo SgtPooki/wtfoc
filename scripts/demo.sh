@@ -69,8 +69,8 @@ if [[ "$SKIP_INGEST" == "false" ]]; then
 	)
 
 	for repo in "${REPOS[@]}"; do
-		echo "   → $repo"
-		$CLI ingest repo "$repo" -c "$COLLECTION" $EMBEDDER_ARGS --quiet 2>&1 | grep -E "✅|⚠️|chunks|edges" || true
+		echo "   → $repo (github issues/PRs)"
+		$CLI ingest github "$repo" -c "$COLLECTION" $EMBEDDER_ARGS --since 90d 2>&1 | grep -E "✅|⚠️|chunks|edges" || true
 		echo ""
 	done
 
