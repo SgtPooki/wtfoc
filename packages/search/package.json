@@ -14,6 +14,7 @@
 		"test": "node --test dist/**/*.test.js"
 	},
 	"dependencies": {
+		"@huggingface/transformers": "^3.8.1",
 		"@wtfoc/common": "workspace:*"
 	},
 	"peerDependencies": {
