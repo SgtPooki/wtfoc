@@ -310,12 +310,10 @@ address_pr_feedback() {
 		pr_branch=$(echo "$pr" | jq -r '.headRefName')
 		pr_labels=$(echo "$pr" | jq -r '.labels[].name' 2>/dev/null || echo "")
 
-		# Only address PRs this agent authored (agent name in branch or in body)
-		if ! echo "$pr_branch" | grep -qi "$AGENT"; then
-			# Also check if the PR body mentions this agent
-			local pr_body
-			pr_body=$(gh pr view "$pr_num" --repo "$REPO" --json body -q '.body' 2>/dev/null || echo "")
-			if ! echo "$pr_body" | grep -qi "$AGENT"; then
+		# Only address PRs this agent authored
+		if ! echo "$pr_labels" | grep -q "authored-${AGENT}"; then
+			# Fallback: check branch name for PRs before label existed
+			if ! echo "$pr_branch" | grep -qi "$AGENT"; then
 				continue
 			fi
 		fi
@@ -469,11 +467,18 @@ post_agent_cleanup() {
 
 		if [[ "$commits_ahead" -gt 0 ]]; then
 			log "Opening PR for branch ${branch_name}..."
-			(cd "$worktree_dir" && \
+			local new_pr_url
+			new_pr_url=$(cd "$worktree_dir" && \
 				gh pr create --repo "$REPO" \
 					--title "$(echo "$issue_title")" \
 					--body "Work by ${AGENT} agent on #${issue_num}. Needs /peer-review before merge." \
 					2>&1) || warn "Failed to create PR"
+			# Add authored label
+			if [[ -n "$new_pr_url" ]]; then
+				local new_pr_num
+				new_pr_num=$(echo "$new_pr_url" | grep -o '[0-9]*$')
+				gh_retry gh issue edit "$new_pr_num" --repo "$REPO" --add-label "authored-${AGENT}" >/dev/null 2>&1 || true
+			fi
 		else
 			log "No commits ahead of main — nothing to PR."
 		fi
@@ -534,7 +539,11 @@ review_prs() {
 		pr_branch=$(echo "$pr" | jq -r '.headRefName')
 		pr_labels=$(echo "$pr" | jq -r '.labels[].name' 2>/dev/null || echo "")
 
-		# Skip if this agent authored it (agent name in branch)
+		# Skip if this agent authored it
+		if echo "$pr_labels" | grep -q "authored-${AGENT}"; then
+			continue
+		fi
+		# Fallback: also check branch name for PRs created before label existed
 		if echo "$pr_branch" | grep -qi "$AGENT"; then
 			continue
 		fi
