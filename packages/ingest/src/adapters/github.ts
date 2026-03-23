@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 import type { Chunk, Edge, SourceAdapter } from "@wtfoc/common";
 import {
@@ -59,6 +60,47 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 	});
 }
 
+/**
+ * Parse paginated gh api output. With --paginate, gh api emits
+ * one JSON array per page concatenated in stdout. We need to handle
+ * both single-array and multi-array (JSONL-like) output.
+ */
+function parsePaginatedJson(stdout: string): unknown[] {
+	const trimmed = stdout.trim();
+	if (!trimmed) return [];
+
+	// Try single JSON parse first (single page or --slurp)
+	try {
+		const parsed = JSON.parse(trimmed);
+		return Array.isArray(parsed) ? parsed : [parsed];
+	} catch {
+		// Multi-page: gh api --paginate emits multiple JSON arrays
+		// Try splitting on ][ boundary (array concatenation)
+		const results: unknown[] = [];
+		// gh api --paginate concatenates arrays: [page1][page2]
+		// Split by finding ][, parse each chunk
+		const chunks = trimmed.split(/\]\s*\[/);
+		for (let i = 0; i < chunks.length; i++) {
+			let chunk = chunks[i] ?? "";
+			if (i === 0 && !chunk.startsWith("[")) chunk = `[${chunk}`;
+			else if (i > 0) chunk = `[${chunk}`;
+			if (i === chunks.length - 1 && !chunk.endsWith("]")) chunk = `${chunk}]`;
+			else if (i < chunks.length - 1) chunk = `${chunk}]`;
+			try {
+				const parsed = JSON.parse(chunk);
+				if (Array.isArray(parsed)) results.push(...parsed);
+				else results.push(parsed);
+			} catch {
+				// Skip unparseable page chunks in multi-page output
+			}
+		}
+		if (results.length === 0 && trimmed.length > 0) {
+			throw new SyntaxError(`Failed to parse GitHub API response: ${trimmed.slice(0, 100)}`);
+		}
+		return results;
+	}
+}
+
 export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 	readonly sourceType = "github";
 	readonly #execFn: ExecFn;
@@ -114,8 +156,15 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 			try {
 				yield* this.#ingestDiscussions(config, signal);
 			} catch (err) {
-				if (err instanceof GitHubNotFoundError || err instanceof GitHubApiError) {
+				// Only skip if discussions are genuinely not available
+				if (err instanceof GitHubNotFoundError) {
 					// Discussions not enabled — skip gracefully
+				} else if (
+					err instanceof GitHubApiError &&
+					(String(err.context?.cause).includes("DISCUSSION") ||
+						String(err.message).includes("discussions"))
+				) {
+					// GraphQL discussions query not supported — skip
 				} else {
 					throw err;
 				}
@@ -128,16 +177,9 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 		return extractor.extract(chunks);
 	}
 
-	async #ghApi(
-		path: string,
-		config: GitHubAdapterConfig,
-		signal?: AbortSignal,
-		paginate = true,
-	): Promise<unknown[]> {
-		const args = ["api", path, "--paginate"];
-		if (config.since) {
-			args.push("-f", `since=${config.since}`);
-		}
+	async #ghApi(path: string, signal?: AbortSignal, extraArgs?: string[]): Promise<unknown[]> {
+		const args = ["api", path, "--paginate", "--method", "GET", "--include"];
+		if (extraArgs) args.push(...extraArgs);
 
 		let totalWaitMs = 0;
 		let attempt = 0;
@@ -146,8 +188,11 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 			signal?.throwIfAborted();
 			try {
 				const { stdout } = await this.#execFn("gh", args, signal);
-				const parsed = JSON.parse(stdout);
-				return Array.isArray(parsed) ? parsed : [parsed];
+				// --include prepends HTTP headers before JSON body
+				// Strip headers (everything before first [ or {)
+				const jsonStart = stdout.search(/[[{]/);
+				const jsonBody = jsonStart >= 0 ? stdout.slice(jsonStart) : stdout;
+				return parsePaginatedJson(jsonBody);
 			} catch (err: unknown) {
 				const errMsg = err instanceof Error ? err.message : String(err);
 				const stderr = (err as { stderr?: string }).stderr ?? errMsg;
@@ -156,19 +201,20 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 					throw new GitHubCliMissingError();
 				}
 				if (stderr.includes("Not Found") || stderr.includes("404")) {
-					throw new GitHubNotFoundError(`${config.owner}/${config.repo}`);
+					throw new GitHubNotFoundError(path);
 				}
-				if (stderr.includes("rate limit") || stderr.includes("403")) {
+				// Only retry on explicit rate limit messages, not generic 403
+				if (stderr.includes("rate limit") || stderr.includes("API rate limit exceeded")) {
 					const waitMs = this.#parseRetryWait(stderr) ?? BASE_BACKOFF_MS * 2 ** attempt;
 					if (totalWaitMs + waitMs > MAX_RATE_LIMIT_WAIT_MS) {
-						throw new GitHubRateLimitError(`${config.owner}/${config.repo}`);
+						throw new GitHubRateLimitError(path);
 					}
 					await sleep(waitMs, signal);
 					totalWaitMs += waitMs;
 					attempt++;
 					continue;
 				}
-				throw new GitHubApiError(errMsg, `${config.owner}/${config.repo}`, err);
+				throw new GitHubApiError(errMsg, path, err);
 			}
 		}
 	}
@@ -188,12 +234,16 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 	}
 
 	async *#ingestIssues(config: GitHubAdapterConfig, signal?: AbortSignal): AsyncIterable<Chunk> {
-		const items = await this.#ghApi(`repos/${config.owner}/${config.repo}/issues`, config, signal);
+		const sinceArgs = config.since ? ["-f", `since=${config.since}`] : [];
+		const items = await this.#ghApi(
+			`repos/${config.owner}/${config.repo}/issues?state=all`,
+			signal,
+			sinceArgs,
+		);
 		const repo = `${config.owner}/${config.repo}`;
 
 		for (const item of items) {
 			const rec = item as Record<string, unknown>;
-			// Filter out PRs (issues endpoint includes them)
 			if (rec.pull_request) continue;
 			if (!rec.title && !rec.body) continue;
 
@@ -203,7 +253,7 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 			const content = `# ${title}\n\n${body}`;
 
 			yield {
-				id: this.#chunkId(content),
+				id: createHash("sha256").update(content).digest("hex"),
 				content,
 				sourceType: "github-issue",
 				source: `${repo}#${number}`,
@@ -232,11 +282,8 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 	}
 
 	async *#ingestPulls(config: GitHubAdapterConfig, signal?: AbortSignal): AsyncIterable<Chunk> {
-		const items = await this.#ghApi(
-			`repos/${config.owner}/${config.repo}/pulls?state=all`,
-			config,
-			signal,
-		);
+		// /pulls does NOT support `since` param — no since args here
+		const items = await this.#ghApi(`repos/${config.owner}/${config.repo}/pulls?state=all`, signal);
 		const repo = `${config.owner}/${config.repo}`;
 
 		for (const item of items) {
@@ -249,7 +296,7 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 			const content = `# ${title}\n\n${body}`;
 
 			yield {
-				id: this.#chunkId(content),
+				id: createHash("sha256").update(content).digest("hex"),
 				content,
 				sourceType: "github-pr",
 				source: `${repo}#${number}`,
@@ -270,11 +317,7 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 	}
 
 	async #fetchPullNumbers(config: GitHubAdapterConfig, signal?: AbortSignal): Promise<number[]> {
-		const items = await this.#ghApi(
-			`repos/${config.owner}/${config.repo}/pulls?state=all`,
-			config,
-			signal,
-		);
+		const items = await this.#ghApi(`repos/${config.owner}/${config.repo}/pulls?state=all`, signal);
 		return items
 			.map((item) => (item as Record<string, unknown>).number)
 			.filter((n): n is number => typeof n === "number");
@@ -287,7 +330,6 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 	): AsyncIterable<Chunk> {
 		const items = await this.#ghApi(
 			`repos/${config.owner}/${config.repo}/pulls/${prNumber}/comments`,
-			config,
 			signal,
 		);
 		const repo = `${config.owner}/${config.repo}`;
@@ -297,7 +339,6 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 			const body = String(rec.body ?? "");
 			if (!body) continue;
 
-			// Client-side since filtering for comments
 			if (config.since) {
 				const commentDate = new Date(String(rec.updated_at ?? rec.created_at ?? ""));
 				const sinceDate = new Date(config.since);
@@ -307,7 +348,7 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 			const commentId = String(rec.id ?? "");
 
 			yield {
-				id: this.#chunkId(body),
+				id: createHash("sha256").update(body).digest("hex"),
 				content: body,
 				sourceType: "github-pr-comment",
 				source: `${repo}#${prNumber}`,
@@ -329,57 +370,73 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 		config: GitHubAdapterConfig,
 		signal?: AbortSignal,
 	): AsyncIterable<Chunk> {
-		const query = `query { repository(owner: "${config.owner}", name: "${config.repo}") { discussions(first: 100) { nodes { number title body url createdAt author { login } category { name } } } } }`;
-		const args = ["api", "graphql", "-f", `query=${query}`];
-
-		signal?.throwIfAborted();
-		let result: { stdout: string };
-		try {
-			result = await this.#execFn("gh", args, signal);
-		} catch (err) {
-			throw new GitHubApiError(
-				"Failed to fetch discussions",
-				`${config.owner}/${config.repo}`,
-				err,
-			);
-		}
-
-		const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
-		const data = parsed.data as Record<string, unknown> | undefined;
-		const repository = data?.repository as Record<string, unknown> | undefined;
-		const discussions = repository?.discussions as Record<string, unknown> | undefined;
-		const nodes = (discussions?.nodes ?? []) as Array<Record<string, unknown>>;
 		const repo = `${config.owner}/${config.repo}`;
+		let hasNextPage = true;
+		let cursor: string | null = null;
 
-		for (const node of nodes) {
-			const body = String(node.body ?? "");
-			const title = String(node.title ?? "");
-			if (!title && !body) continue;
+		while (hasNextPage) {
+			signal?.throwIfAborted();
+			const afterClause = cursor ? `, after: "${cursor}"` : "";
+			const query = `query { repository(owner: "${config.owner}", name: "${config.repo}") { discussions(first: 100${afterClause}) { pageInfo { hasNextPage endCursor } nodes { number title body url createdAt author { login } category { name } } } } }`;
+			const args = ["api", "graphql", "-f", `query=${query}`];
 
-			const number = String(node.number ?? "");
-			const content = `# ${title}\n\n${body}`;
+			let result: { stdout: string };
+			try {
+				result = await this.#execFn("gh", args, signal);
+			} catch (err) {
+				const errMsg = err instanceof Error ? err.message : String(err);
+				if (errMsg.includes("ENOENT")) throw new GitHubCliMissingError();
+				if (errMsg.includes("Not Found") || errMsg.includes("404")) {
+					throw new GitHubNotFoundError(repo);
+				}
+				throw new GitHubApiError("Failed to fetch discussions", repo, err);
+			}
 
-			yield {
-				id: this.#chunkId(content),
-				content,
-				sourceType: "github-discussion",
-				source: `${repo}/discussions/${number}`,
-				sourceUrl: String(node.url ?? ""),
-				timestamp: String(node.createdAt ?? ""),
-				chunkIndex: 0,
-				totalChunks: 1,
-				metadata: {
-					number,
-					author: String((node.author as Record<string, unknown>)?.login ?? ""),
-					category: String((node.category as Record<string, unknown>)?.name ?? ""),
-					createdAt: String(node.createdAt ?? ""),
-				},
-			};
+			const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+			if (parsed.errors) {
+				throw new GitHubApiError(
+					`GraphQL errors: ${JSON.stringify(parsed.errors)}`,
+					repo,
+					parsed.errors,
+				);
+			}
+
+			const data = parsed.data as Record<string, unknown> | undefined;
+			const repository = data?.repository as Record<string, unknown> | undefined;
+			const discussions = repository?.discussions as Record<string, unknown> | undefined;
+			const pageInfo = discussions?.pageInfo as
+				| { hasNextPage?: boolean; endCursor?: string }
+				| undefined;
+			const nodes = (discussions?.nodes ?? []) as Array<Record<string, unknown>>;
+
+			for (const node of nodes) {
+				const body = String(node.body ?? "");
+				const title = String(node.title ?? "");
+				if (!title && !body) continue;
+
+				const number = String(node.number ?? "");
+				const content = `# ${title}\n\n${body}`;
+
+				yield {
+					id: createHash("sha256").update(content).digest("hex"),
+					content,
+					sourceType: "github-discussion",
+					source: `${repo}/discussions/${number}`,
+					sourceUrl: String(node.url ?? ""),
+					timestamp: String(node.createdAt ?? ""),
+					chunkIndex: 0,
+					totalChunks: 1,
+					metadata: {
+						number,
+						author: String((node.author as Record<string, unknown>)?.login ?? ""),
+						category: String((node.category as Record<string, unknown>)?.name ?? ""),
+						createdAt: String(node.createdAt ?? ""),
+					},
+				};
+			}
+
+			hasNextPage = pageInfo?.hasNextPage ?? false;
+			cursor = pageInfo?.endCursor ?? null;
 		}
-	}
-
-	#chunkId(content: string): string {
-		const { createHash } = require("node:crypto") as typeof import("node:crypto");
-		return createHash("sha256").update(content).digest("hex");
 	}
 }

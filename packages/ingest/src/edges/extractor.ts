@@ -19,7 +19,7 @@ const LOCAL_REF_PATTERN = /#(\d+)/g;
 const GITHUB_URL_PATTERN =
 	/https?:\/\/github\.com\/([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)\/(?:issues|pull)\/(\d+)/g;
 
-const GITHUB_SOURCE_TYPES = new Set(["github-pr", "github-issue"]);
+const GITHUB_SOURCE_TYPES = new Set(["github-pr", "github-issue", "github-pr-comment"]);
 const SOURCE_REPO_PATTERN = /^([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)#\d+$/;
 
 /**
