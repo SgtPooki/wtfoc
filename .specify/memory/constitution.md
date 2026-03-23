@@ -60,6 +60,20 @@ Ship the demo, but make it worth extending. Every decision optimizes for: (1) wo
 
 ## Development Discipline
 
+### Spec-First Development (NON-NEGOTIABLE)
+
+Every change requires a spec. No implementation without a ratified specification.
+
+**Flow:**
+1. `/speckit.specify` — write the spec for the change
+2. `/speckit.clarify` — resolve ambiguities
+3. **Cross-review** — spec must be reviewed by a different agent (Cursor or Codex) before ratification. If Claude wrote the spec, Cursor or Codex reviews it. If Codex wrote it, Cursor or Claude reviews it.
+4. `/speckit.plan` — create implementation plan from ratified spec
+5. `/speckit.tasks` — generate task breakdown
+6. `/speckit.implement` — execute implementation
+
+No skipping steps. No "I'll write the spec later." The spec is the shared source of truth that prevents wasted work.
+
 ### Atomic Commits
 Each commit is a discrete, isolated change. One logical thing per commit.
 - Setting up tooling ≠ scaffolding packages

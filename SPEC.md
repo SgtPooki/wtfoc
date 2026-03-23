@@ -237,6 +237,17 @@ The demo tells this story:
 
 ## Development Discipline
 
+### Spec-first development (NON-NEGOTIABLE)
+
+Every change requires a spec. No implementation without a ratified specification.
+
+1. Write spec (`/speckit.specify`)
+2. Clarify ambiguities (`/speckit.clarify`)
+3. **Cross-review by a different agent** — if Claude wrote the spec, Cursor or Codex must review it before ratification
+4. Plan implementation (`/speckit.plan`)
+5. Generate tasks (`/speckit.tasks`)
+6. Implement (`/speckit.implement`)
+
 ### Atomic commits
 
 Each commit is a discrete, isolated change. One logical thing per commit.
