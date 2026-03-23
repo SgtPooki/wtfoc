@@ -178,7 +178,9 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 	}
 
 	async #ghApi(path: string, signal?: AbortSignal, extraArgs?: string[]): Promise<unknown[]> {
-		const args = ["api", path, "--paginate", "--method", "GET", "--include"];
+		// No --include: rate limit info comes via stderr, not headers.
+		// --paginate handles Link-header pagination automatically.
+		const args = ["api", path, "--paginate", "--method", "GET"];
 		if (extraArgs) args.push(...extraArgs);
 
 		let totalWaitMs = 0;
@@ -188,11 +190,7 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 			signal?.throwIfAborted();
 			try {
 				const { stdout } = await this.#execFn("gh", args, signal);
-				// --include prepends HTTP headers before JSON body
-				// Strip headers (everything before first [ or {)
-				const jsonStart = stdout.search(/[[{]/);
-				const jsonBody = jsonStart >= 0 ? stdout.slice(jsonStart) : stdout;
-				return parsePaginatedJson(jsonBody);
+				return parsePaginatedJson(stdout);
 			} catch (err: unknown) {
 				const errMsg = err instanceof Error ? err.message : String(err);
 				const stderr = (err as { stderr?: string }).stderr ?? errMsg;

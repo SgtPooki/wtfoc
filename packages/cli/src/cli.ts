@@ -473,9 +473,15 @@ withEmbedderOptions(
 	const { embedder } = createEmbedder(opts);
 	const { vectorIndex, segments } = await loadCollection(store, head.manifest);
 
-	// Check dimension compatibility before querying
+	// Check dimension compatibility before querying (skip if dimensions unknown yet)
 	const collectionDims = head.manifest.embeddingDimensions;
-	if (collectionDims > 0 && embedder.dimensions > 0 && collectionDims !== embedder.dimensions) {
+	let embedderDims = 0;
+	try {
+		embedderDims = embedder.dimensions;
+	} catch {
+		/* dimensions auto-detected on first call */
+	}
+	if (collectionDims > 0 && embedderDims > 0 && collectionDims !== embedderDims) {
 		console.error(
 			`\n❌ Dimension mismatch: collection uses ${collectionDims}d embeddings but your embedder produces ${embedder.dimensions}d.`,
 		);
@@ -529,9 +535,15 @@ withEmbedderOptions(
 	const { vectorIndex } = await loadCollection(store, head.manifest);
 
 	const collectionDims = head.manifest.embeddingDimensions;
-	if (collectionDims > 0 && embedder.dimensions > 0 && collectionDims !== embedder.dimensions) {
+	let traceDims = 0;
+	try {
+		traceDims = embedder.dimensions;
+	} catch {
+		/* dimensions auto-detected on first call */
+	}
+	if (collectionDims > 0 && traceDims > 0 && collectionDims !== traceDims) {
 		console.error(
-			`\n❌ Dimension mismatch: collection uses ${collectionDims}d embeddings but your embedder produces ${embedder.dimensions}d.`,
+			`\n❌ Dimension mismatch: collection uses ${collectionDims}d embeddings but your embedder produces ${traceDims}d.`,
 		);
 		console.error(`   Collection was embedded with: ${head.manifest.embeddingModel}`);
 		console.error(`\n   Use --embedder to match, e.g.:`);
