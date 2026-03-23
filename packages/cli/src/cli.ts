@@ -141,6 +141,21 @@ const ingestCmd = program
 			if (format !== "quiet") console.error("⏳ Loading embedder...");
 			const { embedder, modelName } = createEmbedder(opts);
 
+			// Detect model mismatch
+			if (
+				head &&
+				head.manifest.embeddingModel !== "pending" &&
+				head.manifest.embeddingModel !== modelName
+			) {
+				console.error(
+					`⚠️  Model mismatch: collection uses "${head.manifest.embeddingModel}" but you're using "${modelName}".`,
+				);
+				console.error(
+					"   Mixed embeddings will produce poor search results. Use --embedder to match, or re-index the collection.",
+				);
+				process.exit(1);
+			}
+
 			// Collect chunks based on source type
 			const chunks: Chunk[] = [];
 			if (sourceType === "repo") {
