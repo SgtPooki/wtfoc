@@ -2,90 +2,91 @@
 
 **Feature Branch**: `003-search-and-trace`
 **Created**: 2026-03-23
-**Status**: Draft
+**Status**: Implemented (retroactive spec — updated to reflect what was built)
 **Package**: `@wtfoc/search`
 
 ## Overview
 
-Implement `@wtfoc/search` — local embeddings, vector search, and the hero `trace` command that follows explicit edges across source types with semantic fallback.
+`@wtfoc/search` provides local embeddings, vector search, and the hero `trace` command that follows explicit edges across source types with semantic fallback.
 
-## User Scenarios & Testing
+## What Was Built
 
-### User Story 1 — Embed text locally (Priority: P1)
+### Embedders
 
-**Acceptance Scenarios**:
+**TransformersEmbedder** (`embedders/transformers.ts`):
+- Uses `@huggingface/transformers` with `Xenova/all-MiniLM-L6-v2` (384d)
+- Lazy model initialization — downloads on first use
+- AbortSignal support
+- Passes `dtype: "fp32"` to suppress warnings
+- 6 tests (mocked pipeline)
 
-1. **Given** a text string, **When** I embed it, **Then** I get a Float32Array of the configured dimensions (384 for MiniLM).
-2. **Given** a batch of texts, **When** I embedBatch, **Then** I get matching Float32Arrays.
-3. **Given** first use (cold start), **When** model isn't cached, **Then** it downloads and caches automatically.
-4. **Given** an AbortSignal, **When** aborted, **Then** embedding rejects.
+**OpenAIEmbedder** (`embedders/openai.ts`):
+- Works with any OpenAI-compatible API (OpenAI, LM Studio, Ollama, vLLM)
+- Auto-detects dimensions from first API response (no hardcoded default)
+- Auto-appends `/embeddings` to base URLs
+- AbortSignal support
+- Validated with: LM Studio (mxbai-embed-large, 1024d), Ollama on k8s (nomic-embed-text, 768d)
+- 7 tests (mocked fetch)
 
----
+### Vector Index
 
-### User Story 2 — Vector search (Priority: P1)
+**InMemoryVectorIndex** (`index/in-memory.ts`):
+- Brute-force cosine similarity (demo scale)
+- Serialize/deserialize for manifest storage
+- Dimension validation on add and search (throws VectorDimensionMismatchError)
+- 6 tests
 
-**Acceptance Scenarios**:
+### Trace (Hero Feature)
 
-1. **Given** indexed vectors, **When** I search with a query vector, **Then** I get results sorted by cosine similarity.
-2. **Given** `topK: 3`, **Then** at most 3 results returned.
-3. **Given** an empty index, **Then** search returns empty array, no error.
-4. **Given** a VectorIndex, **When** serialized and deserialized, **Then** search produces same results.
+**trace()** (`trace.ts`):
+- Embeds query → finds seed chunks via vector search
+- Builds bidirectional edge index from all segments (forward + reverse)
+- Follows explicit edges from seed chunks across source types
+- Falls back to semantic similarity for unconnected chunks
+- Groups results by sourceType
+- Annotates each hop with: method (edge/semantic), edgeType, evidence, confidence
+- Cycle detection (visited set prevents infinite traversal)
+- Configurable: maxPerSource, maxTotal, maxHops, minScore
+- AbortSignal support
+- 9 tests with multi-source fixture (Slack → Issue → PR → Code)
 
----
+### Query
 
-### User Story 3 — Trace across sources (Priority: P1)
+**query()** (`query.ts`):
+- Simple semantic search — embed query, find nearest chunks, return ranked
+- No edge following (use trace() for that)
+- Configurable: topK, minScore
+- AbortSignal support
+- 7 tests
 
-The hero feature. Given a query, follow explicit edges across source types and fall back to semantic search when no edges exist.
+## User Scenarios Validated
 
-**Acceptance Scenarios**:
+| Scenario | Status | Evidence |
+|----------|--------|----------|
+| Embed text locally (MiniLM 384d) | ✅ | Tests + e2e demo |
+| Embed via LM Studio (mxbai 1024d) | ✅ | E2e demo, 0.86 top score on PDP docs |
+| Embed via Ollama on k8s (nomic 768d) | ✅ | E2e demo, 0.72 top score |
+| Vector search with topK | ✅ | Tests + e2e |
+| Trace with edge following | ✅ | Tests (bidirectional edges) |
+| Trace with semantic fallback | ✅ | E2e demo (15 results across source types) |
+| Cycle detection | ✅ | Tests (visited set) |
+| Dimension mismatch → friendly error | ✅ | CLI catches and shows guidance |
+| Query with --json output | ✅ | CLI supports --json flag |
 
-1. **Given** a collection with Slack messages, GitHub issues, PRs, and code chunks, **When** I trace "upload failures", **Then** results are grouped by sourceType with edge annotations.
-2. **Given** a Slack message with edge `references → #142`, **Then** trace follows the edge and includes issue #142 in results.
-3. **Given** issue #142 with edge `closes ← PR #156`, **Then** trace follows to the PR.
-4. **Given** PR #156 with edge `changes → file.ts @ commitSha`, **Then** trace includes the code chunk.
-5. **Given** no explicit edges from a chunk, **Then** trace falls back to semantic similarity search.
-6. **Given** trace results, **Then** each result includes: content snippet, sourceType, source, CID/storageId, edge annotation ("why" this is connected), confidence score.
+## Key Design Decisions
 
----
-
-### User Story 4 — Query (semantic search) (Priority: P2)
-
-Simple semantic search without edge following.
-
-**Acceptance Scenarios**:
-
-1. **Given** a query string, **When** I query a collection, **Then** I get ranked results with scores and storage IDs.
-2. **Given** results, **Then** each includes sourceType for diversification.
-3. **Given** `--json` flag, **Then** output is machine-readable.
-
----
-
-### User Story 5 — Pluggable embedder and vector index (Priority: P2)
-
-**Acceptance Scenarios**:
-
-1. **Given** a custom `Embedder` implementation, **When** passed to search, **Then** it's used instead of the default.
-2. **Given** a custom `VectorIndex` (e.g. Qdrant adapter), **Then** search/trace works with it.
-
-### Edge Cases
-
-- Query with no results → empty response, no error
-- Trace hits a cycle in edges → stop at visited nodes, no infinite loop
-- Embedding model download fails → EmbedFailedError with retry guidance
-- Very large index → brute-force is slow but correct (demo scale only)
-
-## Requirements
-
-- **FR-001**: `TransformersEmbedder` using @huggingface/transformers with Xenova/all-MiniLM-L6-v2 (384d)
-- **FR-002**: `OpenAIEmbedder` as fallback (requires API key)
-- **FR-003**: `InMemoryVectorIndex` with brute-force cosine similarity
-- **FR-004**: `trace()` function: query → embed → find seed chunks → follow edges → semantic fallback → grouped output
-- **FR-005**: `query()` function: embed → vector search → ranked results with storage IDs
-- **FR-006**: Cycle detection in edge traversal
-- **FR-007**: All pluggable via Embedder and VectorIndex interfaces
+1. **Trace ≠ search.** Trace follows edges + semantic fallback. Query is semantic-only. Different contracts, different output shapes.
+2. **Bidirectional edge traversal.** Edges stored one-directional in segments but indexed both ways at query time. Forward: `sourceId → targetId`. Reverse: `targetId → sourceId` with `← evidence` prefix.
+3. **Auto-detect dimensions.** OpenAI embedder doesn't hardcode dimensions — detects from first API response. Works with any model.
+4. **Model-centric, not server-centric.** CLI flags are `--embedder-url` + `--embedder-model`, not `--embedder lmstudio`. What matters is the model, not the server software.
+5. **Dimension mismatch is a user error, not a crash.** CLI detects and shows actionable guidance before running trace/query.
 
 ## Dependencies
 
-- `@wtfoc/common` — Embedder, VectorIndex, Edge interfaces
-- `@wtfoc/store` — download chunks for trace results (peer dep)
-- `@huggingface/transformers` — local embeddings
+- `@wtfoc/common` — Embedder, VectorIndex, Edge, Segment interfaces
+- `@huggingface/transformers` — local CPU embeddings
+- `@wtfoc/store` — download segments for collection loading (peer dep)
+
+## Tests
+
+35 tests total across embedders (13), vector index (6), trace (9), query (7).

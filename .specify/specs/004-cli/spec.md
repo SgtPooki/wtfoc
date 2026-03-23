@@ -2,67 +2,96 @@
 
 **Feature Branch**: `004-cli`
 **Created**: 2026-03-23
-**Status**: Draft
+**Status**: Implemented (retroactive spec — updated to reflect what was built)
 **Package**: `@wtfoc/cli`
 
 ## Overview
 
-Implement `@wtfoc/cli` — the CLI that composes store, ingest, and search into user-facing commands. Pluggable ingest via `wtfoc ingest <source-type>`.
+`@wtfoc/cli` composes all wtfoc packages into user-facing commands. Supports local and FOC storage, pluggable embedders, and human/JSON/quiet output modes.
 
-## Commands
+## What Was Built
 
-| Command | Description |
-|---------|-------------|
-| `wtfoc init <name> [--local\|--foc]` | Create a project |
-| `wtfoc ingest <source-type> [args] --collection <name>` | Ingest from a source |
-| `wtfoc trace <query> --collection <name>` | Evidence-backed cross-source trace |
-| `wtfoc query <query> --collection <name>` | Semantic search |
-| `wtfoc verify <id>` | Verify artifact exists on storage |
-| `wtfoc status --collection <name>` | Show collection info |
-| `wtfoc doctor` | Health check (storage, embedder, config) |
+### Commands
 
-## User Scenarios & Testing
+| Command | Description | Status |
+|---------|-------------|--------|
+| `wtfoc init <name>` | Create a new project | ✅ |
+| `wtfoc ingest repo <path\|owner/repo> -c <name>` | Ingest repo source code + docs | ✅ |
+| `wtfoc trace <query> -c <name>` | Evidence-backed cross-source trace | ✅ |
+| `wtfoc query <text> -c <name>` | Semantic search | ✅ |
+| `wtfoc status -c <name>` | Show collection info | ✅ |
+| `wtfoc verify <id>` | Verify artifact exists | ✅ |
 
-### User Story 1 — Init + ingest + trace end-to-end (Priority: P1)
+### Global Flags
 
-**Acceptance Scenarios**:
+| Flag | Description |
+|------|-------------|
+| `--storage <type>` | Storage backend: `local` (default) or `foc` |
+| `--json` | Machine-readable JSON output to stdout |
+| `--quiet` | Errors only (suppress progress) |
 
-1. **Given** `wtfoc init myproject --local`, **Then** project config created, local storage ready.
-2. **Given** `wtfoc ingest slack ./export.json --collection myproject`, **Then** chunks ingested, segment stored, manifest updated.
-3. **Given** `wtfoc trace "upload failures" --collection myproject`, **Then** trace output with grouped results.
-4. **Given** `--json` flag on any command, **Then** machine-readable JSON output to stdout.
-5. **Given** `--quiet` flag, **Then** only errors to stderr.
+### Embedder Flags (on ingest, trace, query)
 
----
+| Flag | Description |
+|------|-------------|
+| `--embedder <type>` | `local` (default) or `api` |
+| `--embedder-url <url>` | API endpoint (shortcuts: `lmstudio`, `ollama`, or any URL) |
+| `--embedder-model <model>` | Model name (REQUIRED for API embedders) |
+| `--embedder-key <key>` | API key (optional for local servers) |
 
-### User Story 2 — Pluggable ingest sources (Priority: P1)
+### Key Behaviors
 
-**Acceptance Scenarios**:
+1. **Model mismatch detection**: If collection was embedded with model A and you try to query with model B, CLI shows friendly error with guidance.
+2. **Dimension mismatch detection**: Pre-flight check before trace/query — catches incompatible embedders before wasting time loading the index.
+3. **FOC storage**: `--storage foc` reads `PRIVATE_KEY` from env, uploads segments with dual CIDs (IPFS + PieceCID), downloads via IPFS gateway.
+4. **stderr for logs, stdout for data**: Progress messages go to stderr, results go to stdout. Enables piping.
+5. **`./wtfoc` wrapper**: Shell script at repo root runs the built CLI (`node packages/cli/dist/cli.js`).
 
-1. **Given** `wtfoc ingest slack <file>`, **Then** Slack adapter is used.
-2. **Given** `wtfoc ingest github <repo>`, **Then** GitHub adapter is used.
-3. **Given** an unknown source type, **Then** helpful error listing available types.
+### Ingest Flow
 
----
+1. `createStore()` with storage backend from `--storage`
+2. `createEmbedder()` from `--embedder-*` flags
+3. Model mismatch check against existing collection
+4. `RepoAdapter.parseConfig()` validates source
+5. Walk repo files → chunk → extract edges
+6. `embedder.embedBatch()` all chunks
+7. `buildSegment()` with chunks + embeddings + edges
+8. `store.storage.upload()` segment bytes → get storage ID
+9. Update manifest with new segment + head pointer
+10. `store.manifests.putHead()` with prevHeadId conflict check
 
-### User Story 3 — Verify and status (Priority: P2)
+### Output Formatting
 
-**Acceptance Scenarios**:
+- **Trace**: Grouped by sourceType with emoji icons, score, content snippet, source URL, storage ID, edge annotations
+- **Query**: Ranked results with score, sourceType, source, URL, storage ID
+- **Status**: Project name, chunk count, segment count, embedding model, last updated
+- **All commands**: `--json` returns structured JSON, `--quiet` suppresses
 
-1. **Given** `wtfoc verify <id>`, **Then** confirms artifact exists (or reports not available if backend doesn't support verify).
-2. **Given** `wtfoc status --collection myproject`, **Then** shows: source count, chunk count, segment count, last updated, storage type.
-3. **Given** `wtfoc doctor`, **Then** checks: storage backend reachable, embedder model available, config valid.
+## User Scenarios Validated
 
-## Requirements
-
-- **FR-001**: Commander-based CLI with subcommands
-- **FR-002**: stderr for logs, stdout for data
-- **FR-003**: Exit codes: 0 success, 1 general, 2 usage, 3 storage, 4 conflict
-- **FR-004**: `--json` and `--quiet` flags on all commands
-- **FR-005**: Config precedence: flag > env > config file > default
-- **FR-006**: Source types discovered dynamically from registered SourceAdapters
+| Scenario | Status |
+|----------|--------|
+| Init local project | ✅ |
+| Init FOC project | ✅ |
+| Ingest local fixture repo | ✅ |
+| Ingest real GitHub repo (FIL-Builders/foc-cli, 231 chunks) | ✅ |
+| Ingest 3 repos into one collection (7530 chunks) | ✅ |
+| Trace with local embedder (MiniLM 384d) | ✅ |
+| Trace with LM Studio (mxbai 1024d) | ✅ |
+| Trace with Ollama on k8s (nomic 768d) | ✅ |
+| Trace against FOC-stored data | ✅ |
+| Query with topK | ✅ |
+| Status shows collection info | ✅ |
+| Verify artifact exists (local) | ✅ |
+| Model mismatch → friendly error | ✅ |
+| Dimension mismatch → friendly error | ✅ |
+| --json output mode | ✅ |
+| --quiet mode | ✅ |
 
 ## Dependencies
 
-- `@wtfoc/common`, `@wtfoc/store`, `@wtfoc/ingest`, `@wtfoc/search`
+- `@wtfoc/common` — types, CURRENT_SCHEMA_VERSION
+- `@wtfoc/store` — createStore, LocalStorageBackend, FocStorageBackend
+- `@wtfoc/ingest` — RepoAdapter, RegexEdgeExtractor, buildSegment
+- `@wtfoc/search` — TransformersEmbedder, OpenAIEmbedder, InMemoryVectorIndex, trace, query
 - `commander` — CLI framework

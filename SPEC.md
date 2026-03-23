@@ -169,10 +169,13 @@ Feature-level architecture, user stories, and implementation details live in spe
 
 | Spec | Description | Status |
 |------|-------------|--------|
-| [001-store-backend](.specify/specs/001-store-backend/spec.md) | Storage backends (local + FOC), manifest chain, dual CIDs | Draft |
-| [5-001-ingest-pipeline](.specify/specs/5-001-ingest-pipeline/spec.md) | Chunking, source adapters, edge extraction | Draft |
-| 003-search-and-trace | Embedder, vector index, query, trace command | Planned |
-| 004-cli | CLI commands (init, source add, ingest, trace, query, verify) | Planned |
-| 005-golden-demo | Demo dataset, demo-smoke, demo script | Planned |
+| [001-store-backend](.specify/specs/001-store-backend/spec.md) | Storage backends (local + FOC), manifest chain, dual CIDs | ✅ Implemented (cross-reviewed) |
+| [002-ingest-pipeline](.specify/specs/002-ingest-pipeline/spec.md) | Chunking, repo adapter, edge extraction, segments | ✅ Implemented (retro spec) |
+| [003-search-and-trace](.specify/specs/003-search-and-trace/spec.md) | Embedder, vector index, query, trace command | ✅ Implemented (retro spec) |
+| [004-cli](.specify/specs/004-cli/spec.md) | CLI commands (init, ingest, trace, query, status, verify) | ✅ Implemented (retro spec) |
+| [005-golden-demo](.specify/specs/005-golden-demo/spec.md) | Synthetic demo dataset | Superseded by 006 |
+| [006-demo-real-data](.specify/specs/006-demo-real-data/spec.md) | Real FOC ecosystem data (10 repos) | In progress |
+| [007-foc-storage-backend](.specify/specs/007-foc-storage-backend/spec.md) | FOC storage with dual CIDs (IPFS + PieceCID) | ✅ Implemented (retro spec) |
+| [5-001-ingest-pipeline](.specify/specs/5-001-ingest-pipeline/spec.md) | Cursor's detailed ingest spec | Merged |
 
 See also: [Issue #1](https://github.com/SgtPooki/wtfoc/issues/1) (architecture history), [Issue #2](https://github.com/SgtPooki/wtfoc/issues/2) (Slack webhook — future)
