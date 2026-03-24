@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { WtfocError } from "@wtfoc/common";
 import { describe, expect, it } from "vitest";
-import { chunkMarkdown, findMarkdownSplitEnd } from "./chunker.js";
+import { chunkMarkdown, findMarkdownSplitEnd, rechunkOversized } from "./chunker.js";
 
 function sha256(content: string): string {
 	return createHash("sha256").update(content, "utf8").digest("hex");
@@ -139,5 +139,106 @@ describe("findMarkdownSplitEnd", () => {
 		const end = findMarkdownSplitEnd(text, 0, 22);
 		expect(text.slice(0, end)).toBe("First sentence.");
 		expect(text[end]).toBe(" ");
+	});
+});
+
+describe("rechunkOversized", () => {
+	function makeChunk(
+		content: string,
+		overrides?: Partial<import("@wtfoc/common").Chunk>,
+	): import("@wtfoc/common").Chunk {
+		return {
+			id: sha256(content),
+			content,
+			sourceType: "github-issue",
+			source: "test/repo#1",
+			chunkIndex: 0,
+			totalChunks: 1,
+			metadata: {},
+			...overrides,
+		};
+	}
+
+	it("passes through chunks within the limit unchanged", () => {
+		const chunk = makeChunk("short content");
+		const result = rechunkOversized([chunk], 1000);
+		expect(result).toHaveLength(1);
+		expect(result[0]).toBe(chunk);
+	});
+
+	it("splits oversized chunks into smaller pieces", () => {
+		const content = "a".repeat(100);
+		const chunk = makeChunk(content);
+		const result = rechunkOversized([chunk], 30);
+		expect(result.length).toBeGreaterThan(1);
+		// All content is preserved
+		expect(result.map((c) => c.content).join("")).toBe(content);
+		// Each piece is within the limit
+		for (const c of result) {
+			expect(c.content.length).toBeLessThanOrEqual(30);
+		}
+	});
+
+	it("updates chunkIndex and totalChunks on split chunks", () => {
+		const chunk = makeChunk("x".repeat(100));
+		const result = rechunkOversized([chunk], 30);
+		expect(result.length).toBeGreaterThan(1);
+		for (let i = 0; i < result.length; i++) {
+			const c = result[i];
+			expect(c).toBeDefined();
+			expect(c?.chunkIndex).toBe(i);
+			expect(c?.totalChunks).toBe(result.length);
+		}
+	});
+
+	it("generates new SHA-256 IDs for split chunks", () => {
+		const chunk = makeChunk("y".repeat(100));
+		const result = rechunkOversized([chunk], 30);
+		for (const c of result) {
+			expect(c.id).toBe(sha256(c.content));
+			expect(c.id).not.toBe(chunk.id);
+		}
+	});
+
+	it("preserves metadata and adds parentChunkId", () => {
+		const chunk = makeChunk("z".repeat(100), {
+			metadata: { author: "alice" },
+		});
+		const result = rechunkOversized([chunk], 30);
+		for (const c of result) {
+			expect(c.metadata.author).toBe("alice");
+			expect(c.metadata.parentChunkId).toBe(chunk.id);
+			expect(c.sourceType).toBe("github-issue");
+			expect(c.source).toBe("test/repo#1");
+		}
+	});
+
+	it("preserves source fields on split chunks", () => {
+		const chunk = makeChunk("w".repeat(100), {
+			sourceUrl: "https://example.com",
+			timestamp: "2026-01-01",
+		});
+		const result = rechunkOversized([chunk], 30);
+		for (const c of result) {
+			expect(c.sourceUrl).toBe("https://example.com");
+			expect(c.timestamp).toBe("2026-01-01");
+		}
+	});
+
+	it("handles mixed sized chunks in a batch", () => {
+		const small = makeChunk("small");
+		const big = makeChunk("b".repeat(200));
+		const result = rechunkOversized([small, big], 50);
+		// small passes through, big gets split
+		expect(result[0]).toBe(small);
+		expect(result.length).toBeGreaterThan(2);
+	});
+
+	it("uses default maxChars when none specified", () => {
+		// Content under default limit should pass through
+		const chunk = makeChunk("hello");
+		const result = rechunkOversized([chunk]);
+		expect(result).toHaveLength(1);
+		expect(result[0]).toBe(chunk);
 	});
 });

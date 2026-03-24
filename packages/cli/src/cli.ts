@@ -11,9 +11,11 @@ import {
 } from "@wtfoc/common";
 import {
 	buildSegment,
+	DEFAULT_MAX_CHUNK_CHARS,
 	getAdapter,
 	getAvailableSourceTypes,
 	RegexEdgeExtractor,
+	rechunkOversized,
 	segmentId,
 } from "@wtfoc/ingest";
 import {
@@ -218,12 +220,21 @@ withEmbedderOptions(
 			"--batch-size <number>",
 			"Chunks per batch (default: 500, reduces memory for large sources)",
 			"500",
+		)
+		.option(
+			"--max-chunk-chars <number>",
+			`Max characters per chunk — oversized chunks are split (default: ${DEFAULT_MAX_CHUNK_CHARS})`,
 		),
 ).action(
 	async (
 		sourceType: string,
 		args: string[],
-		opts: { collection: string; since?: string; batchSize: string } & EmbedderOpts,
+		opts: {
+			collection: string;
+			since?: string;
+			batchSize: string;
+			maxChunkChars?: string;
+		} & EmbedderOpts,
 	) => {
 		const store = getStore();
 		const format = getFormat(program.opts());
@@ -273,6 +284,9 @@ withEmbedderOptions(
 
 		const config = adapter.parseConfig(rawConfig);
 		const maxBatch = Number.parseInt(opts.batchSize, 10) || 500;
+		const maxChunkChars = opts.maxChunkChars
+			? Number.parseInt(opts.maxChunkChars, 10)
+			: (embedder.maxInputChars ?? DEFAULT_MAX_CHUNK_CHARS);
 		const storageType = (program.opts().storage ?? "local") as string;
 
 		// Build dedup set from existing segments for resumability
@@ -387,18 +401,24 @@ withEmbedderOptions(
 			totalChunksIngested += batchChunks.length;
 		}
 
-		// Stream chunks from adapter, flushing each batch
-		for await (const chunk of adapter.ingest(config)) {
-			if (knownChunkIds.has(chunk.id)) {
-				totalChunksSkipped++;
-				continue;
-			}
-			batch.push(chunk);
-			if (batch.length >= maxBatch) {
-				if (format !== "quiet")
-					console.error(`   ${totalChunksIngested + batch.length} chunks so far...`);
-				await flushBatch(batch);
-				batch = [];
+		// Stream chunks from adapter, rechunk oversized ones, then dedup
+		let rechunkedCount = 0;
+		for await (const rawChunk of adapter.ingest(config)) {
+			const chunks = rechunkOversized([rawChunk], maxChunkChars);
+			if (chunks.length > 1) rechunkedCount += chunks.length;
+
+			for (const chunk of chunks) {
+				if (knownChunkIds.has(chunk.id)) {
+					totalChunksSkipped++;
+					continue;
+				}
+				batch.push(chunk);
+				if (batch.length >= maxBatch) {
+					if (format !== "quiet")
+						console.error(`   ${totalChunksIngested + batch.length} chunks so far...`);
+					await flushBatch(batch);
+					batch = [];
+				}
 			}
 		}
 		// Flush remaining chunks
@@ -413,6 +433,7 @@ withEmbedderOptions(
 		if (format !== "quiet") {
 			const parts = [`${totalChunksIngested} chunks`];
 			if (batchNumber > 1) parts[0] += ` (${batchNumber} batches)`;
+			if (rechunkedCount > 0) parts.push(`${rechunkedCount} from oversized splits`);
 			if (totalChunksSkipped > 0) parts.push(`${totalChunksSkipped} skipped as duplicates`);
 			console.error(`✅ Ingested ${parts.join(", ")} from ${sourceArg} into "${opts.collection}"`);
 		}

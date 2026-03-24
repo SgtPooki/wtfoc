@@ -6,4 +6,8 @@ export interface Embedder {
 	embed(text: string, signal?: AbortSignal): Promise<Float32Array>;
 	embedBatch(texts: string[], signal?: AbortSignal): Promise<Float32Array[]>;
 	readonly dimensions: number;
+	/** Model identifier (e.g. "Xenova/all-MiniLM-L6-v2"). Optional for backwards compatibility. */
+	readonly model?: string;
+	/** Maximum input characters this embedder can handle before truncation. */
+	readonly maxInputChars?: number;
 }

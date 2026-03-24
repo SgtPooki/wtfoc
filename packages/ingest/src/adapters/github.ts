@@ -1,5 +1,4 @@
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 import type { Chunk, Edge, SourceAdapter } from "@wtfoc/common";
 import {
@@ -9,6 +8,7 @@ import {
 	GitHubRateLimitError,
 	WtfocError,
 } from "@wtfoc/common";
+import { chunkMarkdown } from "../chunker.js";
 import { RegexEdgeExtractor } from "../edges/extractor.js";
 
 const execFileAsync = promisify(execFile);
@@ -100,6 +100,9 @@ function parsePaginatedJson(stdout: string): unknown[] {
 		return results;
 	}
 }
+
+/** Max chars per chunk for GitHub content. Uses the shared default from chunker. */
+const GITHUB_CHUNK_SIZE = 4000;
 
 export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 	readonly sourceType = "github";
@@ -249,33 +252,34 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 			const body = String(rec.body ?? "");
 			const title = String(rec.title ?? "");
 			const content = `# ${title}\n\n${body}`;
+			const metadata: Record<string, string> = {
+				number,
+				state: String(rec.state ?? ""),
+				labels: Array.isArray(rec.labels)
+					? rec.labels
+							.map((l: unknown) =>
+								typeof l === "object" && l !== null
+									? String((l as Record<string, unknown>).name ?? "")
+									: String(l),
+							)
+							.join(",")
+					: "",
+				author: String((rec.user as Record<string, unknown>)?.login ?? ""),
+				createdAt: String(rec.created_at ?? ""),
+				updatedAt: String(rec.updated_at ?? ""),
+			};
 
-			yield {
-				id: createHash("sha256").update(content).digest("hex"),
-				content,
-				sourceType: "github-issue",
+			const chunks = chunkMarkdown(content, {
+				chunkSize: GITHUB_CHUNK_SIZE,
 				source: `${repo}#${number}`,
 				sourceUrl: String(rec.html_url ?? ""),
 				timestamp: String(rec.updated_at ?? rec.created_at ?? ""),
-				chunkIndex: 0,
-				totalChunks: 1,
-				metadata: {
-					number,
-					state: String(rec.state ?? ""),
-					labels: Array.isArray(rec.labels)
-						? rec.labels
-								.map((l: unknown) =>
-									typeof l === "object" && l !== null
-										? String((l as Record<string, unknown>).name ?? "")
-										: String(l),
-								)
-								.join(",")
-						: "",
-					author: String((rec.user as Record<string, unknown>)?.login ?? ""),
-					createdAt: String(rec.created_at ?? ""),
-					updatedAt: String(rec.updated_at ?? ""),
-				},
-			};
+				metadata,
+			});
+
+			for (const chunk of chunks) {
+				yield { ...chunk, sourceType: "github-issue" };
+			}
 		}
 	}
 
@@ -299,25 +303,26 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 			const body = String(rec.body ?? "");
 			const title = String(rec.title ?? "");
 			const content = `# ${title}\n\n${body}`;
+			const metadata: Record<string, string> = {
+				number,
+				state: String(rec.state ?? ""),
+				merged: String(rec.merged ?? "false"),
+				author: String((rec.user as Record<string, unknown>)?.login ?? ""),
+				createdAt: String(rec.created_at ?? ""),
+				updatedAt: String(rec.updated_at ?? ""),
+			};
 
-			yield {
-				id: createHash("sha256").update(content).digest("hex"),
-				content,
-				sourceType: "github-pr",
+			const chunks = chunkMarkdown(content, {
+				chunkSize: GITHUB_CHUNK_SIZE,
 				source: `${repo}#${number}`,
 				sourceUrl: String(rec.html_url ?? ""),
 				timestamp: String(rec.updated_at ?? rec.created_at ?? ""),
-				chunkIndex: 0,
-				totalChunks: 1,
-				metadata: {
-					number,
-					state: String(rec.state ?? ""),
-					merged: String(rec.merged ?? "false"),
-					author: String((rec.user as Record<string, unknown>)?.login ?? ""),
-					createdAt: String(rec.created_at ?? ""),
-					updatedAt: String(rec.updated_at ?? ""),
-				},
-			};
+				metadata,
+			});
+
+			for (const chunk of chunks) {
+				yield { ...chunk, sourceType: "github-pr" };
+			}
 		}
 	}
 
@@ -357,23 +362,24 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 			}
 
 			const commentId = String(rec.id ?? "");
+			const metadata: Record<string, string> = {
+				commentId,
+				parentPr: String(prNumber),
+				author: String((rec.user as Record<string, unknown>)?.login ?? ""),
+				createdAt: String(rec.created_at ?? ""),
+			};
 
-			yield {
-				id: createHash("sha256").update(body).digest("hex"),
-				content: body,
-				sourceType: "github-pr-comment",
+			const chunks = chunkMarkdown(body, {
+				chunkSize: GITHUB_CHUNK_SIZE,
 				source: `${repo}#${prNumber}`,
 				sourceUrl: String(rec.html_url ?? ""),
 				timestamp: String(rec.updated_at ?? rec.created_at ?? ""),
-				chunkIndex: 0,
-				totalChunks: 1,
-				metadata: {
-					commentId,
-					parentPr: String(prNumber),
-					author: String((rec.user as Record<string, unknown>)?.login ?? ""),
-					createdAt: String(rec.created_at ?? ""),
-				},
-			};
+				metadata,
+			});
+
+			for (const chunk of chunks) {
+				yield { ...chunk, sourceType: "github-pr-comment" };
+			}
 		}
 	}
 
@@ -427,23 +433,24 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 
 				const number = String(node.number ?? "");
 				const content = `# ${title}\n\n${body}`;
+				const metadata: Record<string, string> = {
+					number,
+					author: String((node.author as Record<string, unknown>)?.login ?? ""),
+					category: String((node.category as Record<string, unknown>)?.name ?? ""),
+					createdAt: String(node.createdAt ?? ""),
+				};
 
-				yield {
-					id: createHash("sha256").update(content).digest("hex"),
-					content,
-					sourceType: "github-discussion",
+				const chunks = chunkMarkdown(content, {
+					chunkSize: GITHUB_CHUNK_SIZE,
 					source: `${repo}/discussions/${number}`,
 					sourceUrl: String(node.url ?? ""),
 					timestamp: String(node.createdAt ?? ""),
-					chunkIndex: 0,
-					totalChunks: 1,
-					metadata: {
-						number,
-						author: String((node.author as Record<string, unknown>)?.login ?? ""),
-						category: String((node.category as Record<string, unknown>)?.name ?? ""),
-						createdAt: String(node.createdAt ?? ""),
-					},
-				};
+					metadata,
+				});
+
+				for (const chunk of chunks) {
+					yield { ...chunk, sourceType: "github-discussion" };
+				}
 			}
 
 			hasNextPage = pageInfo?.hasNextPage ?? false;

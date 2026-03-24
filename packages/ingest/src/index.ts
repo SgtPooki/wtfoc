@@ -7,7 +7,12 @@ export { type ExecFn, GitHubAdapter, type GitHubAdapterConfig } from "./adapters
 export { RepoAdapter, type RepoAdapterConfig } from "./adapters/repo.js";
 export { SlackAdapter, type SlackAdapterConfig } from "./adapters/slack.js";
 export { WebsiteAdapter, type WebsiteAdapterConfig } from "./adapters/website.js";
-export { chunkMarkdown, type MarkdownChunkerOptions } from "./chunker.js";
+export {
+	chunkMarkdown,
+	DEFAULT_MAX_CHUNK_CHARS,
+	type MarkdownChunkerOptions,
+	rechunkOversized,
+} from "./chunker.js";
 export type { ChangedFile } from "./edges/extractor.js";
 export {
 	buildBatchRepoAffinity,

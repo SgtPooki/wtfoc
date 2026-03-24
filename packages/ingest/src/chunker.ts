@@ -3,6 +3,8 @@ import { type Chunk, WtfocError } from "@wtfoc/common";
 
 const DEFAULT_CHUNK_SIZE = 512;
 const DEFAULT_CHUNK_OVERLAP = 0;
+/** Default max chars for rechunking oversized chunks (~1.5K tokens, safe for 2048-token models). */
+export const DEFAULT_MAX_CHUNK_CHARS = 4000;
 
 export interface MarkdownChunkerOptions {
 	/** Maximum characters per chunk, measured as JavaScript string length (UTF-16 code units). Default 512. */
@@ -143,4 +145,62 @@ export function chunkMarkdown(markdown: string, options: MarkdownChunkerOptions)
 	}));
 
 	return chunks;
+}
+
+/**
+ * Split any chunk whose content exceeds `maxChars` into smaller pieces.
+ * Chunks already within the limit pass through unchanged.
+ *
+ * Uses the same markdown-aware split logic as `chunkMarkdown()` so it
+ * breaks at headers > paragraphs > sentences > hard cap.
+ *
+ * Split chunks get new SHA-256 IDs, updated chunkIndex/totalChunks,
+ * and a `parentChunkId` metadata field pointing to the original.
+ */
+export function rechunkOversized(chunks: Chunk[], maxChars?: number): Chunk[] {
+	const limit = maxChars ?? DEFAULT_MAX_CHUNK_CHARS;
+	if (limit < 1) return chunks;
+
+	const result: Chunk[] = [];
+
+	for (const chunk of chunks) {
+		if (chunk.content.length <= limit) {
+			result.push(chunk);
+			continue;
+		}
+
+		// Split the oversized content
+		const pieces: string[] = [];
+		let start = 0;
+		const maxIterations = chunk.content.length + 5;
+		for (let iter = 0; iter < maxIterations; iter++) {
+			if (start >= chunk.content.length) break;
+			const maxEnd = Math.min(start + limit, chunk.content.length);
+			const end =
+				maxEnd >= chunk.content.length
+					? chunk.content.length
+					: findMarkdownSplitEnd(chunk.content, start, maxEnd);
+			const actualEnd = end <= start ? maxEnd : end;
+			pieces.push(chunk.content.slice(start, actualEnd));
+			if (actualEnd >= chunk.content.length) break;
+			start = actualEnd;
+		}
+
+		const totalChunks = pieces.length;
+		for (const [i, content] of pieces.entries()) {
+			result.push({
+				...chunk,
+				id: sha256Hex(content),
+				content,
+				chunkIndex: i,
+				totalChunks,
+				metadata: {
+					...chunk.metadata,
+					parentChunkId: chunk.id,
+				},
+			});
+		}
+	}
+
+	return result;
 }

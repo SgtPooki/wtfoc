@@ -23,14 +23,15 @@ export interface OpenAIEmbedderOptions {
 export class OpenAIEmbedder implements Embedder {
 	#dimensions: number | null;
 	readonly #apiKey: string;
-	readonly #model: string;
 	readonly #baseUrl: string;
-	readonly #maxInputChars: number;
+
+	readonly model: string;
+	readonly maxInputChars: number;
 
 	get dimensions(): number {
 		if (this.#dimensions === null) {
 			throw new EmbedFailedError(
-				this.#model,
+				this.model,
 				"Dimensions not yet known — call embed() or embedBatch() first to auto-detect",
 			);
 		}
@@ -42,9 +43,9 @@ export class OpenAIEmbedder implements Embedder {
 			throw new EmbedFailedError("openai", "API key is required");
 		}
 		this.#apiKey = options.apiKey;
-		this.#model = options.model ?? DEFAULT_MODEL;
+		this.model = options.model ?? DEFAULT_MODEL;
 		this.#dimensions = options.dimensions ?? null;
-		this.#maxInputChars = options.maxInputChars ?? 4000;
+		this.maxInputChars = options.maxInputChars ?? 4000;
 
 		const base = options.baseUrl ?? API_URL;
 		this.#baseUrl = base.endsWith("/embeddings") ? base : `${base.replace(/\/$/, "")}/embeddings`;
@@ -54,7 +55,7 @@ export class OpenAIEmbedder implements Embedder {
 		const results = await this.#request([text], signal);
 		const result = results[0];
 		if (!result) {
-			throw new EmbedFailedError(this.#model, "Empty embedding response");
+			throw new EmbedFailedError(this.model, "Empty embedding response");
 		}
 		return result;
 	}
@@ -68,7 +69,7 @@ export class OpenAIEmbedder implements Embedder {
 
 		// Truncate inputs that exceed the model's context limit
 		const truncated = input.map((text) =>
-			text.length > this.#maxInputChars ? text.slice(0, this.#maxInputChars) : text,
+			text.length > this.maxInputChars ? text.slice(0, this.maxInputChars) : text,
 		);
 
 		let response: Response;
@@ -80,19 +81,19 @@ export class OpenAIEmbedder implements Embedder {
 					Authorization: `Bearer ${this.#apiKey}`,
 				},
 				body: JSON.stringify({
-					model: this.#model,
+					model: this.model,
 					input: truncated,
 				}),
 				signal,
 			});
 		} catch (err) {
 			if (err instanceof DOMException && err.name === "AbortError") throw err;
-			throw new EmbedFailedError(this.#model, err);
+			throw new EmbedFailedError(this.model, err);
 		}
 
 		if (!response.ok) {
 			const body = await response.text().catch(() => "");
-			throw new EmbedFailedError(this.#model, `HTTP ${response.status}: ${body}`);
+			throw new EmbedFailedError(this.model, `HTTP ${response.status}: ${body}`);
 		}
 
 		const json = await response.json();
@@ -100,7 +101,7 @@ export class OpenAIEmbedder implements Embedder {
 
 		if (!Array.isArray(data) || data.length === 0) {
 			throw new EmbedFailedError(
-				this.#model,
+				this.model,
 				`Unexpected API response: expected data array, got ${JSON.stringify(json).slice(0, 200)}`,
 			);
 		}
