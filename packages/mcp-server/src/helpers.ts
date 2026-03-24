@@ -1,15 +1,5 @@
-import type {
-	CollectionHead,
-	Embedder,
-	Segment,
-	VectorEntry,
-	VectorIndex,
-} from "@wtfoc/common";
-import {
-	InMemoryVectorIndex,
-	OpenAIEmbedder,
-	TransformersEmbedder,
-} from "@wtfoc/search";
+import type { CollectionHead, Embedder, Segment, VectorEntry, VectorIndex } from "@wtfoc/common";
+import { InMemoryVectorIndex, OpenAIEmbedder, TransformersEmbedder } from "@wtfoc/search";
 import type { createStore } from "@wtfoc/store";
 
 export interface LoadedCollection {

@@ -203,7 +203,11 @@ const ingestCmd = withEmbedderOptions(
 		.description("Ingest from a source (repo, slack, github, website)")
 		.requiredOption("-c, --collection <name>", "Collection name")
 		.option("--since <duration>", "Only fetch items newer than duration (e.g. 90d)")
-		.option("--batch-size <number>", "Chunks per batch (default: 500, reduces memory for large sources)", "500"),
+		.option(
+			"--batch-size <number>",
+			"Chunks per batch (default: 500, reduces memory for large sources)",
+			"500",
+		),
 ).action(
 	async (
 		sourceType: string,
@@ -346,8 +350,7 @@ const ingestCmd = withEmbedderOptions(
 
 			const manifest: CollectionHead = {
 				schemaVersion: CURRENT_SCHEMA_VERSION,
-				collectionId:
-					currentHead?.manifest.collectionId ?? generateCollectionId(opts.collection),
+				collectionId: currentHead?.manifest.collectionId ?? generateCollectionId(opts.collection),
 				name: opts.collection,
 				currentRevisionId: currentHead?.manifest.currentRevisionId ?? null,
 				prevHeadId: currentPrevHeadId,

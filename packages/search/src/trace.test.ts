@@ -212,6 +212,60 @@ describe("trace", () => {
 		expect(result.query).toBe("upload failures");
 	});
 
+	it("follows multi-hop chains: slack → issue → PR via edges", async () => {
+		// Only seed with the Slack chunk — the issue and PR should be discovered
+		// purely via edge traversal: slack-msg-1 → issue-142 → pr-156
+		const index = createMockIndex([slackChunk]);
+		const result = await trace("upload failures", mockEmbedder, index, [testSegment]);
+
+		// Should find the slack seed + at least issue via edge
+		const edgeHops = result.hops.filter((h) => h.connection.method === "edge");
+		expect(edgeHops.length).toBeGreaterThanOrEqual(1);
+
+		// The issue chunk should be reachable via the "references" edge
+		const issueHop = result.hops.find((h) => h.sourceType === "github-issue");
+		expect(issueHop).toBeDefined();
+		expect(issueHop?.connection.method).toBe("edge");
+
+		// The PR chunk should be reachable via the reverse "closes" edge from issue
+		const prHop = result.hops.find((h) => h.sourceType === "github-pr");
+		expect(prHop).toBeDefined();
+		expect(prHop?.connection.method).toBe("edge");
+		expect(prHop?.connection.edgeType).toBe("closes");
+	});
+
+	it("resolves edges by exact source match (O(1) indexed lookup)", async () => {
+		// Create a segment with many chunks to verify we're not doing O(n) scans
+		const largeSegment: Segment = {
+			schemaVersion: 1,
+			embeddingModel: "test",
+			embeddingDimensions: 3,
+			chunks: [
+				...testSegment.chunks,
+				// Add filler chunks that should NOT match
+				...Array.from({ length: 100 }, (_, i) => ({
+					id: `filler-${i}`,
+					storageId: `storage-filler-${i}`,
+					content: `unrelated content ${i}`,
+					embedding: [0.1, 0.1, 0.1],
+					terms: ["filler"],
+					source: `unrelated/source-${i}`,
+					sourceType: "markdown",
+					metadata: {},
+				})),
+			],
+			edges: testSegment.edges,
+		};
+
+		const index = createMockIndex([slackChunk]);
+		const result = await trace("upload failures", mockEmbedder, index, [largeSegment]);
+
+		// Should still resolve the edge to issue-142
+		const issueHop = result.hops.find((h) => h.sourceType === "github-issue");
+		expect(issueHop).toBeDefined();
+		expect(issueHop?.source).toBe("FilOzone/synapse-sdk#142");
+	});
+
 	it("respects AbortSignal", async () => {
 		const controller = new AbortController();
 		controller.abort();

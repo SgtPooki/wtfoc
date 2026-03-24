@@ -86,10 +86,7 @@ server.tool(
 		sourceType: z.string().describe("Source adapter type (e.g. repo, github, website, discord)"),
 		source: z.string().describe("Source identifier (e.g. path, URL, or owner/repo)"),
 		collection: z.string().describe("Name of the wtfoc collection to ingest into"),
-		since: z
-			.string()
-			.optional()
-			.describe("Only fetch items newer than duration (e.g. 90d, 24h)"),
+		since: z.string().optional().describe("Only fetch items newer than duration (e.g. 90d, 24h)"),
 	},
 	async ({ sourceType, source, collection, since }) => {
 		try {

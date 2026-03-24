@@ -88,8 +88,8 @@ export async function trace(
 	const visited = new Set<string>();
 	const hops: TraceHop[] = [];
 
-	// Get chunk data lookup
-	const chunkLookup = buildChunkLookup(segments);
+	// Build indexed chunk lookups for O(1) edge resolution
+	const indexes = buildChunkIndexes(segments);
 
 	for (const seed of seeds) {
 		if (seed.score < minScore) continue;
@@ -100,7 +100,7 @@ export async function trace(
 		visited.add(seed.entry.id);
 
 		// Add seed as a hop
-		const chunkData = chunkLookup.get(seed.entry.id);
+		const chunkData = indexes.byId.get(seed.entry.id);
 		hops.push({
 			content: chunkData?.content ?? "",
 			sourceType: seed.entry.metadata["sourceType"] ?? "unknown",
@@ -114,7 +114,17 @@ export async function trace(
 		});
 
 		// Follow edges from this chunk
-		followEdges(seed.entry.id, edgeIndex, chunkLookup, visited, hops, 0, maxHops, options?.signal);
+		followEdges(
+			seed.entry.id,
+			edgeIndex,
+			indexes,
+			visited,
+			hops,
+			0,
+			maxHops,
+			options?.signal,
+			maxTotal,
+		);
 
 		if (hops.length >= maxTotal) break;
 	}
@@ -156,20 +166,36 @@ interface ChunkData {
 	storageId: string;
 }
 
-function buildChunkLookup(segments: Segment[]): Map<string, ChunkData> {
-	const lookup = new Map<string, ChunkData>();
+interface ChunkIndexes {
+	/** Chunk ID → data */
+	byId: Map<string, ChunkData>;
+	/** Exact source string → chunk IDs (e.g. "FilOzone/synapse-sdk#142" → ["issue-142"]) */
+	bySource: Map<string, string[]>;
+}
+
+function buildChunkIndexes(segments: Segment[]): ChunkIndexes {
+	const byId = new Map<string, ChunkData>();
+	const bySource = new Map<string, string[]>();
+
 	for (const seg of segments) {
 		for (const chunk of seg.chunks) {
-			lookup.set(chunk.id, {
+			const data: ChunkData = {
 				content: chunk.content,
 				sourceType: chunk.sourceType,
 				source: chunk.source,
 				sourceUrl: chunk.sourceUrl,
 				storageId: chunk.storageId,
-			});
+			};
+			byId.set(chunk.id, data);
+
+			// Index by exact source for O(1) edge resolution
+			const ids = bySource.get(chunk.source) ?? [];
+			ids.push(chunk.id);
+			bySource.set(chunk.source, ids);
 		}
 	}
-	return lookup;
+
+	return { byId, bySource };
 }
 
 /**
@@ -203,23 +229,41 @@ function buildEdgeIndex(segments: Segment[]): Map<string, Edge[]> {
 function followEdges(
 	chunkId: string,
 	edgeIndex: Map<string, Edge[]>,
-	chunkLookup: Map<string, ChunkData>,
+	indexes: ChunkIndexes,
 	visited: Set<string>,
 	hops: TraceHop[],
 	depth: number,
 	maxHops: number,
 	signal?: AbortSignal,
+	maxTotal?: number,
 ): void {
 	if (depth >= maxHops) return;
+	if (maxTotal != null && hops.length >= maxTotal) return;
 	signal?.throwIfAborted();
 
-	const edges = edgeIndex.get(chunkId) ?? [];
+	// Look up edges by chunk ID and by source string (reverse edges are
+	// indexed by targetId which is typically a source string like "owner/repo#42")
+	const chunkData = indexes.byId.get(chunkId);
+	const edgesById = edgeIndex.get(chunkId) ?? [];
+	const edgesBySource = chunkData?.source ? (edgeIndex.get(chunkData.source) ?? []) : [];
+
+	// Merge, deduplicating by targetId
+	const seen = new Set<string>();
+	const edges: Edge[] = [];
+	for (const e of [...edgesById, ...edgesBySource]) {
+		const key = `${e.type}:${e.targetId}`;
+		if (!seen.has(key)) {
+			seen.add(key);
+			edges.push(e);
+		}
+	}
+
 	for (const edge of edges) {
-		// Try to find a chunk matching the edge target
-		// Edge targetId might be "FilOzone/synapse-sdk#42" — look for chunks from that source
-		const targetChunks = findChunksByTarget(edge.targetId, chunkLookup);
+		if (maxTotal != null && hops.length >= maxTotal) return;
+		const targetChunks = findChunksByTarget(edge.targetId, indexes);
 
 		for (const [targetId, targetData] of targetChunks) {
+			if (maxTotal != null && hops.length >= maxTotal) return;
 			if (visited.has(targetId)) continue;
 			visited.add(targetId);
 
@@ -238,21 +282,66 @@ function followEdges(
 			});
 
 			// Recurse — follow edges from the target
-			followEdges(targetId, edgeIndex, chunkLookup, visited, hops, depth + 1, maxHops, signal);
+			followEdges(
+				targetId,
+				edgeIndex,
+				indexes,
+				visited,
+				hops,
+				depth + 1,
+				maxHops,
+				signal,
+				maxTotal,
+			);
 		}
 	}
 }
 
-function findChunksByTarget(
-	targetId: string,
-	chunkLookup: Map<string, ChunkData>,
-): Array<[string, ChunkData]> {
+/**
+ * Resolve an edge targetId to matching chunks using indexed lookups.
+ *
+ * Resolution order (first match wins):
+ * 1. Direct chunk ID match (O(1))
+ * 2. Exact source match (O(1)) — e.g. targetId "FilOzone/synapse-sdk#142"
+ *    matches chunks with source "FilOzone/synapse-sdk#142"
+ * 3. Partial source match — for cross-source edges where targetId is a
+ *    substring of the source (e.g. file path edges). Limited to avoid
+ *    false positives.
+ */
+function findChunksByTarget(targetId: string, indexes: ChunkIndexes): Array<[string, ChunkData]> {
 	const results: Array<[string, ChunkData]> = [];
-	for (const [id, data] of chunkLookup) {
-		// Match by source containing the targetId
-		if (data.source.includes(targetId) || id === targetId) {
-			results.push([id, data]);
+
+	// 1. Direct chunk ID match
+	const directMatch = indexes.byId.get(targetId);
+	if (directMatch) {
+		results.push([targetId, directMatch]);
+		return results;
+	}
+
+	// 2. Exact source match (O(1) via source index)
+	const sourceMatches = indexes.bySource.get(targetId);
+	if (sourceMatches) {
+		for (const id of sourceMatches) {
+			const data = indexes.byId.get(id);
+			if (data) results.push([id, data]);
+		}
+		if (results.length > 0) return results;
+	}
+
+	// 3. Partial source match — only for structured IDs (contains / or :)
+	//    to avoid false positives on short targetIds like "#42"
+	//    Capped at 10 results to avoid O(n) blowup on large collections
+	if (targetId.includes("/") || targetId.includes(":")) {
+		for (const [source, chunkIds] of indexes.bySource) {
+			if (source.includes(targetId)) {
+				for (const id of chunkIds) {
+					const data = indexes.byId.get(id);
+					if (data) results.push([id, data]);
+				}
+				if (results.length >= 10) break;
+			}
 		}
 	}
+
 	return results;
 }

@@ -4,12 +4,7 @@ import {
 	CURRENT_SCHEMA_VERSION,
 	type Embedder,
 } from "@wtfoc/common";
-import {
-	buildSegment,
-	getAdapter,
-	RegexEdgeExtractor,
-	segmentId,
-} from "@wtfoc/ingest";
+import { buildSegment, getAdapter, RegexEdgeExtractor, segmentId } from "@wtfoc/ingest";
 import { type createStore, generateCollectionId } from "@wtfoc/store";
 
 function parseSinceDuration(duration: string): string {
@@ -123,8 +118,7 @@ export async function handleIngest(
 
 		const manifest: CollectionHead = {
 			schemaVersion: CURRENT_SCHEMA_VERSION,
-			collectionId:
-				currentHead?.manifest.collectionId ?? generateCollectionId(params.collection),
+			collectionId: currentHead?.manifest.collectionId ?? generateCollectionId(params.collection),
 			name: params.collection,
 			currentRevisionId: currentHead?.manifest.currentRevisionId ?? null,
 			prevHeadId: currentPrevHeadId,
