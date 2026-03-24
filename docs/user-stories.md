@@ -34,6 +34,11 @@ Use stable IDs. Do not renumber existing stories.
 | `US-004` | Detect stale documentation and undocumented implemented features | Maintainer or DX owner improving docs quality | `planned` | `medium` | `-` | `-` | [#58](https://github.com/SgtPooki/wtfoc/issues/58) |
 | `US-005` | Build a unified knowledge graph across GitHub, docs sites, and chat | Team lead or DX engineer onboarding to a project | `validated` | `high` | `-` | `-` | `-` |
 | `US-006` | Validate a knowledge graph locally then promote to decentralized storage | Builder evaluating wtfoc before committing to FOC | `planned` | `high` | `-` | `-` | [#60](https://github.com/SgtPooki/wtfoc/issues/60) |
+| `US-007` | Score and classify ingested chunks by signal type (pain, praise, feature request, etc.) | Product lead or engineer filtering knowledge by intent | `planned` | `high` | `-` | `-` | [#61](https://github.com/SgtPooki/wtfoc/issues/61) |
+| `US-008` | Ingest community discussions from Reddit, HN, and other public forums | Team tracking external signal about their project | `planned` | `medium` | `-` | `-` | [#65](https://github.com/SgtPooki/wtfoc/issues/65) |
+| `US-009` | Visualize the knowledge graph as an interactive web UI | Anyone demoing or exploring cross-source connections | `planned` | `high` | `-` | `-` | [#67](https://github.com/SgtPooki/wtfoc/issues/67) |
+| `US-010` | Review and validate extracted edges before promoting to FOC | Builder curating knowledge graph quality before immutable storage | `planned` | `medium` | `-` | `-` | [#69](https://github.com/SgtPooki/wtfoc/issues/69) |
+| `US-011` | Get notified when high-relevance content is ingested | Team wanting proactive alerts from their knowledge graph | `planned` | `medium` | `-` | `-` | [#70](https://github.com/SgtPooki/wtfoc/issues/70) |
 
 ## How To Add A Story
 
@@ -150,6 +155,86 @@ If a story is only an idea, that is fine. Mark it `proposed` and leave missing l
 | Issue/spec | [#60](https://github.com/SgtPooki/wtfoc/issues/60) |
 | Status | `planned` |
 | Open gaps | Need to decide on idempotency behavior, whether to support reverse direction (FOC → local), and cleanup of local copies after promotion |
+
+### `US-007` Score and classify ingested chunks by signal type
+
+| Field | Value |
+|-------|-------|
+| Story | Classify and score ingested chunks across multiple signal types (pain, praise, feature request, workaround, demand, question) so query and trace can filter by intent |
+| User | Product lead or engineer filtering knowledge by intent |
+| Pain | Query results ranked by similarity alone can't distinguish frustration from praise — both match semantically but mean very different things |
+| Why `wtfoc` | Multi-signal scoring adds a second ranking dimension that makes noisy sources useful and enables intent-aware queries |
+| Inputs | Ingested chunks from any source adapter |
+| Expected output | Each chunk has `signalScores: Record<string, number>` with per-type scores; query/trace support signal type filters |
+| Example/demo | `-` |
+| Docs | `-` |
+| Issue/spec | [#61](https://github.com/SgtPooki/wtfoc/issues/61) |
+| Status | `planned` |
+| Open gaps | Ranking formula, explainability (matched patterns), extended taxonomy (bug_report, incident, resolution) deferred |
+
+### `US-008` Ingest community discussions from Reddit, HN, and other public forums
+
+| Field | Value |
+|-------|-------|
+| Story | Ingest public community discussions (HN, Reddit, Bluesky, etc.) as evidence-backed source material that can reference internal artifacts |
+| User | Team tracking external signal about their project |
+| Pain | Community forums contain bug reports, feature requests, and workarounds that reference internal artifacts but are invisible to the knowledge graph |
+| Why `wtfoc` | Pluggable source adapters normalize community content into chunks with edges, enabling cross-source trace between internal and external knowledge |
+| Inputs | Community platform keywords/feeds (HN search, subreddit, etc.) |
+| Expected output | Community chunks appear in query/trace with edges linking to GitHub issues, docs, and other ingested sources |
+| Example/demo | `-` |
+| Docs | `-` |
+| Issue/spec | [#65](https://github.com/SgtPooki/wtfoc/issues/65) |
+| Status | `planned` |
+| Open gaps | HN adapter is P0; Reddit, Bluesky, Dev.to, Lobsters deferred to follow-up issues |
+
+### `US-009` Visualize the knowledge graph as an interactive web UI
+
+| Field | Value |
+|-------|-------|
+| Story | Launch a local web UI (`wtfoc serve`) that renders the knowledge graph as an interactive node-edge diagram with search, trace, and FOC verification links |
+| User | Anyone demoing or exploring cross-source connections |
+| Pain | CLI output is powerful but hard to demo; visual graphs are dramatically more compelling for presentations and onboarding |
+| Why `wtfoc` | A visual graph makes cross-source connections and FOC provenance tangible — each node links to its IPFS gateway URL |
+| Inputs | Any local collection produced by `wtfoc ingest` |
+| Expected output | Interactive graph with chunk nodes colored by source type, edge evidence on hover, search/trace modes, and CID verification badges |
+| Example/demo | `-` |
+| Docs | `-` |
+| Issue/spec | [#67](https://github.com/SgtPooki/wtfoc/issues/67) |
+| Status | `planned` |
+| Open gaps | Tech choice for graph rendering (D3.js vs vis.js), scale testing with large collections |
+
+### `US-010` Review and validate extracted edges before promoting to FOC
+
+| Field | Value |
+|-------|-------|
+| Story | Review extracted edges in a triage UI — approve, reject, or override — before promoting a collection to immutable FOC storage |
+| User | Builder curating knowledge graph quality before immutable storage |
+| Pain | Regex edge extraction produces false positives; once promoted to FOC, segments are immutable and can't be corrected |
+| Why `wtfoc` | Human-in-the-loop quality gate preserves provenance (original extraction kept) while allowing correction before immutable commit |
+| Inputs | Local collection with extracted edges, served via `wtfoc serve` |
+| Expected output | Triage sidecar file with approve/reject/override decisions; `wtfoc promote` respects decisions |
+| Example/demo | `-` |
+| Docs | `-` |
+| Issue/spec | [#69](https://github.com/SgtPooki/wtfoc/issues/69) |
+| Status | `planned` |
+| Open gaps | Blocked on #67 (`wtfoc serve`); edge identity stability across re-ingests |
+
+### `US-011` Get notified when high-relevance content is ingested
+
+| Field | Value |
+|-------|-------|
+| Story | Receive proactive notifications (Discord, console) when ingestion discovers high-relevance content like cross-source references or edge clusters |
+| User | Team wanting proactive alerts from their knowledge graph |
+| Pain | Today wtfoc is query-only — you have to ask to learn anything; important new context can go unnoticed |
+| Why `wtfoc` | Notification callbacks during ingest make wtfoc proactive, especially valuable with noisy community sources |
+| Inputs | Ingest pipeline events (cross-source references, edge clusters) |
+| Expected output | Discord/console alerts with chunk IDs, source URLs, and edge evidence for traceability |
+| Example/demo | `-` |
+| Docs | `-` |
+| Issue/spec | [#70](https://github.com/SgtPooki/wtfoc/issues/70) |
+| Status | `planned` |
+| Open gaps | Signal-score-based triggers blocked on #61; trigger rule aggregation scope needs spec |
 
 ## Story Template
 
