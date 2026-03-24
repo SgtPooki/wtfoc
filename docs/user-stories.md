@@ -33,6 +33,7 @@ Use stable IDs. Do not renumber existing stories.
 | `US-003` | Cluster repeated feature requests and unmet complaints across repos | Product or engineering lead prioritizing work | `planned` | `high` | `-` | `-` | [#57](https://github.com/SgtPooki/wtfoc/issues/57), [#59](https://github.com/SgtPooki/wtfoc/issues/59) |
 | `US-004` | Detect stale documentation and undocumented implemented features | Maintainer or DX owner improving docs quality | `planned` | `medium` | `-` | `-` | [#58](https://github.com/SgtPooki/wtfoc/issues/58) |
 | `US-005` | Build a unified knowledge graph across GitHub, docs sites, and chat | Team lead or DX engineer onboarding to a project | `validated` | `high` | `-` | `-` | `-` |
+| `US-006` | Validate a knowledge graph locally then promote to decentralized storage | Builder evaluating wtfoc before committing to FOC | `planned` | `high` | `-` | `-` | [#60](https://github.com/SgtPooki/wtfoc/issues/60) |
 
 ## How To Add A Story
 
@@ -133,6 +134,22 @@ If a story is only an idea, that is fine. Mark it `proposed` and leave missing l
 | Issue/spec | `-` |
 | Status | `validated` |
 | Open gaps | Validated with GitHub adapter + website adapter (docs.filecoin.cloud, 2,959 chunks). Slack adapter blocked on workspace approval (#10). Discord adapter built but deprioritized. Need a polished onboarding script showing the full multi-source flow. |
+
+### `US-006` Validate a knowledge graph locally then promote to decentralized storage
+
+| Field | Value |
+|-------|-------|
+| Story | Build and validate a knowledge graph using fast local storage, then promote the entire collection to FOC when ready |
+| User | Builder evaluating wtfoc, or team that wants to iterate before committing to decentralized storage |
+| Pain | Re-ingesting everything from scratch just to switch storage backends wastes time and compute; users want a try-before-you-commit workflow |
+| Why `wtfoc` | wtfoc already has pluggable storage backends (local, FOC) and content-addressed segments — promotion is a natural migration path |
+| Inputs | An existing local collection with segments and manifest |
+| Expected output | `wtfoc promote <collection> --storage foc` bundles segments into CAR, uploads to FOC, updates manifest with new CIDs |
+| Example/demo | `-` |
+| Docs | `-` |
+| Issue/spec | [#60](https://github.com/SgtPooki/wtfoc/issues/60) |
+| Status | `planned` |
+| Open gaps | Need to decide on idempotency behavior, whether to support reverse direction (FOC → local), and cleanup of local copies after promotion |
 
 ## Story Template
 
