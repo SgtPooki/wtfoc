@@ -21,15 +21,14 @@ COPY . .
 RUN pnpm -r build && pnpm --filter @wtfoc/web build:server
 
 # Prune unused deps (keep @huggingface/transformers + onnxruntime for local embedder)
-# Replace sharp with a no-op ESM stub — transformers.js imports it at top-level
+# Replace sharp with a checked-in ESM stub — transformers.js imports it at top-level
 # but only uses it for image processing, not text embeddings. The real sharp
 # requires x86-64-v2 CPU support which our KVM worker nodes lack.
-RUN rm -rf node_modules/.pnpm/sharp* node_modules/.pnpm/@img* \
-    && find node_modules/.pnpm -path '*/node_modules/sharp' \( -type l -o -type d \) -exec sh -c ' \
-       rm -rf "$1" && mkdir -p "$1" \
-       && printf "{\"name\":\"sharp\",\"version\":\"0.0.0-stub\",\"type\":\"module\",\"main\":\"index.js\",\"exports\":{\".\":\"./index.js\"}}" > "$1/package.json" \
-       && printf "export default function sharp(){throw new Error(\"sharp stub\")}" > "$1/index.js" \
-       ' _ {} \; \
+RUN rm -rf node_modules/.pnpm/sharp@* node_modules/.pnpm/@img* \
+    && find node_modules/.pnpm -path '*/node_modules/sharp' \( -type l -o -type d \) \
+         -exec sh -ec 'rm -rf "$1"; mkdir -p "$1"; cp -a docker/sharp-stub/. "$1/"' _ {} \; \
+    && test "$(find node_modules/.pnpm -path '*/node_modules/sharp/package.json' | wc -l)" -ge 1 \
+       || (echo "sharp stub: expected stub package.json under a sharp path (pnpm layout changed?)" >&2; exit 1) \
     && rm -rf node_modules/.pnpm/node-datachannel* \
     node_modules/.pnpm/@assemblyscript* \
     node_modules/.pnpm/@babel* \

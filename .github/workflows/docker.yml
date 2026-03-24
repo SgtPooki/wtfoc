@@ -40,6 +40,25 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # Build once, load locally, smoke-test, then push. Second build hits GHA cache.
+      - name: Build image (load for smoke test)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:smoke-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test (TransformersEmbedder + 384-dim embedding)
+        run: |
+          docker run --rm \
+            -w /app/apps/web \
+            -v "${{ github.workspace }}/apps/web/smoke-embed.mjs:/app/apps/web/smoke-embed.mjs:ro" \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:smoke-${{ github.sha }}" \
+            node smoke-embed.mjs
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
