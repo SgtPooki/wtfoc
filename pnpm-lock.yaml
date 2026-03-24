@@ -8,8 +8,6 @@ overrides:
   undici@>=6.0.0 <6.24.0: '>=6.24.0'
   file-type@>=20.0.0 <=21.3.1: '>=21.3.2'
 
-packageExtensionsChecksum: sha256-wNSOTQFt88LsZ9P8FF+nZJqGxK4DTQjeJzhKSQy3nO8=
-
 importers:
 
   .:
@@ -6593,7 +6591,6 @@ snapshots:
       '@huggingface/jinja': 0.5.6
       onnxruntime-node: 1.21.0
       onnxruntime-web: 1.22.0-dev.20250409-89f8206ba4
-    optionalDependencies:
       sharp: 0.34.5
     optional: true
 
