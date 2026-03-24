@@ -29,7 +29,7 @@ export function buildSegment(
 		embeddingDimensions: options.embeddingDimensions,
 		chunks: chunks.map((c) => ({
 			id: c.chunk.id,
-			storageId: "", // filled after upload
+			storageId: c.chunk.id,
 			content: c.chunk.content,
 			embedding: c.embedding,
 			terms: c.terms ?? extractTerms(c.chunk.content),
