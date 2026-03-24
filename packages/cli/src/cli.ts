@@ -264,9 +264,29 @@ const ingestCmd = withEmbedderOptions(
 		const maxBatch = Number.parseInt(opts.batchSize, 10) || 500;
 		const storageType = (program.opts().storage ?? "local") as string;
 
+		// Build dedup set from existing segments for resumability
+		const knownChunkIds = new Set<string>();
+		if (head) {
+			for (const segSummary of head.manifest.segments) {
+				try {
+					const segBytes = await store.storage.download(segSummary.id);
+					const seg = JSON.parse(new TextDecoder().decode(segBytes)) as Segment;
+					for (const c of seg.chunks) {
+						knownChunkIds.add(c.id);
+					}
+				} catch {
+					// Segment may not be downloadable (e.g. FOC-only), skip
+				}
+			}
+			if (knownChunkIds.size > 0 && format !== "quiet") {
+				console.error(`   ${knownChunkIds.size} existing chunks found (will skip duplicates)`);
+			}
+		}
+
 		// Process chunks in batches to limit memory usage
 		let batch: Chunk[] = [];
 		let totalChunksIngested = 0;
+		let totalChunksSkipped = 0;
 		let batchNumber = 0;
 
 		async function flushBatch(batchChunks: Chunk[]): Promise<void> {
@@ -359,6 +379,10 @@ const ingestCmd = withEmbedderOptions(
 
 		// Stream chunks from adapter, flushing each batch
 		for await (const chunk of adapter.ingest(config)) {
+			if (knownChunkIds.has(chunk.id)) {
+				totalChunksSkipped++;
+				continue;
+			}
 			batch.push(chunk);
 			if (batch.length >= maxBatch) {
 				if (format !== "quiet")
@@ -371,15 +395,16 @@ const ingestCmd = withEmbedderOptions(
 		await flushBatch(batch);
 		batch = [];
 
-		if (totalChunksIngested === 0) {
+		if (totalChunksIngested === 0 && totalChunksSkipped === 0) {
 			if (format !== "quiet") console.error("⚠️  No chunks produced — skipping upload");
 			return;
 		}
 
 		if (format !== "quiet") {
-			console.error(
-				`✅ Ingested ${totalChunksIngested} chunks (${batchNumber} batch${batchNumber > 1 ? "es" : ""}) from ${sourceArg} into "${opts.collection}"`,
-			);
+			const parts = [`${totalChunksIngested} chunks`];
+			if (batchNumber > 1) parts[0] += ` (${batchNumber} batches)`;
+			if (totalChunksSkipped > 0) parts.push(`${totalChunksSkipped} skipped as duplicates`);
+			console.error(`✅ Ingested ${parts.join(", ")} from ${sourceArg} into "${opts.collection}"`);
 		}
 	},
 );
