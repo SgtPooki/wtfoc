@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.0.3](https://github.com/SgtPooki/wtfoc/compare/search-v0.0.2...search-v0.0.3) (2026-03-24)
+
+
+### Features
+
+* case-insensitive source matching in edge resolution ([#72](https://github.com/SgtPooki/wtfoc/issues/72)) ([e54ccef](https://github.com/SgtPooki/wtfoc/commit/e54ccef6b1495565d1e4fb4f159133fc62ab40ed))
+* improve multi-hop edge traversal with indexed lookups ([#68](https://github.com/SgtPooki/wtfoc/issues/68)) ([63fddf9](https://github.com/SgtPooki/wtfoc/commit/63fddf913f3ced1ae0885f7788842eb04291617a))
+* resolve edges across renamed GitHub repos ([#72](https://github.com/SgtPooki/wtfoc/issues/72)) ([ffedddd](https://github.com/SgtPooki/wtfoc/commit/ffedddd58c3a83b0e7f8fcd3b471ab561e211db8))
+
+
+### Refactoring
+
+* extract shared edge resolution logic from trace engine ([a4655ba](https://github.com/SgtPooki/wtfoc/commit/a4655ba49d932bbf53367c616364a882c7d0c2d1))
+
 ## [0.0.2](https://github.com/SgtPooki/wtfoc/compare/search-v0.0.1...search-v0.0.2) (2026-03-23)
 
 

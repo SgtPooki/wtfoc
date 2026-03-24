@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.3](https://github.com/SgtPooki/wtfoc/compare/store-v0.0.2...store-v0.0.3) (2026-03-24)
+
+
+### Refactoring
+
+* **store:** replace hand-rolled schema validation with valibot ([#38](https://github.com/SgtPooki/wtfoc/issues/38)) ([dec4369](https://github.com/SgtPooki/wtfoc/commit/dec43695b6dae5b9ff0543cdb41cf79739009fc2))
+
 ## [0.0.2](https://github.com/SgtPooki/wtfoc/compare/store-v0.0.1...store-v0.0.2) (2026-03-23)
 
 
