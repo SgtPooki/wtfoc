@@ -7,12 +7,13 @@ description: Trace a question across sources and synthesize an analysis
 
 # /trace-analyze
 
-Run a `wtfoc trace` against a collection and synthesize the results into a structured analysis.
+Run a `wtfoc trace` against a collection, automatically expand the search to fill gaps, and synthesize all results into a structured analysis.
 
 ## Arguments
 
 - `<question>` — the natural-language question to trace (required)
 - `-c <collection>` — the collection to search (required)
+- `--deep` — run automatic follow-up traces to fill gaps (default behavior, use `--shallow` to skip)
 
 Examples:
 - `/trace-analyze how does file upload work -c foc-ecosystem`
@@ -30,38 +31,68 @@ ls ~/.wtfoc/manifests/ 2>/dev/null | sed 's/\.json$//'
 
 and ask the user which collection to use.
 
-### 2. Run the trace
-
-Run wtfoc trace with JSON output for structured data, and human output for display:
+### 2. Run the primary trace
 
 ```bash
-TRACE_JSON=$(./wtfoc --json trace "<question>" -c <collection> 2>/dev/null)
+./wtfoc --json trace "<question>" -c <collection> 2>/dev/null
+```
+
+Also show the human-readable output:
+```bash
 ./wtfoc trace "<question>" -c <collection> 2>/dev/null
 ```
 
-Show the human-readable trace output to the user first so they can see the raw results.
+### 3. Analyze gaps and run expansion traces
 
-### 3. Synthesize the analysis
+After the primary trace, analyze which source types and conceptual areas are missing. A feature trace typically needs coverage across these layers:
 
-Analyze the JSON trace results and produce a structured report with these sections:
+- **Documentation** (doc-page, markdown)
+- **Implementation** (code)
+- **Discussion** (github-issue, github-pr, github-pr-comment)
+- **Tests** (code with test patterns)
+- **Infrastructure/backend** (related services, contracts, configs)
 
-**Summary** — A 2-3 sentence answer to the question based on the trace results.
+For each significant gap, construct a targeted follow-up query and run it:
+
+```bash
+./wtfoc --json trace "<targeted follow-up query>" -c <collection> 2>/dev/null
+```
+
+**Examples of gap-filling queries:**
+- If no backend/SP results: trace "what happens on the storage provider side after <topic>"
+- If no test results: trace "<topic> test coverage unit test integration"
+- If no contract/on-chain results: trace "<topic> smart contract on-chain solidity"
+- If only one repo found: trace "<topic> <other-known-repo-name>"
+
+Run up to 3 expansion traces. Collect all unique results (dedup by ID).
+
+### 4. Synthesize the full analysis
+
+Combine results from ALL traces (primary + expansions) and produce a structured report:
+
+**Summary** — A 2-3 sentence answer to the question based on all trace results.
 
 **Evidence Chain** — Walk through the results in logical order (not by source type), reconstructing the narrative. For each key piece of evidence, cite:
 - What it says (brief quote or paraphrase)
 - Where it came from (source type, file/URL)
 - Relevance score
+- Which trace found it (primary or which expansion)
 
-**Cross-Source Connections** — Highlight where different source types corroborate or complement each other (e.g., "the docs describe the three-phase upload pipeline, and the SDK types.ts defines the exact interfaces for each phase").
+**Cross-Source Connections** — Highlight where different source types corroborate or complement each other.
 
-**Open Issues & Friction** — List any GitHub issues, PR comments, or discussions found in the trace that indicate unresolved problems, DX friction, or known bugs related to the question.
+**Open Issues & Friction** — List any GitHub issues, PR comments, or discussions that indicate unresolved problems, DX friction, or known bugs.
 
-**Gaps** — Note what the trace did NOT find that you might expect (e.g., "no test coverage found for this flow" or "no results from the SP backend code").
+**Remaining Gaps** — Note what was still NOT found after expansion traces.
 
-### 4. Suggest follow-up traces
+### 5. Suggest follow-up traces
 
-Based on the analysis, suggest 2-3 follow-up trace queries that would deepen understanding. Format as runnable commands:
+Based on the remaining gaps, suggest 2-3 additional trace queries. Format as runnable commands:
 
 ```bash
 ./wtfoc trace "suggested follow-up" -c <collection>
+```
+
+Or suggest running this skill again with a more targeted question:
+```
+/trace-analyze <more targeted question> -c <collection>
 ```
