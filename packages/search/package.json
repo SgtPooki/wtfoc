@@ -31,7 +31,7 @@
 		"@wtfoc/common": "workspace:*"
 	},
 	"peerDependencies": {
-		"@wtfoc/store": "workspace:*"
+		"@wtfoc/store": "workspace:^"
 	},
 	"peerDependenciesMeta": {
 		"@wtfoc/store": {

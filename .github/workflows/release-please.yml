@@ -5,14 +5,15 @@ on:
     branches:
       - main
 
-permissions:
-  contents: write
-  pull-requests: write
-  id-token: write
+# Minimal top-level permissions — each job declares only what it needs
+permissions: {}
 
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     outputs:
       releases_created: ${{ steps.release.outputs.releases_created }}
     steps:
@@ -46,6 +47,8 @@ jobs:
 
       - run: pnpm test
 
+      # Publish all workspace packages with SLSA provenance attestation
+      # After first release, switch to npm Trusted Publishing and remove NPM_TOKEN
       - name: Publish to npm with provenance
         run: pnpm -r publish --access public --no-git-checks --provenance
         env:

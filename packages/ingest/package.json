@@ -33,7 +33,7 @@
 		"turndown": "^7.2.2"
 	},
 	"peerDependencies": {
-		"@wtfoc/store": "workspace:*"
+		"@wtfoc/store": "workspace:^"
 	},
 	"peerDependenciesMeta": {
 		"@wtfoc/store": {
