@@ -265,11 +265,24 @@ async function main() {
 				collectionLabel: string,
 			): Promise<void> {
 				if (endpoint === "status") {
+					const serverModel = embedder.model ?? "unknown";
+					const collectionModel = col.manifest.embeddingModel;
+					const modelMismatch =
+						serverModel !== "unknown" &&
+						collectionModel !== "pending" &&
+						serverModel !== collectionModel;
+
 					return jsonResponse(res, {
 						collection: collectionLabel,
 						totalChunks: col.manifest.totalChunks,
 						segments: col.manifest.segments.length,
-						embeddingModel: col.manifest.embeddingModel,
+						embeddingModel: collectionModel,
+						serverEmbedder: serverModel,
+						...(modelMismatch
+							? {
+									warning: `Model mismatch: collection uses "${collectionModel}" but server has "${serverModel}". Search quality may be degraded.`,
+								}
+							: {}),
 						updatedAt: col.manifest.updatedAt,
 						sourceTypes: [
 							...new Set(col.segments.flatMap((s) => s.chunks.map((c) => c.sourceType))),
