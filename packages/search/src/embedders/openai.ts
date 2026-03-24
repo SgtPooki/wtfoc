@@ -68,9 +68,19 @@ export class OpenAIEmbedder implements Embedder {
 		signal?.throwIfAborted();
 
 		// Truncate inputs that exceed the model's context limit
-		const truncated = input.map((text) =>
-			text.length > this.maxInputChars ? text.slice(0, this.maxInputChars) : text,
-		);
+		let truncatedCount = 0;
+		const truncated = input.map((text) => {
+			if (text.length > this.maxInputChars) {
+				truncatedCount++;
+				return text.slice(0, this.maxInputChars);
+			}
+			return text;
+		});
+		if (truncatedCount > 0) {
+			console.error(
+				`⚠️  ${truncatedCount}/${input.length} inputs truncated to ${this.maxInputChars} chars (model: ${this.model})`,
+			);
+		}
 
 		let response: Response;
 		try {
