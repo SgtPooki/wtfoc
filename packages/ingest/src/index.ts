@@ -9,7 +9,12 @@ export { SlackAdapter, type SlackAdapterConfig } from "./adapters/slack.js";
 export { WebsiteAdapter, type WebsiteAdapterConfig } from "./adapters/website.js";
 export { chunkMarkdown, type MarkdownChunkerOptions } from "./chunker.js";
 export type { ChangedFile } from "./edges/extractor.js";
-export { extractChangedFileEdges, RegexEdgeExtractor } from "./edges/extractor.js";
+export {
+	buildBatchRepoAffinity,
+	extractChangedFileEdges,
+	inferRepoFromContent,
+	RegexEdgeExtractor,
+} from "./edges/extractor.js";
 export {
 	buildSegment,
 	type SegmentBuilderOptions,
