@@ -33,6 +33,80 @@ function repoFromChunk(chunk: Chunk): string | undefined {
 }
 
 /**
+ * Infer the most likely repo from a chunk's content by scanning for GitHub URLs
+ * and cross-repo refs (e.g. `owner/repo#123`). Returns the most frequently
+ * mentioned repo, or undefined if none found.
+ */
+export function inferRepoFromContent(content: string): string | undefined {
+	const repoCounts = new Map<string, number>();
+
+	for (const match of content.matchAll(GITHUB_URL_PATTERN)) {
+		const repo = match[1]!;
+		repoCounts.set(repo, (repoCounts.get(repo) ?? 0) + 1);
+	}
+
+	for (const match of content.matchAll(CROSS_REPO_PATTERN)) {
+		const repo = match[1]!;
+		repoCounts.set(repo, (repoCounts.get(repo) ?? 0) + 1);
+	}
+
+	if (repoCounts.size === 0) return undefined;
+
+	let bestRepo: string | undefined;
+	let bestCount = 0;
+	for (const [repo, count] of repoCounts) {
+		if (count > bestCount) {
+			bestRepo = repo;
+			bestCount = count;
+		}
+	}
+	return bestRepo;
+}
+
+/**
+ * Build a repo affinity map across a batch of chunks. Returns the most
+ * frequently referenced repo across all chunks, used as a fallback when
+ * a single chunk has no same-content repo context.
+ */
+export function buildBatchRepoAffinity(chunks: Chunk[]): string | undefined {
+	const repoCounts = new Map<string, number>();
+
+	for (const chunk of chunks) {
+		const sourceRepo = repoFromChunk(chunk);
+		if (sourceRepo) {
+			repoCounts.set(sourceRepo, (repoCounts.get(sourceRepo) ?? 0) + 1);
+		}
+
+		for (const match of chunk.content.matchAll(GITHUB_URL_PATTERN)) {
+			const repo = match[1]!;
+			repoCounts.set(repo, (repoCounts.get(repo) ?? 0) + 1);
+		}
+		for (const match of chunk.content.matchAll(CROSS_REPO_PATTERN)) {
+			const repo = match[1]!;
+			repoCounts.set(repo, (repoCounts.get(repo) ?? 0) + 1);
+		}
+	}
+
+	if (repoCounts.size === 0) return undefined;
+
+	let bestRepo: string | undefined;
+	let bestCount = 0;
+	for (const [repo, count] of repoCounts) {
+		if (count > bestCount) {
+			bestRepo = repo;
+			bestCount = count;
+		}
+	}
+	return bestRepo;
+}
+
+/** Resolved repo context: the repo name and whether it was inferred */
+interface RepoContext {
+	repo: string;
+	inferred: boolean;
+}
+
+/**
  * Regex-based edge extractor. Extracts two built-in edge types from text:
  *
  * - **references**: `#123`, `owner/repo#456`, GitHub issue/PR URLs
@@ -42,24 +116,40 @@ function repoFromChunk(chunk: Chunk): string | undefined {
  * refs like `#123` are normalized to repo-scoped `owner/repo#123` using the repo
  * from `chunk.source`.
  *
- * For `changes` edges (PR changed files), use the standalone `extractChangedFileEdges` helper.
+ * For non-GitHub chunks (Slack, Discord), bare `#N` refs are resolved using:
+ * 1. Same-chunk context: GitHub URLs or cross-repo refs in the same message
+ * 2. Batch-level affinity: most frequently referenced repo across all chunks
  *
- * All regex-extracted edges have `confidence: 1.0`.
+ * Inferred edges have `confidence: 0.5` to distinguish them from explicit refs.
+ *
+ * For `changes` edges (PR changed files), use the standalone `extractChangedFileEdges` helper.
  */
 export class RegexEdgeExtractor implements EdgeExtractor {
 	extract(chunks: Chunk[]): Edge[] {
+		const batchAffinity = buildBatchRepoAffinity(chunks);
 		const edges: Edge[] = [];
 		for (const chunk of chunks) {
-			edges.push(...this.extractFromChunk(chunk));
+			edges.push(...this.extractFromChunk(chunk, batchAffinity));
 		}
 		return edges;
 	}
 
-	private extractFromChunk(chunk: Chunk): Edge[] {
-		const repo = repoFromChunk(chunk);
+	private extractFromChunk(chunk: Chunk, batchAffinity: string | undefined): Edge[] {
+		const explicitRepo = repoFromChunk(chunk);
+		let repoCtx: RepoContext | undefined;
+
+		if (explicitRepo) {
+			repoCtx = { repo: explicitRepo, inferred: false };
+		} else {
+			const inferred = inferRepoFromContent(chunk.content) ?? batchAffinity;
+			if (inferred) {
+				repoCtx = { repo: inferred, inferred: true };
+			}
+		}
+
 		const edges: Edge[] = [];
-		edges.push(...this.extractCloses(chunk, repo));
-		edges.push(...this.extractReferences(chunk, repo));
+		edges.push(...this.extractCloses(chunk, repoCtx));
+		edges.push(...this.extractReferences(chunk, repoCtx));
 		edges.push(...this.extractUrlReferences(chunk));
 		return edges;
 	}
@@ -69,7 +159,7 @@ export class RegexEdgeExtractor implements EdgeExtractor {
 	 * These take priority — any references to the same targets are not emitted as
 	 * separate 'references' edges.
 	 */
-	private extractCloses(chunk: Chunk, chunkRepo: string | undefined): Edge[] {
+	private extractCloses(chunk: Chunk, repoCtx: RepoContext | undefined): Edge[] {
 		const edges: Edge[] = [];
 
 		for (const match of chunk.content.matchAll(CLOSES_PATTERN)) {
@@ -77,18 +167,25 @@ export class RegexEdgeExtractor implements EdgeExtractor {
 			const crossRepoNum = match[2];
 			const localNum = match[3];
 
-			const targetId = matchRepo
-				? `${matchRepo}#${crossRepoNum}`
-				: chunkRepo
-					? `${chunkRepo}#${localNum}`
-					: `#${localNum}`;
+			let targetId: string;
+			let confidence = 1.0;
+
+			if (matchRepo) {
+				targetId = `${matchRepo}#${crossRepoNum}`;
+			} else if (repoCtx) {
+				targetId = `${repoCtx.repo}#${localNum}`;
+				if (repoCtx.inferred) confidence = 0.5;
+			} else {
+				targetId = `#${localNum}`;
+			}
+
 			edges.push({
 				type: "closes",
 				sourceId: chunk.id,
 				targetType: "issue",
 				targetId,
 				evidence: match[0],
-				confidence: 1.0,
+				confidence,
 			});
 		}
 
@@ -99,7 +196,7 @@ export class RegexEdgeExtractor implements EdgeExtractor {
 	 * Extract 'references' edges from `#123` and `owner/repo#456` patterns.
 	 * Skips refs already captured as 'closes' edges (matched by targetId).
 	 */
-	private extractReferences(chunk: Chunk, chunkRepo: string | undefined): Edge[] {
+	private extractReferences(chunk: Chunk, repoCtx: RepoContext | undefined): Edge[] {
 		const edges: Edge[] = [];
 
 		// Collect close targets to avoid duplicating them as references
@@ -111,8 +208,8 @@ export class RegexEdgeExtractor implements EdgeExtractor {
 			closesTargets.add(
 				matchRepo
 					? `${matchRepo}#${crossRepoNum}`
-					: chunkRepo
-						? `${chunkRepo}#${localNum}`
+					: repoCtx
+						? `${repoCtx.repo}#${localNum}`
 						: `#${localNum}`,
 			);
 		}
@@ -122,7 +219,6 @@ export class RegexEdgeExtractor implements EdgeExtractor {
 
 		for (const match of chunk.content.matchAll(CROSS_REPO_PATTERN)) {
 			const targetId = `${match[1]}#${match[2]}`;
-			// Always track position to prevent local pattern from re-matching the number
 			matchedPositions.add((match.index ?? 0) + (match[1]?.length ?? 0));
 			if (closesTargets.has(targetId)) continue;
 			edges.push({
@@ -138,7 +234,17 @@ export class RegexEdgeExtractor implements EdgeExtractor {
 		// Match local refs: #123 (but not ones already part of cross-repo refs)
 		for (const match of chunk.content.matchAll(LOCAL_REF_PATTERN)) {
 			if (matchedPositions.has(match.index ?? -1)) continue;
-			const targetId = chunkRepo ? `${chunkRepo}#${match[1]}` : `#${match[1]}`;
+
+			let targetId: string;
+			let confidence = 1.0;
+
+			if (repoCtx) {
+				targetId = `${repoCtx.repo}#${match[1]}`;
+				if (repoCtx.inferred) confidence = 0.5;
+			} else {
+				targetId = `#${match[1]}`;
+			}
+
 			if (closesTargets.has(targetId)) continue;
 			edges.push({
 				type: "references",
@@ -146,7 +252,7 @@ export class RegexEdgeExtractor implements EdgeExtractor {
 				targetType: "issue",
 				targetId,
 				evidence: match[0],
-				confidence: 1.0,
+				confidence,
 			});
 		}
 

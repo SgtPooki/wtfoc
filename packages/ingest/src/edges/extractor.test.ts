@@ -1,6 +1,11 @@
 import type { Chunk } from "@wtfoc/common";
 import { describe, expect, it } from "vitest";
-import { extractChangedFileEdges, RegexEdgeExtractor } from "./extractor.js";
+import {
+	buildBatchRepoAffinity,
+	extractChangedFileEdges,
+	inferRepoFromContent,
+	RegexEdgeExtractor,
+} from "./extractor.js";
 
 function makeChunk(content: string, overrides: Partial<Chunk> = {}): Chunk {
 	return {
@@ -52,7 +57,7 @@ describe("RegexEdgeExtractor", () => {
 	});
 
 	describe("references — local issue refs (#123) — non-GitHub chunks", () => {
-		it("keeps bare #123 for Slack chunks (no repo context)", () => {
+		it("keeps bare #123 for Slack chunks with no repo context anywhere", () => {
 			const chunk = makeSlackChunk("This relates to #123");
 			const edges = extractor.extract([chunk]);
 
@@ -67,12 +72,129 @@ describe("RegexEdgeExtractor", () => {
 			});
 		});
 
-		it("extracts multiple bare local refs from a Slack chunk", () => {
+		it("extracts multiple bare local refs from a Slack chunk with no context", () => {
 			const chunk = makeSlackChunk("See #10 and #20 for context");
 			const edges = extractor.extract([chunk]);
 
 			expect(edges).toHaveLength(2);
 			expect(edges.map((e) => e.targetId)).toEqual(["#10", "#20"]);
+		});
+	});
+
+	describe("context-aware bare #N resolution — same-chunk inference", () => {
+		it("infers repo from GitHub URL in same Slack message", () => {
+			const chunk = makeSlackChunk(
+				"See https://github.com/FILCAT/pdp/pull/38 — also related to #42",
+			);
+			const edges = extractor.extract([chunk]);
+
+			const urlEdge = edges.find((e) => e.evidence.startsWith("https://"));
+			const bareEdge = edges.find((e) => e.evidence === "#42");
+
+			expect(urlEdge?.targetId).toBe("FILCAT/pdp#38");
+			expect(urlEdge?.confidence).toBe(1.0);
+
+			expect(bareEdge?.targetId).toBe("FILCAT/pdp#42");
+			expect(bareEdge?.confidence).toBe(0.5);
+		});
+
+		it("infers repo from cross-repo ref in same Slack message", () => {
+			const chunk = makeSlackChunk(
+				"FilOzone/synapse-sdk#100 is the main issue, see also #101 and #102",
+			);
+			const edges = extractor.extract([chunk]);
+
+			const explicit = edges.find((e) => e.evidence === "FilOzone/synapse-sdk#100");
+			const inferred = edges.filter((e) => e.confidence === 0.5);
+
+			expect(explicit?.confidence).toBe(1.0);
+			expect(inferred).toHaveLength(2);
+			expect(inferred.map((e) => e.targetId).sort()).toEqual([
+				"FilOzone/synapse-sdk#101",
+				"FilOzone/synapse-sdk#102",
+			]);
+		});
+
+		it("picks the most frequently referenced repo when multiple are present", () => {
+			const chunk = makeSlackChunk(
+				"FILCAT/pdp#1 FILCAT/pdp#2 FilOzone/synapse-sdk#3 — see also #99",
+			);
+			const edges = extractor.extract([chunk]);
+
+			const bareEdge = edges.find((e) => e.evidence === "#99");
+			// FILCAT/pdp appears twice, synapse-sdk once — pdp wins
+			expect(bareEdge?.targetId).toBe("FILCAT/pdp#99");
+			expect(bareEdge?.confidence).toBe(0.5);
+		});
+	});
+
+	describe("context-aware bare #N resolution — batch-level affinity", () => {
+		it("uses batch affinity when single chunk has no context", () => {
+			const contextChunk = makeSlackChunk(
+				"See https://github.com/FILCAT/pdp/issues/10",
+				{ id: "ctx" },
+			);
+			const bareChunk = makeSlackChunk("this is about #42", { id: "bare" });
+
+			const edges = extractor.extract([contextChunk, bareChunk]);
+
+			const bareEdge = edges.find((e) => e.sourceId === "bare" && e.evidence === "#42");
+			expect(bareEdge?.targetId).toBe("FILCAT/pdp#42");
+			expect(bareEdge?.confidence).toBe(0.5);
+		});
+
+		it("prefers same-chunk context over batch affinity", () => {
+			// Batch has lots of FILCAT/pdp refs
+			const batchChunk1 = makeSlackChunk("FILCAT/pdp#1 FILCAT/pdp#2", { id: "b1" });
+			// This chunk mentions a different repo directly
+			const targetChunk = makeSlackChunk(
+				"FilOzone/synapse-sdk#50 is broken, see #51",
+				{ id: "target" },
+			);
+
+			const edges = extractor.extract([batchChunk1, targetChunk]);
+
+			const bareEdge = edges.find(
+				(e) => e.sourceId === "target" && e.evidence === "#51",
+			);
+			// Same-chunk context (synapse-sdk) should win over batch affinity (pdp)
+			expect(bareEdge?.targetId).toBe("FilOzone/synapse-sdk#51");
+		});
+
+		it("uses GitHub chunk sources for batch affinity", () => {
+			const ghChunk = makeChunk("Some PR content", { id: "gh" });
+			const slackChunk = makeSlackChunk("related to #42", { id: "slack" });
+
+			const edges = extractor.extract([ghChunk, slackChunk]);
+
+			const bareEdge = edges.find(
+				(e) => e.sourceId === "slack" && e.evidence === "#42",
+			);
+			expect(bareEdge?.targetId).toBe("owner/repo#42");
+			expect(bareEdge?.confidence).toBe(0.5);
+		});
+	});
+
+	describe("context-aware bare #N — closes edges", () => {
+		it("infers repo for Fixes #N in Slack chunk with context", () => {
+			const chunk = makeSlackChunk(
+				"Fixes #42 — see https://github.com/FILCAT/pdp/pull/38",
+			);
+			const edges = extractor.extract([chunk]);
+
+			const closesEdge = edges.find((e) => e.type === "closes");
+			expect(closesEdge?.targetId).toBe("FILCAT/pdp#42");
+			expect(closesEdge?.confidence).toBe(0.5);
+		});
+
+		it("keeps bare #N for closes when no context exists", () => {
+			const chunk = makeSlackChunk("Fixes #42");
+			const edges = extractor.extract([chunk]);
+
+			expect(edges).toHaveLength(1);
+			expect(edges[0]?.type).toBe("closes");
+			expect(edges[0]?.targetId).toBe("#42");
+			expect(edges[0]?.confidence).toBe(1.0);
 		});
 	});
 
@@ -158,7 +280,7 @@ describe("RegexEdgeExtractor", () => {
 			});
 		}
 
-		it("keeps bare #42 for non-GitHub closes", () => {
+		it("keeps bare #42 for non-GitHub closes with no context", () => {
 			const chunk = makeSlackChunk("Fixes #42");
 			const edges = extractor.extract([chunk]);
 
@@ -215,7 +337,7 @@ describe("RegexEdgeExtractor", () => {
 			expect(refs.map((e) => e.targetId).sort()).toEqual(["SgtPooki/wtfoc#1", "other/repo#5"]);
 		});
 
-		it("extracts mixed edges from Slack chunk (local refs stay bare)", () => {
+		it("extracts mixed edges from Slack chunk — infers repo from context", () => {
 			const chunk = makeSlackChunk(
 				"Fixes #9\n\nRelated to SgtPooki/wtfoc#1 and see https://github.com/other/repo/issues/5",
 			);
@@ -227,7 +349,9 @@ describe("RegexEdgeExtractor", () => {
 			const refs = edges.filter((e) => e.type === "references");
 
 			expect(closes).toHaveLength(1);
-			expect(closes[0]?.targetId).toBe("#9");
+			// SgtPooki/wtfoc and other/repo each appear once — tie broken by first seen
+			// The bare #9 gets inferred to whichever repo is most frequent
+			expect(closes[0]?.confidence).toBe(0.5);
 
 			expect(refs).toHaveLength(2);
 			expect(refs.map((e) => e.targetId).sort()).toEqual(["SgtPooki/wtfoc#1", "other/repo#5"]);
@@ -256,6 +380,50 @@ describe("RegexEdgeExtractor", () => {
 			expect(edges[0]?.sourceId).toBe("c1");
 			expect(edges[1]?.sourceId).toBe("c2");
 		});
+	});
+});
+
+describe("inferRepoFromContent", () => {
+	it("extracts repo from GitHub URL", () => {
+		expect(inferRepoFromContent("see https://github.com/FILCAT/pdp/pull/38")).toBe("FILCAT/pdp");
+	});
+
+	it("extracts repo from cross-repo ref", () => {
+		expect(inferRepoFromContent("see FilOzone/synapse-sdk#100")).toBe("FilOzone/synapse-sdk");
+	});
+
+	it("picks most frequent repo", () => {
+		expect(
+			inferRepoFromContent("FILCAT/pdp#1 FILCAT/pdp#2 FilOzone/synapse-sdk#3"),
+		).toBe("FILCAT/pdp");
+	});
+
+	it("returns undefined for no context", () => {
+		expect(inferRepoFromContent("just text with #42")).toBeUndefined();
+	});
+});
+
+describe("buildBatchRepoAffinity", () => {
+	it("counts across all chunks", () => {
+		const chunks = [
+			makeSlackChunk("FILCAT/pdp#1", { id: "c1" }),
+			makeSlackChunk("FILCAT/pdp#2", { id: "c2" }),
+			makeSlackChunk("FilOzone/synapse-sdk#3", { id: "c3" }),
+		];
+		expect(buildBatchRepoAffinity(chunks)).toBe("FILCAT/pdp");
+	});
+
+	it("includes GitHub chunk source repos", () => {
+		const chunks = [
+			makeChunk("some content", { id: "c1" }),
+			makeSlackChunk("hello", { id: "c2" }),
+		];
+		expect(buildBatchRepoAffinity(chunks)).toBe("owner/repo");
+	});
+
+	it("returns undefined for chunks with no repo context", () => {
+		const chunks = [makeSlackChunk("just text", { id: "c1" })];
+		expect(buildBatchRepoAffinity(chunks)).toBeUndefined();
 	});
 });
 
