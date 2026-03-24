@@ -1,0 +1,34 @@
+{
+	"guild": { "id": "123456789", "name": "TestServer" },
+	"channel": { "id": "987654321", "name": "general", "type": "GuildTextChannel" },
+	"messages": [
+		{
+			"id": "1001",
+			"type": "Default",
+			"timestamp": "2026-03-23T10:00:00Z",
+			"content": "Check out https://github.com/FilOzone/synapse-sdk/issues/42 for the latest update",
+			"author": { "id": "user1", "name": "Alice", "discriminator": "0" }
+		},
+		{
+			"id": "1002",
+			"type": "Default",
+			"timestamp": "2026-03-23T10:01:00Z",
+			"content": "I think we should also fix the rate limiter while we're at it",
+			"author": { "id": "user1", "name": "Alice", "discriminator": "0" }
+		},
+		{
+			"id": "1003",
+			"type": "Default",
+			"timestamp": "2026-03-23T10:05:00Z",
+			"content": "Also see #dev-chat for the latest updates. Related: https://discord.com/channels/123456789/111222333/444555666",
+			"author": { "id": "user2", "name": "Bob", "discriminator": "0" }
+		},
+		{
+			"id": "1004",
+			"type": "Default",
+			"timestamp": "2026-03-23T12:00:00Z",
+			"content": "Separate conversation much later",
+			"author": { "id": "user1", "name": "Alice", "discriminator": "0" }
+		}
+	]
+}
