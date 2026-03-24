@@ -14,7 +14,9 @@
 		"test": "vitest run"
 	},
 	"dependencies": {
-		"@wtfoc/common": "workspace:*"
+		"@wtfoc/common": "workspace:*",
+		"crawlee": "^3.16.0",
+		"turndown": "^7.2.2"
 	},
 	"peerDependencies": {
 		"@wtfoc/store": "workspace:*"
@@ -25,6 +27,7 @@
 		}
 	},
 	"devDependencies": {
+		"@types/turndown": "^5.0.6",
 		"@wtfoc/store": "workspace:*",
 		"typescript": "^5.8.0"
 	}
