@@ -391,6 +391,70 @@ header h1 {
 	color: var(--muted);
 }
 
+/* Sources panel */
+.sources-panel {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	margin-top: 1rem;
+}
+.sources-header {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	width: 100%;
+	padding: 0.75rem 1rem;
+	background: none;
+	border: none;
+	color: inherit;
+	font-family: inherit;
+	cursor: pointer;
+	text-align: left;
+}
+.sources-header h3 {
+	font-size: 0.9rem;
+	margin: 0;
+}
+.sources-summary {
+	font-size: 0.8rem;
+	color: var(--muted);
+}
+.sources-toggle {
+	margin-left: auto;
+	font-size: 0.8rem;
+	color: var(--dim);
+}
+.sources-body {
+	padding: 0 1rem 1rem;
+}
+.sources-group {
+	margin-bottom: 0.75rem;
+}
+.sources-group-header {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	margin-bottom: 0.4rem;
+}
+.sources-count {
+	font-size: 0.75rem;
+	color: var(--muted);
+}
+.sources-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35rem;
+}
+.source-chip {
+	font-size: 0.75rem;
+	padding: 0.2rem 0.5rem;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	color: var(--text);
+	font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+}
+
 /* Collection picker */
 .collection-grid {
 	display: grid;
