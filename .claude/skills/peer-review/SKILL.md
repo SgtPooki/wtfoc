@@ -1,20 +1,21 @@
 ---
-user-invocable: true
+name: peer-review
+description: Get cross-review from Cursor, Codex, or Claude CLI agents for specs, plans, code changes, pull requests, or design decisions. Use when work in this repository needs feedback from a different agent, especially to satisfy the constitution requirement that every spec and significant change be cross-reviewed before ratification or merge.
 allowed-tools: Bash, Read, Glob, Grep
-argument-hint: "[cursor|codex|claude] <prompt>"
-description: Get cross-review from Cursor, Codex, or Claude CLI agents
+metadata:
+  short-description: Run cross-agent reviews from the repo
 ---
 
-# /peer-review
+# Peer Review
 
 Get feedback on specs, plans, code changes, or design decisions from Cursor, Codex, or Claude CLI agents.
 
-**Per the wtfoc constitution:** every spec and significant change must be cross-reviewed by a different agent than the one that created it. Use this skill to run that review.
+Follow the wtfoc constitution: cross-review every spec and significant change with a different agent than the one that created it.
 
-**Takes arguments:** `[cursor|codex|claude] <prompt>`
-- If first word is exactly `cursor`, `codex`, or `claude` (case-insensitive, followed by non-whitespace text), use only that tool
-- Otherwise, run all available tools in parallel
-- No prompt at all → summarize current conversation context as the review target
+Accept arguments in the form `[cursor|codex|claude] <prompt>`.
+- If the first word is exactly `cursor`, `codex`, or `claude` and is followed by non-whitespace text, use only that tool.
+- Otherwise, run all available tools in parallel.
+- If no prompt is provided, summarize the current conversation context as the review target.
 
 Examples:
 - `/peer-review cursor Review the 001-store-backend spec for completeness`
@@ -37,31 +38,34 @@ Examples:
 
 ## Steps
 
-1. **Parse arguments** — extract tool choice and prompt.
-   - Match `cursor`, `codex`, or `claude` as first word if exactly that word (case-insensitive) AND followed by non-whitespace text
-   - `/peer-review claude` alone (no prompt after tool name) → error, ask user for a prompt
-   - `/peer-review` alone → summarize conversation context as prompt, run all available tools
+1. Parse arguments.
+   - Match `cursor`, `codex`, or `claude` as the first word only if that exact word is present and followed by non-whitespace text.
+   - Treat `/peer-review claude` with no remaining prompt as an error and ask for a prompt.
+   - Treat `/peer-review` with no prompt as a request to summarize the current conversation context and run all available tools.
 
-2. **Check prerequisites:**
+2. Check prerequisites:
    ```bash
    which cursor 2>/dev/null  # for cursor reviews
    which codex 2>/dev/null   # for codex reviews
    which claude 2>/dev/null  # for claude reviews
    ```
-   If a tool is missing, skip it and tell the user. If all missing, error.
+   Skip missing tools and report them. If every tool is missing, fail.
 
-3. **Determine workspace path:**
+3. Determine the workspace path:
    ```bash
    REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
    ```
 
-4. **Prepare the prompt** — external CLIs do NOT inherit the current session's conversation context. You MUST serialize all relevant content into the prompt:
-   - If reviewing a spec, include the full spec text
-   - If reviewing a GitHub issue, fetch the body with `gh issue view` and include it
-   - If reviewing code, include file paths or diffs
-   - Always include relevant context from SPEC.md and the constitution
-   - The prompt should specify what kind of feedback you want
-   - **For large prompts** (full diffs, long specs): write the prompt to a temp file:
+4. Prepare the prompt. External CLIs do not inherit the current session context, so serialize everything needed for review.
+   - **CRITICAL:** Always prepend the following instruction to every prompt sent to an external agent:
+     `"You are being invoked as a reviewer. Provide YOUR OWN review directly. Do NOT invoke other tools, agents, or CLIs (cursor, codex, claude) — you are the reviewer, not a dispatcher."`
+   - This prevents recursive agent invocation where Codex tries to call Cursor/Claude from within its review.
+   - Include the full spec text when reviewing a spec.
+   - Fetch and include the GitHub issue body with `gh issue view` when reviewing an issue.
+   - Include file paths or diffs when reviewing code.
+   - Include relevant context from `SPEC.md` and the constitution.
+   - State the kind of feedback required.
+   - For large prompts such as full diffs or long specs, write the prompt to a temp file:
      ```bash
      PROMPT_FILE=$(mktemp /tmp/peer-review-XXXXXXXXXXXX)
      mv "$PROMPT_FILE" "${PROMPT_FILE}.md"
@@ -70,9 +74,9 @@ Examples:
      Your long review prompt here...
      EOF
      ```
-     Then pass the file content via stdin or command substitution (see step 5).
+   - Pass the file content via stdin or command substitution as described in step 5.
 
-5. **Run the review(s):**
+5. Run the review:
 
    **Cursor** (any review type):
    ```bash
@@ -85,9 +89,9 @@ Examples:
      --workspace "$REPO_ROOT" "$(cat "$PROMPT_FILE")"
    ```
    Notes:
-   - `--print --trust` — non-interactive, no GUI
-   - Cursor has no stdin mode — `"$(cat file)"` is the best option for long prompts
-   - If prompt exceeds ~100KB, split into a summary + "see file at $PROMPT_FILE for full context"
+   - Use `--print --trust` for non-interactive execution without the GUI.
+   - Use `"$(cat "$PROMPT_FILE")"` for long prompts because Cursor has no stdin mode.
+   - If the prompt exceeds about 100 KB, send a summary plus a pointer to the temp file.
 
    **Claude** (any review type):
    ```bash
@@ -98,10 +102,10 @@ Examples:
    cd "$REPO_ROOT" && cat "$PROMPT_FILE" | claude -p - --allowedTools Bash,Read,Glob,Grep
    ```
    Notes:
-   - `claude -p` runs in non-interactive (print) mode — no human in the loop
-   - `--allowedTools Bash,Read,Glob,Grep` restricts to read-only operations for reviews
-   - Claude runs from the current working directory, so `cd` to the repo first
-   - For code reviews where Claude needs to read files, it will use its tools automatically
+   - Use `claude -p` for non-interactive execution.
+   - Restrict review runs to `Bash,Read,Glob,Grep`.
+   - Change into the repo root before invoking Claude.
+   - Let Claude read files with its tools when needed for code review.
 
    **Codex** (plan/design/arbitrary review):
    ```bash
@@ -112,41 +116,41 @@ Examples:
    cat "$PROMPT_FILE" | codex exec -
    ```
    Notes:
-   - `codex exec -` reads prompt from stdin — handles any prompt size cleanly
-   - Codex runs from the current working directory, so `cd` to the relevant repo first
-   - If not in a git repo, add `--skip-git-repo-check`
-   - Do NOT hardcode model — uses configured default
+   - Use `codex exec -` for stdin-based prompts of any size.
+   - Change into the relevant repo before invoking Codex.
+   - Add `--skip-git-repo-check` only when not in a git repo.
+   - Do not hardcode a model.
 
    **Codex** (uncommitted code changes only):
    ```bash
    codex review --uncommitted "Optional custom review instructions"
    ```
    Notes:
-   - `--uncommitted` is required to review local changes (without it, scope is ambiguous)
-   - Only use this when reviewing actual changes in the working tree, not conversation content
+   - Require `--uncommitted` for working tree review.
+   - Use this only for real local diffs, not for conversation content.
 
-6. **When running multiple in parallel**, use `run_in_background: true` for all Bash calls. When all complete, present results. If one fails, still present the others.
+6. When running multiple reviews in parallel, use background execution for all Bash calls. Present every completed result even if one review fails.
 
-7. **Handle failures gracefully:**
-   - If a tool exits non-zero, show stderr output to the user
-   - If a tool takes longer than 5 minutes, note the timeout
-   - Never silently swallow errors — surface them
+7. Handle failures explicitly.
+   - Show stderr output when a tool exits non-zero.
+   - Report timeouts after 5 minutes.
+   - Never swallow errors silently.
 
-8. **Present results** clearly labeled:
-   - In conversation: `## Cursor feedback`, `## Claude feedback`, `## Codex feedback`
-   - For GitHub issues: post as separate comments with `## Review: Cursor`, `## Review: Claude`, `## Review: Codex`
+8. Present results with clear labels.
+   - In conversation, use `## Cursor feedback`, `## Claude feedback`, and `## Codex feedback`.
+   - For GitHub issues, post separate comments headed `## Review: Cursor`, `## Review: Claude`, and `## Review: Codex`.
 
-9. **Apply feedback as new comments — never edit the original spec/plan.**
-   - The original spec preserves the starting context and must not be modified directly.
-   - After each review round, post a **consolidated improvements comment** on the issue thread summarizing what feedback was accepted and how it changes the spec.
-   - Each subsequent review round's prompt must include both the **original spec** and **all prior improvement comments** so the reviewer sees the current full state.
-   - This creates an auditable trail: original spec → review feedback → improvements applied → ...
+9. Apply feedback as new comments rather than editing the original spec or plan.
+   - Preserve the original spec as the starting context.
+   - After each review round, post a consolidated improvements comment describing accepted feedback and resulting changes.
+   - Include both the original spec and prior improvement comments in later review prompts so the reviewer sees the current state.
+   - Maintain an auditable trail from original spec to accepted improvements.
 
 ## Important
 
-- **Serialize context into prompts** — external CLIs cannot see the current session's conversation
+- Serialize context into prompts because external CLIs cannot see the current session conversation.
 - All tools may take 1-5 minutes to respond
-- The prompt should specify what kind of feedback you want (spec completeness, API design, code quality, etc.)
-- **Git repo required for Codex** — `codex exec` fails outside a git repo unless `--skip-git-repo-check` is passed
-- **Large prompts** — Cursor has no stdin mode. For large content, write to a temp file first, then use `"$(cat $PROMPT_FILE)"`. Claude and Codex support stdin natively.
-- **Cross-agent rule** — the reviewer must be a DIFFERENT agent than the one that created the work. If Claude wrote a spec, review with Cursor or Codex. If Cursor implemented code, review with Claude or Codex.
+- Specify the feedback type clearly, such as spec completeness, API design, or code quality.
+- `codex exec` requires a git repo unless `--skip-git-repo-check` is passed.
+- Cursor has no stdin mode, so use a temp file for large prompts. Claude and Codex support stdin.
+- Keep the reviewer different from the authoring agent. If Claude wrote the work, review with Cursor or Codex. If Cursor wrote it, review with Claude or Codex.
