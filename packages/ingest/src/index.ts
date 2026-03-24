@@ -3,6 +3,7 @@
 
 export { type ExecFn, GitHubAdapter, type GitHubAdapterConfig } from "./adapters/github.js";
 export { RepoAdapter, type RepoAdapterConfig } from "./adapters/repo.js";
+export { WebsiteAdapter, type WebsiteAdapterConfig } from "./adapters/website.js";
 export { chunkMarkdown, type MarkdownChunkerOptions } from "./chunker.js";
 export type { ChangedFile } from "./edges/extractor.js";
 export { extractChangedFileEdges, RegexEdgeExtractor } from "./edges/extractor.js";
