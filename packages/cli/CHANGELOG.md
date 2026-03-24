@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.0.3](https://github.com/SgtPooki/wtfoc/compare/cli-v0.0.2...cli-v0.0.3) (2026-03-24)
+
+
+### Features
+
+* add suggest-sources command for discovering ingestable references ([#73](https://github.com/SgtPooki/wtfoc/issues/73)) ([a80a535](https://github.com/SgtPooki/wtfoc/commit/a80a53529d257aab663ec781ad934a3f1a02989b))
+* add unresolved-edges command for edge coverage monitoring ([#73](https://github.com/SgtPooki/wtfoc/issues/73)) ([71b31ae](https://github.com/SgtPooki/wtfoc/commit/71b31ae68c25b71fd82c9927cb44f5db9872e84a))
+* add wtfoc npm package alias and provenance publishing ([59b8723](https://github.com/SgtPooki/wtfoc/commit/59b87230a13d15f4f64cbdc7edc6c4542e1a93d4))
+* add wtfoc serve command with web UI ([#67](https://github.com/SgtPooki/wtfoc/issues/67)) ([8e79511](https://github.com/SgtPooki/wtfoc/commit/8e795115e8ea2679ea645cb62aa4b0373f1c125d))
+* **cli:** resumable ingest with chunk dedup ([e5a0460](https://github.com/SgtPooki/wtfoc/commit/e5a04607e5a2a2d355143e188393d491872132ed))
+* **cli:** wire GitHub adapter + real data demo script ([#52](https://github.com/SgtPooki/wtfoc/issues/52)) ([800f552](https://github.com/SgtPooki/wtfoc/commit/800f552e55a82c4ec59792285d208a692bba0a35))
+* improve multi-hop edge traversal with indexed lookups ([#68](https://github.com/SgtPooki/wtfoc/issues/68)) ([63fddf9](https://github.com/SgtPooki/wtfoc/commit/63fddf913f3ced1ae0885f7788842eb04291617a))
+* resolve edges across renamed GitHub repos ([#72](https://github.com/SgtPooki/wtfoc/issues/72)) ([ffedddd](https://github.com/SgtPooki/wtfoc/commit/ffedddd58c3a83b0e7f8fcd3b471ab561e211db8))
+
+
+### Bug Fixes
+
+* **cli:** batch ingest pipeline to prevent OOM on large repos ([6d2f497](https://github.com/SgtPooki/wtfoc/commit/6d2f497f7d752c7d6de7515fb5dda23ed36c7aa9))
+
+
+### Refactoring
+
+* **cli:** replace if/else ingest chain with pluggable adapter registry ([#53](https://github.com/SgtPooki/wtfoc/issues/53)) ([4abec80](https://github.com/SgtPooki/wtfoc/commit/4abec8079ebdd8f4b52c7196477274d817f15de3))
+* extract shared edge resolution logic from trace engine ([a4655ba](https://github.com/SgtPooki/wtfoc/commit/a4655ba49d932bbf53367c616364a882c7d0c2d1))
+
 ## [0.0.2](https://github.com/SgtPooki/wtfoc/compare/cli-v0.0.1...cli-v0.0.2) (2026-03-23)
 
 

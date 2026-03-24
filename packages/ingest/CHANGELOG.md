@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.0.3](https://github.com/SgtPooki/wtfoc/compare/ingest-v0.0.2...ingest-v0.0.3) (2026-03-24)
+
+
+### Features
+
+* add Slack adapter for channel history ingestion ([#10](https://github.com/SgtPooki/wtfoc/issues/10)) ([1eb3001](https://github.com/SgtPooki/wtfoc/commit/1eb3001ab8d81b8fee55cbb999bfa066b6c5c784))
+* **cli:** wire GitHub adapter + real data demo script ([#52](https://github.com/SgtPooki/wtfoc/issues/52)) ([800f552](https://github.com/SgtPooki/wtfoc/commit/800f552e55a82c4ec59792285d208a692bba0a35))
+* **ingest:** Discord adapter with JSON import + bot token support ([#31](https://github.com/SgtPooki/wtfoc/issues/31)) ([4376cba](https://github.com/SgtPooki/wtfoc/commit/4376cbac4b420b8c24f7602c6259f5b723d1108e))
+* **ingest:** GitHub adapter — issues, PRs, comments, discussions with rate limiting ([#50](https://github.com/SgtPooki/wtfoc/issues/50)) ([250f98b](https://github.com/SgtPooki/wtfoc/commit/250f98b65edf25f77ecd802faf8d946c64688ce3)), closes [#11](https://github.com/SgtPooki/wtfoc/issues/11)
+* **ingest:** website adapter using crawlee + turndown ([#32](https://github.com/SgtPooki/wtfoc/issues/32)) ([c0e5832](https://github.com/SgtPooki/wtfoc/commit/c0e5832187ce83aa8ff8cef93170c432d2636143))
+
+
+### Bug Fixes
+
+* **ingest:** set storageId to chunk content hash instead of empty string ([4de76a5](https://github.com/SgtPooki/wtfoc/commit/4de76a5acadd0adfcbede10dc58eac726c5a1d2f)), closes [#49](https://github.com/SgtPooki/wtfoc/issues/49)
+
+
+### Refactoring
+
+* **cli:** replace if/else ingest chain with pluggable adapter registry ([#53](https://github.com/SgtPooki/wtfoc/issues/53)) ([4abec80](https://github.com/SgtPooki/wtfoc/commit/4abec8079ebdd8f4b52c7196477274d817f15de3))
+
 ## [0.0.2](https://github.com/SgtPooki/wtfoc/compare/ingest-v0.0.1...ingest-v0.0.2) (2026-03-23)
 
 

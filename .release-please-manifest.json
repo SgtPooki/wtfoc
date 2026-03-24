@@ -1,9 +1,9 @@
 {
-	"packages/common": "0.0.2",
-	"packages/store": "0.0.2",
-	"packages/ingest": "0.0.2",
-	"packages/search": "0.0.2",
-	"packages/cli": "0.0.2",
-	"packages/mcp-server": "0.0.2",
-	"packages/wtfoc": "0.0.2"
+	"packages/common": "0.0.3",
+	"packages/store": "0.0.3",
+	"packages/ingest": "0.0.3",
+	"packages/search": "0.0.3",
+	"packages/cli": "0.0.3",
+	"packages/mcp-server": "0.0.3",
+	"packages/wtfoc": "0.0.3"
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.3](https://github.com/SgtPooki/wtfoc/compare/common-v0.0.2...common-v0.0.3) (2026-03-24)
+
+
+### Features
+
+* **ingest:** GitHub adapter — issues, PRs, comments, discussions with rate limiting ([#50](https://github.com/SgtPooki/wtfoc/issues/50)) ([250f98b](https://github.com/SgtPooki/wtfoc/commit/250f98b65edf25f77ecd802faf8d946c64688ce3)), closes [#11](https://github.com/SgtPooki/wtfoc/issues/11)
+
 ## [0.0.2](https://github.com/SgtPooki/wtfoc/compare/common-v0.0.1...common-v0.0.2) (2026-03-23)
 
 
