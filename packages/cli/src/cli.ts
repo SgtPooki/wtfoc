@@ -832,17 +832,19 @@ withEmbedderOptions(
 	program
 		.command("reindex")
 		.description("Re-embed a collection with a new embedding model")
-		.requiredOption("-c, --collection <name>", "Collection name")
+		.requiredOption("-c, --collection <name>", "Source collection name")
+		.option("--target <name>", "Target collection name (default: overwrite source)")
 		.option("--batch-size <number>", "Chunks per embedding batch", "500"),
 ).action(
-	async (opts: { collection: string; batchSize: string } & EmbedderOpts) => {
+	async (opts: { collection: string; target?: string; batchSize: string } & EmbedderOpts) => {
 		const store = getStore();
 		const format = getFormat(program.opts());
 		const { embedder, modelName } = createEmbedder(opts);
 		const storageType = (program.opts().storage ?? "local") as string;
 		const batchSize = Number.parseInt(opts.batchSize, 10);
+		const targetName = opts.target ?? opts.collection;
 
-		// Load the current head
+		// Load the source collection
 		const head = await store.manifests.getHead(opts.collection);
 		if (!head) {
 			console.error(`Error: collection "${opts.collection}" not found`);
@@ -850,13 +852,13 @@ withEmbedderOptions(
 		}
 
 		const oldModel = head.manifest.embeddingModel;
-		if (oldModel === modelName) {
+		if (oldModel === modelName && targetName === opts.collection) {
 			console.error(`Collection already uses model "${modelName}". Nothing to do.`);
 			process.exit(0);
 		}
 
 		if (format !== "quiet") {
-			console.error(`🔄 Re-indexing "${opts.collection}"`);
+			console.error(`🔄 Re-indexing "${opts.collection}"${targetName !== opts.collection ? ` → "${targetName}"` : ""}`);
 			console.error(`   Old model: ${oldModel} (${head.manifest.embeddingDimensions}d)`);
 			console.error(`   New model: ${modelName} (${embedder.dimensions}d)`);
 			console.error(
@@ -965,20 +967,20 @@ withEmbedderOptions(
 		}
 
 		// Write new manifest (old segments remain untouched — immutable audit trail)
-		const currentHead = await store.manifests.getHead(opts.collection);
-		const prevHeadId = currentHead ? currentHead.headId : null;
+		const targetHead = await store.manifests.getHead(targetName);
+		const prevHeadId = targetHead ? targetHead.headId : null;
 
 		const manifest: CollectionHead = {
 			schemaVersion: CURRENT_SCHEMA_VERSION,
-			collectionId: head.manifest.collectionId,
-			name: opts.collection,
-			currentRevisionId: head.manifest.currentRevisionId,
+			collectionId: targetHead?.manifest.collectionId ?? generateCollectionId(targetName),
+			name: targetName,
+			currentRevisionId: targetHead?.manifest.currentRevisionId ?? null,
 			prevHeadId,
 			segments: newSegmentSummaries,
 			totalChunks: allChunks.length,
 			embeddingModel: modelName,
 			embeddingDimensions: embedder.dimensions,
-			createdAt: head.manifest.createdAt,
+			createdAt: targetHead?.manifest.createdAt ?? head.manifest.createdAt,
 			updatedAt: new Date().toISOString(),
 		};
 
@@ -986,12 +988,13 @@ withEmbedderOptions(
 			manifest.batches = newBatches;
 		}
 
-		await store.manifests.putHead(opts.collection, manifest, prevHeadId);
+		await store.manifests.putHead(targetName, manifest, prevHeadId);
 
 		if (format === "json") {
 			console.log(
 				JSON.stringify({
-					collection: opts.collection,
+					source: opts.collection,
+					target: targetName,
 					oldModel,
 					newModel: modelName,
 					chunks: allChunks.length,
@@ -999,7 +1002,7 @@ withEmbedderOptions(
 				}),
 			);
 		} else if (format !== "quiet") {
-			console.error(`\n✅ Re-indexed "${opts.collection}"`);
+			console.error(`\n✅ Re-indexed "${opts.collection}"${targetName !== opts.collection ? ` → "${targetName}"` : ""}`);
 			console.error(`   ${allChunks.length} chunks re-embedded with ${modelName}`);
 			console.error(`   ${newSegmentSummaries.length} new segments created`);
 			console.error(`   Old segments preserved (immutable audit trail)`);
