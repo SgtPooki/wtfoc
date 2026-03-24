@@ -12,9 +12,9 @@ import {
 import {
 	buildSegment,
 	chunkMarkdown,
-	GitHubAdapter,
+	getAdapter,
+	getAvailableSourceTypes,
 	RegexEdgeExtractor,
-	RepoAdapter,
 	segmentId,
 } from "@wtfoc/ingest";
 import {
@@ -238,221 +238,126 @@ const ingestCmd = withEmbedderOptions(
 			process.exit(1);
 		}
 
-		// Collect chunks based on source type
-		const chunks: Chunk[] = [];
-		if (sourceType === "repo") {
-			const repoSource = args[0];
-			if (!repoSource) {
-				console.error("Error: repo source required (e.g. FilOzone/synapse-sdk or ./path)");
-				process.exit(2);
-			}
-			if (format !== "quiet") console.error(`⏳ Ingesting repo: ${repoSource}...`);
-			const adapter = new RepoAdapter();
-			const repoConfig = adapter.parseConfig({ source: repoSource });
-			for await (const chunk of adapter.ingest(repoConfig)) {
-				chunks.push(chunk);
-			}
-			if (format !== "quiet") console.error(`   ${chunks.length} chunks extracted`);
-
-			// Extract edges
-			const edgeExtractor = new RegexEdgeExtractor();
-			const edges = [...adapter.extractEdges(chunks), ...edgeExtractor.extract(chunks)];
-			if (format !== "quiet") console.error(`   ${edges.length} edges extracted`);
-
-			// Embed chunks
-			if (format !== "quiet") console.error("⏳ Embedding chunks...");
-			const embeddings = await embedder.embedBatch(chunks.map((c) => c.content));
-
-			// Build segment
-			const segmentChunks = chunks.map((chunk, i) => {
-				const emb = embeddings[i];
-				if (!emb)
-					throw new Error(
-						`Missing embedding for chunk ${i} — expected ${chunks.length} embeddings`,
-					);
-				return { chunk, embedding: Array.from(emb) };
-			});
-
-			const segment = buildSegment(segmentChunks, edges, {
-				embeddingModel: modelName,
-				embeddingDimensions: embedder.dimensions,
-			});
-
-			// Skip upload if zero chunks (FR-008)
-			if (chunks.length === 0) {
-				if (format !== "quiet") console.error("⚠️  No chunks produced — skipping upload");
-				return;
-			}
-
-			// Store segment — use bundler for FOC, direct upload for local
-			const segmentBytes = new TextEncoder().encode(JSON.stringify(segment));
-			const segId = segmentId(segment);
-			const storageType = (program.opts().storage ?? "local") as string;
-
-			let resultId: string;
-			let batchForManifest: import("@wtfoc/common").BatchRecord | undefined;
-
-			if (storageType === "foc") {
-				// FOC: bundle into CAR and upload once
-				if (format !== "quiet") console.error("⏳ Bundling into CAR...");
-				const bundleResult = await bundleAndUpload(
-					[{ id: segId, data: segmentBytes }],
-					store.storage,
-				);
-				resultId = bundleResult.segmentCids.get(segId) ?? segId;
-				batchForManifest = bundleResult.batch;
-				if (format !== "quiet")
-					console.error(
-						`   Segment bundled: ${resultId.slice(0, 16)}... (PieceCID: ${bundleResult.batch.pieceCid.slice(0, 16)}...)`,
-					);
-			} else {
-				// Local: direct upload (unchanged)
-				const segmentResult = await store.storage.upload(segmentBytes);
-				resultId = segmentResult.id;
-				if (format !== "quiet") console.error(`   Segment stored: ${resultId.slice(0, 16)}...`);
-			}
-
-			// Update manifest
-			const manifest: CollectionHead = {
-				schemaVersion: CURRENT_SCHEMA_VERSION,
-				collectionId: head?.manifest.collectionId ?? generateCollectionId(opts.collection),
-				name: opts.collection,
-				currentRevisionId: head?.manifest.currentRevisionId ?? null,
-				prevHeadId,
-				segments: [
-					...(head?.manifest.segments ?? []),
-					{
-						id: resultId,
-						sourceTypes: [...new Set(chunks.map((c) => c.sourceType))],
-						chunkCount: chunks.length,
-					},
-				],
-				totalChunks: (head?.manifest.totalChunks ?? 0) + chunks.length,
-				embeddingModel: modelName,
-				embeddingDimensions: embedder.dimensions,
-				createdAt: head?.manifest.createdAt ?? new Date().toISOString(),
-				updatedAt: new Date().toISOString(),
-			};
-
-			// Only set batches when there's batch data (FOC path) or existing batches to preserve
-			if (batchForManifest || head?.manifest.batches) {
-				manifest.batches = [
-					...(head?.manifest.batches ?? []),
-					...(batchForManifest ? [batchForManifest] : []),
-				];
-			}
-
-			await store.manifests.putHead(opts.collection, manifest, prevHeadId);
-			if (format !== "quiet") {
-				console.error(
-					`✅ Ingested ${chunks.length} chunks from ${repoSource} into "${opts.collection}"`,
-				);
-			}
-		} else if (sourceType === "github") {
-			const ghSource = args[0];
-			if (!ghSource || !ghSource.includes("/")) {
-				console.error("Error: github source required (e.g. FilOzone/synapse-sdk)");
-				process.exit(2);
-			}
-			if (format !== "quiet") console.error(`⏳ Ingesting github: ${ghSource}...`);
-
-			const adapter = new GitHubAdapter();
-			const sinceDate = opts.since ? parseSinceDuration(opts.since) : undefined;
-			const ghConfig = adapter.parseConfig({
-				source: ghSource,
-				since: sinceDate,
-			});
-
-			const chunks: Chunk[] = [];
-			for await (const chunk of adapter.ingest(ghConfig)) {
-				chunks.push(chunk);
-			}
-			if (format !== "quiet") console.error(`   ${chunks.length} chunks extracted`);
-
-			if (chunks.length === 0) {
-				if (format !== "quiet") console.error("⚠️  No chunks produced — skipping upload");
-				return;
-			}
-
-			const edges = adapter.extractEdges(chunks);
-			if (format !== "quiet") console.error(`   ${edges.length} edges extracted`);
-
-			if (format !== "quiet") console.error("⏳ Embedding chunks...");
-			const embeddings = await embedder.embedBatch(chunks.map((c) => c.content));
-
-			const segmentChunks = chunks.map((chunk, i) => {
-				const emb = embeddings[i];
-				if (!emb)
-					throw new Error(
-						`Missing embedding for chunk ${i} — expected ${chunks.length} embeddings`,
-					);
-				return { chunk, embedding: Array.from(emb) };
-			});
-
-			const segment = buildSegment(segmentChunks, edges, {
-				embeddingModel: modelName,
-				embeddingDimensions: embedder.dimensions,
-			});
-
-			const segmentBytes = new TextEncoder().encode(JSON.stringify(segment));
-			const segId = segmentId(segment);
-			const storageType = (program.opts().storage ?? "local") as string;
-
-			let resultId: string;
-			let batchForManifest: import("@wtfoc/common").BatchRecord | undefined;
-
-			if (storageType === "foc") {
-				if (format !== "quiet") console.error("⏳ Bundling into CAR...");
-				const bundleResult = await bundleAndUpload(
-					[{ id: segId, data: segmentBytes }],
-					store.storage,
-				);
-				resultId = bundleResult.segmentCids.get(segId) ?? segId;
-				batchForManifest = bundleResult.batch;
-			} else {
-				const segmentResult = await store.storage.upload(segmentBytes);
-				resultId = segmentResult.id;
-				if (format !== "quiet") console.error(`   Segment stored: ${resultId.slice(0, 16)}...`);
-			}
-
-			const manifest: CollectionHead = {
-				schemaVersion: CURRENT_SCHEMA_VERSION,
-				collectionId: head?.manifest.collectionId ?? generateCollectionId(opts.collection),
-				name: opts.collection,
-				currentRevisionId: head?.manifest.currentRevisionId ?? null,
-				prevHeadId,
-				segments: [
-					...(head?.manifest.segments ?? []),
-					{
-						id: resultId,
-						sourceTypes: [...new Set(chunks.map((c) => c.sourceType))],
-						chunkCount: chunks.length,
-					},
-				],
-				totalChunks: (head?.manifest.totalChunks ?? 0) + chunks.length,
-				embeddingModel: modelName,
-				embeddingDimensions: embedder.dimensions,
-				createdAt: head?.manifest.createdAt ?? new Date().toISOString(),
-				updatedAt: new Date().toISOString(),
-			};
-
-			if (batchForManifest || head?.manifest.batches) {
-				manifest.batches = [
-					...(head?.manifest.batches ?? []),
-					...(batchForManifest ? [batchForManifest] : []),
-				];
-			}
-
-			await store.manifests.putHead(opts.collection, manifest, prevHeadId);
-			if (format !== "quiet") {
-				console.error(
-					`✅ Ingested ${chunks.length} chunks from ${ghSource} into "${opts.collection}"`,
-				);
-			}
-		} else {
+		// Look up adapter from registry
+		const adapter = getAdapter(sourceType);
+		if (!adapter) {
 			console.error(`Unknown source type: ${sourceType}`);
-			console.error("Available: repo, github");
+			console.error(`Available: ${getAvailableSourceTypes().join(", ")}`);
 			process.exit(2);
+		}
+
+		// Build raw config from CLI args
+		const sourceArg = args[0];
+		if (!sourceArg) {
+			console.error(`Error: ${sourceType} source required`);
+			process.exit(2);
+		}
+
+		const rawConfig: Record<string, unknown> = { source: sourceArg };
+		if (opts.since) rawConfig.since = parseSinceDuration(opts.since);
+
+		if (format !== "quiet") console.error(`⏳ Ingesting ${sourceType}: ${sourceArg}...`);
+
+		const config = adapter.parseConfig(rawConfig);
+
+		// Ingest chunks
+		const chunks: Chunk[] = [];
+		for await (const chunk of adapter.ingest(config)) {
+			chunks.push(chunk);
+		}
+		if (format !== "quiet") console.error(`   ${chunks.length} chunks extracted`);
+
+		// Skip upload if zero chunks (FR-008)
+		if (chunks.length === 0) {
+			if (format !== "quiet") console.error("⚠️  No chunks produced — skipping upload");
+			return;
+		}
+
+		// Extract edges (adapter-specific + regex fallback)
+		const edgeExtractor = new RegexEdgeExtractor();
+		const edges = [...adapter.extractEdges(chunks), ...edgeExtractor.extract(chunks)];
+		if (format !== "quiet") console.error(`   ${edges.length} edges extracted`);
+
+		// Embed chunks
+		if (format !== "quiet") console.error("⏳ Embedding chunks...");
+		const embeddings = await embedder.embedBatch(chunks.map((c) => c.content));
+
+		// Build segment
+		const segmentChunks = chunks.map((chunk, i) => {
+			const emb = embeddings[i];
+			if (!emb)
+				throw new Error(`Missing embedding for chunk ${i} — expected ${chunks.length} embeddings`);
+			return { chunk, embedding: Array.from(emb) };
+		});
+
+		const segment = buildSegment(segmentChunks, edges, {
+			embeddingModel: modelName,
+			embeddingDimensions: embedder.dimensions,
+		});
+
+		// Store segment — use bundler for FOC, direct upload for local
+		const segmentBytes = new TextEncoder().encode(JSON.stringify(segment));
+		const segId = segmentId(segment);
+		const storageType = (program.opts().storage ?? "local") as string;
+
+		let resultId: string;
+		let batchForManifest: import("@wtfoc/common").BatchRecord | undefined;
+
+		if (storageType === "foc") {
+			// FOC: bundle into CAR and upload once
+			if (format !== "quiet") console.error("⏳ Bundling into CAR...");
+			const bundleResult = await bundleAndUpload(
+				[{ id: segId, data: segmentBytes }],
+				store.storage,
+			);
+			resultId = bundleResult.segmentCids.get(segId) ?? segId;
+			batchForManifest = bundleResult.batch;
+			if (format !== "quiet")
+				console.error(
+					`   Segment bundled: ${resultId.slice(0, 16)}... (PieceCID: ${bundleResult.batch.pieceCid.slice(0, 16)}...)`,
+				);
+		} else {
+			// Local: direct upload
+			const segmentResult = await store.storage.upload(segmentBytes);
+			resultId = segmentResult.id;
+			if (format !== "quiet") console.error(`   Segment stored: ${resultId.slice(0, 16)}...`);
+		}
+
+		// Update manifest
+		const manifest: CollectionHead = {
+			schemaVersion: CURRENT_SCHEMA_VERSION,
+			collectionId: head?.manifest.collectionId ?? generateCollectionId(opts.collection),
+			name: opts.collection,
+			currentRevisionId: head?.manifest.currentRevisionId ?? null,
+			prevHeadId,
+			segments: [
+				...(head?.manifest.segments ?? []),
+				{
+					id: resultId,
+					sourceTypes: [...new Set(chunks.map((c) => c.sourceType))],
+					chunkCount: chunks.length,
+				},
+			],
+			totalChunks: (head?.manifest.totalChunks ?? 0) + chunks.length,
+			embeddingModel: modelName,
+			embeddingDimensions: embedder.dimensions,
+			createdAt: head?.manifest.createdAt ?? new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		};
+
+		// Only set batches when there's batch data (FOC path) or existing batches to preserve
+		if (batchForManifest || head?.manifest.batches) {
+			manifest.batches = [
+				...(head?.manifest.batches ?? []),
+				...(batchForManifest ? [batchForManifest] : []),
+			];
+		}
+
+		await store.manifests.putHead(opts.collection, manifest, prevHeadId);
+		if (format !== "quiet") {
+			console.error(
+				`✅ Ingested ${chunks.length} chunks from ${sourceArg} into "${opts.collection}"`,
+			);
 		}
 	},
 );
