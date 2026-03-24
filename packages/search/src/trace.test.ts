@@ -266,6 +266,54 @@ describe("trace", () => {
 		expect(issueHop?.source).toBe("FilOzone/synapse-sdk#142");
 	});
 
+	it("fills underrepresented source types via semantic fallback", async () => {
+		// Only seed the index with slack — edges lead to issue and PR.
+		// Code chunk is in the segment but not in the seed results.
+		// The semantic fallback should find the code chunk.
+		const codeEntry: VectorEntry = {
+			id: "code-manager-ts",
+			vector: new Float32Array([0.7, 0.3, 0.0]),
+			storageId: "storage-code-1",
+			metadata: {
+				sourceType: "code",
+				source: "FilOzone/synapse-sdk",
+				content: "export class StorageManager { async upload(data) { ... } }",
+			},
+		};
+
+		const segmentWithCode: Segment = {
+			...testSegment,
+			chunks: [
+				...testSegment.chunks,
+				{
+					id: "code-manager-ts",
+					storageId: "storage-code-1",
+					content: "export class StorageManager { async upload(data) { ... } }",
+					embedding: [0.7, 0.3, 0.0],
+					terms: ["upload", "storage"],
+					source: "FilOzone/synapse-sdk",
+					sourceType: "code",
+					metadata: {},
+				},
+			],
+		};
+
+		// Index returns slack first, then code — but code won't be in initial seeds
+		// because maxTotal defaults to 15 and slack+edges fill the initial pass
+		const index = createMockIndex([slackChunk, codeEntry]);
+		const result = await trace("upload failures", mockEmbedder, index, [segmentWithCode], {
+			maxPerSource: 1,
+		});
+
+		// Should have at least one code result from semantic fallback
+		const codeHop = result.hops.find((h) => h.sourceType === "code");
+		expect(codeHop).toBeDefined();
+		expect(codeHop?.connection.method).toBe("semantic");
+
+		// Should have results from multiple source types
+		expect(result.stats.sourceTypes.length).toBeGreaterThanOrEqual(3);
+	});
+
 	it("respects AbortSignal", async () => {
 		const controller = new AbortController();
 		controller.abort();

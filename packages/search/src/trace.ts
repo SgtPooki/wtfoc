@@ -129,6 +129,61 @@ export async function trace(
 		if (hops.length >= maxTotal) break;
 	}
 
+	// Step 4: Semantic fallback for underrepresented source types
+	// Collect source types present in the collection
+	const allSourceTypes = new Set<string>();
+	for (const seg of segments) {
+		for (const chunk of seg.chunks) {
+			allSourceTypes.add(chunk.sourceType);
+		}
+	}
+
+	// Count hops per source type so far
+	const hopsByType = new Map<string, number>();
+	for (const hop of hops) {
+		hopsByType.set(hop.sourceType, (hopsByType.get(hop.sourceType) ?? 0) + 1);
+	}
+
+	// Fill in source types that have fewer than maxPerSource results
+	if (hops.length < maxTotal) {
+		for (const sourceType of allSourceTypes) {
+			const existing = hopsByType.get(sourceType) ?? 0;
+			if (existing >= maxPerSource) continue;
+			if (hops.length >= maxTotal) break;
+
+			options?.signal?.throwIfAborted();
+
+			const needed = maxPerSource - existing;
+			// Search more candidates than needed to account for visited/filtered ones
+			const candidates = await vectorIndex.search(queryVector, needed + visited.size);
+
+			for (const candidate of candidates) {
+				if (hops.length >= maxTotal) break;
+				if (candidate.score < minScore) continue;
+				if (visited.has(candidate.entry.id)) continue;
+				if ((candidate.entry.metadata.sourceType ?? "unknown") !== sourceType) continue;
+
+				visited.add(candidate.entry.id);
+				const chunkData = indexes.byId.get(candidate.entry.id);
+				hops.push({
+					content: chunkData?.content ?? "",
+					sourceType,
+					source: candidate.entry.metadata.source ?? "unknown",
+					sourceUrl: candidate.entry.metadata.sourceUrl,
+					storageId: candidate.entry.storageId,
+					connection: {
+						method: "semantic",
+						confidence: candidate.score,
+					},
+				});
+
+				const count = hopsByType.get(sourceType) ?? 0;
+				hopsByType.set(sourceType, count + 1);
+				if ((hopsByType.get(sourceType) ?? 0) >= maxPerSource) break;
+			}
+		}
+	}
+
 	// Group by sourceType
 	const groups: Record<string, TraceHop[]> = {};
 	for (const hop of hops) {
