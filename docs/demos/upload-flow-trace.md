@@ -13,7 +13,7 @@ This is the kind of question that normally takes hours of manual investigation a
 Run the companion script to reproduce this demo:
 
 ```bash
-./scripts/demo-upload-flow.sh
+./docs/demos/upload-flow-trace.sh
 ```
 
 Or manually:
@@ -140,8 +140,8 @@ Storage Provider (Curio)
 
 ```bash
 # Run the full demo
-./scripts/demo-upload-flow.sh
+./docs/demos/upload-flow-trace.sh
 
 # Or just the traces (if collection already exists)
-./scripts/demo-upload-flow.sh --skip-ingest
+./docs/demos/upload-flow-trace.sh --skip-ingest
 ```

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# demo-upload-flow.sh — Trace the upload flow across the FOC stack
+# upload-flow-trace.sh — Trace the upload flow across the FOC stack
 #
 # Usage:
 #   ./scripts/demo-upload-flow.sh                    # full ingest + traces
