@@ -24,6 +24,17 @@
 		"overrides": {
 			"undici@>=6.0.0 <6.24.0": ">=6.24.0",
 			"file-type@>=20.0.0 <=21.3.1": ">=21.3.2"
+		},
+		"onlyBuiltDependencies": [
+			"sharp",
+			"onnxruntime-node"
+		],
+		"packageExtensions": {
+			"@huggingface/transformers": {
+				"optionalDependencies": {
+					"sharp": "^0.34.5"
+				}
+			}
 		}
 	}
 }

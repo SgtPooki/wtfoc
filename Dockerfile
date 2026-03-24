@@ -20,10 +20,8 @@ FROM deps AS build
 COPY . .
 RUN pnpm -r build && pnpm --filter @wtfoc/web build:server
 
-# Prune unused deps (keep @huggingface/transformers + onnxruntime for local embedder)
-RUN rm -rf node_modules/.pnpm/sharp* \
-    node_modules/.pnpm/@img* \
-    node_modules/.pnpm/node-datachannel* \
+# Prune unused deps (keep @huggingface/transformers + onnxruntime + sharp for local embedder)
+RUN rm -rf node_modules/.pnpm/node-datachannel* \
     node_modules/.pnpm/@assemblyscript* \
     node_modules/.pnpm/@babel* \
     node_modules/.pnpm/@xenova* \
