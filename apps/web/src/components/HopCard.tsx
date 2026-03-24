@@ -44,15 +44,13 @@ export function HopCard({
 				<span class={`hop-connection ${connection.method}`}>{connectionLabel(connection)}</span>
 				{score !== undefined && <span class="hop-score">{(score * 100).toFixed(0)}%</span>}
 			</div>
-			<div
+			<button
+				type="button"
 				class={`hop-content ${expanded ? "expanded" : ""}`}
 				onClick={() => setExpanded(!expanded)}
-				onKeyDown={(e) => e.key === "Enter" && setExpanded(!expanded)}
-				role="button"
-				tabIndex={0}
 			>
 				{isCode ? <pre>{content}</pre> : content}
-			</div>
+			</button>
 		</div>
 	);
 }

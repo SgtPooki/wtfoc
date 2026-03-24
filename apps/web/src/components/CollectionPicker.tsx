@@ -56,17 +56,13 @@ export function CollectionPicker() {
 			</p>
 			<div class="collection-grid">
 				{collections.map((c) => (
-					<div
+					<button
 						key={c.name}
+						type="button"
 						class={`collection-card card-enter ${c.name === collection.value ? "active" : ""}`}
 						onClick={() => {
 							collection.value = c.name;
 						}}
-						onKeyDown={(e) => {
-							if (e.key === "Enter") collection.value = c.name;
-						}}
-						role="button"
-						tabIndex={0}
 					>
 						<h3>{c.name}</h3>
 						<div class="collection-meta">
@@ -78,7 +74,7 @@ export function CollectionPicker() {
 							</span>
 							<span>updated {timeAgo(c.updated)}</span>
 						</div>
-					</div>
+					</button>
 				))}
 			</div>
 		</div>

@@ -289,6 +289,12 @@ header h1 {
 	position: relative;
 	white-space: pre-wrap;
 	cursor: pointer;
+	background: none;
+	border: none;
+	padding: 0;
+	text-align: left;
+	width: 100%;
+	font-family: inherit;
 }
 .hop-content.expanded {
 	max-height: none;
@@ -399,6 +405,11 @@ header h1 {
 	padding: 1rem;
 	cursor: pointer;
 	transition: all 150ms;
+	text-align: left;
+	width: 100%;
+	font-family: inherit;
+	color: inherit;
+	font-size: inherit;
 }
 .collection-card:hover {
 	border-color: var(--accent);
