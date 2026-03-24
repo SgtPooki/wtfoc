@@ -39,6 +39,7 @@ Use stable IDs. Do not renumber existing stories.
 | `US-009` | Visualize the knowledge graph as an interactive web UI | Anyone demoing or exploring cross-source connections | `planned` | `high` | `-` | `-` | [#67](https://github.com/SgtPooki/wtfoc/issues/67) |
 | `US-010` | Review and validate extracted edges before promoting to FOC | Builder curating knowledge graph quality before immutable storage | `planned` | `medium` | `-` | `-` | [#69](https://github.com/SgtPooki/wtfoc/issues/69) |
 | `US-011` | Get notified when high-relevance content is ingested | Team wanting proactive alerts from their knowledge graph | `planned` | `medium` | `-` | `-` | [#70](https://github.com/SgtPooki/wtfoc/issues/70) |
+| `US-012` | Find unresolved TODOs in source code | Tech lead auditing codebase health | `idea` | `-` | `-` | `-` | `-` |
 
 ## How To Add A Story
 
@@ -192,17 +193,17 @@ If a story is only an idea, that is fine. Mark it `proposed` and leave missing l
 
 | Field | Value |
 |-------|-------|
-| Story | Launch a local web UI (`wtfoc serve`) that renders the knowledge graph as an interactive node-edge diagram with search, trace, and FOC verification links |
-| User | Anyone demoing or exploring cross-source connections |
-| Pain | CLI output is powerful but hard to demo; visual graphs are dramatically more compelling for presentations and onboarding |
-| Why `wtfoc` | A visual graph makes cross-source connections and FOC provenance tangible — each node links to its IPFS gateway URL |
-| Inputs | Any local collection produced by `wtfoc ingest` |
-| Expected output | Interactive graph with chunk nodes colored by source type, edge evidence on hover, search/trace modes, and CID verification badges |
+| Story | Use a local or hosted web UI to explore collections as an interactive graph with search, trace, and FOC-aware verification, with a path toward wallet-connected write flows |
+| User | Anyone demoing, exploring, or deploying `wtfoc` as a usable application rather than a CLI-only tool |
+| Pain | CLI output is powerful but hard to demo, hard to host, and not a good foundation for wallet UX, connector auth, or future encrypted collection management |
+| Why `wtfoc` | A web application makes cross-source connections and FOC provenance tangible while creating a real product surface for hosted use cases |
+| Inputs | Any local collection produced by `wtfoc ingest`, with a path to hosted collections and FOC-backed publish flows |
+| Expected output | Interactive graph with chunk nodes colored by source type, edge evidence on hover, search/trace modes, CID verification badges, and a clean split between local `wtfoc serve` and deployable web app runtime |
 | Example/demo | `-` |
 | Docs | `-` |
 | Issue/spec | [#67](https://github.com/SgtPooki/wtfoc/issues/67) |
 | Status | `planned` |
-| Open gaps | Tech choice for graph rendering (D3.js vs vis.js), scale testing with large collections |
+| Open gaps | Need to define the split between local `wtfoc serve` and deployable web app, shared API boundaries, hosted auth/wallet concerns, and scale testing with large collections |
 
 ### `US-010` Review and validate extracted edges before promoting to FOC
 
@@ -212,13 +213,13 @@ If a story is only an idea, that is fine. Mark it `proposed` and leave missing l
 | User | Builder curating knowledge graph quality before immutable storage |
 | Pain | Regex edge extraction produces false positives; once promoted to FOC, segments are immutable and can't be corrected |
 | Why `wtfoc` | Human-in-the-loop quality gate preserves provenance (original extraction kept) while allowing correction before immutable commit |
-| Inputs | Local collection with extracted edges, served via `wtfoc serve` |
+| Inputs | Local collection with extracted edges, served via the shared local app/runtime layer |
 | Expected output | Triage sidecar file with approve/reject/override decisions; `wtfoc promote` respects decisions |
 | Example/demo | `-` |
 | Docs | `-` |
 | Issue/spec | [#69](https://github.com/SgtPooki/wtfoc/issues/69) |
 | Status | `planned` |
-| Open gaps | Blocked on #67 (`wtfoc serve`); edge identity stability across re-ingests |
+| Open gaps | Blocked on the shared UI/app runtime from #67; edge identity stability across re-ingests |
 
 ### `US-011` Get notified when high-relevance content is ingested
 
@@ -235,6 +236,22 @@ If a story is only an idea, that is fine. Mark it `proposed` and leave missing l
 | Issue/spec | [#70](https://github.com/SgtPooki/wtfoc/issues/70) |
 | Status | `planned` |
 | Open gaps | Signal-score-based triggers blocked on #61; trigger rule aggregation scope needs spec |
+
+### `US-012` Find unresolved TODOs in source code
+
+| Field | Value |
+|-------|-------|
+| Story | Trace TODO/FIXME/HACK comments in ingested source code against GitHub issues and Slack discussions to identify which TODOs are tracked (linked to an issue) and which are orphaned tech debt |
+| User | Tech lead auditing codebase health, or engineer prioritizing tech debt |
+| Pain | TODO comments accumulate silently — some reference issues that are already closed, some have no corresponding issue at all, and nobody knows which are stale vs active |
+| Why `wtfoc` | The edge system already extracts `#N` refs from code comments. The value-add is surfacing TODOs that have *no* edge — they're tech debt nobody's tracking. Cross-referencing against Slack discussions can reveal TODOs that were discussed but never filed as issues |
+| Inputs | Ingested repo (code chunks with TODO/FIXME/HACK), plus GitHub issues and optionally Slack |
+| Expected output | Report grouping TODOs into: tracked (edge to open issue), resolved (edge to closed issue), orphaned (no edge), and discussed (semantic match in Slack but no issue) |
+| Example/demo | `-` |
+| Docs | `-` |
+| Issue/spec | `-` |
+| Status | `idea` |
+| Open gaps | Need to extract TODO comments as a distinct chunk type or metadata tag during repo ingest; closed-issue detection requires GitHub API enrichment; could be a `/todo-audit` skill or drift-check variant |
 
 ## Story Template
 
