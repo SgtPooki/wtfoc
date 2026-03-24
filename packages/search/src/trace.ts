@@ -171,11 +171,14 @@ interface ChunkIndexes {
 	byId: Map<string, ChunkData>;
 	/** Lowercased source string → chunk IDs for case-insensitive resolution */
 	bySource: Map<string, string[]>;
+	/** Lowercased "repo#N" (without org) → chunk IDs for renamed repo resolution */
+	byRepoName: Map<string, string[]>;
 }
 
 function buildChunkIndexes(segments: Segment[]): ChunkIndexes {
 	const byId = new Map<string, ChunkData>();
 	const bySource = new Map<string, string[]>();
+	const byRepoName = new Map<string, string[]>();
 
 	for (const seg of segments) {
 		for (const chunk of seg.chunks) {
@@ -189,15 +192,24 @@ function buildChunkIndexes(segments: Segment[]): ChunkIndexes {
 			byId.set(chunk.id, data);
 
 			// Index by lowercased source for case-insensitive edge resolution
-			// (handles case drift: e.g. "FILCAT/pdp#24" in Slack vs "FilOzone/pdp#24" in chunks)
 			const key = chunk.source.toLowerCase();
 			const ids = bySource.get(key) ?? [];
 			ids.push(chunk.id);
 			bySource.set(key, ids);
+
+			// Index by repo name only (without org) for renamed repo resolution
+			// e.g. "FilOzone/pdp#24" → "pdp#24" so "FILCAT/pdp#24" can match
+			const slashIdx = key.indexOf("/");
+			if (slashIdx !== -1) {
+				const repoKey = key.slice(slashIdx + 1);
+				const repoIds = byRepoName.get(repoKey) ?? [];
+				repoIds.push(chunk.id);
+				byRepoName.set(repoKey, repoIds);
+			}
 		}
 	}
 
-	return { byId, bySource };
+	return { byId, bySource, byRepoName };
 }
 
 /**
@@ -345,6 +357,21 @@ function findChunksByTarget(targetId: string, indexes: ChunkIndexes): Array<[str
 					if (data) results.push([id, data]);
 				}
 				if (results.length >= 10) break;
+			}
+		}
+		if (results.length > 0) return results;
+	}
+
+	// 4. Renamed repo fallback — strip org prefix and match by repo name only (O(1))
+	//    e.g. "FILCAT/pdp#24" → look up "pdp#24" which matches "FilOzone/pdp#24"
+	const slashIdx = lowerTarget.indexOf("/");
+	if (slashIdx !== -1) {
+		const repoKey = lowerTarget.slice(slashIdx + 1);
+		const repoMatches = indexes.byRepoName.get(repoKey);
+		if (repoMatches) {
+			for (const id of repoMatches) {
+				const data = indexes.byId.get(id);
+				if (data) results.push([id, data]);
 			}
 		}
 	}

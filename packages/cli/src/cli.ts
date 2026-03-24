@@ -18,10 +18,10 @@ import {
 	segmentId,
 } from "@wtfoc/ingest";
 import {
-	InMemoryVectorIndex,
-	OpenAIEmbedder,
 	analyzeEdgeResolution,
 	buildSourceIndex,
+	InMemoryVectorIndex,
+	OpenAIEmbedder,
 	query,
 	TransformersEmbedder,
 	trace,
@@ -616,7 +616,13 @@ program
 		// Use shared edge resolution logic (same as trace engine)
 		const sourceIndex = buildSourceIndex(allSegments);
 		const stats = analyzeEdgeResolution(allSegments, sourceIndex);
-		const { totalEdges, resolvedEdges, bareRefs, unresolvedEdges: unresolvedCount, unresolvedByRepo } = stats;
+		const {
+			totalEdges,
+			resolvedEdges,
+			bareRefs,
+			unresolvedEdges: unresolvedCount,
+			unresolvedByRepo,
+		} = stats;
 		const sorted = [...unresolvedByRepo.entries()].sort((a, b) => b[1] - a[1]);
 		const maxShow = Number.parseInt(opts.limit, 10) || 20;
 
@@ -633,7 +639,9 @@ program
 		} else {
 			console.log(`\n📊 Edge resolution for "${opts.collection}"`);
 			console.log(`   Total edges: ${totalEdges}`);
-			console.log(`   Resolved:    ${resolvedEdges} (${Math.round((resolvedEdges / totalEdges) * 100)}%)`);
+			console.log(
+				`   Resolved:    ${resolvedEdges} (${Math.round((resolvedEdges / totalEdges) * 100)}%)`,
+			);
 			console.log(`   Bare #N:     ${bareRefs} (no repo context)`);
 			console.log(`   Unresolved:  ${unresolvedCount}`);
 
@@ -680,7 +688,8 @@ program
 			for (const c of segment.chunks) {
 				// Track ingested GitHub repos (from source field like "owner/repo#N" or "owner/repo/path")
 				const repoMatch = c.source.match(/^([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)/);
-				if (repoMatch && c.sourceType.startsWith("github-")) ingestedRepos.add(repoMatch[1]!.toLowerCase());
+				if (repoMatch && c.sourceType.startsWith("github-"))
+					ingestedRepos.add(repoMatch[1]!.toLowerCase());
 				if (c.sourceType === "code" || c.sourceType === "markdown") {
 					const codeRepo = c.source.match(/^([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)/);
 					if (codeRepo) ingestedRepos.add(codeRepo[1]!.toLowerCase());
@@ -697,7 +706,8 @@ program
 
 		// Scan content and edges for external references
 		const GITHUB_REPO_URL = /https?:\/\/github\.com\/([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)/g;
-		const DOCS_SITE_URL = /https?:\/\/((?:docs\.[a-z0-9.-]+|[a-z0-9.-]+\.(?:dev|io|cloud|org|com)))\//g;
+		const DOCS_SITE_URL =
+			/https?:\/\/((?:docs\.[a-z0-9.-]+|[a-z0-9.-]+\.(?:dev|io|cloud|org|com)))\//g;
 
 		const repoRefs = new Map<string, number>();
 		const siteRefs = new Map<string, number>();
@@ -764,7 +774,9 @@ program
 			}
 
 			if (sortedRepos.length > 0) {
-				console.log(`\n   To ingest a repo:    wtfoc ingest github <owner/repo> -c ${opts.collection}`);
+				console.log(
+					`\n   To ingest a repo:    wtfoc ingest github <owner/repo> -c ${opts.collection}`,
+				);
 				console.log(`   To ingest a website: wtfoc ingest website <url> -c ${opts.collection}`);
 			}
 		}

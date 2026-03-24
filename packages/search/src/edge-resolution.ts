@@ -9,6 +9,8 @@ export interface SourceIndex {
 	chunkIds: Set<string>;
 	/** Lowercased source strings → chunk IDs */
 	bySource: Map<string, string[]>;
+	/** Lowercased "repo#N" (without org) → chunk IDs for renamed repo resolution */
+	byRepoName: Map<string, string[]>;
 }
 
 /**
@@ -17,6 +19,7 @@ export interface SourceIndex {
 export function buildSourceIndex(segments: Segment[]): SourceIndex {
 	const chunkIds = new Set<string>();
 	const bySource = new Map<string, string[]>();
+	const byRepoName = new Map<string, string[]>();
 
 	for (const seg of segments) {
 		for (const chunk of seg.chunks) {
@@ -26,10 +29,18 @@ export function buildSourceIndex(segments: Segment[]): SourceIndex {
 			const ids = bySource.get(key) ?? [];
 			ids.push(chunk.id);
 			bySource.set(key, ids);
+
+			const slashIdx = key.indexOf("/");
+			if (slashIdx !== -1) {
+				const repoKey = key.slice(slashIdx + 1);
+				const repoIds = byRepoName.get(repoKey) ?? [];
+				repoIds.push(chunk.id);
+				byRepoName.set(repoKey, repoIds);
+			}
 		}
 	}
 
-	return { chunkIds, bySource };
+	return { chunkIds, bySource, byRepoName };
 }
 
 /**
@@ -54,6 +65,13 @@ export function resolves(targetId: string, index: SourceIndex): boolean {
 		}
 	}
 
+	// 4. Renamed repo fallback — strip org and match by repo name only
+	const slashIdx = lower.indexOf("/");
+	if (slashIdx !== -1) {
+		const repoKey = lower.slice(slashIdx + 1);
+		if (index.byRepoName.has(repoKey)) return true;
+	}
+
 	return false;
 }
 
@@ -68,7 +86,10 @@ export interface EdgeResolutionStats {
 /**
  * Analyze edge resolution across all segments.
  */
-export function analyzeEdgeResolution(segments: Segment[], index: SourceIndex): EdgeResolutionStats {
+export function analyzeEdgeResolution(
+	segments: Segment[],
+	index: SourceIndex,
+): EdgeResolutionStats {
 	const repoCounts = new Map<string, number>();
 	let totalEdges = 0;
 	let resolvedEdges = 0;
