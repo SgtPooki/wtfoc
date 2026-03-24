@@ -43,7 +43,13 @@ async function apiFetch<T>(
 
 // ─── Collection-scoped endpoints ────────────────────────────────────────────
 
+const CID_PREFIX = "cid:";
+
 function collectionPath(collection: string, endpoint: string): string {
+	if (collection.startsWith(CID_PREFIX)) {
+		const cid = collection.slice(CID_PREFIX.length);
+		return `/api/collections/cid/${encodeURIComponent(cid)}/${endpoint}`;
+	}
 	return `/api/collections/${encodeURIComponent(collection)}/${endpoint}`;
 }
 

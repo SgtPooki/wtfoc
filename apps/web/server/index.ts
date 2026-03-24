@@ -16,7 +16,8 @@ import {
 	query,
 	trace,
 } from "@wtfoc/search";
-import { createStore } from "@wtfoc/store";
+import { createStore, resolveCollectionByCid } from "@wtfoc/store";
+import { mountCollection } from "@wtfoc/search";
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -131,6 +132,47 @@ async function getCollection(name: string): Promise<LoadedCollection | null> {
 	return loaded;
 }
 
+// ─── CID Collection Loading ─────────────────────────────────────────────────
+
+const cidInflight = new Map<string, Promise<LoadedCollection>>();
+
+async function getCollectionByCid(cid: string): Promise<LoadedCollection> {
+	const cached = collectionCache.get(`cid:${cid}`);
+	if (cached) return cached;
+
+	// Deduplicate in-flight requests for the same CID
+	const existing = cidInflight.get(cid);
+	if (existing) return existing;
+
+	const promise = (async () => {
+		console.error(`⏳ Fetching collection from CID ${cid.slice(0, 16)}...`);
+		const { manifest, storage } = await resolveCollectionByCid(cid);
+
+		const vectorIndex = new InMemoryVectorIndex();
+		const mounted = await mountCollection(manifest, storage, vectorIndex);
+
+		const loaded: LoadedCollection = {
+			manifest,
+			segments: mounted.segments,
+			vectorIndex: mounted.vectorIndex,
+			loadedAt: Date.now(),
+		};
+
+		collectionCache.set(`cid:${cid}`, loaded);
+		console.error(
+			`✅ Loaded CID ${cid.slice(0, 16)}...: ${manifest.totalChunks} chunks, ${manifest.segments.length} segments`,
+		);
+		return loaded;
+	})();
+
+	cidInflight.set(cid, promise);
+	try {
+		return await promise;
+	} finally {
+		cidInflight.delete(cid);
+	}
+}
+
 // ─── Static File Serving ────────────────────────────────────────────────────
 
 const MIME_TYPES: Record<string, string> = {
@@ -216,22 +258,15 @@ async function main() {
 		}
 
 		try {
-			// ─── Collection-scoped API: /api/collections/:name/... ───
-			const collectionMatch = path.match(/^\/api\/collections\/([^/]+)\/(.+)$/);
-			if (collectionMatch) {
-				const [, collectionName, endpoint] = collectionMatch;
-				if (!collectionName || !endpoint) {
-					return jsonResponse(res, { error: "Invalid collection path" }, 400);
-				}
-
-				const col = await getCollection(decodeURIComponent(collectionName));
-				if (!col) {
-					return jsonResponse(res, { error: `Collection "${collectionName}" not found` }, 404);
-				}
-
+			// ─── Shared endpoint handler ───
+			async function handleEndpoint(
+				col: LoadedCollection,
+				endpoint: string,
+				collectionLabel: string,
+			): Promise<void> {
 				if (endpoint === "status") {
 					return jsonResponse(res, {
-						collection: col.manifest.name,
+						collection: collectionLabel,
 						totalChunks: col.manifest.totalChunks,
 						segments: col.manifest.segments.length,
 						embeddingModel: col.manifest.embeddingModel,
@@ -305,6 +340,41 @@ async function main() {
 				}
 
 				return jsonResponse(res, { error: `Unknown endpoint: ${endpoint}` }, 404);
+			}
+
+			// ─── CID-scoped API: /api/collections/cid/:cid/... ───
+			const cidMatch = path.match(/^\/api\/collections\/cid\/([^/]+)\/(.+)$/);
+			if (cidMatch) {
+				const [, cid, endpoint] = cidMatch;
+				if (!cid || !endpoint) {
+					return jsonResponse(res, { error: "Invalid CID path" }, 400);
+				}
+
+				try {
+					const col = await getCollectionByCid(decodeURIComponent(cid));
+					return handleEndpoint(col, endpoint, `cid:${cid}`);
+				} catch (err) {
+					const code = err instanceof Error && "code" in err ? (err as { code: string }).code : "";
+					if (code === "CID_INVALID") return jsonResponse(res, { error: "Invalid CID format", code }, 400);
+					if (code === "CID_NOT_MANIFEST") return jsonResponse(res, { error: "CID does not point to a wtfoc collection", code }, 422);
+					throw err;
+				}
+			}
+
+			// ─── Collection-scoped API: /api/collections/:name/... ───
+			const collectionMatch = path.match(/^\/api\/collections\/([^/]+)\/(.+)$/);
+			if (collectionMatch) {
+				const [, collectionName, endpoint] = collectionMatch;
+				if (!collectionName || !endpoint) {
+					return jsonResponse(res, { error: "Invalid collection path" }, 400);
+				}
+
+				const col = await getCollection(decodeURIComponent(collectionName));
+				if (!col) {
+					return jsonResponse(res, { error: `Collection "${collectionName}" not found` }, 404);
+				}
+
+				return handleEndpoint(col, endpoint, col.manifest.name);
 			}
 
 			// ─── List collections: /api/collections ───

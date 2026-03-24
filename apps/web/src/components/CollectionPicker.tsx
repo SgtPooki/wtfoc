@@ -2,6 +2,7 @@ import { useEffect, useState } from "preact/hooks";
 import { fetchCollections } from "../api";
 import { collection } from "../state";
 import type { CollectionSummary } from "../types";
+import { CidInput } from "./CidInput";
 import { ErrorBanner } from "./ErrorBanner";
 
 function timeAgo(iso: string): string {
@@ -77,6 +78,7 @@ export function CollectionPicker() {
 					</button>
 				))}
 			</div>
+			<CidInput />
 		</div>
 	);
 }
