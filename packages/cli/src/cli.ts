@@ -586,6 +586,102 @@ program
 		}
 	});
 
+// ─── wtfoc unresolved-edges ──────────────────────────────────────────────────
+program
+	.command("unresolved-edges")
+	.description("Show edge targets that don't resolve to any chunk in the collection")
+	.requiredOption("-c, --collection <name>", "Collection name")
+	.option("--limit <number>", "Max repos to show", "20")
+	.action(async (opts: { collection: string; limit: string }) => {
+		const store = getStore();
+		const format = getFormat(program.opts());
+
+		const head = await store.manifests.getHead(opts.collection);
+		if (!head) {
+			console.error(`Error: collection "${opts.collection}" not found`);
+			process.exit(1);
+		}
+
+		if (format !== "quiet") console.error("⏳ Loading segments...");
+
+		// Build set of all known sources (lowercased for case-insensitive matching)
+		const sources = new Set<string>();
+		const allSegments: Segment[] = [];
+		for (const segSummary of head.manifest.segments) {
+			const segBytes = await store.storage.download(segSummary.id);
+			const segment = JSON.parse(new TextDecoder().decode(segBytes)) as Segment;
+			allSegments.push(segment);
+			for (const c of segment.chunks) {
+				sources.add(c.source.toLowerCase());
+				sources.add(c.id);
+			}
+		}
+
+		// Count unresolved edge targets by repo
+		const repoCounts = new Map<string, number>();
+		let totalEdges = 0;
+		let resolvedEdges = 0;
+		let bareRefs = 0;
+
+		for (const seg of allSegments) {
+			for (const edge of seg.edges) {
+				totalEdges++;
+				const lower = edge.targetId.toLowerCase();
+
+				// Skip bare #N refs (no repo context)
+				if (/^#\d+$/.test(edge.targetId)) {
+					bareRefs++;
+					continue;
+				}
+
+				if (sources.has(lower)) {
+					resolvedEdges++;
+					continue;
+				}
+
+				// Extract repo from targetId like "owner/repo#N"
+				const match = edge.targetId.match(/^([^#]+)#/);
+				if (match) {
+					const repo = match[1]!;
+					repoCounts.set(repo, (repoCounts.get(repo) ?? 0) + 1);
+				}
+			}
+		}
+
+		const unresolvedCount = totalEdges - resolvedEdges - bareRefs;
+		const sorted = [...repoCounts.entries()].sort((a, b) => b[1] - a[1]);
+		const maxShow = Number.parseInt(opts.limit, 10) || 20;
+
+		if (format === "json") {
+			console.log(
+				JSON.stringify({
+					totalEdges,
+					resolvedEdges,
+					bareRefs,
+					unresolvedEdges: unresolvedCount,
+					unresolvedByRepo: Object.fromEntries(sorted),
+				}),
+			);
+		} else {
+			console.log(`\n📊 Edge resolution for "${opts.collection}"`);
+			console.log(`   Total edges: ${totalEdges}`);
+			console.log(`   Resolved:    ${resolvedEdges} (${Math.round((resolvedEdges / totalEdges) * 100)}%)`);
+			console.log(`   Bare #N:     ${bareRefs} (no repo context)`);
+			console.log(`   Unresolved:  ${unresolvedCount}`);
+
+			if (sorted.length > 0) {
+				console.log(`\n⚠️  Unresolved edge targets by repo:`);
+				for (const [repo, count] of sorted.slice(0, maxShow)) {
+					console.log(`   ${String(count).padStart(4)}  ${repo}`);
+				}
+				if (sorted.length > maxShow) {
+					console.log(`   ... and ${sorted.length - maxShow} more repos`);
+				}
+				console.log(`\n   Run \`wtfoc ingest github <repo> -c ${opts.collection}\` to add them.`);
+			}
+		}
+	});
+
 // ─── Helper: load collection into embedder + vector index ────────────────────
 
 interface LoadedCollection {
