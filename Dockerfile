@@ -20,11 +20,8 @@ FROM deps AS build
 COPY . .
 RUN pnpm -r build && pnpm --filter @wtfoc/web build:server
 
-# Prune heavy optional/unused deps from node_modules before production copy
-RUN rm -rf node_modules/.pnpm/onnxruntime-* \
-    node_modules/.pnpm/@huggingface* \
-    node_modules/.pnpm/onnxruntime-web* \
-    node_modules/.pnpm/sharp* \
+# Prune unused deps (keep @huggingface/transformers + onnxruntime for local embedder)
+RUN rm -rf node_modules/.pnpm/sharp* \
     node_modules/.pnpm/@img* \
     node_modules/.pnpm/node-datachannel* \
     node_modules/.pnpm/@assemblyscript* \
