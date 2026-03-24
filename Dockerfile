@@ -22,30 +22,15 @@ RUN pnpm -r build
 RUN pnpm --filter @wtfoc/web build:server
 
 # ─── Production image ────────────────────────────────────────────────────────
+# Re-install with prod-only deps, keeping pnpm workspace symlinks intact
 FROM base AS production
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/packages/common/node_modules ./packages/common/node_modules
-COPY --from=deps /app/packages/store/node_modules ./packages/store/node_modules
-COPY --from=deps /app/packages/search/node_modules ./packages/search/node_modules
-
-# Copy built packages
-COPY --from=build /app/packages/common/dist ./packages/common/dist
-COPY --from=build /app/packages/common/package.json ./packages/common/
-COPY --from=build /app/packages/store/dist ./packages/store/dist
-COPY --from=build /app/packages/store/package.json ./packages/store/
-COPY --from=build /app/packages/search/dist ./packages/search/dist
-COPY --from=build /app/packages/search/package.json ./packages/search/
-COPY --from=build /app/packages/ingest/dist ./packages/ingest/dist
-COPY --from=build /app/packages/ingest/package.json ./packages/ingest/
-
-# Copy web app (SPA + server)
-COPY --from=build /app/apps/web/dist ./apps/web/dist
-COPY --from=build /app/apps/web/server/dist ./apps/web/server/dist
-COPY --from=build /app/apps/web/package.json ./apps/web/
-
-# Copy workspace config for pnpm resolution
-COPY --from=build /app/package.json ./
-COPY --from=build /app/pnpm-workspace.yaml ./
+COPY --from=build /app ./
+RUN pnpm install --frozen-lockfile --prod
+# Clean up source files, keep only dist
+RUN find packages -name "src" -type d -exec rm -rf {} + 2>/dev/null; \
+    rm -rf apps/web/src apps/web/server/*.ts apps/web/server/tsconfig.json; \
+    rm -rf .git .claude .specify docs; \
+    true
 
 ENV WTFOC_PORT=3577
 ENV WTFOC_WEB_DIR=/app/apps/web/dist
