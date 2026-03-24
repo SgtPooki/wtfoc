@@ -20,6 +20,8 @@ import {
 import {
 	InMemoryVectorIndex,
 	OpenAIEmbedder,
+	analyzeEdgeResolution,
+	buildSourceIndex,
 	query,
 	TransformersEmbedder,
 	trace,
@@ -604,52 +606,18 @@ program
 
 		if (format !== "quiet") console.error("⏳ Loading segments...");
 
-		// Build set of all known sources (lowercased for case-insensitive matching)
-		const sources = new Set<string>();
 		const allSegments: Segment[] = [];
 		for (const segSummary of head.manifest.segments) {
 			const segBytes = await store.storage.download(segSummary.id);
 			const segment = JSON.parse(new TextDecoder().decode(segBytes)) as Segment;
 			allSegments.push(segment);
-			for (const c of segment.chunks) {
-				sources.add(c.source.toLowerCase());
-				sources.add(c.id);
-			}
 		}
 
-		// Count unresolved edge targets by repo
-		const repoCounts = new Map<string, number>();
-		let totalEdges = 0;
-		let resolvedEdges = 0;
-		let bareRefs = 0;
-
-		for (const seg of allSegments) {
-			for (const edge of seg.edges) {
-				totalEdges++;
-				const lower = edge.targetId.toLowerCase();
-
-				// Skip bare #N refs (no repo context)
-				if (/^#\d+$/.test(edge.targetId)) {
-					bareRefs++;
-					continue;
-				}
-
-				if (sources.has(lower)) {
-					resolvedEdges++;
-					continue;
-				}
-
-				// Extract repo from targetId like "owner/repo#N"
-				const match = edge.targetId.match(/^([^#]+)#/);
-				if (match) {
-					const repo = match[1]!;
-					repoCounts.set(repo, (repoCounts.get(repo) ?? 0) + 1);
-				}
-			}
-		}
-
-		const unresolvedCount = totalEdges - resolvedEdges - bareRefs;
-		const sorted = [...repoCounts.entries()].sort((a, b) => b[1] - a[1]);
+		// Use shared edge resolution logic (same as trace engine)
+		const sourceIndex = buildSourceIndex(allSegments);
+		const stats = analyzeEdgeResolution(allSegments, sourceIndex);
+		const { totalEdges, resolvedEdges, bareRefs, unresolvedEdges: unresolvedCount, unresolvedByRepo } = stats;
+		const sorted = [...unresolvedByRepo.entries()].sort((a, b) => b[1] - a[1]);
 		const maxShow = Number.parseInt(opts.limit, 10) || 20;
 
 		if (format === "json") {
@@ -659,7 +627,7 @@ program
 					resolvedEdges,
 					bareRefs,
 					unresolvedEdges: unresolvedCount,
-					unresolvedByRepo: Object.fromEntries(sorted),
+					unresolvedByRepo: Object.fromEntries(unresolvedByRepo),
 				}),
 			);
 		} else {

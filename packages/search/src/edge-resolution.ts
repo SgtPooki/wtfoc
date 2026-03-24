@@ -1,0 +1,106 @@
+import type { Segment } from "@wtfoc/common";
+
+/**
+ * Lightweight source index for checking whether edge targets resolve
+ * to existing chunks. Used by both the trace engine and CLI tools.
+ */
+export interface SourceIndex {
+	/** All chunk IDs */
+	chunkIds: Set<string>;
+	/** Lowercased source strings → chunk IDs */
+	bySource: Map<string, string[]>;
+}
+
+/**
+ * Build a source index from segments for edge resolution checks.
+ */
+export function buildSourceIndex(segments: Segment[]): SourceIndex {
+	const chunkIds = new Set<string>();
+	const bySource = new Map<string, string[]>();
+
+	for (const seg of segments) {
+		for (const chunk of seg.chunks) {
+			chunkIds.add(chunk.id);
+
+			const key = chunk.source.toLowerCase();
+			const ids = bySource.get(key) ?? [];
+			ids.push(chunk.id);
+			bySource.set(key, ids);
+		}
+	}
+
+	return { chunkIds, bySource };
+}
+
+/**
+ * Check whether an edge targetId resolves to any chunk in the index.
+ * Uses the same 3-tier resolution as the trace engine:
+ * 1. Direct chunk ID match
+ * 2. Exact source match (case-insensitive)
+ * 3. Partial source match for structured IDs (contains / or :)
+ */
+export function resolves(targetId: string, index: SourceIndex): boolean {
+	// 1. Direct chunk ID match
+	if (index.chunkIds.has(targetId)) return true;
+
+	// 2. Exact source match (case-insensitive)
+	const lower = targetId.toLowerCase();
+	if (index.bySource.has(lower)) return true;
+
+	// 3. Partial source match for structured IDs
+	if (targetId.includes("/") || targetId.includes(":")) {
+		for (const source of index.bySource.keys()) {
+			if (source.includes(lower)) return true;
+		}
+	}
+
+	return false;
+}
+
+export interface EdgeResolutionStats {
+	totalEdges: number;
+	resolvedEdges: number;
+	bareRefs: number;
+	unresolvedEdges: number;
+	unresolvedByRepo: Map<string, number>;
+}
+
+/**
+ * Analyze edge resolution across all segments.
+ */
+export function analyzeEdgeResolution(segments: Segment[], index: SourceIndex): EdgeResolutionStats {
+	const repoCounts = new Map<string, number>();
+	let totalEdges = 0;
+	let resolvedEdges = 0;
+	let bareRefs = 0;
+
+	for (const seg of segments) {
+		for (const edge of seg.edges) {
+			totalEdges++;
+
+			if (/^#\d+$/.test(edge.targetId)) {
+				bareRefs++;
+				continue;
+			}
+
+			if (resolves(edge.targetId, index)) {
+				resolvedEdges++;
+				continue;
+			}
+
+			const match = edge.targetId.match(/^([^#]+)#/);
+			if (match) {
+				const repo = match[1]!;
+				repoCounts.set(repo, (repoCounts.get(repo) ?? 0) + 1);
+			}
+		}
+	}
+
+	return {
+		totalEdges,
+		resolvedEdges,
+		bareRefs,
+		unresolvedEdges: totalEdges - resolvedEdges - bareRefs,
+		unresolvedByRepo: repoCounts,
+	};
+}
