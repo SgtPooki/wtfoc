@@ -13,7 +13,7 @@
 		"dist"
 	],
 	"scripts": {
-		"build": "tsc -b",
+		"build": "tsc -b && cp src/ui.html dist/ui.html",
 		"test": "vitest run"
 	},
 	"dependencies": {
