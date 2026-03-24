@@ -14,7 +14,8 @@
 		"test": "vitest run"
 	},
 	"dependencies": {
-		"@wtfoc/common": "workspace:*"
+		"@wtfoc/common": "workspace:*",
+		"discord.js": "^14.25.1"
 	},
 	"peerDependencies": {
 		"@wtfoc/store": "workspace:*"
