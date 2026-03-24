@@ -78,6 +78,55 @@ export function formatQuery(result: QueryResult, format: OutputFormat): string {
 }
 
 /**
+ * Format collections list for terminal output.
+ */
+export function formatCollections(
+	collections: Array<{
+		name: string;
+		chunks: number;
+		segments: number;
+		model: string;
+		updated: string;
+	}>,
+	format: OutputFormat,
+): string {
+	if (format === "json") return JSON.stringify(collections, null, "\t");
+	if (format === "quiet") return "";
+
+	// Compute column widths
+	const nameW = Math.max(4, ...collections.map((c) => c.name.length));
+	const chunksW = Math.max(6, ...collections.map((c) => String(c.chunks).length));
+	const segsW = Math.max(8, ...collections.map((c) => String(c.segments).length));
+	const modelW = Math.max(5, ...collections.map((c) => c.model.length));
+
+	const header = [
+		"Name".padEnd(nameW),
+		"Chunks".padStart(chunksW),
+		"Segments".padStart(segsW),
+		"Model".padEnd(modelW),
+		"Updated",
+	].join("  ");
+
+	const lines = [header, "-".repeat(header.length)];
+
+	for (const c of collections) {
+		const updated = c.updated.slice(0, 10); // ISO date only
+		lines.push(
+			[
+				c.name.padEnd(nameW),
+				String(c.chunks).padStart(chunksW),
+				String(c.segments).padStart(segsW),
+				c.model.padEnd(modelW),
+				updated,
+			].join("  "),
+		);
+	}
+
+	lines.push(`\n${collections.length} collection${collections.length === 1 ? "" : "s"}`);
+	return lines.join("\n");
+}
+
+/**
  * Format status output.
  */
 export function formatStatus(

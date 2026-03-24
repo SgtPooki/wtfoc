@@ -8,6 +8,7 @@ import { z } from "zod";
 import { createEmbedder } from "./helpers.js";
 import { handleIngest } from "./tools/ingest.js";
 import { handleQuery } from "./tools/query.js";
+import { handleListSources } from "./tools/list-sources.js";
 import { handleStatus } from "./tools/status.js";
 import { handleTrace } from "./tools/trace.js";
 
@@ -118,6 +119,21 @@ server.tool(
 				},
 			],
 		};
+	},
+);
+
+// ─── wtfoc_list_collections ──────────────────────────────────────────────────
+server.tool(
+	"wtfoc_list_collections",
+	"List all wtfoc collections with chunk count, segment count, embedding model, and last updated.",
+	async () => {
+		try {
+			const text = await handleListSources(store);
+			return { content: [{ type: "text" as const, text }] };
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			return { content: [{ type: "text" as const, text: `Error: ${msg}` }], isError: true };
+		}
 	},
 );
 

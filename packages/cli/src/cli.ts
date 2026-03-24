@@ -28,7 +28,7 @@ import {
 } from "@wtfoc/search";
 import { bundleAndUpload, createStore, generateCollectionId } from "@wtfoc/store";
 import { Command } from "commander";
-import { formatQuery, formatStatus, formatTrace, type OutputFormat } from "./output.js";
+import { formatCollections, formatQuery, formatStatus, formatTrace, type OutputFormat } from "./output.js";
 
 function parseSinceDuration(duration: string): string {
 	const match = duration.match(/^(\d+)([dh])$/);
@@ -560,6 +560,46 @@ program
 				format,
 			),
 		);
+	});
+
+// ─── wtfoc collections ──────────────────────────────────────────────────────
+program
+	.command("collections")
+	.description("List all collections")
+	.action(async () => {
+		const store = getStore();
+		const format = getFormat(program.opts());
+
+		const names = await store.manifests.listProjects();
+		if (names.length === 0) {
+			if (format === "json") {
+				console.log(JSON.stringify([]));
+			} else if (format !== "quiet") {
+				console.log("No collections found.");
+			}
+			return;
+		}
+
+		const collections = await Promise.all(
+			names.map(async (name) => {
+				const head = await store.manifests.getHead(name);
+				if (!head) return null;
+				const m = head.manifest;
+				return {
+					name: m.name,
+					chunks: m.totalChunks,
+					segments: m.segments.length,
+					model: m.embeddingModel,
+					updated: m.updatedAt,
+				};
+			}),
+		);
+
+		const valid = collections.filter(
+			(c): c is NonNullable<typeof c> => c !== null,
+		);
+
+		console.log(formatCollections(valid, format));
 	});
 
 // ─── wtfoc verify ────────────────────────────────────────────────────────────
