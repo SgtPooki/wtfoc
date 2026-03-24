@@ -1,5 +1,6 @@
 import { CollectionPicker } from "./components/CollectionPicker";
 import { EdgePanel } from "./components/EdgePanel";
+import { Footer } from "./components/Footer";
 import { Layout } from "./components/Layout";
 import { SearchView } from "./components/SearchView";
 import { SourcesPanel } from "./components/SourcesPanel";
@@ -18,6 +19,7 @@ export function App() {
 			{hasCollection && !hasQuery && <CollectionPicker />}
 			{hasCollection && <SourcesPanel />}
 			{hasCollection && <EdgePanel />}
+			<Footer />
 		</Layout>
 	);
 }

@@ -309,15 +309,27 @@ header h1 {
 /* Empty state */
 .empty-state {
 	text-align: center;
-	padding: 4rem 2rem;
+	padding: 3rem 2rem;
 }
 .empty-state h2 {
-	font-size: 1.3rem;
-	margin-bottom: 0.5rem;
+	font-size: 1.6rem;
+	margin-bottom: 0.75rem;
+	letter-spacing: -0.02em;
+}
+.empty-state .subtitle {
+	color: var(--text);
+	font-size: 0.95rem;
+	line-height: 1.6;
+	max-width: 600px;
+	margin: 0 auto 0.5rem;
+}
+.empty-state .micro-line {
+	color: var(--muted);
+	font-size: 0.8rem;
+	margin-bottom: 1.5rem;
 }
 .empty-state p {
 	color: var(--muted);
-	margin-bottom: 1.5rem;
 }
 .example-queries {
 	display: flex;
@@ -495,4 +507,44 @@ header h1 {
 }
 .collection-meta strong {
 	color: var(--text);
+}
+
+/* Footer */
+.app-footer {
+	margin-top: 3rem;
+	padding-top: 1.5rem;
+	border-top: 1px solid var(--border);
+	text-align: center;
+}
+.app-footer .vision {
+	font-size: 0.85rem;
+	color: var(--text);
+	max-width: 600px;
+	margin: 0 auto 1rem;
+	line-height: 1.6;
+}
+.app-footer .foc-explainer {
+	font-size: 0.8rem;
+	color: var(--muted);
+	margin-bottom: 0.5rem;
+}
+.app-footer .teaser {
+	font-size: 0.75rem;
+	color: var(--dim);
+	margin-bottom: 1rem;
+}
+.app-footer .links {
+	font-size: 0.8rem;
+	margin-bottom: 1rem;
+}
+.app-footer .links a {
+	color: var(--accent);
+	padding: 0.4rem 0.8rem;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	transition: border-color 150ms;
+}
+.app-footer .links a:hover {
+	border-color: var(--accent);
+	text-decoration: none;
 }

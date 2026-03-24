@@ -52,7 +52,7 @@ export function CollectionPicker() {
 		<div>
 			<h2 style={{ fontSize: "1.1rem", marginBottom: "0.5rem" }}>Collections</h2>
 			<p class="muted" style={{ fontSize: "0.85rem", marginBottom: "1rem" }}>
-				Select a collection to explore
+				Pick a collection — real chunks, real traces, stored on FOC.
 			</p>
 			<div class="collection-grid">
 				{collections.map((c) => (

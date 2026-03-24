@@ -27,7 +27,7 @@ export function Layout({ children }: LayoutProps) {
 		<div class="app">
 			<header>
 				<h1>
-					<span class="accent">wtf</span>oc
+					wt<span class="accent">FOC</span>
 				</h1>
 				{status && (
 					<div class="stats-bar">
