@@ -39,31 +39,31 @@ describe("DiscordAdapter: parseConfig", () => {
 	it("throws when bot mode has no token", () => {
 		const adapter = new DiscordAdapter();
 		// Ensure env var is not set for this test
-		const original = process.env["WTFOC_DISCORD_TOKEN"];
-		delete process.env["WTFOC_DISCORD_TOKEN"];
+		const original = process.env.WTFOC_DISCORD_TOKEN;
+		delete process.env.WTFOC_DISCORD_TOKEN;
 		try {
 			expect(() => adapter.parseConfig({ source: "server/channel" })).toThrow(
 				"Discord bot token required",
 			);
 		} finally {
 			if (original !== undefined) {
-				process.env["WTFOC_DISCORD_TOKEN"] = original;
+				process.env.WTFOC_DISCORD_TOKEN = original;
 			}
 		}
 	});
 
 	it("uses WTFOC_DISCORD_TOKEN env var as fallback", () => {
 		const adapter = new DiscordAdapter();
-		const original = process.env["WTFOC_DISCORD_TOKEN"];
-		process.env["WTFOC_DISCORD_TOKEN"] = "env-token";
+		const original = process.env.WTFOC_DISCORD_TOKEN;
+		process.env.WTFOC_DISCORD_TOKEN = "env-token";
 		try {
 			const config = adapter.parseConfig({ source: "server/channel" });
 			expect(config.token).toBe("env-token");
 		} finally {
 			if (original !== undefined) {
-				process.env["WTFOC_DISCORD_TOKEN"] = original;
+				process.env.WTFOC_DISCORD_TOKEN = original;
 			} else {
-				delete process.env["WTFOC_DISCORD_TOKEN"];
+				delete process.env.WTFOC_DISCORD_TOKEN;
 			}
 		}
 	});
@@ -110,7 +110,8 @@ describe("DiscordAdapter: JSON ingestion", () => {
 		}
 
 		// First chunk should be Alice's grouped messages
-		const aliceGrouped = chunks[0]!;
+		const aliceGrouped = chunks[0];
+		if (!aliceGrouped) throw new Error("Expected grouped Discord messages");
 		expect(aliceGrouped.metadata.author).toBe("Alice");
 		expect(aliceGrouped.metadata.messageCount).toBe("2");
 		expect(aliceGrouped.content).toContain("https://github.com/FilOzone/synapse-sdk/issues/42");
@@ -143,7 +144,7 @@ describe("DiscordAdapter: JSON ingestion", () => {
 		}
 
 		for (const chunk of chunks) {
-			for (const [key, value] of Object.entries(chunk.metadata)) {
+			for (const [_key, value] of Object.entries(chunk.metadata)) {
 				expect(typeof value).toBe("string");
 			}
 			expect(chunk.metadata.channel).toBe("general");
@@ -165,7 +166,7 @@ describe("DiscordAdapter: JSON ingestion", () => {
 
 		// Only the 12:00 message should pass the filter
 		expect(chunks.length).toBe(1);
-		expect(chunks[0]!.content).toBe("Separate conversation much later");
+		expect(chunks[0]?.content).toBe("Separate conversation much later");
 	});
 
 	it("generates deterministic chunk IDs from content hash", async () => {
@@ -199,7 +200,7 @@ describe("DiscordAdapter: edge extraction", () => {
 		const edges = adapter.extractEdges(chunks);
 		const githubEdges = edges.filter((e) => e.targetId.includes("FilOzone/synapse-sdk"));
 		expect(githubEdges.length).toBeGreaterThan(0);
-		expect(githubEdges[0]!.type).toBe("references");
+		expect(githubEdges[0]?.type).toBe("references");
 	});
 
 	it("extracts #channel cross-references", async () => {
@@ -229,7 +230,7 @@ describe("DiscordAdapter: edge extraction", () => {
 		const edges = adapter.extractEdges(chunks);
 		const discordMsgEdges = edges.filter((e) => e.targetType === "discord-message");
 		expect(discordMsgEdges.length).toBeGreaterThan(0);
-		expect(discordMsgEdges[0]!.targetId).toMatch(/^discord:\/\//);
+		expect(discordMsgEdges[0]?.targetId).toMatch(/^discord:\/\//);
 	});
 });
 

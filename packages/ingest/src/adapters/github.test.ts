@@ -1,9 +1,4 @@
-import {
-	GitHubApiError,
-	GitHubCliMissingError,
-	GitHubNotFoundError,
-	GitHubRateLimitError,
-} from "@wtfoc/common";
+import { GitHubCliMissingError, GitHubNotFoundError, GitHubRateLimitError } from "@wtfoc/common";
 import { describe, expect, it } from "vitest";
 import type { ExecFn, GitHubAdapterConfig } from "./github.js";
 import { GitHubAdapter } from "./github.js";
