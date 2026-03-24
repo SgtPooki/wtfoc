@@ -22,7 +22,8 @@
 		{ "path": "packages/ingest" },
 		{ "path": "packages/search" },
 		{ "path": "packages/cli" },
-		{ "path": "packages/mcp-server" }
+		{ "path": "packages/mcp-server" },
+		{ "path": "apps/web" }
 	],
 	"files": []
 }

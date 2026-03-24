@@ -105,6 +105,28 @@ export async function startServer(options: ServeOptions): Promise<void> {
 		}
 
 		try {
+			if (path === "/api/collections") {
+				const names = await store.manifests.listProjects();
+				const collections = await Promise.all(
+					names.map(async (name) => {
+						const head = await store.manifests.getHead(name);
+						if (!head) return null;
+						const m = head.manifest;
+						return {
+							name: m.name,
+							chunks: m.totalChunks,
+							segments: m.segments.length,
+							model: m.embeddingModel,
+							updated: m.updatedAt,
+						};
+					}),
+				);
+				return json(
+					res,
+					collections.filter((c): c is NonNullable<typeof c> => c !== null),
+				);
+			}
+
 			if (path === "/api/status") {
 				return json(res, {
 					collection,

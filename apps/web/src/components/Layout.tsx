@@ -1,0 +1,52 @@
+import type { ComponentChildren } from "preact";
+import { useEffect, useState } from "preact/hooks";
+import { fetchStatus } from "../api";
+import { collection } from "../state";
+import type { StatusResponse } from "../types";
+import { SearchBar } from "./SearchBar";
+
+interface LayoutProps {
+	children: ComponentChildren;
+}
+
+export function Layout({ children }: LayoutProps) {
+	const [status, setStatus] = useState<StatusResponse | null>(null);
+	const col = collection.value;
+
+	useEffect(() => {
+		if (!col) {
+			setStatus(null);
+			return;
+		}
+		fetchStatus(col)
+			.then(setStatus)
+			.catch(() => {});
+	}, [col]);
+
+	return (
+		<div class="app">
+			<header>
+				<h1>
+					<span class="accent">wtf</span>oc
+				</h1>
+				{status && (
+					<div class="stats-bar">
+						<span>
+							<strong>{(status.totalChunks / 1000).toFixed(1)}K</strong> chunks
+						</span>
+						<span>
+							<strong>{status.segments}</strong> segments
+						</span>
+						<span>
+							<strong>{status.sourceTypes.length}</strong> source types
+						</span>
+					</div>
+				)}
+			</header>
+
+			<SearchBar />
+
+			<main>{children}</main>
+		</div>
+	);
+}

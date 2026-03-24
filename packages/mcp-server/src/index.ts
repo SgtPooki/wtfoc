@@ -7,8 +7,8 @@ import { createStore } from "@wtfoc/store";
 import { z } from "zod";
 import { createEmbedder } from "./helpers.js";
 import { handleIngest } from "./tools/ingest.js";
-import { handleQuery } from "./tools/query.js";
 import { handleListSources } from "./tools/list-sources.js";
+import { handleQuery } from "./tools/query.js";
 import { handleStatus } from "./tools/status.js";
 import { handleTrace } from "./tools/trace.js";
 

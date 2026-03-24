@@ -22,8 +22,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
+      - name: Build packages
         run: pnpm -r build
+
+      - name: Build web server
+        run: pnpm --filter @wtfoc/web build:server
 
       - name: Lint
         run: pnpm lint

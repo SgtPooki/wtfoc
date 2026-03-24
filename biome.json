@@ -25,6 +25,14 @@
 		"lineWidth": 100
 	},
 	"files": {
-		"includes": ["packages/*/src/**/*.ts", "*.ts", "*.json", "packages/**/*.json", "!**/dist"]
+		"includes": [
+			"packages/*/src/**/*.ts",
+			"apps/*/src/**/*.{ts,tsx}",
+			"*.ts",
+			"*.json",
+			"packages/**/*.json",
+			"apps/**/*.json",
+			"!**/dist"
+		]
 	}
 }
