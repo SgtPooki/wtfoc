@@ -169,7 +169,7 @@ interface ChunkData {
 interface ChunkIndexes {
 	/** Chunk ID → data */
 	byId: Map<string, ChunkData>;
-	/** Exact source string → chunk IDs (e.g. "FilOzone/synapse-sdk#142" → ["issue-142"]) */
+	/** Lowercased source string → chunk IDs for case-insensitive resolution */
 	bySource: Map<string, string[]>;
 }
 
@@ -188,10 +188,12 @@ function buildChunkIndexes(segments: Segment[]): ChunkIndexes {
 			};
 			byId.set(chunk.id, data);
 
-			// Index by exact source for O(1) edge resolution
-			const ids = bySource.get(chunk.source) ?? [];
+			// Index by lowercased source for case-insensitive edge resolution
+			// (handles case drift: e.g. "FILCAT/pdp#24" in Slack vs "FilOzone/pdp#24" in chunks)
+			const key = chunk.source.toLowerCase();
+			const ids = bySource.get(key) ?? [];
 			ids.push(chunk.id);
-			bySource.set(chunk.source, ids);
+			bySource.set(key, ids);
 		}
 	}
 
@@ -245,7 +247,10 @@ function followEdges(
 	// indexed by targetId which is typically a source string like "owner/repo#42")
 	const chunkData = indexes.byId.get(chunkId);
 	const edgesById = edgeIndex.get(chunkId) ?? [];
-	const edgesBySource = chunkData?.source ? (edgeIndex.get(chunkData.source) ?? []) : [];
+	// Also check lowercased source for reverse edges (handles case drift)
+	const edgesBySource = chunkData?.source
+		? (edgeIndex.get(chunkData.source) ?? edgeIndex.get(chunkData.source.toLowerCase()) ?? [])
+		: [];
 
 	// Merge, deduplicating by targetId
 	const seen = new Set<string>();
@@ -318,8 +323,9 @@ function findChunksByTarget(targetId: string, indexes: ChunkIndexes): Array<[str
 		return results;
 	}
 
-	// 2. Exact source match (O(1) via source index)
-	const sourceMatches = indexes.bySource.get(targetId);
+	// 2. Exact source match (O(1) via lowercased source index)
+	const lowerTarget = targetId.toLowerCase();
+	const sourceMatches = indexes.bySource.get(lowerTarget);
 	if (sourceMatches) {
 		for (const id of sourceMatches) {
 			const data = indexes.byId.get(id);
@@ -333,7 +339,7 @@ function findChunksByTarget(targetId: string, indexes: ChunkIndexes): Array<[str
 	//    Capped at 10 results to avoid O(n) blowup on large collections
 	if (targetId.includes("/") || targetId.includes(":")) {
 		for (const [source, chunkIds] of indexes.bySource) {
-			if (source.includes(targetId)) {
+			if (source.includes(lowerTarget)) {
 				for (const id of chunkIds) {
 					const data = indexes.byId.get(id);
 					if (data) results.push([id, data]);
