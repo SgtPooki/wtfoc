@@ -1,193 +1,259 @@
-import type { BatchRecord, CollectionHead, Segment, SegmentSummary } from "@wtfoc/common";
+import type { CollectionHead, Segment } from "@wtfoc/common";
 import { SchemaUnknownError, WtfocError } from "@wtfoc/common";
 
 /** Latest persisted manifest / segment format version. */
 export const MAX_SUPPORTED_SCHEMA_VERSION = 1;
 
-type SchemaKind = "headManifest" | "segment";
-
-function errorPrefix(kind: SchemaKind): string {
-	return kind === "headManifest" ? "Invalid head manifest" : "Invalid segment";
-}
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isUnknownArray(v: unknown): v is unknown[] {
-	return Array.isArray(v);
+function schemaInvalid(kind: "headManifest" | "segment", msg: string, field?: string): WtfocError {
+	const prefix = kind === "headManifest" ? "Invalid head manifest" : "Invalid segment";
+	return new WtfocError(`${prefix}: ${msg}`, "SCHEMA_INVALID", field ? { field } : undefined);
 }
 
-function requireField<T>(
-	record: Record<string, unknown>,
-	key: string,
-	predicate: (v: unknown) => v is T,
-	label: string,
-	kind: SchemaKind,
-	fieldPath?: string,
-): T {
-	const v = record[key];
-	if (!predicate(v)) {
-		throw new WtfocError(`${errorPrefix(kind)}: ${label}`, "SCHEMA_INVALID", {
-			field: fieldPath ?? key,
-		});
-	}
-	return v;
-}
-
-function isNonEmptyString(v: unknown): v is string {
-	return typeof v === "string" && v.length > 0;
-}
-
-function isString(v: unknown): v is string {
+function requireString(v: unknown): v is string {
 	return typeof v === "string";
 }
 
-function isFiniteNonNegativeInt(v: unknown): v is number {
+function requireNonEmptyString(v: unknown): v is string {
+	return typeof v === "string" && v.length > 0;
+}
+
+function requireNonNegInt(v: unknown): v is number {
 	return typeof v === "number" && Number.isInteger(v) && v >= 0;
 }
 
-function isPositiveFiniteInt(v: unknown): v is number {
+function requirePositiveInt(v: unknown): v is number {
 	return typeof v === "number" && Number.isInteger(v) && v > 0;
 }
 
-function validateSegmentSummary(raw: unknown, index: number): SegmentSummary {
+function requireStringArray(v: unknown): v is string[] {
+	return Array.isArray(v) && v.every(requireString);
+}
+
+function requireNumberArray(v: unknown): v is number[] {
+	return Array.isArray(v) && v.every((x) => typeof x === "number" && Number.isFinite(x));
+}
+
+function requireStringRecord(v: unknown): v is Record<string, string> {
+	if (!isRecord(v)) return false;
+	for (const k of Object.keys(v)) {
+		if (typeof v[k] !== "string") return false;
+	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Schema-version gate (shared by both validators)
+// ---------------------------------------------------------------------------
+
+function validateSchemaVersion(
+	data: Record<string, unknown>,
+	kind: "headManifest" | "segment",
+): number {
+	const sv = data.schemaVersion;
+	if (typeof sv !== "number" || !Number.isInteger(sv)) {
+		throw schemaInvalid(kind, "schemaVersion must be an integer", "schemaVersion");
+	}
+	if (sv < 1 || sv > MAX_SUPPORTED_SCHEMA_VERSION) {
+		throw new SchemaUnknownError(sv, MAX_SUPPORTED_SCHEMA_VERSION);
+	}
+	return sv;
+}
+
+// ---------------------------------------------------------------------------
+// Manifest sub-validators (valibot-style inline, hand-tuned error messages)
+// ---------------------------------------------------------------------------
+
+import * as v from "valibot";
+
+// ---- SegmentSummary --------------------------------------------------------
+
+const TimeRangeSchema = v.object({
+	from: v.string(),
+	to: v.string(),
+});
+
+const SegmentSummarySchema = v.object({
+	id: v.pipe(v.string(), v.nonEmpty()),
+	sourceTypes: v.array(v.string()),
+	chunkCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
+	ipfsCid: v.optional(v.string()),
+	pieceCid: v.optional(v.string()),
+	timeRange: v.optional(TimeRangeSchema),
+	repoIds: v.optional(v.array(v.string())),
+});
+
+function validateSegmentSummary(
+	raw: unknown,
+	index: number,
+): ReturnType<typeof v.parse<typeof SegmentSummarySchema>> {
 	if (!isRecord(raw)) {
-		throw new WtfocError(
-			`Invalid head manifest: segments[${index}] must be an object`,
-			"SCHEMA_INVALID",
-			{ field: `segments[${index}]` },
+		throw schemaInvalid(
+			"headManifest",
+			`segments[${index}] must be an object`,
+			`segments[${index}]`,
 		);
 	}
-	const id = requireField(
-		raw,
-		"id",
-		isNonEmptyString,
-		`segments[${index}].id must be a non-empty string`,
-		"headManifest",
-		`segments[${index}].id`,
-	);
-	const sourceTypes = requireField(
-		raw,
-		"sourceTypes",
-		(v): v is string[] => Array.isArray(v) && v.every(isString),
-		`segments[${index}].sourceTypes must be an array of strings`,
-		"headManifest",
-		`segments[${index}].sourceTypes`,
-	);
-	const chunkCount = requireField(
-		raw,
-		"chunkCount",
-		isFiniteNonNegativeInt,
-		`segments[${index}].chunkCount must be a non-negative integer`,
-		"headManifest",
-		`segments[${index}].chunkCount`,
-	);
 
-	const summary: SegmentSummary = { id, sourceTypes, chunkCount };
+	// Validate individual fields with exact error messages
+	if (!requireNonEmptyString(raw.id)) {
+		throw schemaInvalid(
+			"headManifest",
+			`segments[${index}].id must be a non-empty string`,
+			`segments[${index}].id`,
+		);
+	}
+	if (!requireStringArray(raw.sourceTypes)) {
+		throw schemaInvalid(
+			"headManifest",
+			`segments[${index}].sourceTypes must be an array of strings`,
+			`segments[${index}].sourceTypes`,
+		);
+	}
+	if (!requireNonNegInt(raw.chunkCount)) {
+		throw schemaInvalid(
+			"headManifest",
+			`segments[${index}].chunkCount must be a non-negative integer`,
+			`segments[${index}].chunkCount`,
+		);
+	}
+
+	const result = v.parse(SegmentSummarySchema, {
+		id: raw.id,
+		sourceTypes: raw.sourceTypes,
+		chunkCount: raw.chunkCount,
+	});
 
 	if ("ipfsCid" in raw && raw.ipfsCid !== undefined) {
-		if (!isString(raw.ipfsCid)) {
-			throw new WtfocError(
-				`Invalid head manifest: segments[${index}].ipfsCid must be a string`,
-				"SCHEMA_INVALID",
-				{ field: `segments[${index}].ipfsCid` },
+		if (!requireString(raw.ipfsCid)) {
+			throw schemaInvalid(
+				"headManifest",
+				`segments[${index}].ipfsCid must be a string`,
+				`segments[${index}].ipfsCid`,
 			);
 		}
-		summary.ipfsCid = raw.ipfsCid;
+		result.ipfsCid = raw.ipfsCid;
 	}
 	if ("pieceCid" in raw && raw.pieceCid !== undefined) {
-		if (!isString(raw.pieceCid)) {
-			throw new WtfocError(
-				`Invalid head manifest: segments[${index}].pieceCid must be a string`,
-				"SCHEMA_INVALID",
-				{ field: `segments[${index}].pieceCid` },
+		if (!requireString(raw.pieceCid)) {
+			throw schemaInvalid(
+				"headManifest",
+				`segments[${index}].pieceCid must be a string`,
+				`segments[${index}].pieceCid`,
 			);
 		}
-		summary.pieceCid = raw.pieceCid;
+		result.pieceCid = raw.pieceCid;
 	}
 	if ("timeRange" in raw && raw.timeRange !== undefined) {
 		if (!isRecord(raw.timeRange)) {
-			throw new WtfocError(
-				`Invalid head manifest: segments[${index}].timeRange must be an object`,
-				"SCHEMA_INVALID",
-				{ field: `segments[${index}].timeRange` },
+			throw schemaInvalid(
+				"headManifest",
+				`segments[${index}].timeRange must be an object`,
+				`segments[${index}].timeRange`,
 			);
 		}
-		const from = requireField(
-			raw.timeRange,
-			"from",
-			isString,
-			`segments[${index}].timeRange.from must be a string`,
-			"headManifest",
-			`segments[${index}].timeRange.from`,
-		);
-		const to = requireField(
-			raw.timeRange,
-			"to",
-			isString,
-			`segments[${index}].timeRange.to must be a string`,
-			"headManifest",
-			`segments[${index}].timeRange.to`,
-		);
-		summary.timeRange = { from, to };
+		if (!requireString(raw.timeRange.from)) {
+			throw schemaInvalid(
+				"headManifest",
+				`segments[${index}].timeRange.from must be a string`,
+				`segments[${index}].timeRange.from`,
+			);
+		}
+		if (!requireString(raw.timeRange.to)) {
+			throw schemaInvalid(
+				"headManifest",
+				`segments[${index}].timeRange.to must be a string`,
+				`segments[${index}].timeRange.to`,
+			);
+		}
+		result.timeRange = v.parse(TimeRangeSchema, raw.timeRange);
 	}
 	if ("repoIds" in raw && raw.repoIds !== undefined) {
-		if (!Array.isArray(raw.repoIds) || !raw.repoIds.every(isString)) {
-			throw new WtfocError(
-				`Invalid head manifest: segments[${index}].repoIds must be an array of strings`,
-				"SCHEMA_INVALID",
-				{ field: `segments[${index}].repoIds` },
+		if (!Array.isArray(raw.repoIds) || !raw.repoIds.every(requireString)) {
+			throw schemaInvalid(
+				"headManifest",
+				`segments[${index}].repoIds must be an array of strings`,
+				`segments[${index}].repoIds`,
 			);
 		}
-		summary.repoIds = raw.repoIds;
+		result.repoIds = raw.repoIds as string[];
 	}
 
-	return summary;
+	return result;
 }
 
-function validateBatchRecord(raw: unknown, index: number): BatchRecord {
+// ---- BatchRecord -----------------------------------------------------------
+
+const BatchRecordSchema = v.object({
+	pieceCid: v.pipe(v.string(), v.nonEmpty()),
+	carRootCid: v.pipe(v.string(), v.nonEmpty()),
+	segmentIds: v.pipe(v.array(v.pipe(v.string(), v.nonEmpty())), v.minLength(1)),
+	createdAt: v.string(),
+});
+
+function validateBatchRecord(raw: unknown, index: number): v.InferOutput<typeof BatchRecordSchema> {
 	if (!isRecord(raw)) {
-		throw new WtfocError(
-			`Invalid head manifest: batches[${index}] must be an object`,
-			"SCHEMA_INVALID",
-			{ field: `batches[${index}]` },
+		throw schemaInvalid("headManifest", `batches[${index}] must be an object`, `batches[${index}]`);
+	}
+	if (!requireNonEmptyString(raw.pieceCid)) {
+		throw schemaInvalid(
+			"headManifest",
+			`batches[${index}].pieceCid must be a non-empty string`,
+			`batches[${index}].pieceCid`,
 		);
 	}
-	const pieceCid = requireField(
-		raw,
-		"pieceCid",
-		isNonEmptyString,
-		`batches[${index}].pieceCid must be a non-empty string`,
-		"headManifest",
-		`batches[${index}].pieceCid`,
-	);
-	const carRootCid = requireField(
-		raw,
-		"carRootCid",
-		isNonEmptyString,
-		`batches[${index}].carRootCid must be a non-empty string`,
-		"headManifest",
-		`batches[${index}].carRootCid`,
-	);
-	const segmentIds = requireField(
-		raw,
-		"segmentIds",
-		(v): v is string[] => Array.isArray(v) && v.length > 0 && v.every(isNonEmptyString),
-		`batches[${index}].segmentIds must be a non-empty array of non-empty strings`,
-		"headManifest",
-		`batches[${index}].segmentIds`,
-	);
-	const createdAt = requireField(
-		raw,
-		"createdAt",
-		(v): v is string => isString(v) && !Number.isNaN(Date.parse(v)),
-		`batches[${index}].createdAt must be a valid ISO 8601 date string`,
-		"headManifest",
-		`batches[${index}].createdAt`,
-	);
-	return { pieceCid, carRootCid, segmentIds, createdAt };
+	if (!requireNonEmptyString(raw.carRootCid)) {
+		throw schemaInvalid(
+			"headManifest",
+			`batches[${index}].carRootCid must be a non-empty string`,
+			`batches[${index}].carRootCid`,
+		);
+	}
+	if (
+		!Array.isArray(raw.segmentIds) ||
+		raw.segmentIds.length === 0 ||
+		!raw.segmentIds.every(requireNonEmptyString)
+	) {
+		throw schemaInvalid(
+			"headManifest",
+			`batches[${index}].segmentIds must be a non-empty array of non-empty strings`,
+			`batches[${index}].segmentIds`,
+		);
+	}
+	if (!requireString(raw.createdAt) || Number.isNaN(Date.parse(raw.createdAt as string))) {
+		throw schemaInvalid(
+			"headManifest",
+			`batches[${index}].createdAt must be a valid ISO 8601 date string`,
+			`batches[${index}].createdAt`,
+		);
+	}
+
+	return v.parse(BatchRecordSchema, raw);
 }
+
+// ---- Manifest top-level schema ---------------------------------------------
+
+const ManifestCoreSchema = v.object({
+	schemaVersion: v.pipe(v.number(), v.integer(), v.minValue(1)),
+	collectionId: v.pipe(v.string(), v.nonEmpty()),
+	name: v.pipe(v.string(), v.nonEmpty()),
+	currentRevisionId: v.nullable(v.string()),
+	prevHeadId: v.nullable(v.string()),
+	segments: v.array(SegmentSummarySchema),
+	totalChunks: v.pipe(v.number(), v.integer(), v.minValue(0)),
+	embeddingModel: v.pipe(v.string(), v.nonEmpty()),
+	embeddingDimensions: v.pipe(v.number(), v.integer(), v.minValue(0)),
+	createdAt: v.string(),
+	updatedAt: v.string(),
+	batches: v.optional(v.array(BatchRecordSchema)),
+});
 
 /**
  * Validates unknown JSON-compatible data as a {@link CollectionHead}.
@@ -198,138 +264,93 @@ export function validateManifestSchema(data: unknown): CollectionHead {
 		throw new WtfocError("Invalid head manifest: expected an object", "SCHEMA_INVALID");
 	}
 
-	const sv = data.schemaVersion;
-	if (typeof sv !== "number" || !Number.isInteger(sv)) {
-		throw new WtfocError(
-			"Invalid head manifest: schemaVersion must be an integer",
-			"SCHEMA_INVALID",
-			{
-				field: "schemaVersion",
-			},
-		);
-	}
-	if (sv < 1 || sv > MAX_SUPPORTED_SCHEMA_VERSION) {
-		throw new SchemaUnknownError(sv, MAX_SUPPORTED_SCHEMA_VERSION);
+	const sv = validateSchemaVersion(data, "headManifest");
+
+	if (!requireNonEmptyString(data.name)) {
+		throw schemaInvalid("headManifest", "name must be a non-empty string", "name");
 	}
 
-	const name = requireField(
-		data,
-		"name",
-		isNonEmptyString,
-		"name must be a non-empty string",
-		"headManifest",
-	);
-
-	const prevHeadId = data.prevHeadId;
-	if (prevHeadId === undefined) {
-		throw new WtfocError(
-			"Invalid head manifest: prevHeadId is required (string or null)",
-			"SCHEMA_INVALID",
-			{ field: "prevHeadId" },
-		);
+	// prevHeadId: required, must be string | null
+	if (data.prevHeadId === undefined) {
+		throw schemaInvalid("headManifest", "prevHeadId is required (string or null)", "prevHeadId");
 	}
-	if (prevHeadId !== null && typeof prevHeadId !== "string") {
-		throw new WtfocError(
-			"Invalid head manifest: prevHeadId must be string or null",
-			"SCHEMA_INVALID",
-			{
-				field: "prevHeadId",
-			},
-		);
+	if (data.prevHeadId !== null && typeof data.prevHeadId !== "string") {
+		throw schemaInvalid("headManifest", "prevHeadId must be string or null", "prevHeadId");
 	}
 
-	const segmentsRaw = requireField(
-		data,
-		"segments",
-		isUnknownArray,
-		"segments must be an array",
-		"headManifest",
-	);
-	const segments = segmentsRaw.map((item, i) => validateSegmentSummary(item, i));
-
-	const totalChunks = requireField(
-		data,
-		"totalChunks",
-		isFiniteNonNegativeInt,
-		"totalChunks must be a non-negative integer",
-		"headManifest",
-	);
-	const embeddingModel = requireField(
-		data,
-		"embeddingModel",
-		isNonEmptyString,
-		"embeddingModel must be a non-empty string",
-		"headManifest",
-	);
-	const embeddingDimensions = requireField(
-		data,
-		"embeddingDimensions",
-		isFiniteNonNegativeInt,
-		"embeddingDimensions must be a non-negative integer",
-		"headManifest",
-	);
-	const createdAt = requireField(
-		data,
-		"createdAt",
-		isString,
-		"createdAt must be a string",
-		"headManifest",
-	);
-	const updatedAt = requireField(
-		data,
-		"updatedAt",
-		isString,
-		"updatedAt must be a string",
-		"headManifest",
-	);
-
-	const collectionId = requireField(
-		data,
-		"collectionId",
-		isNonEmptyString,
-		"collectionId must be a non-empty string",
-		"headManifest",
-	);
-
-	const currentRevisionId = data.currentRevisionId;
-	if (currentRevisionId !== null && typeof currentRevisionId !== "string") {
-		throw new WtfocError(
-			"Invalid head manifest: currentRevisionId must be string or null",
-			"SCHEMA_INVALID",
-			{ field: "currentRevisionId" },
-		);
+	if (!Array.isArray(data.segments)) {
+		throw schemaInvalid("headManifest", "segments must be an array", "segments");
 	}
-	if (currentRevisionId === undefined) {
-		throw new WtfocError(
-			"Invalid head manifest: currentRevisionId is required (string or null)",
-			"SCHEMA_INVALID",
-			{ field: "currentRevisionId" },
-		);
-	}
+	const segments = (data.segments as unknown[]).map((item, i) => validateSegmentSummary(item, i));
 
-	const manifest: CollectionHead = {
-		schemaVersion: sv,
-		collectionId,
-		name,
-		currentRevisionId,
-		prevHeadId,
-		segments,
-		totalChunks,
-		embeddingModel,
-		embeddingDimensions,
-		createdAt,
-		updatedAt,
-	};
-
-	if ("batches" in data && data.batches !== undefined) {
-		const batchesRaw = requireField(
-			data,
-			"batches",
-			isUnknownArray,
-			"batches must be an array",
+	if (!requireNonNegInt(data.totalChunks)) {
+		throw schemaInvalid(
 			"headManifest",
+			"totalChunks must be a non-negative integer",
+			"totalChunks",
 		);
-		manifest.batches = batchesRaw.map((item, i) => validateBatchRecord(item, i));
+	}
+	if (!requireNonEmptyString(data.embeddingModel)) {
+		throw schemaInvalid(
+			"headManifest",
+			"embeddingModel must be a non-empty string",
+			"embeddingModel",
+		);
+	}
+	if (!requireNonNegInt(data.embeddingDimensions)) {
+		throw schemaInvalid(
+			"headManifest",
+			"embeddingDimensions must be a non-negative integer",
+			"embeddingDimensions",
+		);
+	}
+	if (!requireString(data.createdAt)) {
+		throw schemaInvalid("headManifest", "createdAt must be a string", "createdAt");
+	}
+	if (!requireString(data.updatedAt)) {
+		throw schemaInvalid("headManifest", "updatedAt must be a string", "updatedAt");
+	}
+	if (!requireNonEmptyString(data.collectionId)) {
+		throw schemaInvalid("headManifest", "collectionId must be a non-empty string", "collectionId");
+	}
+
+	// currentRevisionId: required, must be string | null
+	if (data.currentRevisionId !== null && typeof data.currentRevisionId !== "string") {
+		throw schemaInvalid(
+			"headManifest",
+			"currentRevisionId must be string or null",
+			"currentRevisionId",
+		);
+	}
+	if (data.currentRevisionId === undefined) {
+		throw schemaInvalid(
+			"headManifest",
+			"currentRevisionId is required (string or null)",
+			"currentRevisionId",
+		);
+	}
+
+	// Build the validated manifest via valibot core schema (struct check)
+	const manifest: CollectionHead = v.parse(ManifestCoreSchema, {
+		schemaVersion: sv,
+		collectionId: data.collectionId,
+		name: data.name,
+		currentRevisionId: data.currentRevisionId,
+		prevHeadId: data.prevHeadId,
+		segments,
+		totalChunks: data.totalChunks,
+		embeddingModel: data.embeddingModel,
+		embeddingDimensions: data.embeddingDimensions,
+		createdAt: data.createdAt,
+		updatedAt: data.updatedAt,
+	});
+
+	// Batches (optional)
+	if ("batches" in data && data.batches !== undefined) {
+		if (!Array.isArray(data.batches)) {
+			throw schemaInvalid("headManifest", "batches must be an array", "batches");
+		}
+		manifest.batches = (data.batches as unknown[]).map((item, i) => validateBatchRecord(item, i));
 
 		// Cross-reference: segmentIds must reference actual manifest segments
 		const segmentIdSet = new Set(manifest.segments.map((s) => s.id));
@@ -361,21 +382,39 @@ export function validateManifestSchema(data: unknown): CollectionHead {
 	return manifest;
 }
 
-function isNumberArray(v: unknown): v is number[] {
-	return Array.isArray(v) && v.every((x) => typeof x === "number" && Number.isFinite(x));
-}
+// ---------------------------------------------------------------------------
+// Segment validation
+// ---------------------------------------------------------------------------
 
-function isStringRecord(v: unknown): v is Record<string, string> {
-	if (!isRecord(v)) {
-		return false;
-	}
-	for (const k of Object.keys(v)) {
-		if (typeof v[k] !== "string") {
-			return false;
-		}
-	}
-	return true;
-}
+const ChunkSchema = v.object({
+	id: v.pipe(v.string(), v.nonEmpty()),
+	storageId: v.pipe(v.string(), v.nonEmpty()),
+	content: v.string(),
+	embedding: v.array(v.number()),
+	terms: v.array(v.string()),
+	source: v.pipe(v.string(), v.nonEmpty()),
+	sourceType: v.pipe(v.string(), v.nonEmpty()),
+	sourceUrl: v.optional(v.string()),
+	timestamp: v.optional(v.string()),
+	metadata: v.record(v.string(), v.string()),
+});
+
+const EdgeSchema = v.object({
+	type: v.pipe(v.string(), v.nonEmpty()),
+	sourceId: v.pipe(v.string(), v.nonEmpty()),
+	targetType: v.pipe(v.string(), v.nonEmpty()),
+	targetId: v.pipe(v.string(), v.nonEmpty()),
+	evidence: v.string(),
+	confidence: v.pipe(v.number(), v.finite()),
+});
+
+const SegmentSchema = v.object({
+	schemaVersion: v.pipe(v.number(), v.integer(), v.minValue(1)),
+	embeddingModel: v.pipe(v.string(), v.nonEmpty()),
+	embeddingDimensions: v.pipe(v.number(), v.integer(), v.minValue(1)),
+	chunks: v.array(ChunkSchema),
+	edges: v.array(EdgeSchema),
+});
 
 function validateChunk(
 	raw: unknown,
@@ -383,109 +422,99 @@ function validateChunk(
 	embeddingDimensions: number,
 ): Segment["chunks"][number] {
 	if (!isRecord(raw)) {
-		throw new WtfocError(`Invalid segment: chunks[${index}] must be an object`, "SCHEMA_INVALID", {
-			field: `chunks[${index}]`,
-		});
+		throw schemaInvalid("segment", `chunks[${index}] must be an object`, `chunks[${index}]`);
 	}
-	const id = requireField(
-		raw,
-		"id",
-		isNonEmptyString,
-		`chunks[${index}].id must be a non-empty string`,
-		"segment",
-		`chunks[${index}].id`,
-	);
-	const storageId = requireField(
-		raw,
-		"storageId",
-		isNonEmptyString,
-		`chunks[${index}].storageId must be a non-empty string`,
-		"segment",
-		`chunks[${index}].storageId`,
-	);
-	const embedding = requireField(
-		raw,
-		"embedding",
-		isNumberArray,
-		`chunks[${index}].embedding must be a number array`,
-		"segment",
-		`chunks[${index}].embedding`,
-	);
-	if (embedding.length !== embeddingDimensions) {
-		throw new WtfocError(
-			`Invalid segment: chunks[${index}].embedding length must equal embeddingDimensions (${embeddingDimensions})`,
-			"SCHEMA_INVALID",
-			{ field: `chunks[${index}].embedding` },
+	if (!requireNonEmptyString(raw.id)) {
+		throw schemaInvalid(
+			"segment",
+			`chunks[${index}].id must be a non-empty string`,
+			`chunks[${index}].id`,
 		);
 	}
-	const terms = requireField(
-		raw,
-		"terms",
-		(v): v is string[] => Array.isArray(v) && v.every(isString),
-		`chunks[${index}].terms must be an array of strings`,
-		"segment",
-		`chunks[${index}].terms`,
-	);
-	const source = requireField(
-		raw,
-		"source",
-		isNonEmptyString,
-		`chunks[${index}].source must be a non-empty string`,
-		"segment",
-		`chunks[${index}].source`,
-	);
-	const sourceType = requireField(
-		raw,
-		"sourceType",
-		isNonEmptyString,
-		`chunks[${index}].sourceType must be a non-empty string`,
-		"segment",
-		`chunks[${index}].sourceType`,
-	);
-	const content = requireField(
-		raw,
-		"content",
-		isString,
-		`chunks[${index}].content must be a string`,
-		"segment",
-		`chunks[${index}].content`,
-	);
-	const metadata = requireField(
-		raw,
-		"metadata",
-		isStringRecord,
-		`chunks[${index}].metadata must be a string record`,
-		"segment",
-		`chunks[${index}].metadata`,
-	);
+	if (!requireNonEmptyString(raw.storageId)) {
+		throw schemaInvalid(
+			"segment",
+			`chunks[${index}].storageId must be a non-empty string`,
+			`chunks[${index}].storageId`,
+		);
+	}
+	if (!requireNumberArray(raw.embedding)) {
+		throw schemaInvalid(
+			"segment",
+			`chunks[${index}].embedding must be a number array`,
+			`chunks[${index}].embedding`,
+		);
+	}
+	if ((raw.embedding as number[]).length !== embeddingDimensions) {
+		throw schemaInvalid(
+			"segment",
+			`chunks[${index}].embedding length must equal embeddingDimensions (${embeddingDimensions})`,
+			`chunks[${index}].embedding`,
+		);
+	}
+	if (!requireStringArray(raw.terms)) {
+		throw schemaInvalid(
+			"segment",
+			`chunks[${index}].terms must be an array of strings`,
+			`chunks[${index}].terms`,
+		);
+	}
+	if (!requireNonEmptyString(raw.source)) {
+		throw schemaInvalid(
+			"segment",
+			`chunks[${index}].source must be a non-empty string`,
+			`chunks[${index}].source`,
+		);
+	}
+	if (!requireNonEmptyString(raw.sourceType)) {
+		throw schemaInvalid(
+			"segment",
+			`chunks[${index}].sourceType must be a non-empty string`,
+			`chunks[${index}].sourceType`,
+		);
+	}
+	if (!requireString(raw.content)) {
+		throw schemaInvalid(
+			"segment",
+			`chunks[${index}].content must be a string`,
+			`chunks[${index}].content`,
+		);
+	}
+	if (!requireStringRecord(raw.metadata)) {
+		throw schemaInvalid(
+			"segment",
+			`chunks[${index}].metadata must be a string record`,
+			`chunks[${index}].metadata`,
+		);
+	}
 
-	const chunk: Segment["chunks"][number] = {
-		id,
-		storageId,
-		content,
-		embedding,
-		terms,
-		source,
-		sourceType,
-		metadata,
-	};
+	const chunk: Segment["chunks"][number] = v.parse(ChunkSchema, {
+		id: raw.id,
+		storageId: raw.storageId,
+		content: raw.content,
+		embedding: raw.embedding,
+		terms: raw.terms,
+		source: raw.source,
+		sourceType: raw.sourceType,
+		metadata: raw.metadata,
+	});
 
 	if ("sourceUrl" in raw && raw.sourceUrl !== undefined) {
-		if (!isString(raw.sourceUrl)) {
-			throw new WtfocError(
-				`Invalid segment: chunks[${index}].sourceUrl must be a string`,
-				"SCHEMA_INVALID",
-				{ field: `chunks[${index}].sourceUrl` },
+		if (!requireString(raw.sourceUrl)) {
+			throw schemaInvalid(
+				"segment",
+				`chunks[${index}].sourceUrl must be a string`,
+				`chunks[${index}].sourceUrl`,
 			);
 		}
 		chunk.sourceUrl = raw.sourceUrl;
 	}
 	if ("timestamp" in raw && raw.timestamp !== undefined) {
-		if (!isString(raw.timestamp)) {
-			throw new WtfocError(
-				`Invalid segment: chunks[${index}].timestamp must be a string`,
-				"SCHEMA_INVALID",
-				{ field: `chunks[${index}].timestamp` },
+		if (!requireString(raw.timestamp)) {
+			throw schemaInvalid(
+				"segment",
+				`chunks[${index}].timestamp must be a string`,
+				`chunks[${index}].timestamp`,
 			);
 		}
 		chunk.timestamp = raw.timestamp;
@@ -496,60 +525,53 @@ function validateChunk(
 
 function validateEdge(raw: unknown, index: number): Segment["edges"][number] {
 	if (!isRecord(raw)) {
-		throw new WtfocError(`Invalid segment: edges[${index}] must be an object`, "SCHEMA_INVALID", {
-			field: `edges[${index}]`,
-		});
+		throw schemaInvalid("segment", `edges[${index}] must be an object`, `edges[${index}]`);
 	}
-	const type = requireField(
-		raw,
-		"type",
-		isNonEmptyString,
-		`edges[${index}].type must be a non-empty string`,
-		"segment",
-		`edges[${index}].type`,
-	);
-	const sourceId = requireField(
-		raw,
-		"sourceId",
-		isNonEmptyString,
-		`edges[${index}].sourceId must be a non-empty string`,
-		"segment",
-		`edges[${index}].sourceId`,
-	);
-	const targetType = requireField(
-		raw,
-		"targetType",
-		isNonEmptyString,
-		`edges[${index}].targetType must be a non-empty string`,
-		"segment",
-		`edges[${index}].targetType`,
-	);
-	const targetId = requireField(
-		raw,
-		"targetId",
-		isNonEmptyString,
-		`edges[${index}].targetId must be a non-empty string`,
-		"segment",
-		`edges[${index}].targetId`,
-	);
-	const evidence = requireField(
-		raw,
-		"evidence",
-		isString,
-		`edges[${index}].evidence must be a string`,
-		"segment",
-		`edges[${index}].evidence`,
-	);
-	const confidence = requireField(
-		raw,
-		"confidence",
-		(v): v is number => typeof v === "number" && Number.isFinite(v),
-		`edges[${index}].confidence must be a finite number`,
-		"segment",
-		`edges[${index}].confidence`,
-	);
+	if (!requireNonEmptyString(raw.type)) {
+		throw schemaInvalid(
+			"segment",
+			`edges[${index}].type must be a non-empty string`,
+			`edges[${index}].type`,
+		);
+	}
+	if (!requireNonEmptyString(raw.sourceId)) {
+		throw schemaInvalid(
+			"segment",
+			`edges[${index}].sourceId must be a non-empty string`,
+			`edges[${index}].sourceId`,
+		);
+	}
+	if (!requireNonEmptyString(raw.targetType)) {
+		throw schemaInvalid(
+			"segment",
+			`edges[${index}].targetType must be a non-empty string`,
+			`edges[${index}].targetType`,
+		);
+	}
+	if (!requireNonEmptyString(raw.targetId)) {
+		throw schemaInvalid(
+			"segment",
+			`edges[${index}].targetId must be a non-empty string`,
+			`edges[${index}].targetId`,
+		);
+	}
+	if (!requireString(raw.evidence)) {
+		throw schemaInvalid(
+			"segment",
+			`edges[${index}].evidence must be a string`,
+			`edges[${index}].evidence`,
+		);
+	}
+	const conf = raw.confidence;
+	if (typeof conf !== "number" || !Number.isFinite(conf)) {
+		throw schemaInvalid(
+			"segment",
+			`edges[${index}].confidence must be a finite number`,
+			`edges[${index}].confidence`,
+		);
+	}
 
-	return { type, sourceId, targetType, targetId, evidence, confidence };
+	return v.parse(EdgeSchema, raw);
 }
 
 /**
@@ -562,48 +584,36 @@ export function validateSegmentSchema(data: unknown): Segment {
 		throw new WtfocError("Invalid segment: expected an object", "SCHEMA_INVALID");
 	}
 
-	const sv = data.schemaVersion;
-	if (typeof sv !== "number" || !Number.isInteger(sv)) {
-		throw new WtfocError("Invalid segment: schemaVersion must be an integer", "SCHEMA_INVALID", {
-			field: "schemaVersion",
-		});
+	const sv = validateSchemaVersion(data, "segment");
+
+	if (!requireNonEmptyString(data.embeddingModel)) {
+		throw schemaInvalid("segment", "embeddingModel must be a non-empty string", "embeddingModel");
 	}
-	if (sv < 1 || sv > MAX_SUPPORTED_SCHEMA_VERSION) {
-		throw new SchemaUnknownError(sv, MAX_SUPPORTED_SCHEMA_VERSION);
+	if (!requirePositiveInt(data.embeddingDimensions)) {
+		throw schemaInvalid(
+			"segment",
+			"embeddingDimensions must be a positive integer",
+			"embeddingDimensions",
+		);
 	}
 
-	const embeddingModel = requireField(
-		data,
-		"embeddingModel",
-		isNonEmptyString,
-		"embeddingModel must be a non-empty string",
-		"segment",
-	);
-	const embeddingDimensions = requireField(
-		data,
-		"embeddingDimensions",
-		isPositiveFiniteInt,
-		"embeddingDimensions must be a positive integer",
-		"segment",
+	if (!Array.isArray(data.chunks)) {
+		throw schemaInvalid("segment", "chunks must be an array", "chunks");
+	}
+	const chunks = (data.chunks as unknown[]).map((c, i) =>
+		validateChunk(c, i, data.embeddingDimensions as number),
 	);
 
-	const chunksRaw = requireField(
-		data,
-		"chunks",
-		isUnknownArray,
-		"chunks must be an array",
-		"segment",
-	);
-	const chunks = chunksRaw.map((c, i) => validateChunk(c, i, embeddingDimensions));
+	if (!Array.isArray(data.edges)) {
+		throw schemaInvalid("segment", "edges must be an array", "edges");
+	}
+	const edges = (data.edges as unknown[]).map((e, i) => validateEdge(e, i));
 
-	const edgesRaw = requireField(data, "edges", isUnknownArray, "edges must be an array", "segment");
-	const edges = edgesRaw.map((e, i) => validateEdge(e, i));
-
-	return {
+	return v.parse(SegmentSchema, {
 		schemaVersion: sv,
-		embeddingModel,
-		embeddingDimensions,
+		embeddingModel: data.embeddingModel,
+		embeddingDimensions: data.embeddingDimensions,
 		chunks,
 		edges,
-	};
+	});
 }
