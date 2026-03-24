@@ -18,8 +18,8 @@ export function EmptyState() {
 		<div class="empty-state">
 			<h2>What the FOC happened?</h2>
 			<p class="subtitle">
-				Turn scattered signals into portable, evidence-backed memory — from code to
-				customers — stored on Filecoin Onchain Cloud (FOC) or anywhere you run.
+				Turn scattered signals into portable, evidence-backed memory — from code to customers —
+				stored on Filecoin Onchain Cloud (FOC) or anywhere you run.
 			</p>
 			<p class="micro-line">
 				Not another vague RAG — every answer is tied to real sources you can inspect.

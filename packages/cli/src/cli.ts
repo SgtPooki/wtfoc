@@ -862,7 +862,9 @@ withEmbedderOptions(
 		await embedder.embed("dimension probe");
 
 		if (format !== "quiet") {
-			console.error(`🔄 Re-indexing "${opts.collection}"${targetName !== opts.collection ? ` → "${targetName}"` : ""}`);
+			console.error(
+				`🔄 Re-indexing "${opts.collection}"${targetName !== opts.collection ? ` → "${targetName}"` : ""}`,
+			);
 			console.error(`   Old model: ${oldModel} (${head.manifest.embeddingDimensions}d)`);
 			console.error(`   New model: ${modelName} (${embedder.dimensions}d)`);
 			console.error(
@@ -906,9 +908,7 @@ withEmbedderOptions(
 
 		for (let i = 0; i < allChunks.length; i += batchSize) {
 			const batchChunks = allChunks.slice(i, i + batchSize);
-			const batchEdges = allEdges.filter((e) =>
-				batchChunks.some((c) => c.id === e.sourceId),
-			);
+			const batchEdges = allEdges.filter((e) => batchChunks.some((c) => c.id === e.sourceId));
 			const batchNum = Math.floor(i / batchSize) + 1;
 			const totalBatches = Math.ceil(allChunks.length / batchSize);
 
@@ -1006,7 +1006,9 @@ withEmbedderOptions(
 				}),
 			);
 		} else if (format !== "quiet") {
-			console.error(`\n✅ Re-indexed "${opts.collection}"${targetName !== opts.collection ? ` → "${targetName}"` : ""}`);
+			console.error(
+				`\n✅ Re-indexed "${opts.collection}"${targetName !== opts.collection ? ` → "${targetName}"` : ""}`,
+			);
 			console.error(`   ${chunksProcessed} chunks re-embedded with ${modelName}`);
 			console.error(`   Old segments preserved (immutable audit trail)`);
 		}

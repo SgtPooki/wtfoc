@@ -23,11 +23,7 @@ export function SourcesPanel() {
 
 	return (
 		<div class="sources-panel card-enter">
-			<button
-				type="button"
-				class="sources-header"
-				onClick={() => setExpanded(!expanded)}
-			>
+			<button type="button" class="sources-header" onClick={() => setExpanded(!expanded)}>
 				<h3>Sources</h3>
 				<span class="sources-summary">
 					{totalSources} sources &middot; {totalChunks.toLocaleString()} chunks &middot;{" "}
@@ -40,9 +36,7 @@ export function SourcesPanel() {
 					{entries.map(([sourceType, info]) => (
 						<div key={sourceType} class="sources-group">
 							<div class="sources-group-header">
-								<span class={`badge badge-${sourceType}`}>
-									{sourceType.replace(/-/g, " ")}
-								</span>
+								<span class={`badge badge-${sourceType}`}>{sourceType.replace(/-/g, " ")}</span>
 								<span class="sources-count">
 									{info.count.toLocaleString()} chunks from {info.sources.length} source
 									{info.sources.length !== 1 ? "s" : ""}
