@@ -827,6 +827,186 @@ program
 		}
 	});
 
+// ─── wtfoc reindex ───────────────────────────────────────────────────────────
+withEmbedderOptions(
+	program
+		.command("reindex")
+		.description("Re-embed a collection with a new embedding model")
+		.requiredOption("-c, --collection <name>", "Collection name")
+		.option("--batch-size <number>", "Chunks per embedding batch", "500"),
+).action(
+	async (opts: { collection: string; batchSize: string } & EmbedderOpts) => {
+		const store = getStore();
+		const format = getFormat(program.opts());
+		const { embedder, modelName } = createEmbedder(opts);
+		const storageType = (program.opts().storage ?? "local") as string;
+		const batchSize = Number.parseInt(opts.batchSize, 10);
+
+		// Load the current head
+		const head = await store.manifests.getHead(opts.collection);
+		if (!head) {
+			console.error(`Error: collection "${opts.collection}" not found`);
+			process.exit(1);
+		}
+
+		const oldModel = head.manifest.embeddingModel;
+		if (oldModel === modelName) {
+			console.error(`Collection already uses model "${modelName}". Nothing to do.`);
+			process.exit(0);
+		}
+
+		if (format !== "quiet") {
+			console.error(`🔄 Re-indexing "${opts.collection}"`);
+			console.error(`   Old model: ${oldModel} (${head.manifest.embeddingDimensions}d)`);
+			console.error(`   New model: ${modelName} (${embedder.dimensions}d)`);
+			console.error(
+				`   Segments: ${head.manifest.segments.length}, Chunks: ${head.manifest.totalChunks}`,
+			);
+		}
+
+		// Load all existing segments and extract chunks + edges
+		const allChunks: Chunk[] = [];
+		const allEdges: import("@wtfoc/common").Edge[] = [];
+
+		for (const segSummary of head.manifest.segments) {
+			const segBytes = await store.storage.download(segSummary.id);
+			const segment = JSON.parse(new TextDecoder().decode(segBytes)) as Segment;
+
+			for (const c of segment.chunks) {
+				allChunks.push({
+					id: c.id,
+					content: c.content,
+					sourceType: c.sourceType,
+					source: c.source,
+					sourceUrl: c.sourceUrl,
+					timestamp: c.timestamp,
+					chunkIndex: 0,
+					totalChunks: 0,
+					metadata: c.metadata,
+				});
+			}
+
+			for (const e of segment.edges) {
+				allEdges.push(e);
+			}
+		}
+
+		if (format !== "quiet") {
+			console.error(`   Loaded ${allChunks.length} chunks and ${allEdges.length} edges`);
+		}
+
+		// Re-embed in batches and build new segments
+		const newSegmentSummaries: import("@wtfoc/common").SegmentSummary[] = [];
+		const newBatches: import("@wtfoc/common").BatchRecord[] = [];
+
+		for (let i = 0; i < allChunks.length; i += batchSize) {
+			const batchChunks = allChunks.slice(i, i + batchSize);
+			const batchEdges = allEdges.filter((e) =>
+				batchChunks.some((c) => c.id === e.sourceId),
+			);
+			const batchNum = Math.floor(i / batchSize) + 1;
+			const totalBatches = Math.ceil(allChunks.length / batchSize);
+
+			if (format !== "quiet") {
+				console.error(
+					`⏳ Embedding batch ${batchNum}/${totalBatches} (${batchChunks.length} chunks)...`,
+				);
+			}
+
+			const embeddings = await embedder.embedBatch(batchChunks.map((c) => c.content));
+
+			const segmentChunks = batchChunks.map((chunk, j) => {
+				const emb = embeddings[j];
+				if (!emb) {
+					throw new Error(
+						`Missing embedding for chunk ${j} — expected ${batchChunks.length} embeddings`,
+					);
+				}
+				return { chunk, embedding: Array.from(emb) };
+			});
+
+			const segment = buildSegment(segmentChunks, batchEdges, {
+				embeddingModel: modelName,
+				embeddingDimensions: embedder.dimensions,
+			});
+
+			const segmentBytes = new TextEncoder().encode(JSON.stringify(segment));
+			const segId = segmentId(segment);
+
+			let resultId: string;
+			let batchRecord: import("@wtfoc/common").BatchRecord | undefined;
+
+			if (storageType === "foc") {
+				if (format !== "quiet") console.error("⏳ Bundling into CAR...");
+				const bundleResult = await bundleAndUpload(
+					[{ id: segId, data: segmentBytes }],
+					store.storage,
+				);
+				resultId = bundleResult.segmentCids.get(segId) ?? segId;
+				batchRecord = bundleResult.batch;
+			} else {
+				const segmentResult = await store.storage.upload(segmentBytes);
+				resultId = segmentResult.id;
+			}
+
+			if (format !== "quiet") {
+				console.error(`   Segment stored: ${resultId.slice(0, 16)}...`);
+			}
+
+			newSegmentSummaries.push({
+				id: resultId,
+				sourceTypes: [...new Set(batchChunks.map((c) => c.sourceType))],
+				chunkCount: batchChunks.length,
+			});
+
+			if (batchRecord) {
+				newBatches.push(batchRecord);
+			}
+		}
+
+		// Write new manifest (old segments remain untouched — immutable audit trail)
+		const currentHead = await store.manifests.getHead(opts.collection);
+		const prevHeadId = currentHead ? currentHead.headId : null;
+
+		const manifest: CollectionHead = {
+			schemaVersion: CURRENT_SCHEMA_VERSION,
+			collectionId: head.manifest.collectionId,
+			name: opts.collection,
+			currentRevisionId: head.manifest.currentRevisionId,
+			prevHeadId,
+			segments: newSegmentSummaries,
+			totalChunks: allChunks.length,
+			embeddingModel: modelName,
+			embeddingDimensions: embedder.dimensions,
+			createdAt: head.manifest.createdAt,
+			updatedAt: new Date().toISOString(),
+		};
+
+		if (newBatches.length > 0) {
+			manifest.batches = newBatches;
+		}
+
+		await store.manifests.putHead(opts.collection, manifest, prevHeadId);
+
+		if (format === "json") {
+			console.log(
+				JSON.stringify({
+					collection: opts.collection,
+					oldModel,
+					newModel: modelName,
+					chunks: allChunks.length,
+					segments: newSegmentSummaries.length,
+				}),
+			);
+		} else if (format !== "quiet") {
+			console.error(`\n✅ Re-indexed "${opts.collection}"`);
+			console.error(`   ${allChunks.length} chunks re-embedded with ${modelName}`);
+			console.error(`   ${newSegmentSummaries.length} new segments created`);
+			console.error(`   Old segments preserved (immutable audit trail)`);
+		}
+	},
+);
+
 // ─── wtfoc serve ─────────────────────────────────────────────────────────────
 withEmbedderOptions(
 	program
