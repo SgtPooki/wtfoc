@@ -10,6 +10,8 @@ export interface OpenAIEmbedderOptions {
 	/** If not provided, auto-detected from first API response */
 	dimensions?: number;
 	baseUrl?: string;
+	/** Max characters per input text (truncated if exceeded). Default: 8000 (~2K tokens) */
+	maxInputChars?: number;
 }
 
 /**
@@ -23,6 +25,7 @@ export class OpenAIEmbedder implements Embedder {
 	readonly #apiKey: string;
 	readonly #model: string;
 	readonly #baseUrl: string;
+	readonly #maxInputChars: number;
 
 	get dimensions(): number {
 		if (this.#dimensions === null) {
@@ -41,6 +44,7 @@ export class OpenAIEmbedder implements Embedder {
 		this.#apiKey = options.apiKey;
 		this.#model = options.model ?? DEFAULT_MODEL;
 		this.#dimensions = options.dimensions ?? null;
+		this.#maxInputChars = options.maxInputChars ?? 8000;
 
 		const base = options.baseUrl ?? API_URL;
 		this.#baseUrl = base.endsWith("/embeddings") ? base : `${base.replace(/\/$/, "")}/embeddings`;
@@ -62,6 +66,11 @@ export class OpenAIEmbedder implements Embedder {
 	async #request(input: string[], signal?: AbortSignal): Promise<Float32Array[]> {
 		signal?.throwIfAborted();
 
+		// Truncate inputs that exceed the model's context limit
+		const truncated = input.map((text) =>
+			text.length > this.#maxInputChars ? text.slice(0, this.#maxInputChars) : text,
+		);
+
 		let response: Response;
 		try {
 			response = await fetch(this.#baseUrl, {
@@ -72,7 +81,7 @@ export class OpenAIEmbedder implements Embedder {
 				},
 				body: JSON.stringify({
 					model: this.#model,
-					input,
+					input: truncated,
 				}),
 				signal,
 			});
