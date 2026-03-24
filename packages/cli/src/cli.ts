@@ -857,6 +857,10 @@ withEmbedderOptions(
 			process.exit(0);
 		}
 
+		// Probe embed to detect dimensions (OpenAI-compatible embedders auto-detect on first call)
+		if (format !== "quiet") console.error("⏳ Detecting embedding dimensions...");
+		await embedder.embed("dimension probe");
+
 		if (format !== "quiet") {
 			console.error(`🔄 Re-indexing "${opts.collection}"${targetName !== opts.collection ? ` → "${targetName}"` : ""}`);
 			console.error(`   Old model: ${oldModel} (${head.manifest.embeddingDimensions}d)`);
