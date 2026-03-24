@@ -28,8 +28,11 @@ Use stable IDs. Do not renumber existing stories.
 
 | ID | Story | User | Status | Priority | Example | Docs | Issue |
 |----|-------|------|--------|----------|---------|------|-------|
-| `US-001` | Trace bug lineage across issues, PRs, comments, and repos | Engineer investigating bugs | `planned` | `high` | `-` | `-` | [#54](https://github.com/SgtPooki/wtfoc/issues/54) |
+| `US-001` | Trace bug lineage across issues, PRs, comments, and repos | Engineer investigating bugs | `needs-example` | `high` | `-` | `-` | [#54](https://github.com/SgtPooki/wtfoc/issues/54) |
 | `US-002` | Use `wtfoc` as a decentralized evidence layer in a RAG pipeline | AI engineer building RAG systems | `planned` | `high` | `-` | `-` | [#55](https://github.com/SgtPooki/wtfoc/issues/55) |
+| `US-003` | Cluster repeated feature requests and unmet complaints across repos | Product or engineering lead prioritizing work | `planned` | `high` | `-` | `-` | [#57](https://github.com/SgtPooki/wtfoc/issues/57), [#59](https://github.com/SgtPooki/wtfoc/issues/59) |
+| `US-004` | Detect stale documentation and undocumented implemented features | Maintainer or DX owner improving docs quality | `planned` | `medium` | `-` | `-` | [#58](https://github.com/SgtPooki/wtfoc/issues/58) |
+| `US-005` | Build a unified knowledge graph across GitHub, docs sites, and chat | Team lead or DX engineer onboarding to a project | `validated` | `high` | `-` | `-` | `-` |
 
 ## How To Add A Story
 
@@ -64,8 +67,8 @@ If a story is only an idea, that is fine. Mark it `proposed` and leave missing l
 | Example/demo | `-` |
 | Docs | `-` |
 | Issue/spec | [#54](https://github.com/SgtPooki/wtfoc/issues/54) |
-| Status | `planned` |
-| Open gaps | Trace output is still grouped primarily by source type; timestamps and lineage heuristics need to be surfaced more clearly |
+| Status | `needs-example` |
+| Open gaps | Trace output is still grouped primarily by source type; timestamps and lineage heuristics need to be surfaced more clearly. Core trace capability validated against real GitHub + docs data — needs a polished demo script. |
 
 ### `US-002` Use `wtfoc` as a decentralized evidence layer in a RAG pipeline
 
@@ -82,6 +85,54 @@ If a story is only an idea, that is fine. Mark it `proposed` and leave missing l
 | Issue/spec | [#55](https://github.com/SgtPooki/wtfoc/issues/55) |
 | Status | `planned` |
 | Open gaps | Need clearer positioning docs, an architecture diagram, and at least one validated example showing local and/or FOC-backed storage behavior |
+
+### `US-003` Cluster repeated feature requests and unmet complaints across repos
+
+| Field | Value |
+|-------|-------|
+| Story | Detect common requests or complaints across issues, comments, discussions, and repos, then map likely implementation surfaces |
+| User | Product lead, maintainer, or engineering lead deciding what gaps matter most |
+| Pain | Repeated demand is spread across many artifacts and phrased differently, making it hard to see common threads or tell whether a request is still unmet |
+| Why `wtfoc` | `wtfoc` can combine semantic clustering, explicit evidence links, and cross-repo trace to connect user feedback with implementation reality |
+| Inputs | Issues, comments, discussions, and related code/doc artifacts across one or more repos |
+| Expected output | A cluster of repeated requests with supporting evidence, a likely implemented vs unmet assessment, and likely repos/files/subsystems that would need to change |
+| Example/demo | `-` |
+| Docs | `-` |
+| Issue/spec | [#57](https://github.com/SgtPooki/wtfoc/issues/57) |
+| Status | `planned` |
+| Open gaps | Need a clustering/output model, a way to assess whether requests appear implemented, and heuristics for mapping feedback clusters to code surfaces |
+
+### `US-004` Detect stale documentation and undocumented implemented features
+
+| Field | Value |
+|-------|-------|
+| Story | Find docs that are likely out of date and features that appear implemented but not documented |
+| User | Maintainer, DX owner, or agent preparing documentation updates |
+| Pain | Docs drift from code over time, and implemented behavior often ships without corresponding documentation coverage |
+| Why `wtfoc` | `wtfoc` can connect docs, code, tests, issues, and PRs to surface likely contradictions and missing documentation based on evidence |
+| Inputs | Docs files, code, tests, PRs, issues, and changelog-like artifacts across one or more repos |
+| Expected output | A prioritized list of likely stale docs and undocumented features, each with supporting evidence and likely files/docs to update |
+| Example/demo | `-` |
+| Docs | `-` |
+| Issue/spec | [#58](https://github.com/SgtPooki/wtfoc/issues/58) |
+| Status | `planned` |
+| Open gaps | Need heuristics for code-to-doc and doc-to-code comparison, evidence thresholds for drift, and a useful output format for prioritizing docs work |
+
+### `US-005` Build a unified knowledge graph across GitHub, docs sites, and chat
+
+| Field | Value |
+|-------|-------|
+| Story | Ingest multiple source types (GitHub repos/issues/PRs, documentation websites, Slack/Discord) into a single collection and query across all of them |
+| User | Team lead, DX engineer, or anyone onboarding to a multi-repo project with scattered knowledge |
+| Pain | Project knowledge lives in GitHub issues, docs sites, chat channels, and code — there's no single place to search across all of it |
+| Why `wtfoc` | `wtfoc` has pluggable source adapters that normalize all sources into chunks with edges, enabling cross-source semantic search and trace |
+| Inputs | GitHub repos, documentation site URLs, Slack/Discord exports or API tokens |
+| Expected output | A single collection where `query` and `trace` return results spanning all ingested sources with source attribution |
+| Example/demo | `-` |
+| Docs | `-` |
+| Issue/spec | `-` |
+| Status | `validated` |
+| Open gaps | Validated with GitHub adapter + website adapter (docs.filecoin.cloud, 2,959 chunks). Slack adapter blocked on workspace approval (#10). Discord adapter built but deprioritized. Need a polished onboarding script showing the full multi-source flow. |
 
 ## Story Template
 
