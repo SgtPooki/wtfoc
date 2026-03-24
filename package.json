@@ -1,5 +1,5 @@
 {
-	"name": "wtfoc",
+	"name": "wtfoc-monorepo",
 	"private": true,
 	"type": "module",
 	"packageManager": "pnpm@10.16.1",
