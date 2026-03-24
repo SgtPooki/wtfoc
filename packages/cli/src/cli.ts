@@ -11,7 +11,6 @@ import {
 } from "@wtfoc/common";
 import {
 	buildSegment,
-	chunkMarkdown,
 	getAdapter,
 	getAvailableSourceTypes,
 	RegexEdgeExtractor,
@@ -28,7 +27,13 @@ import {
 } from "@wtfoc/search";
 import { bundleAndUpload, createStore, generateCollectionId } from "@wtfoc/store";
 import { Command } from "commander";
-import { formatCollections, formatQuery, formatStatus, formatTrace, type OutputFormat } from "./output.js";
+import {
+	formatCollections,
+	formatQuery,
+	formatStatus,
+	formatTrace,
+	type OutputFormat,
+} from "./output.js";
 
 function parseSinceDuration(duration: string): string {
 	const match = duration.match(/^(\d+)([dh])$/);
@@ -87,6 +92,10 @@ function getFormat(opts: { json?: boolean; quiet?: boolean }): OutputFormat {
 	return "human";
 }
 
+function getFirstMatchGroup(match: RegExpMatchArray | RegExpExecArray, index = 1): string | null {
+	return typeof match[index] === "string" ? match[index] : null;
+}
+
 /**
  * Create an embedder based on CLI flags.
  * Supports: transformers (default, local), openai (API or LM Studio compatible).
@@ -135,7 +144,7 @@ function createEmbedder(opts: {
 			process.exit(2);
 		}
 
-		const apiKey = opts.embedderKey ?? process.env["WTFOC_OPENAI_API_KEY"] ?? "no-key";
+		const apiKey = opts.embedderKey ?? process.env.WTFOC_OPENAI_API_KEY ?? "no-key";
 		const embedder = new OpenAIEmbedder({ apiKey, baseUrl, model });
 		return { embedder, modelName: model };
 	}
@@ -177,7 +186,7 @@ program
 	.description("Create a new wtfoc project")
 	.option("--local", "Use local storage (default)")
 	.option("--foc", "Use FOC storage")
-	.action(async (name: string, opts: { local?: boolean; foc?: boolean }) => {
+	.action(async (name: string) => {
 		const store = getStore();
 
 		const manifest: CollectionHead = {
@@ -199,7 +208,7 @@ program
 	});
 
 // ─── wtfoc ingest <source-type> ──────────────────────────────────────────────
-const ingestCmd = withEmbedderOptions(
+withEmbedderOptions(
 	program
 		.command("ingest <sourceType> [args...]")
 		.description("Ingest from a source (repo, slack, github, website)")
@@ -221,10 +230,6 @@ const ingestCmd = withEmbedderOptions(
 
 		// Get or create manifest
 		const head = await store.manifests.getHead(opts.collection);
-		let prevHeadId: string | null = null;
-		if (head) {
-			prevHeadId = head.headId;
-		}
 
 		// Initialize embedder
 		if (format !== "quiet") console.error("⏳ Loading embedder...");
@@ -595,9 +600,7 @@ program
 			}),
 		);
 
-		const valid = collections.filter(
-			(c): c is NonNullable<typeof c> => c !== null,
-		);
+		const valid = collections.filter((c): c is NonNullable<typeof c> => c !== null);
 
 		console.log(formatCollections(valid, format));
 	});
@@ -728,11 +731,12 @@ program
 			for (const c of segment.chunks) {
 				// Track ingested GitHub repos (from source field like "owner/repo#N" or "owner/repo/path")
 				const repoMatch = c.source.match(/^([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)/);
-				if (repoMatch && c.sourceType.startsWith("github-"))
-					ingestedRepos.add(repoMatch[1]!.toLowerCase());
+				const repoId = repoMatch ? getFirstMatchGroup(repoMatch) : null;
+				if (repoId && c.sourceType.startsWith("github-")) ingestedRepos.add(repoId.toLowerCase());
 				if (c.sourceType === "code" || c.sourceType === "markdown") {
 					const codeRepo = c.source.match(/^([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)/);
-					if (codeRepo) ingestedRepos.add(codeRepo[1]!.toLowerCase());
+					const codeRepoId = codeRepo ? getFirstMatchGroup(codeRepo) : null;
+					if (codeRepoId) ingestedRepos.add(codeRepoId.toLowerCase());
 				}
 				// Track ingested websites
 				if (c.sourceUrl?.startsWith("http")) {
@@ -756,14 +760,16 @@ program
 			for (const chunk of seg.chunks) {
 				// GitHub repo references in content
 				for (const match of chunk.content.matchAll(GITHUB_REPO_URL)) {
-					const repo = match[1]!;
+					const repo = getFirstMatchGroup(match);
+					if (!repo) continue;
 					if (!ingestedRepos.has(repo.toLowerCase())) {
 						repoRefs.set(repo, (repoRefs.get(repo) ?? 0) + 1);
 					}
 				}
 				// Docs site references in content
 				for (const match of chunk.content.matchAll(DOCS_SITE_URL)) {
-					const host = match[1]!;
+					const host = getFirstMatchGroup(match);
+					if (!host) continue;
 					if (!ingestedSites.has(host)) {
 						siteRefs.set(host, (siteRefs.get(host) ?? 0) + 1);
 					}
@@ -772,10 +778,9 @@ program
 			// Also check edge targetIds for unresolved repos
 			for (const edge of seg.edges) {
 				const repoMatch = edge.targetId.match(/^([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)#/);
-				if (repoMatch && !ingestedRepos.has(repoMatch[1]!.toLowerCase())) {
-					const repo = repoMatch[1]!;
-					repoRefs.set(repo, (repoRefs.get(repo) ?? 0) + 1);
-				}
+				const repo = repoMatch ? getFirstMatchGroup(repoMatch) : null;
+				if (!repo || ingestedRepos.has(repo.toLowerCase())) continue;
+				repoRefs.set(repo, (repoRefs.get(repo) ?? 0) + 1);
 			}
 		}
 

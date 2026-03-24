@@ -1,8 +1,6 @@
 import type { createStore } from "@wtfoc/store";
 
-export async function handleListSources(
-	store: ReturnType<typeof createStore>,
-): Promise<string> {
+export async function handleListSources(store: ReturnType<typeof createStore>): Promise<string> {
 	const names = await store.manifests.listProjects();
 
 	if (names.length === 0) {
