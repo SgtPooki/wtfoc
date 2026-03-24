@@ -10,7 +10,7 @@ export interface OpenAIEmbedderOptions {
 	/** If not provided, auto-detected from first API response */
 	dimensions?: number;
 	baseUrl?: string;
-	/** Max characters per input text (truncated if exceeded). Default: 8000 (~2K tokens) */
+	/** Max characters per input text (truncated if exceeded). Default: 4000 (~1.5K tokens, safe for 2048-token models) */
 	maxInputChars?: number;
 }
 
@@ -44,7 +44,7 @@ export class OpenAIEmbedder implements Embedder {
 		this.#apiKey = options.apiKey;
 		this.#model = options.model ?? DEFAULT_MODEL;
 		this.#dimensions = options.dimensions ?? null;
-		this.#maxInputChars = options.maxInputChars ?? 8000;
+		this.#maxInputChars = options.maxInputChars ?? 4000;
 
 		const base = options.baseUrl ?? API_URL;
 		this.#baseUrl = base.endsWith("/embeddings") ? base : `${base.replace(/\/$/, "")}/embeddings`;
