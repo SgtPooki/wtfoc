@@ -852,12 +852,27 @@ program
 withEmbedderOptions(
 	program
 		.command("reindex")
-		.description("Re-embed a collection with a new embedding model")
+		.description(
+			"Re-embed a collection with a new embedding model (optionally re-chunk oversized content)",
+		)
 		.requiredOption("-c, --collection <name>", "Source collection name")
 		.option("--target <name>", "Target collection name (default: overwrite source)")
-		.option("--batch-size <number>", "Chunks per embedding batch", "500"),
+		.option("--batch-size <number>", "Chunks per embedding batch", "500")
+		.option("--rechunk", "Re-chunk oversized content before re-embedding")
+		.option(
+			"--max-chunk-chars <number>",
+			`Max chars per chunk when rechunking (default: ${DEFAULT_MAX_CHUNK_CHARS})`,
+		),
 ).action(
-	async (opts: { collection: string; target?: string; batchSize: string } & EmbedderOpts) => {
+	async (
+		opts: {
+			collection: string;
+			target?: string;
+			batchSize: string;
+			rechunk?: boolean;
+			maxChunkChars?: string;
+		} & EmbedderOpts,
+	) => {
 		const store = getStore();
 		const format = getFormat(program.opts());
 		const { embedder, modelName } = createEmbedder(opts);
@@ -873,8 +888,9 @@ withEmbedderOptions(
 		}
 
 		const oldModel = head.manifest.embeddingModel;
-		if (oldModel === modelName && targetName === opts.collection) {
+		if (oldModel === modelName && targetName === opts.collection && !opts.rechunk) {
 			console.error(`Collection already uses model "${modelName}". Nothing to do.`);
+			console.error(`   Use --rechunk to re-chunk oversized content with the same model.`);
 			process.exit(0);
 		}
 
@@ -922,6 +938,22 @@ withEmbedderOptions(
 
 		if (format !== "quiet") {
 			console.error(`   Loaded ${allChunks.length} chunks and ${allEdges.length} edges`);
+		}
+
+		// Optionally re-chunk oversized content
+		if (opts.rechunk) {
+			const maxChars = opts.maxChunkChars
+				? Number.parseInt(opts.maxChunkChars, 10)
+				: (embedder.maxInputChars ?? DEFAULT_MAX_CHUNK_CHARS);
+			const before = allChunks.length;
+			const rechunked = rechunkOversized(allChunks, maxChars);
+			allChunks.length = 0;
+			allChunks.push(...rechunked);
+			if (format !== "quiet" && allChunks.length !== before) {
+				console.error(
+					`   Re-chunked: ${before} → ${allChunks.length} chunks (max ${maxChars} chars)`,
+				);
+			}
 		}
 
 		// Re-embed in batches, writing manifest after each batch for crash resilience
