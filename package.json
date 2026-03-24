@@ -20,6 +20,12 @@
 		"typescript": "^5.9.3",
 		"vitest": "^4.1.0"
 	},
+	"pnpm": {
+		"overrides": {
+			"undici@>=6.0.0 <6.24.0": ">=6.24.0",
+			"file-type@>=20.0.0 <=21.3.1": ">=21.3.2"
+		}
+	},
 	"dependencies": {
 		"@filoz/synapse-core": "^0.3.1",
 		"@filoz/synapse-sdk": "^0.40.0",
