@@ -26,6 +26,7 @@ export function Layout({ children }: LayoutProps) {
 	return (
 		<div class="app">
 			<header>
+				<img src="/logo.png" alt="wtFOC" class="header-logo" width="36" height="36" />
 				<h1>
 					wt<span class="accent">FOC</span>
 				</h1>
