@@ -1,6 +1,6 @@
 import type { StorageBackend, StorageResult } from "@wtfoc/common";
 import { WtfocError } from "@wtfoc/common";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { bundleAndUpload } from "./bundler.js";
 
 /** Creates a mock StorageBackend that records upload calls */

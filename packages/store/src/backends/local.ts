@@ -30,7 +30,7 @@ export class LocalStorageBackend implements StorageBackend {
 		const filePath = join(this.dataDir, id);
 		try {
 			return await readFile(filePath);
-		} catch (cause) {
+		} catch (_cause) {
 			throw new StorageNotFoundError(id, "local");
 		}
 	}

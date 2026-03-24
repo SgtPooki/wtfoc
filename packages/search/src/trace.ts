@@ -103,9 +103,9 @@ export async function trace(
 		const chunkData = indexes.byId.get(seed.entry.id);
 		hops.push({
 			content: chunkData?.content ?? "",
-			sourceType: seed.entry.metadata["sourceType"] ?? "unknown",
-			source: seed.entry.metadata["source"] ?? "unknown",
-			sourceUrl: seed.entry.metadata["sourceUrl"],
+			sourceType: seed.entry.metadata.sourceType ?? "unknown",
+			source: seed.entry.metadata.source ?? "unknown",
+			sourceUrl: seed.entry.metadata.sourceUrl,
 			storageId: seed.entry.storageId,
 			connection: {
 				method: "semantic",

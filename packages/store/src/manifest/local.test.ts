@@ -57,8 +57,8 @@ describe("LocalManifestStore", () => {
 			const getResult = await store.getHead("get-test");
 
 			expect(getResult).not.toBeNull();
-			expect(getResult!.headId).toBe(putResult.headId);
-			expect(getResult!.manifest).toEqual(manifest);
+			expect(getResult?.headId).toBe(putResult.headId);
+			expect(getResult?.manifest).toEqual(manifest);
 		});
 
 		it("succeeds when prevHeadId matches current head", async () => {
@@ -100,7 +100,7 @@ describe("LocalManifestStore", () => {
 			const result = await store.getHead("schema-test");
 
 			expect(result).not.toBeNull();
-			expect(result!.manifest.schemaVersion).toBe(1);
+			expect(result?.manifest.schemaVersion).toBe(1);
 		});
 	});
 

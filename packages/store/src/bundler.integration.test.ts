@@ -1,4 +1,4 @@
-import type { CollectionHead, Segment, StorageBackend, StorageResult } from "@wtfoc/common";
+import type { CollectionHead, StorageBackend, StorageResult } from "@wtfoc/common";
 import { CURRENT_SCHEMA_VERSION } from "@wtfoc/common";
 import { describe, expect, it } from "vitest";
 import { bundleAndUpload } from "./bundler.js";

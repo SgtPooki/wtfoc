@@ -1,5 +1,5 @@
-import type { BatchRecord, StorageBackend, StorageResult } from "@wtfoc/common";
-import { StorageUnreachableError, WtfocError } from "@wtfoc/common";
+import type { BatchRecord, StorageBackend } from "@wtfoc/common";
+import { WtfocError } from "@wtfoc/common";
 
 /** Input segment for bundling — id + serialized bytes */
 export interface BundleSegment {

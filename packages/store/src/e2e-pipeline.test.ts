@@ -159,9 +159,9 @@ describe("E2E pipeline: ingest → store → mount → query", () => {
 	it("stores segment and updates CollectionHead with correct fields", async () => {
 		const reloaded = await manifests.getHead(collectionName);
 		expect(reloaded).toBeTruthy();
-		expect(reloaded!.headId).toBe(headId);
+		expect(reloaded?.headId).toBe(headId);
 
-		const validated = validateManifestSchema(reloaded!.manifest);
+		const validated = validateManifestSchema(reloaded?.manifest);
 		expect(validated.collectionId).toBe(generateCollectionId(collectionName));
 		expect(validated.currentRevisionId).toBeNull();
 		expect(validated.segments).toHaveLength(1);
@@ -185,7 +185,7 @@ describe("E2E pipeline: ingest → store → mount → query", () => {
 		expect(reloaded).toBeTruthy();
 
 		const vectorIndex = new InMemoryVectorIndex();
-		const mounted = await mountCollection(reloaded!.manifest, storage, vectorIndex);
+		const mounted = await mountCollection(reloaded?.manifest, storage, vectorIndex);
 		expect(mounted.segments.length).toBeGreaterThan(0);
 
 		const result = await query("synapse upload", embedder, vectorIndex, { minScore: -1 });
@@ -332,7 +332,7 @@ describe("E2E pipeline: edge extraction and trace", () => {
 describe("E2E pipeline: multi-source ingest", () => {
 	const collectionName = "e2e-multi-source";
 	const embedder = mockEmbedder();
-	let lastHeadId: string;
+	let _lastHeadId: string;
 
 	beforeAll(async () => {
 		const chunksA = chunkMarkdown(SOURCE_A_MARKDOWN, {
@@ -385,13 +385,13 @@ describe("E2E pipeline: multi-source ingest", () => {
 			updatedAt: new Date().toISOString(),
 		};
 		const stored2 = await manifests.putHead(collectionName, head2, stored1.headId);
-		lastHeadId = stored2.headId;
+		_lastHeadId = stored2.headId;
 	});
 
 	it("collection has two segments after multi-source ingest", async () => {
 		const reloaded = await manifests.getHead(collectionName);
 		expect(reloaded).toBeTruthy();
-		expect(reloaded!.manifest.segments).toHaveLength(2);
+		expect(reloaded?.manifest.segments).toHaveLength(2);
 	});
 
 	it("query returns results from both sources", async () => {
@@ -399,7 +399,7 @@ describe("E2E pipeline: multi-source ingest", () => {
 		expect(reloaded).toBeTruthy();
 
 		const vectorIndex = new InMemoryVectorIndex();
-		await mountCollection(reloaded!.manifest, storage, vectorIndex);
+		await mountCollection(reloaded?.manifest, storage, vectorIndex);
 		expect(vectorIndex.size).toBeGreaterThan(1);
 
 		const result = await query("upload", embedder, vectorIndex, { topK: 100, minScore: -1 });

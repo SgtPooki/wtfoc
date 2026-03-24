@@ -52,9 +52,9 @@ describe("buildSegment", () => {
 		const segment = buildSegment(chunks, [], defaultOptions);
 
 		expect(segment.chunks).toHaveLength(2);
-		expect(segment.chunks[0]!.id).toBe("a");
-		expect(segment.chunks[0]!.embedding).toEqual([0.1, 0.2, 0.3]);
-		expect(segment.chunks[1]!.source).toBe("file2.md");
+		expect(segment.chunks[0]?.id).toBe("a");
+		expect(segment.chunks[0]?.embedding).toEqual([0.1, 0.2, 0.3]);
+		expect(segment.chunks[1]?.source).toBe("file2.md");
 	});
 
 	it("maps edges into segment format", () => {
@@ -62,8 +62,8 @@ describe("buildSegment", () => {
 		const segment = buildSegment([], edges, defaultOptions);
 
 		expect(segment.edges).toHaveLength(2);
-		expect(segment.edges[0]!.type).toBe("references");
-		expect(segment.edges[1]!.type).toBe("closes");
+		expect(segment.edges[0]?.type).toBe("references");
+		expect(segment.edges[1]?.type).toBe("closes");
 	});
 
 	it("extracts BM25 terms from content when not provided", () => {
@@ -72,9 +72,9 @@ describe("buildSegment", () => {
 		];
 		const segment = buildSegment(chunks, [], defaultOptions);
 
-		expect(segment.chunks[0]!.terms).toContain("upload");
-		expect(segment.chunks[0]!.terms).toContain("timeout");
-		expect(segment.chunks[0]!.terms).toContain("error");
+		expect(segment.chunks[0]?.terms).toContain("upload");
+		expect(segment.chunks[0]?.terms).toContain("timeout");
+		expect(segment.chunks[0]?.terms).toContain("error");
 	});
 
 	it("uses provided terms when available", () => {
@@ -83,7 +83,7 @@ describe("buildSegment", () => {
 		];
 		const segment = buildSegment(chunks, [], defaultOptions);
 
-		expect(segment.chunks[0]!.terms).toEqual(["custom", "terms"]);
+		expect(segment.chunks[0]?.terms).toEqual(["custom", "terms"]);
 	});
 
 	it("preserves sourceType and sourceUrl on chunks", () => {
@@ -98,8 +98,8 @@ describe("buildSegment", () => {
 		];
 		const segment = buildSegment(chunks, [], defaultOptions);
 
-		expect(segment.chunks[0]!.sourceType).toBe("github-issue");
-		expect(segment.chunks[0]!.sourceUrl).toBe("https://github.com/FilOzone/synapse-sdk/issues/42");
+		expect(segment.chunks[0]?.sourceType).toBe("github-issue");
+		expect(segment.chunks[0]?.sourceUrl).toBe("https://github.com/FilOzone/synapse-sdk/issues/42");
 	});
 
 	it("handles empty chunks and edges", () => {

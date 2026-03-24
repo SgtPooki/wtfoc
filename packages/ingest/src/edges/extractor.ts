@@ -41,13 +41,13 @@ export function inferRepoFromContent(content: string): string | undefined {
 	const repoCounts = new Map<string, number>();
 
 	for (const match of content.matchAll(GITHUB_URL_PATTERN)) {
-		const repo = match[1]!;
-		repoCounts.set(repo, (repoCounts.get(repo) ?? 0) + 1);
+		const repo = match[1];
+		if (repo) repoCounts.set(repo, (repoCounts.get(repo) ?? 0) + 1);
 	}
 
 	for (const match of content.matchAll(CROSS_REPO_PATTERN)) {
-		const repo = match[1]!;
-		repoCounts.set(repo, (repoCounts.get(repo) ?? 0) + 1);
+		const repo = match[1];
+		if (repo) repoCounts.set(repo, (repoCounts.get(repo) ?? 0) + 1);
 	}
 
 	if (repoCounts.size === 0) return undefined;
@@ -78,12 +78,12 @@ export function buildBatchRepoAffinity(chunks: Chunk[]): string | undefined {
 		}
 
 		for (const match of chunk.content.matchAll(GITHUB_URL_PATTERN)) {
-			const repo = match[1]!;
-			repoCounts.set(repo, (repoCounts.get(repo) ?? 0) + 1);
+			const repo = match[1];
+			if (repo) repoCounts.set(repo, (repoCounts.get(repo) ?? 0) + 1);
 		}
 		for (const match of chunk.content.matchAll(CROSS_REPO_PATTERN)) {
-			const repo = match[1]!;
-			repoCounts.set(repo, (repoCounts.get(repo) ?? 0) + 1);
+			const repo = match[1];
+			if (repo) repoCounts.set(repo, (repoCounts.get(repo) ?? 0) + 1);
 		}
 	}
 

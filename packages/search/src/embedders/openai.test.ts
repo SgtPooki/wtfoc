@@ -74,8 +74,8 @@ describe("OpenAIEmbedder", () => {
 		const results = await embedder.embedBatch(["a", "b"]);
 
 		expect(results).toHaveLength(2);
-		expect(results[0]![0]).toBeCloseTo(0.1);
-		expect(results[1]![0]).toBeCloseTo(0.2);
+		expect(results[0]?.[0]).toBeCloseTo(0.1);
+		expect(results[1]?.[0]).toBeCloseTo(0.2);
 	});
 
 	it("throws EmbedFailedError on HTTP error", async () => {

@@ -45,15 +45,15 @@ describe("createStore", () => {
 	});
 
 	it("throws for foc backend without private key", () => {
-		const origKey = process.env["PRIVATE_KEY"];
-		const origWtfocKey = process.env["WTFOC_PRIVATE_KEY"];
-		process.env["PRIVATE_KEY"] = "";
-		process.env["WTFOC_PRIVATE_KEY"] = "";
+		const origKey = process.env.PRIVATE_KEY;
+		const origWtfocKey = process.env.WTFOC_PRIVATE_KEY;
+		process.env.PRIVATE_KEY = "";
+		process.env.WTFOC_PRIVATE_KEY = "";
 		try {
 			expect(() => createStore({ storage: "foc" })).toThrow(/private key/i);
 		} finally {
-			if (origKey) process.env["PRIVATE_KEY"] = origKey;
-			if (origWtfocKey) process.env["WTFOC_PRIVATE_KEY"] = origWtfocKey;
+			if (origKey) process.env.PRIVATE_KEY = origKey;
+			if (origWtfocKey) process.env.WTFOC_PRIVATE_KEY = origWtfocKey;
 		}
 	});
 

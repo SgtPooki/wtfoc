@@ -74,9 +74,9 @@ describe("TransformersEmbedder", () => {
 			expect(r.length).toBe(384);
 		}
 		// Each embedding should have distinct values
-		expect(results[0]![0]).toBeCloseTo(0);
-		expect(results[1]![0]).toBeCloseTo(0.1);
-		expect(results[2]![0]).toBeCloseTo(0.2);
+		expect(results[0]?.[0]).toBeCloseTo(0);
+		expect(results[1]?.[0]).toBeCloseTo(0.1);
+		expect(results[2]?.[0]).toBeCloseTo(0.2);
 	});
 
 	it("rejects when AbortSignal is already aborted", async () => {

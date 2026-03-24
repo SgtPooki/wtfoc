@@ -41,10 +41,10 @@ export async function query(
 		results: matches
 			.filter((m) => m.score >= minScore)
 			.map((m) => ({
-				content: m.entry.metadata["content"] ?? "",
-				sourceType: m.entry.metadata["sourceType"] ?? "unknown",
-				source: m.entry.metadata["source"] ?? "unknown",
-				sourceUrl: m.entry.metadata["sourceUrl"],
+				content: m.entry.metadata.content ?? "",
+				sourceType: m.entry.metadata.sourceType ?? "unknown",
+				source: m.entry.metadata.source ?? "unknown",
+				sourceUrl: m.entry.metadata.sourceUrl,
 				storageId: m.entry.storageId,
 				score: m.score,
 			})),

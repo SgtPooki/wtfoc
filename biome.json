@@ -15,7 +15,14 @@
 				"noExplicitAny": "error"
 			},
 			"style": {
-				"noNonNullAssertion": "warn"
+				"noNonNullAssertion": "error"
+			},
+			"complexity": {
+				"useLiteralKeys": "error"
+			},
+			"correctness": {
+				"noUnusedImports": "error",
+				"noUnusedVariables": "error"
 			}
 		}
 	},

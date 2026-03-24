@@ -57,16 +57,16 @@ export class SlackAdapter implements SourceAdapter<SlackAdapterConfig> {
 	readonly sourceType = "slack";
 
 	parseConfig(raw: Record<string, unknown>): SlackAdapterConfig {
-		const source = raw["source"];
+		const source = raw.source;
 		if (typeof source !== "string" || source.length === 0) {
 			throw new WtfocError("slack source required (channel name or channel ID)", "INVALID_CONFIG", {
 				source,
 			});
 		}
 
-		const rawToken = raw["token"];
+		const rawToken = raw.token;
 		const token =
-			(typeof rawToken === "string" ? rawToken : undefined) ?? process.env["SLACK_BOT_TOKEN"];
+			(typeof rawToken === "string" ? rawToken : undefined) ?? process.env.SLACK_BOT_TOKEN;
 		if (!token) {
 			throw new WtfocError(
 				"Slack bot token required. Set SLACK_BOT_TOKEN or pass --token",
@@ -78,8 +78,8 @@ export class SlackAdapter implements SourceAdapter<SlackAdapterConfig> {
 		return {
 			source,
 			token,
-			since: typeof raw["since"] === "string" ? raw["since"] : undefined,
-			limit: typeof raw["limit"] === "number" ? raw["limit"] : 1000,
+			since: typeof raw.since === "string" ? raw.since : undefined,
+			limit: typeof raw.limit === "number" ? raw.limit : 1000,
 		};
 	}
 
@@ -144,8 +144,9 @@ export class SlackAdapter implements SourceAdapter<SlackAdapterConfig> {
 			const content = group.messages.map((m) => m.text).join("\n");
 			if (!content.trim()) continue;
 
-			const firstMsg = group.messages[0]!;
-			const lastMsg = group.messages[group.messages.length - 1]!;
+			const firstMsg = group.messages[0];
+			const lastMsg = group.messages[group.messages.length - 1];
+			if (!firstMsg || !lastMsg) continue;
 
 			yield {
 				id: createHash("sha256").update(content).digest("hex"),
@@ -326,7 +327,8 @@ function groupMessages(messages: Array<SlackMessage & { authorName: string }>): 
 		const userId = msg.user ?? "unknown";
 		const lastGroup = groups[groups.length - 1];
 		if (lastGroup && lastGroup.userId === userId) {
-			const lastMsg = lastGroup.messages[lastGroup.messages.length - 1]!;
+			const lastMsg = lastGroup.messages[lastGroup.messages.length - 1];
+			if (!lastMsg) continue;
 			const gap = (Number.parseFloat(msg.ts) - Number.parseFloat(lastMsg.ts)) * 1000;
 			if (gap <= GROUPING_WINDOW_MS) {
 				lastGroup.messages.push(msg);

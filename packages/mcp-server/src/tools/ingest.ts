@@ -38,9 +38,9 @@ export async function handleIngest(
 
 	// Get or create manifest
 	const head = await store.manifests.getHead(params.collection);
-	let prevHeadId: string | null = null;
+	let _prevHeadId: string | null = null;
 	if (head) {
-		prevHeadId = head.headId;
+		_prevHeadId = head.headId;
 	}
 
 	// Check model mismatch
@@ -107,7 +107,7 @@ export async function handleIngest(
 		});
 
 		const segmentBytes = new TextEncoder().encode(JSON.stringify(segment));
-		const segId = segmentId(segment);
+		const _segId = segmentId(segment);
 
 		const segmentResult = await store.storage.upload(segmentBytes);
 		const resultId = segmentResult.id;

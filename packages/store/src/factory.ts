@@ -38,7 +38,7 @@ export interface Store {
  * ```
  */
 export function createStore(config: StoreConfig): Store {
-	const homeDir = process.env["HOME"] ?? process.env["USERPROFILE"] ?? ".";
+	const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? ".";
 	const defaultDataDir = `${homeDir}/.wtfoc/data`;
 	const defaultManifestDir = `${homeDir}/.wtfoc/projects`;
 
@@ -51,7 +51,7 @@ export function createStore(config: StoreConfig): Store {
 		storage = new LocalStorageBackend(config.dataDir ?? defaultDataDir);
 	} else if (config.storage === "foc") {
 		const privateKey =
-			config.privateKey ?? process.env["PRIVATE_KEY"] ?? process.env["WTFOC_PRIVATE_KEY"];
+			config.privateKey ?? process.env.PRIVATE_KEY ?? process.env.WTFOC_PRIVATE_KEY;
 		if (!privateKey) {
 			throw new Error(
 				"FOC storage requires a private key. Set PRIVATE_KEY or WTFOC_PRIVATE_KEY env var, or pass privateKey in config.",

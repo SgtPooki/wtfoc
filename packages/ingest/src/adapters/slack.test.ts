@@ -12,16 +12,16 @@ describe("SlackAdapter: parseConfig", () => {
 
 	it("reads token from SLACK_BOT_TOKEN env var", () => {
 		const adapter = new SlackAdapter();
-		const original = process.env["SLACK_BOT_TOKEN"];
-		process.env["SLACK_BOT_TOKEN"] = "xoxb-from-env";
+		const original = process.env.SLACK_BOT_TOKEN;
+		process.env.SLACK_BOT_TOKEN = "xoxb-from-env";
 		try {
 			const config = adapter.parseConfig({ source: "general" });
 			expect(config.token).toBe("xoxb-from-env");
 		} finally {
 			if (original !== undefined) {
-				process.env["SLACK_BOT_TOKEN"] = original;
+				process.env.SLACK_BOT_TOKEN = original;
 			} else {
-				delete process.env["SLACK_BOT_TOKEN"];
+				delete process.env.SLACK_BOT_TOKEN;
 			}
 		}
 	});
@@ -38,13 +38,13 @@ describe("SlackAdapter: parseConfig", () => {
 
 	it("throws when no token available", () => {
 		const adapter = new SlackAdapter();
-		const original = process.env["SLACK_BOT_TOKEN"];
-		delete process.env["SLACK_BOT_TOKEN"];
+		const original = process.env.SLACK_BOT_TOKEN;
+		delete process.env.SLACK_BOT_TOKEN;
 		try {
 			expect(() => adapter.parseConfig({ source: "general" })).toThrow("Slack bot token required");
 		} finally {
 			if (original !== undefined) {
-				process.env["SLACK_BOT_TOKEN"] = original;
+				process.env.SLACK_BOT_TOKEN = original;
 			}
 		}
 	});
@@ -86,8 +86,8 @@ describe("SlackAdapter: extractEdges", () => {
 		expect(edges.length).toBeGreaterThanOrEqual(1);
 		const ghEdge = edges.find((e) => e.targetId === "FilOzone/synapse-sdk#42");
 		expect(ghEdge).toBeDefined();
-		expect(ghEdge!.type).toBe("references");
-		expect(ghEdge!.confidence).toBe(1.0);
+		expect(ghEdge?.type).toBe("references");
+		expect(ghEdge?.confidence).toBe(1.0);
 	});
 
 	it("extracts Slack channel cross-references with IDs", () => {
@@ -106,8 +106,8 @@ describe("SlackAdapter: extractEdges", () => {
 		const edges = adapter.extractEdges(chunks);
 		const channelEdge = edges.find((e) => e.targetType === "slack-channel");
 		expect(channelEdge).toBeDefined();
-		expect(channelEdge!.targetId).toBe("slack://C12345ABC");
-		expect(channelEdge!.evidence).toContain("foc-dev");
+		expect(channelEdge?.targetId).toBe("slack://C12345ABC");
+		expect(channelEdge?.evidence).toContain("foc-dev");
 	});
 
 	it("extracts plain #channel references", () => {
@@ -164,7 +164,7 @@ describe("SlackAdapter: extractEdges", () => {
 		const edges = adapter.extractEdges(chunks);
 		const msgEdge = edges.find((e) => e.targetType === "slack-message");
 		expect(msgEdge).toBeDefined();
-		expect(msgEdge!.targetId).toBe("slack://C12345ABC/p1234567890123456");
+		expect(msgEdge?.targetId).toBe("slack://C12345ABC/p1234567890123456");
 	});
 });
 

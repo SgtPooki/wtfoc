@@ -111,7 +111,8 @@ export function analyzeEdgeResolution(
 
 			const match = edge.targetId.match(/^([^#]+)#/);
 			if (match) {
-				const repo = match[1]!;
+				const repo = match[1];
+				if (!repo) continue;
 				repoCounts.set(repo, (repoCounts.get(repo) ?? 0) + 1);
 			}
 		}

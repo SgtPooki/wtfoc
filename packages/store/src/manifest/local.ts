@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { CollectionHead, ManifestStore, StoredHead } from "@wtfoc/common";
-import { ManifestConflictError, WtfocError } from "@wtfoc/common";
+import { ManifestConflictError } from "@wtfoc/common";
 import { validateManifestSchema } from "../schema.js";
 
 /**

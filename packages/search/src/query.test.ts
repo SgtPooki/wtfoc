@@ -57,15 +57,19 @@ describe("query", () => {
 		const result = await query("upload", mockEmbedder, index);
 
 		expect(result.results).toHaveLength(2);
-		expect(result.results[0]!.score).toBeGreaterThanOrEqual(result.results[1]!.score);
+		const first = result.results[0];
+		const second = result.results[1];
+		expect(first).toBeDefined();
+		expect(second).toBeDefined();
+		expect(first?.score).toBeGreaterThanOrEqual(second?.score ?? 0);
 	});
 
 	it("includes sourceType and source metadata", async () => {
 		const index = createMockIndex(testEntries);
 		const result = await query("upload", mockEmbedder, index);
 
-		expect(result.results[0]!.sourceType).toBe("code");
-		expect(result.results[1]!.sourceUrl).toBe("https://example.com");
+		expect(result.results[0]?.sourceType).toBe("code");
+		expect(result.results[1]?.sourceUrl).toBe("https://example.com");
 	});
 
 	it("respects topK limit", async () => {

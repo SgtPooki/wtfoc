@@ -48,10 +48,10 @@ export async function loadCollection(
  * Otherwise → local TransformersEmbedder (MiniLM, 384d)
  */
 export function createEmbedder(): { embedder: Embedder; modelName: string } {
-	const type = process.env["WTFOC_EMBEDDER"] ?? "local";
-	const url = process.env["WTFOC_EMBEDDER_URL"];
-	const model = process.env["WTFOC_EMBEDDER_MODEL"];
-	const key = process.env["WTFOC_EMBEDDER_KEY"];
+	const type = process.env.WTFOC_EMBEDDER ?? "local";
+	const url = process.env.WTFOC_EMBEDDER_URL;
+	const model = process.env.WTFOC_EMBEDDER_MODEL;
+	const key = process.env.WTFOC_EMBEDDER_KEY;
 
 	if (type === "api" || url || model) {
 		const urlShortcuts: Record<string, string> = {
@@ -74,7 +74,7 @@ export function createEmbedder(): { embedder: Embedder; modelName: string } {
 			);
 		}
 
-		const apiKey = key ?? process.env["WTFOC_OPENAI_API_KEY"] ?? "no-key";
+		const apiKey = key ?? process.env.WTFOC_OPENAI_API_KEY ?? "no-key";
 		const embedder = new OpenAIEmbedder({ apiKey, baseUrl, model });
 		return { embedder, modelName: model };
 	}
