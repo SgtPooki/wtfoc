@@ -47,9 +47,8 @@ jobs:
 
       - run: pnpm test
 
-      # Publish all workspace packages with SLSA provenance attestation
-      # After first release, switch to npm Trusted Publishing and remove NPM_TOKEN
+      # Publish via npm Trusted Publishing (OIDC) — no long-lived token needed.
+      # Each @wtfoc/* package must have this repo+workflow configured as a
+      # trusted publisher at npmjs.com/package/<name>/access.
       - name: Publish to npm with provenance
         run: pnpm -r publish --access public --no-git-checks --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
