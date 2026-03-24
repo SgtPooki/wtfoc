@@ -29,6 +29,14 @@ The right way to position FOC in `wtfoc` is as the immutable system of record fo
 
 Storing only embeddings on FOC is not enough: it weakens provenance, makes re-embedding harder when models change, and gives a poor CID story because a consumer cannot recover the evidence behind a result. The recommended storage layout and CID reuse story are documented in [docs/foc-rag-storage.md](docs/foc-rag-storage.md).
 
+## Demos
+
+| Demo | What it shows | Run it |
+|------|--------------|--------|
+| [Upload Flow Trace](docs/demos/upload-flow-trace/) | Map the file upload flow across SDK code, GitHub issues, PRs, docs, and SP backend — 5 source types, ~16K chunks | `./docs/demos/upload-flow-trace/run.sh` |
+
+See [docs/user-stories.md](docs/user-stories.md) for the full story catalog.
+
 ## Packages
 
 | Package | Description | Install |

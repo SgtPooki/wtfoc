@@ -8,7 +8,7 @@ set -euo pipefail
 #   ./scripts/demo-upload-flow.sh --skip-ingest      # traces only (collection must exist)
 #   ./scripts/demo-upload-flow.sh --embedder-url lmstudio --embedder-model mxbai-embed-large-v1
 #
-# See docs/demos/upload-flow-trace.md for the full writeup.
+# See docs/demos/upload-flow-trace/README.md for the full writeup.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -104,7 +104,7 @@ echo "════════════════════════�
 echo "✅ Demo complete"
 echo ""
 echo "Collection: $COLLECTION"
-echo "Full writeup: docs/demos/upload-flow-trace.md"
+echo "Full writeup: docs/demos/upload-flow-trace/README.md"
 echo ""
 echo "Try your own traces:"
 echo "  ./wtfoc trace \"your question here\" -c $COLLECTION"
