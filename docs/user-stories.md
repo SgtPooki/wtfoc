@@ -28,7 +28,7 @@ Use stable IDs. Do not renumber existing stories.
 
 | ID | Story | User | Status | Priority | Example | Docs | Issue |
 |----|-------|------|--------|----------|---------|------|-------|
-| `US-001` | Trace bug lineage across issues, PRs, comments, and repos | Engineer investigating bugs | `needs-example` | `high` | `-` | `-` | [#54](https://github.com/SgtPooki/wtfoc/issues/54) |
+| `US-001` | Trace bug lineage across issues, PRs, comments, and repos | Engineer investigating bugs | `validated` | `high` | `scripts/demo-upload-flow.sh` | `docs/demos/upload-flow-trace.md` | [#54](https://github.com/SgtPooki/wtfoc/issues/54) |
 | `US-002` | Use `wtfoc` as a decentralized evidence layer in a RAG pipeline | AI engineer building RAG systems | `planned` | `high` | `-` | `-` | [#55](https://github.com/SgtPooki/wtfoc/issues/55) |
 | `US-003` | Cluster repeated feature requests and unmet complaints across repos | Product or engineering lead prioritizing work | `planned` | `high` | `-` | `-` | [#57](https://github.com/SgtPooki/wtfoc/issues/57), [#59](https://github.com/SgtPooki/wtfoc/issues/59) |
 | `US-004` | Detect stale documentation and undocumented implemented features | Maintainer or DX owner improving docs quality | `planned` | `medium` | `-` | `-` | [#58](https://github.com/SgtPooki/wtfoc/issues/58) |
@@ -65,11 +65,11 @@ If a story is only an idea, that is fine. Mark it `proposed` and leave missing l
 | Why `wtfoc` | `wtfoc` can combine semantic recall with explicit edges and evidence-backed trace across source types |
 | Inputs | Natural-language bug query plus ingested GitHub artifacts |
 | Expected output | A lineage-first trace showing the primary artifact, likely fix, unresolved concerns, related context, and recommended next reads |
-| Example/demo | `-` |
-| Docs | `-` |
+| Example/demo | `scripts/demo-upload-flow.sh` |
+| Docs | `docs/demos/upload-flow-trace.md` |
 | Issue/spec | [#54](https://github.com/SgtPooki/wtfoc/issues/54) |
-| Status | `needs-example` |
-| Open gaps | Trace output is still grouped primarily by source type; timestamps and lineage heuristics need to be surfaced more clearly. Core trace capability validated against real GitHub + docs data — needs a polished demo script. |
+| Status | `validated` |
+| Open gaps | Trace output is grouped by source type; could benefit from timeline-ordered view. Upload flow demo validated across 5 source types, ~16K chunks, 4 repos + 2 doc sites. |
 
 ### `US-002` Use `wtfoc` as a decentralized evidence layer in a RAG pipeline
 
