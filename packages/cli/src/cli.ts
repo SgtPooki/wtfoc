@@ -897,9 +897,8 @@ withEmbedderOptions(
 			console.error(`   Loaded ${allChunks.length} chunks and ${allEdges.length} edges`);
 		}
 
-		// Re-embed in batches and build new segments
-		const newSegmentSummaries: import("@wtfoc/common").SegmentSummary[] = [];
-		const newBatches: import("@wtfoc/common").BatchRecord[] = [];
+		// Re-embed in batches, writing manifest after each batch for crash resilience
+		let chunksProcessed = 0;
 
 		for (let i = 0; i < allChunks.length; i += batchSize) {
 			const batchChunks = allChunks.slice(i, i + batchSize);
@@ -955,40 +954,42 @@ withEmbedderOptions(
 				console.error(`   Segment stored: ${resultId.slice(0, 16)}...`);
 			}
 
-			newSegmentSummaries.push({
-				id: resultId,
-				sourceTypes: [...new Set(batchChunks.map((c) => c.sourceType))],
-				chunkCount: batchChunks.length,
-			});
+			chunksProcessed += batchChunks.length;
 
-			if (batchRecord) {
-				newBatches.push(batchRecord);
+			// Write manifest after each batch for crash resilience
+			const currentTarget = await store.manifests.getHead(targetName);
+			const prevHeadId = currentTarget ? currentTarget.headId : null;
+
+			const manifest: CollectionHead = {
+				schemaVersion: CURRENT_SCHEMA_VERSION,
+				collectionId: currentTarget?.manifest.collectionId ?? generateCollectionId(targetName),
+				name: targetName,
+				currentRevisionId: currentTarget?.manifest.currentRevisionId ?? null,
+				prevHeadId,
+				segments: [
+					...(currentTarget?.manifest.segments ?? []),
+					{
+						id: resultId,
+						sourceTypes: [...new Set(batchChunks.map((c) => c.sourceType))],
+						chunkCount: batchChunks.length,
+					},
+				],
+				totalChunks: chunksProcessed,
+				embeddingModel: modelName,
+				embeddingDimensions: embedder.dimensions,
+				createdAt: currentTarget?.manifest.createdAt ?? head.manifest.createdAt,
+				updatedAt: new Date().toISOString(),
+			};
+
+			if (batchRecord || currentTarget?.manifest.batches) {
+				manifest.batches = [
+					...(currentTarget?.manifest.batches ?? []),
+					...(batchRecord ? [batchRecord] : []),
+				];
 			}
+
+			await store.manifests.putHead(targetName, manifest, prevHeadId);
 		}
-
-		// Write new manifest (old segments remain untouched — immutable audit trail)
-		const targetHead = await store.manifests.getHead(targetName);
-		const prevHeadId = targetHead ? targetHead.headId : null;
-
-		const manifest: CollectionHead = {
-			schemaVersion: CURRENT_SCHEMA_VERSION,
-			collectionId: targetHead?.manifest.collectionId ?? generateCollectionId(targetName),
-			name: targetName,
-			currentRevisionId: targetHead?.manifest.currentRevisionId ?? null,
-			prevHeadId,
-			segments: newSegmentSummaries,
-			totalChunks: allChunks.length,
-			embeddingModel: modelName,
-			embeddingDimensions: embedder.dimensions,
-			createdAt: targetHead?.manifest.createdAt ?? head.manifest.createdAt,
-			updatedAt: new Date().toISOString(),
-		};
-
-		if (newBatches.length > 0) {
-			manifest.batches = newBatches;
-		}
-
-		await store.manifests.putHead(targetName, manifest, prevHeadId);
 
 		if (format === "json") {
 			console.log(
@@ -997,14 +998,12 @@ withEmbedderOptions(
 					target: targetName,
 					oldModel,
 					newModel: modelName,
-					chunks: allChunks.length,
-					segments: newSegmentSummaries.length,
+					chunks: chunksProcessed,
 				}),
 			);
 		} else if (format !== "quiet") {
 			console.error(`\n✅ Re-indexed "${opts.collection}"${targetName !== opts.collection ? ` → "${targetName}"` : ""}`);
-			console.error(`   ${allChunks.length} chunks re-embedded with ${modelName}`);
-			console.error(`   ${newSegmentSummaries.length} new segments created`);
+			console.error(`   ${chunksProcessed} chunks re-embedded with ${modelName}`);
 			console.error(`   Old segments preserved (immutable audit trail)`);
 		}
 	},
