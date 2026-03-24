@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# demo.sh — Full wtfoc demo with real FOC ecosystem data
+# demo.sh — Full wtfoc demo with multi-source knowledge graph
 #
 # Usage:
 #   ./scripts/demo.sh                    # ingest + demo with default embedder
-#   ./scripts/demo.sh --embedder-url lmstudio --embedder-model mxbai-embed-large-v1  # use LM Studio for better quality
+#   ./scripts/demo.sh --embedder-url lmstudio --embedder-model mxbai-embed-large-v1
 #   ./scripts/demo.sh --skip-ingest      # skip ingest, just run queries
 #
 # Prerequisites:
-#   - Node >= 24, pnpm
-#   - For --embedder-url lmstudio --embedder-model mxbai-embed-large-v1: LM Studio running with an embedding model loaded
+#   - Node >= 24, pnpm, pnpm build completed
+#   - For LM Studio: running with an embedding model loaded
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -31,12 +31,11 @@ while [[ $# -gt 0 ]]; do
 	esac
 done
 
-# Use built CLI (run pnpm -r build first)
 CLI="$REPO_ROOT/wtfoc"
 
 echo "╔══════════════════════════════════════════════════════╗"
 echo "║  wtfoc — What the FOC happened? Trace it.           ║"
-echo "║  Decentralized knowledge tracing on FOC              ║"
+echo "║  Multi-source knowledge graph demo                   ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo ""
 
@@ -47,31 +46,44 @@ if [[ "$SKIP_INGEST" == "false" ]]; then
 	$CLI init "$COLLECTION" --local
 	echo ""
 
-	# ─── Step 2: Ingest real repos ───────────────────────────
-	echo "📥 Step 2: Ingest FOC ecosystem repos"
+	# ─── Step 2: Ingest documentation sites ──────────────────
+	echo "🌐 Step 2: Ingest documentation websites"
+	echo ""
+
+	SITES=(
+		"https://docs.filecoin.cloud/"
+		"https://filecoin.cloud/"
+	)
+
+	for site in "${SITES[@]}"; do
+		echo "   → $site"
+		if ! $CLI ingest website "$site" -c "$COLLECTION" $EMBEDDER_ARGS 2>&1 | grep -E "(chunks|edges|Ingested|Finished|Error)"; then
+			echo "   ⚠️  Failed to ingest $site — continuing"
+		fi
+		echo ""
+	done
+
+	# ─── Step 3: Ingest GitHub repos ─────────────────────────
+	echo "🐙 Step 3: Ingest GitHub issues, PRs, and discussions"
 	echo ""
 
 	REPOS=(
 		# Core SDKs
 		"FilOzone/synapse-sdk"
-		"filecoin-project/filecoin-pin"
 		"FIL-Builders/foc-cli"
 		# Payment
 		"FilOzone/filecoin-pay"
-		"FilOzone/filecoin-pay-explorer"
 		# Infrastructure
 		"FilOzone/filecoin-services"
-		"filecoin-project/curio"
-		# Explorers & Tools
+		# Tools
 		"FilOzone/pdp-explorer"
-		"FilOzone/dealbot"
 		"FilOzone/filecoin-nova"
 	)
 
 	for repo in "${REPOS[@]}"; do
-		echo "   → $repo (github issues/PRs)"
-		if ! $CLI ingest github "$repo" -c "$COLLECTION" $EMBEDDER_ARGS --since 90d 2>&1; then
-			echo "   ⚠️  Failed to ingest $repo — continuing with remaining repos"
+		echo "   → $repo (github issues/PRs --since 90d)"
+		if ! $CLI ingest github "$repo" -c "$COLLECTION" $EMBEDDER_ARGS --since 90d 2>&1 | grep -E "(chunks|edges|Ingested|Error)"; then
+			echo "   ⚠️  Failed to ingest $repo — continuing"
 		fi
 		echo ""
 	done
@@ -81,35 +93,41 @@ if [[ "$SKIP_INGEST" == "false" ]]; then
 	echo ""
 fi
 
-# ─── Step 3: Demo queries ────────────────────────────────
+# ─── Step 4: Demo queries ────────────────────────────────
 echo "═══════════════════════════════════════════════════════"
-echo "🔍 Demo: Trace and Query"
+echo "🔍 Demo: Cross-source trace and query"
 echo "═══════════════════════════════════════════════════════"
 echo ""
 
-echo "── Query 1: How does file upload work? ──────────────"
+echo "── Trace 1: How does Filecoin Pay work? ─────────────"
+echo "   (should pull from docs + GitHub issues)"
 echo ""
-$CLI trace "how does file upload work" -c "$COLLECTION" $EMBEDDER_ARGS 2>/dev/null
-echo ""
-
-echo "── Query 2: Payment and billing ─────────────────────"
-echo ""
-$CLI trace "payment billing USDFC deposit" -c "$COLLECTION" $EMBEDDER_ARGS 2>/dev/null
+$CLI trace "how does Filecoin Pay work" -c "$COLLECTION" $EMBEDDER_ARGS 2>/dev/null
 echo ""
 
-echo "── Query 3: Storage provider management ─────────────"
+echo "── Trace 2: Storage upload and PDP verification ─────"
+echo "   (should connect docs concepts to SDK issues)"
 echo ""
-$CLI query "storage provider dataset" -c "$COLLECTION" $EMBEDDER_ARGS -k 5 2>/dev/null
+$CLI trace "storage upload PDP proof verification" -c "$COLLECTION" $EMBEDDER_ARGS 2>/dev/null
 echo ""
 
-echo "── Query 4: What is PDP? ────────────────────────────"
+echo "── Query 3: Synapse SDK getting started ─────────────"
+echo "   (should find docs pages + related GitHub activity)"
 echo ""
-$CLI trace "PDP proof data possession verification" -c "$COLLECTION" $EMBEDDER_ARGS 2>/dev/null
+$CLI query "synapse SDK getting started tutorial" -c "$COLLECTION" $EMBEDDER_ARGS -k 5 2>/dev/null
+echo ""
+
+echo "── Trace 4: Session keys and authorization ──────────"
+echo "   (cross-source: docs explain it, issues discuss bugs)"
+echo ""
+$CLI trace "session keys authorization permissions" -c "$COLLECTION" $EMBEDDER_ARGS 2>/dev/null
 echo ""
 
 echo "═══════════════════════════════════════════════════════"
 echo "✅ Demo complete"
 echo ""
-echo "All results include source file paths and storage IDs."
-echo "Every chunk is content-addressed and verifiable."
-echo "Swap embedders with --embedder-url lmstudio --embedder-model mxbai-embed-large-v1 for better quality."
+echo "Sources ingested: documentation websites + GitHub repos"
+echo "All chunks are content-addressed with source attribution."
+echo "Swap embedders with --embedder-url lmstudio --embedder-model <model>"
+echo ""
+echo "Available source types: $(node -e "const{getAvailableSourceTypes}=require('./packages/ingest/dist/index.js');console.log(getAvailableSourceTypes().join(', '))")"
