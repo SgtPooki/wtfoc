@@ -6,7 +6,8 @@
 		"wtfoc": "./dist/cli.js"
 	},
 	"exports": {
-		".": "./dist/index.js"
+		".": "./dist/index.js",
+		"./cli": "./dist/cli.js"
 	},
 	"types": "./dist/index.d.ts",
 	"files": [
@@ -18,9 +19,9 @@
 	},
 	"dependencies": {
 		"@wtfoc/common": "workspace:*",
-		"@wtfoc/store": "workspace:*",
 		"@wtfoc/ingest": "workspace:*",
 		"@wtfoc/search": "workspace:*",
+		"@wtfoc/store": "workspace:*",
 		"commander": "^14.0.0"
 	},
 	"devDependencies": {

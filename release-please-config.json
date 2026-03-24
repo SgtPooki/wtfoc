@@ -20,6 +20,10 @@
 		"packages/cli": {
 			"package-name": "@wtfoc/cli",
 			"component": "cli"
+		},
+		"packages/wtfoc": {
+			"package-name": "wtfoc",
+			"component": "wtfoc"
 		}
 	},
 	"bump-minor-pre-major": true,

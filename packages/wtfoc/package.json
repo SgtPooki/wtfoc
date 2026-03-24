@@ -1,0 +1,31 @@
+{
+	"name": "wtfoc",
+	"version": "0.0.2",
+	"description": "Cross-source knowledge graph — trace any question across code, issues, PRs, docs, Slack, and Discord",
+	"type": "module",
+	"bin": {
+		"wtfoc": "./bin/wtfoc.js"
+	},
+	"files": [
+		"bin"
+	],
+	"keywords": [
+		"knowledge-graph",
+		"trace",
+		"search",
+		"rag",
+		"embeddings",
+		"github",
+		"slack",
+		"discord"
+	],
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/SgtPooki/wtfoc.git",
+		"directory": "packages/wtfoc"
+	},
+	"dependencies": {
+		"@wtfoc/cli": "workspace:*"
+	}
+}
