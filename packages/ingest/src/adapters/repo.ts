@@ -31,6 +31,10 @@ const DEFAULT_EXCLUDE = [
 	".turbo",
 ];
 
+function getMatchGroup(match: RegExpMatchArray | RegExpExecArray, index: number): string | null {
+	return typeof match[index] === "string" ? match[index] : null;
+}
+
 export interface RepoAdapterConfig {
 	/** GitHub repo (owner/name) or local directory path */
 	source: string;
@@ -160,14 +164,16 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 			// Extract markdown link references
 			const mdLinks = chunk.content.matchAll(/\[([^\]]+)\]\(([^)]+)\)/g);
 			for (const match of mdLinks) {
-				const url = match[2]!;
+				const url = getMatchGroup(match, 2);
+				const label = getMatchGroup(match, 1);
+				if (!url || !label) continue;
 				if (url.startsWith("http")) {
 					edges.push({
 						type: "references",
 						sourceId: chunk.id,
 						targetType: "url",
 						targetId: url,
-						evidence: `[${match[1]}](${url})`,
+						evidence: `[${label}](${url})`,
 						confidence: 1.0,
 					});
 				}
@@ -282,11 +288,13 @@ function extractImports(content: string): string[] {
 	const imports: string[] = [];
 	const esImports = content.matchAll(/import\s+.*?\s+from\s+['"]([^'"]+)['"]/g);
 	for (const match of esImports) {
-		imports.push(match[1]!);
+		const importPath = getMatchGroup(match, 1);
+		if (importPath) imports.push(importPath);
 	}
 	const requires = content.matchAll(/require\s*\(\s*['"]([^'"]+)['"]\s*\)/g);
 	for (const match of requires) {
-		imports.push(match[1]!);
+		const importPath = getMatchGroup(match, 1);
+		if (importPath) imports.push(importPath);
 	}
 	return imports;
 }

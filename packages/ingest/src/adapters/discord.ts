@@ -46,6 +46,10 @@ const DISCORD_MSG_URL_PATTERN = /https?:\/\/discord\.com\/channels\/(\d+)\/(\d+)
 /** #channel-name cross-reference */
 const CHANNEL_REF_PATTERN = /#([a-z0-9_-]+)/gi;
 
+function getMatchGroup(match: RegExpMatchArray | RegExpExecArray, index: number): string | null {
+	return typeof match[index] === "string" ? match[index] : null;
+}
+
 /** GitHub issue/PR URL — extracted by RegexEdgeExtractor, listed here for docs */
 // const GITHUB_URL_PATTERN = /https?:\/\/github\.com\/.../ — handled by RegexEdgeExtractor
 
@@ -115,7 +119,8 @@ export class DiscordAdapter implements SourceAdapter<DiscordAdapterConfig> {
 			// #channel cross-references (only for discord-message chunks)
 			if (chunk.sourceType === "discord-message") {
 				for (const match of chunk.content.matchAll(CHANNEL_REF_PATTERN)) {
-					const channelName = match[1]!;
+					const channelName = getMatchGroup(match, 1);
+					if (!channelName) continue;
 					// Skip if it looks like a GitHub issue ref (pure digits)
 					if (/^\d+$/.test(channelName)) continue;
 					edges.push({
@@ -152,8 +157,9 @@ export class DiscordAdapter implements SourceAdapter<DiscordAdapterConfig> {
 			const content = group.messages.map((m) => m.content).join("\n");
 			if (!content.trim()) continue;
 
-			const firstMsg = group.messages[0]!;
-			const lastMsg = group.messages[group.messages.length - 1]!;
+			const firstMsg = group.messages[0];
+			const lastMsg = group.messages.at(-1);
+			if (!firstMsg || !lastMsg) continue;
 			const sourceUrl = `https://discord.com/channels/${serverId}/${channelId}/${firstMsg.id}`;
 
 			yield {
@@ -261,8 +267,9 @@ export class DiscordAdapter implements SourceAdapter<DiscordAdapterConfig> {
 				const content = group.messages.map((m) => m.content).join("\n");
 				if (!content.trim()) continue;
 
-				const firstMsg = group.messages[0]!;
-				const lastMsg = group.messages[group.messages.length - 1]!;
+				const firstMsg = group.messages[0];
+				const lastMsg = group.messages.at(-1);
+				if (!firstMsg || !lastMsg) continue;
 				const sourceUrl = `https://discord.com/channels/${serverId}/${channelId}/${firstMsg.id}`;
 
 				yield {
@@ -296,12 +303,13 @@ export class DiscordAdapter implements SourceAdapter<DiscordAdapterConfig> {
 		// Try "server/channel-name" format
 		if (source.includes("/")) {
 			const [serverName, channelName] = source.split("/", 2);
+			if (!serverName || !channelName) return null;
 			const guild = client.guilds.cache.find(
-				(g) => g.name.toLowerCase() === serverName?.toLowerCase(),
+				(g) => g.name.toLowerCase() === serverName.toLowerCase(),
 			);
 			if (guild) {
 				const channel = guild.channels.cache.find(
-					(c) => c.name.toLowerCase() === channelName?.toLowerCase(),
+					(c) => c.name.toLowerCase() === channelName.toLowerCase(),
 				);
 				if (channel) return channel;
 			}
@@ -336,7 +344,8 @@ function groupMessages(messages: DceMessage[], sinceDate: Date | undefined): Mes
 
 		const lastGroup = groups[groups.length - 1];
 		if (lastGroup && lastGroup.authorId === msg.author.id) {
-			const lastMsg = lastGroup.messages[lastGroup.messages.length - 1]!;
+			const lastMsg = lastGroup.messages.at(-1);
+			if (!lastMsg) continue;
 			const gap = new Date(msg.timestamp).getTime() - new Date(lastMsg.timestamp).getTime();
 			if (gap <= GROUPING_WINDOW_MS) {
 				lastGroup.messages.push(msg);
