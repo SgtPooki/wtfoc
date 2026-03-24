@@ -25,6 +25,9 @@
 		"url": "https://github.com/SgtPooki/wtfoc.git",
 		"directory": "packages/wtfoc"
 	},
+	"engines": {
+		"node": ">=24"
+	},
 	"dependencies": {
 		"@wtfoc/cli": "workspace:*"
 	}

@@ -1,7 +1,20 @@
 {
 	"name": "@wtfoc/ingest",
 	"version": "0.0.2",
+	"description": "Source adapters for ingesting code, GitHub, Slack, Discord, and websites into wtfoc",
 	"type": "module",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/SgtPooki/wtfoc.git",
+		"directory": "packages/ingest"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"engines": {
+		"node": ">=24"
+	},
 	"exports": {
 		".": "./dist/index.js"
 	},

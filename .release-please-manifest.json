@@ -4,5 +4,6 @@
 	"packages/ingest": "0.0.2",
 	"packages/search": "0.0.2",
 	"packages/cli": "0.0.2",
+	"packages/mcp-server": "0.0.2",
 	"packages/wtfoc": "0.0.2"
 }

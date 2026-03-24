@@ -1,7 +1,20 @@
 {
 	"name": "@wtfoc/search",
 	"version": "0.0.2",
+	"description": "Embedding, vector search, and cross-source trace engine for wtfoc",
 	"type": "module",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/SgtPooki/wtfoc.git",
+		"directory": "packages/search"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"engines": {
+		"node": ">=24"
+	},
 	"exports": {
 		".": "./dist/index.js"
 	},

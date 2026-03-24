@@ -1,7 +1,20 @@
 {
 	"name": "@wtfoc/common",
 	"version": "0.0.2",
+	"description": "Shared types and interfaces for the wtfoc knowledge graph",
 	"type": "module",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/SgtPooki/wtfoc.git",
+		"directory": "packages/common"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"engines": {
+		"node": ">=24"
+	},
 	"exports": {
 		".": "./dist/index.js"
 	},

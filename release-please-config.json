@@ -21,6 +21,10 @@
 			"package-name": "@wtfoc/cli",
 			"component": "cli"
 		},
+		"packages/mcp-server": {
+			"package-name": "@wtfoc/mcp-server",
+			"component": "mcp-server"
+		},
 		"packages/wtfoc": {
 			"package-name": "wtfoc",
 			"component": "wtfoc"
