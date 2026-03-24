@@ -2,6 +2,7 @@ import type {
 	CollectionSummary,
 	EdgesResponse,
 	QueryResponse,
+	SourcesResponse,
 	StatusResponse,
 	TraceResponse,
 } from "./types";
@@ -69,6 +70,10 @@ export function fetchQuery(
 
 export function fetchEdges(collection: string, signal?: AbortSignal): Promise<EdgesResponse> {
 	return apiFetch<EdgesResponse>(collectionPath(collection, "edges"), undefined, signal);
+}
+
+export function fetchSources(collection: string, signal?: AbortSignal): Promise<SourcesResponse> {
+	return apiFetch<SourcesResponse>(collectionPath(collection, "sources"), undefined, signal);
 }
 
 // ─── Global endpoints ───────────────────────────────────────────────────────

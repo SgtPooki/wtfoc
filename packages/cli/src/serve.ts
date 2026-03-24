@@ -173,6 +173,32 @@ export async function startServer(options: ServeOptions): Promise<void> {
 				});
 			}
 
+			if (path === "/api/sources") {
+				const sourceMap = new Map<string, Set<string>>();
+				for (const seg of state.segments) {
+					for (const c of seg.chunks) {
+						let sources = sourceMap.get(c.sourceType);
+						if (!sources) {
+							sources = new Set<string>();
+							sourceMap.set(c.sourceType, sources);
+						}
+						sources.add(c.source);
+					}
+				}
+
+				const result: Record<string, { sources: string[]; count: number }> = {};
+				for (const [sourceType, sources] of sourceMap) {
+					result[sourceType] = {
+						sources: [...sources].sort(),
+						count: state.segments.reduce(
+							(n, s) => n + s.chunks.filter((c) => c.sourceType === sourceType).length,
+							0,
+						),
+					};
+				}
+				return json(res, result);
+			}
+
 			// Serve the SPA for everything else
 			if (path === "/" || path === "/index.html") {
 				return html(res, options.html);

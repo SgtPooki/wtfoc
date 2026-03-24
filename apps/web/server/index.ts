@@ -278,6 +278,32 @@ async function main() {
 					});
 				}
 
+				if (endpoint === "sources") {
+					const sourceMap = new Map<string, Set<string>>();
+					for (const seg of col.segments) {
+						for (const c of seg.chunks) {
+							let sources = sourceMap.get(c.sourceType);
+							if (!sources) {
+								sources = new Set<string>();
+								sourceMap.set(c.sourceType, sources);
+							}
+							sources.add(c.source);
+						}
+					}
+
+					const result: Record<string, { sources: string[]; count: number }> = {};
+					for (const [sourceType, sources] of sourceMap) {
+						result[sourceType] = {
+							sources: [...sources].sort(),
+							count: col.segments.reduce(
+								(n, s) => n + s.chunks.filter((c) => c.sourceType === sourceType).length,
+								0,
+							),
+						};
+					}
+					return jsonResponse(res, result);
+				}
+
 				return jsonResponse(res, { error: `Unknown endpoint: ${endpoint}` }, 404);
 			}
 

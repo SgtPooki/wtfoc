@@ -66,6 +66,13 @@ export interface EdgesResponse {
 	topUnresolved: Record<string, number>;
 }
 
+export interface SourceInfo {
+	sources: string[];
+	count: number;
+}
+
+export type SourcesResponse = Record<string, SourceInfo>;
+
 export interface CollectionSummary {
 	name: string;
 	chunks: number;
