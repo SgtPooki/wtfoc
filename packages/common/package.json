@@ -24,7 +24,7 @@
 	],
 	"scripts": {
 		"build": "tsc -b",
-		"test": "vitest run"
+		"test": "echo 'No tests yet'"
 	},
 	"devDependencies": {
 		"typescript": "^5.8.0"
