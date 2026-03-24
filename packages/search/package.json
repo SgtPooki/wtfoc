@@ -27,8 +27,10 @@
 		"test": "vitest run"
 	},
 	"dependencies": {
-		"@huggingface/transformers": "^3.8.1",
 		"@wtfoc/common": "workspace:*"
+	},
+	"optionalDependencies": {
+		"@huggingface/transformers": "^3.8.1"
 	},
 	"peerDependencies": {
 		"@wtfoc/store": "workspace:^"

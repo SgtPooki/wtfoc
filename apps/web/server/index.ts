@@ -53,9 +53,21 @@ async function createEmbedderFromEnv(): Promise<Embedder> {
 		return new OpenAIEmbedder({ apiKey, baseUrl: url, model });
 	}
 
-	// Default: local transformers.js embedder
-	const { TransformersEmbedder } = await import("@wtfoc/search");
-	return new TransformersEmbedder();
+	// Try local transformers.js embedder (optional dep, may not be installed)
+	try {
+		const { TransformersEmbedder } = await import("@wtfoc/search");
+		if (TransformersEmbedder) {
+			console.error("ℹ️  No WTFOC_EMBEDDER_URL set, using local MiniLM embedder");
+			return new TransformersEmbedder();
+		}
+	} catch {
+		// transformers.js not available
+	}
+
+	console.error("Error: No embedder configured.");
+	console.error("  Set WTFOC_EMBEDDER_URL and WTFOC_EMBEDDER_MODEL environment variables.");
+	console.error("  Example: WTFOC_EMBEDDER_URL=http://ollama:11434/v1 WTFOC_EMBEDDER_MODEL=nomic-embed-text");
+	process.exit(1);
 }
 
 // ─── Store ──────────────────────────────────────────────────────────────────

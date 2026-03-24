@@ -1,5 +1,4 @@
 FROM node:24-slim AS base
-ENV CI=true
 RUN corepack enable && corepack prepare pnpm@10.16.1 --activate
 WORKDIR /app
 
@@ -21,30 +20,54 @@ FROM deps AS build
 COPY . .
 RUN pnpm -r build && pnpm --filter @wtfoc/web build:server
 
-# ─── Production: minimal runtime ─────────────────────────────────────────────
-FROM base AS production
+# Prune heavy optional/unused deps from node_modules before production copy
+RUN rm -rf node_modules/.pnpm/onnxruntime-* \
+    node_modules/.pnpm/@huggingface* \
+    node_modules/.pnpm/onnxruntime-web* \
+    node_modules/.pnpm/sharp* \
+    node_modules/.pnpm/@img* \
+    node_modules/.pnpm/node-datachannel* \
+    node_modules/.pnpm/@assemblyscript* \
+    node_modules/.pnpm/@babel* \
+    node_modules/.pnpm/@xenova* \
+    node_modules/.pnpm/protobufjs* \
+    node_modules/.pnpm/@filoz* \
+    node_modules/.pnpm/viem* \
+    node_modules/.pnpm/ox@* \
+    node_modules/.pnpm/abitype* \
+    node_modules/.pnpm/filecoin-pin* \
+    node_modules/.pnpm/pino* \
+    node_modules/.pnpm/@types* \
+    node_modules/.pnpm/typescript* \
+    node_modules/.pnpm/@biomejs* \
+    node_modules/.pnpm/vitest* \
+    node_modules/.pnpm/@vitest* \
+    node_modules/.pnpm/esbuild* \
+    node_modules/.pnpm/crawlee* \
+    node_modules/.pnpm/@crawlee* \
+    node_modules/.pnpm/playwright* \
+    node_modules/.pnpm/cheerio* \
+    node_modules/.pnpm/puppeteer*
 
-# Only include packages the server actually imports at runtime:
-# @wtfoc/web (server), @wtfoc/common, @wtfoc/store, @wtfoc/search
-COPY package.json pnpm-workspace.yaml ./
+# ─── Production image ────────────────────────────────────────────────────────
+FROM node:24-slim AS production
+WORKDIR /app
 
-# Minimal pnpm-workspace that only includes what we need
-RUN echo 'packages:\n  - "packages/common"\n  - "packages/store"\n  - "packages/search"\n  - "apps/web"' > pnpm-workspace.yaml
-
-COPY --from=build /app/pnpm-lock.yaml ./
-COPY packages/common/package.json packages/common/
-COPY packages/store/package.json packages/store/
-COPY packages/search/package.json packages/search/
-COPY apps/web/package.json apps/web/
-
-RUN pnpm install --frozen-lockfile --prod --filter @wtfoc/web...
-
-# Copy built dist artifacts
+COPY --from=build /app/package.json /app/pnpm-workspace.yaml ./
+COPY --from=build /app/node_modules node_modules
+COPY --from=build /app/packages/common/package.json packages/common/
 COPY --from=build /app/packages/common/dist packages/common/dist
+COPY --from=build /app/packages/common/node_modules packages/common/node_modules
+COPY --from=build /app/packages/store/package.json packages/store/
 COPY --from=build /app/packages/store/dist packages/store/dist
+COPY --from=build /app/packages/store/node_modules packages/store/node_modules
+COPY --from=build /app/packages/search/package.json packages/search/
 COPY --from=build /app/packages/search/dist packages/search/dist
+COPY --from=build /app/packages/search/node_modules packages/search/node_modules
+COPY --from=build /app/apps/web/package.json apps/web/
 COPY --from=build /app/apps/web/dist apps/web/dist
 COPY --from=build /app/apps/web/server/dist apps/web/server/dist
+COPY --from=build /app/apps/web/node_modules apps/web/node_modules
 
 ENV WTFOC_PORT=3577
 ENV WTFOC_WEB_DIR=/app/apps/web/dist
