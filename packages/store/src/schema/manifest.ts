@@ -111,14 +111,14 @@ function validateSegmentSummary(
 		result.timeRange = v.parse(TimeRangeSchema, raw.timeRange);
 	}
 	if ("repoIds" in raw && raw.repoIds !== undefined) {
-		if (!Array.isArray(raw.repoIds) || !raw.repoIds.every(requireString)) {
+		if (!requireStringArray(raw.repoIds)) {
 			throw schemaInvalid(
 				"headManifest",
 				`segments[${index}].repoIds must be an array of strings`,
 				`segments[${index}].repoIds`,
 			);
 		}
-		result.repoIds = raw.repoIds as string[];
+		result.repoIds = raw.repoIds;
 	}
 
 	return result;
@@ -237,17 +237,17 @@ export function validateManifestSchema(data: unknown): CollectionHead {
 	if (!requireNonEmptyString(data.collectionId)) {
 		throw schemaInvalid("headManifest", "collectionId must be a non-empty string", "collectionId");
 	}
-	if (data.currentRevisionId !== null && typeof data.currentRevisionId !== "string") {
-		throw schemaInvalid(
-			"headManifest",
-			"currentRevisionId must be string or null",
-			"currentRevisionId",
-		);
-	}
 	if (data.currentRevisionId === undefined) {
 		throw schemaInvalid(
 			"headManifest",
 			"currentRevisionId is required (string or null)",
+			"currentRevisionId",
+		);
+	}
+	if (data.currentRevisionId !== null && typeof data.currentRevisionId !== "string") {
+		throw schemaInvalid(
+			"headManifest",
+			"currentRevisionId must be string or null",
 			"currentRevisionId",
 		);
 	}
