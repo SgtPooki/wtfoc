@@ -35,7 +35,7 @@ describe("RepoAdapter", () => {
 			expect(codeChunks.length).toBeGreaterThan(0);
 			const firstCode = codeChunks[0];
 			if (!firstCode) throw new Error("Expected at least one code chunk");
-			expect(firstCode.metadata["language"]).toBe("ts");
+			expect(firstCode.metadata.language).toBe("ts");
 		});
 
 		it("produces markdown chunks for .md files", async () => {
@@ -63,7 +63,7 @@ describe("RepoAdapter", () => {
 			}
 
 			for (const chunk of chunks) {
-				expect(chunk.metadata["filePath"]).toBeTruthy();
+				expect(chunk.metadata.filePath).toBeTruthy();
 			}
 		});
 
@@ -98,9 +98,7 @@ describe("RepoAdapter", () => {
 				chunks.push(chunk);
 			}
 
-			const nodeModuleChunks = chunks.filter((c) =>
-				c.metadata["filePath"]?.includes("node_modules"),
-			);
+			const nodeModuleChunks = chunks.filter((c) => c.metadata.filePath?.includes("node_modules"));
 			expect(nodeModuleChunks).toHaveLength(0);
 		});
 	});

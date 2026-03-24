@@ -54,15 +54,15 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 	readonly sourceType = "repo";
 
 	parseConfig(raw: Record<string, unknown>): RepoAdapterConfig {
-		const source = raw["source"];
+		const source = raw.source;
 		if (typeof source !== "string" || !source) {
 			throw new Error("RepoAdapter requires a 'source' option (GitHub owner/repo or local path)");
 		}
 		return {
 			source,
-			include: Array.isArray(raw["include"]) ? (raw["include"] as string[]) : undefined,
-			exclude: Array.isArray(raw["exclude"]) ? (raw["exclude"] as string[]) : undefined,
-			maxFileSize: typeof raw["maxFileSize"] === "number" ? raw["maxFileSize"] : undefined,
+			include: Array.isArray(raw.include) ? (raw.include as string[]) : undefined,
+			exclude: Array.isArray(raw.exclude) ? (raw.exclude as string[]) : undefined,
+			maxFileSize: typeof raw.maxFileSize === "number" ? raw.maxFileSize : undefined,
 		};
 	}
 
@@ -130,8 +130,8 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 					targetType: "file",
 					targetId: resolveImportPath(
 						imp,
-						chunk.metadata["filePath"] ?? "",
-						chunk.metadata["repo"] ?? "",
+						chunk.metadata.filePath ?? "",
+						chunk.metadata.repo ?? "",
 					),
 					evidence: `import from '${imp}'`,
 					confidence: 1.0,
@@ -144,7 +144,7 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 				for (const ref of issueRefs) {
 					const num = ref.match(/#(\d+)/)?.[1];
 					if (num) {
-						const repo = chunk.metadata["repo"] ?? "";
+						const repo = chunk.metadata.repo ?? "";
 						edges.push({
 							type: "references",
 							sourceId: chunk.id,

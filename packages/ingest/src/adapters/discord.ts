@@ -55,7 +55,7 @@ export class DiscordAdapter implements SourceAdapter<DiscordAdapterConfig> {
 	readonly sourceType = "discord";
 
 	parseConfig(raw: Record<string, unknown>): DiscordAdapterConfig {
-		const source = raw["source"];
+		const source = raw.source;
 		if (typeof source !== "string" || source.length === 0) {
 			throw new WtfocError(
 				"discord source required (path to JSON export or server/channel)",
@@ -66,7 +66,7 @@ export class DiscordAdapter implements SourceAdapter<DiscordAdapterConfig> {
 
 		// Auto-detect mode: if source ends in .json, use json mode
 		const mode = source.endsWith(".json") ? "json" : "bot";
-		const token = (raw["token"] as string) ?? process.env["WTFOC_DISCORD_TOKEN"];
+		const token = (raw.token as string) ?? process.env.WTFOC_DISCORD_TOKEN;
 
 		if (mode === "bot" && !token) {
 			throw new WtfocError(
@@ -80,8 +80,8 @@ export class DiscordAdapter implements SourceAdapter<DiscordAdapterConfig> {
 			source,
 			mode,
 			token,
-			since: typeof raw["since"] === "string" ? raw["since"] : undefined,
-			limit: typeof raw["limit"] === "number" ? raw["limit"] : 1000,
+			since: typeof raw.since === "string" ? raw.since : undefined,
+			limit: typeof raw.limit === "number" ? raw.limit : 1000,
 		};
 	}
 
@@ -297,11 +297,11 @@ export class DiscordAdapter implements SourceAdapter<DiscordAdapterConfig> {
 		if (source.includes("/")) {
 			const [serverName, channelName] = source.split("/", 2);
 			const guild = client.guilds.cache.find(
-				(g) => g.name.toLowerCase() === serverName!.toLowerCase(),
+				(g) => g.name.toLowerCase() === serverName?.toLowerCase(),
 			);
 			if (guild) {
 				const channel = guild.channels.cache.find(
-					(c) => c.name.toLowerCase() === channelName!.toLowerCase(),
+					(c) => c.name.toLowerCase() === channelName?.toLowerCase(),
 				);
 				if (channel) return channel;
 			}
