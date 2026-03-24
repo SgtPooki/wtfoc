@@ -5,6 +5,7 @@ export { getAdapter, getAvailableSourceTypes, registerAdapter } from "./adapter-
 export { DiscordAdapter, type DiscordAdapterConfig } from "./adapters/discord.js";
 export { type ExecFn, GitHubAdapter, type GitHubAdapterConfig } from "./adapters/github.js";
 export { RepoAdapter, type RepoAdapterConfig } from "./adapters/repo.js";
+export { SlackAdapter, type SlackAdapterConfig } from "./adapters/slack.js";
 export { WebsiteAdapter, type WebsiteAdapterConfig } from "./adapters/website.js";
 export { chunkMarkdown, type MarkdownChunkerOptions } from "./chunker.js";
 export type { ChangedFile } from "./edges/extractor.js";
@@ -21,9 +22,11 @@ import { registerAdapter as _register } from "./adapter-registry.js";
 import { DiscordAdapter as _DiscordAdapter } from "./adapters/discord.js";
 import { GitHubAdapter as _GitHubAdapter } from "./adapters/github.js";
 import { RepoAdapter as _RepoAdapter } from "./adapters/repo.js";
+import { SlackAdapter as _SlackAdapter } from "./adapters/slack.js";
 import { WebsiteAdapter as _WebsiteAdapter } from "./adapters/website.js";
 
 _register(new _RepoAdapter());
 _register(new _GitHubAdapter());
 _register(new _WebsiteAdapter());
 _register(new _DiscordAdapter());
+_register(new _SlackAdapter());
