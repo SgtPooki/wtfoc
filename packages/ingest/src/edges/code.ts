@@ -44,12 +44,13 @@ const SUPPORTED_EXTENSIONS: Record<string, string> = {
  *
  * Tree-sitter sidecar for full AST parsing tracked in #134.
  */
-export class TreeSitterEdgeExtractor implements EdgeExtractor {
+export class CodeEdgeExtractor implements EdgeExtractor {
 	async extract(chunks: Chunk[], signal?: AbortSignal): Promise<Edge[]> {
 		signal?.throwIfAborted();
 
 		const edges: Edge[] = [];
 		for (const chunk of chunks) {
+			signal?.throwIfAborted();
 			if (chunk.sourceType !== "code" && chunk.sourceType !== "repo") continue;
 
 			const source = chunk.source || "";
@@ -170,7 +171,7 @@ export class TreeSitterEdgeExtractor implements EdgeExtractor {
 
 		for (const line of chunk.content.split("\n")) {
 			const trimmed = line.trim();
-			const match = /^([a-zA-Z0-9._/-]+)\s+v/.exec(trimmed);
+			const match = /^(?:require\s+)?([a-zA-Z0-9._/-]+)\s+v/.exec(trimmed);
 			if (!match?.[0]) continue;
 			const pkg = match[1];
 			if (!pkg || seen.has(pkg)) continue;

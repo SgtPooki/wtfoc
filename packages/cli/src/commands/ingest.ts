@@ -2,6 +2,7 @@ import type { Segment } from "@wtfoc/common";
 import { type Chunk, type CollectionHead, CURRENT_SCHEMA_VERSION } from "@wtfoc/common";
 import {
 	buildSegment,
+	CodeEdgeExtractor,
 	CompositeEdgeExtractor,
 	DEFAULT_MAX_CHUNK_CHARS,
 	getAdapter,
@@ -139,6 +140,7 @@ export function registerIngestCommand(program: Command): void {
 				const compositeExtractor = new CompositeEdgeExtractor();
 				compositeExtractor.register({ name: "regex", extractor: new RegexEdgeExtractor() });
 				compositeExtractor.register({ name: "heuristic", extractor: new HeuristicEdgeExtractor() });
+				compositeExtractor.register({ name: "code", extractor: new CodeEdgeExtractor() });
 				const edges = mergeEdges([
 					{ extractorName: "adapter", edges: await adapter.extractEdges(batchChunks) },
 					{ extractorName: "composite", edges: await compositeExtractor.extract(batchChunks) },

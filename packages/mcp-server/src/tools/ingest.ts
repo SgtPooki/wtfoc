@@ -6,6 +6,7 @@ import {
 } from "@wtfoc/common";
 import {
 	buildSegment,
+	CodeEdgeExtractor,
 	CompositeEdgeExtractor,
 	getAdapter,
 	HeuristicEdgeExtractor,
@@ -98,6 +99,7 @@ export async function handleIngest(
 		const compositeExtractor = new CompositeEdgeExtractor();
 		compositeExtractor.register({ name: "regex", extractor: new RegexEdgeExtractor() });
 		compositeExtractor.register({ name: "heuristic", extractor: new HeuristicEdgeExtractor() });
+		compositeExtractor.register({ name: "code", extractor: new CodeEdgeExtractor() });
 		const edges = mergeEdges([
 			{ extractorName: "adapter", edges: await adapter.extractEdges(batchChunks) },
 			{ extractorName: "composite", edges: await compositeExtractor.extract(batchChunks) },

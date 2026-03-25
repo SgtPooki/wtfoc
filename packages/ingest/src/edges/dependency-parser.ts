@@ -41,6 +41,8 @@ export function extractRequirementsTxtDeps(chunk: Chunk): Edge[] {
 	for (const line of chunk.content.split("\n")) {
 		const trimmed = line.trim();
 		if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("-")) continue;
+		// Skip URL/VCS requirements (git+https://, http://, etc.)
+		if (/^(?:https?:|git\+|svn\+|hg\+|bzr\+)/.test(trimmed)) continue;
 
 		// Extract package name (before any version specifier)
 		const match = /^([a-zA-Z0-9._-]+)/.exec(trimmed);

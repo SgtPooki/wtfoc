@@ -1,13 +1,13 @@
 import type { Chunk } from "@wtfoc/common";
 import { describe, expect, it } from "vitest";
-import { TreeSitterEdgeExtractor } from "./tree-sitter.js";
+import { CodeEdgeExtractor } from "./code.js";
 
 function makeCodeChunk(content: string, source: string, id = "chunk-1"): Chunk {
 	return { id, content, sourceType: "code", source, chunkIndex: 0, totalChunks: 1, metadata: {} };
 }
 
-describe("TreeSitterEdgeExtractor", () => {
-	const extractor = new TreeSitterEdgeExtractor();
+describe("CodeEdgeExtractor", () => {
+	const extractor = new CodeEdgeExtractor();
 
 	describe("TypeScript/JavaScript (oxc-parser with regex fallback)", () => {
 		it("extracts ES import statement", async () => {
