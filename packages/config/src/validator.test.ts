@@ -98,6 +98,23 @@ describe("validateProjectConfig", () => {
 		);
 	});
 
+	it("throws when embedder.url is not a valid URL or shortcut", () => {
+		expect(() =>
+			validateProjectConfig({ embedder: { url: "not-a-url", model: "m" } }, filePath),
+		).toThrow(/embedder\.url must be a URL/);
+	});
+
+	it("accepts known shortcuts as valid embedder.url", () => {
+		const result = validateProjectConfig({ embedder: { url: "lmstudio", model: "m" } }, filePath);
+		expect(result.embedder?.url).toBe("lmstudio");
+	});
+
+	it("throws when extractor.url is not a valid URL or shortcut", () => {
+		expect(() => validateProjectConfig({ extractor: { url: "bad-url" } }, filePath)).toThrow(
+			/extractor\.url must be a URL/,
+		);
+	});
+
 	it("throws when ignore is not an array", () => {
 		expect(() => validateProjectConfig({ ignore: "not-array" }, filePath)).toThrow(
 			/ignore must be an array of strings/,

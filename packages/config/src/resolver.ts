@@ -51,23 +51,25 @@ export function resolveConfig(sources: ConfigSources): ResolvedConfig {
 
 	const extractorTimeoutRaw =
 		cli?.extractorTimeout ?? file?.extractor?.timeout ?? process.env.WTFOC_EXTRACTOR_TIMEOUT_MS;
-	const extractorTimeout =
+	const parsedTimeout =
 		typeof extractorTimeoutRaw === "number"
 			? extractorTimeoutRaw
 			: extractorTimeoutRaw
 				? Number.parseInt(extractorTimeoutRaw, 10)
 				: 20000;
+	const extractorTimeout = Number.isNaN(parsedTimeout) ? 20000 : parsedTimeout;
 
 	const extractorConcurrencyRaw =
 		cli?.extractorConcurrency ??
 		file?.extractor?.concurrency ??
 		process.env.WTFOC_EXTRACTOR_MAX_CONCURRENCY;
-	const extractorConcurrency =
+	const parsedConcurrency =
 		typeof extractorConcurrencyRaw === "number"
 			? extractorConcurrencyRaw
 			: extractorConcurrencyRaw
 				? Number.parseInt(extractorConcurrencyRaw, 10)
 				: 4;
+	const extractorConcurrency = Number.isNaN(parsedConcurrency) ? 4 : parsedConcurrency;
 
 	const ignorePatterns = file?.ignore ?? [];
 

@@ -118,4 +118,16 @@ describe("resolveConfig", () => {
 		});
 		expect(result.ignore).toEqual(["dist/**", "*.log"]);
 	});
+
+	it("falls back to default timeout when env var is non-numeric", () => {
+		process.env.WTFOC_EXTRACTOR_TIMEOUT_MS = "not-a-number";
+		const result = resolveConfig({});
+		expect(result.extractor.timeout).toBe(20000);
+	});
+
+	it("falls back to default concurrency when env var is non-numeric", () => {
+		process.env.WTFOC_EXTRACTOR_MAX_CONCURRENCY = "abc";
+		const result = resolveConfig({});
+		expect(result.extractor.concurrency).toBe(4);
+	});
 });

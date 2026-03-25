@@ -31,6 +31,18 @@ describe("createIgnoreFilter", () => {
 		expect(filter("src/build.ts")).toBe(true);
 	});
 
+	it("normalizes backslash paths for cross-platform compatibility", () => {
+		const filter = createIgnoreFilter(["dist/**"]);
+		expect(filter("dist\\bundle.js")).toBe(false);
+		expect(filter(".\\node_modules\\foo")).toBe(false);
+	});
+
+	it("strips leading ./ from paths", () => {
+		const filter = createIgnoreFilter(["dist/**"]);
+		expect(filter("./dist/bundle.js")).toBe(false);
+		expect(filter("./src/main.ts")).toBe(true);
+	});
+
 	it("applies built-in defaults even with empty user patterns array", () => {
 		const filter = createIgnoreFilter([]);
 		expect(filter(".git")).toBe(false);

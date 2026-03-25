@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readdir } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { extname, join, relative } from "node:path";
 import type { Chunk } from "@wtfoc/common";
 
 export const DEFAULT_INCLUDE = new Set([
@@ -38,7 +38,7 @@ export async function walkFiles(
 		const entries = await readdir(currentDir, { withFileTypes: true });
 		for (const entry of entries) {
 			const fullPath = join(currentDir, entry.name);
-			const relativePath = fullPath.slice(dir.length + 1);
+			const relativePath = relative(dir, fullPath).replace(/\\/g, "/");
 			if (entry.isDirectory()) {
 				if (excludeDirs.includes(entry.name) || entry.name.startsWith(".")) {
 					continue;

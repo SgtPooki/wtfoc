@@ -1,7 +1,12 @@
 import type { ProjectConfig } from "@wtfoc/common";
-import { ConfigValidationError } from "@wtfoc/common";
+import { ConfigValidationError, URL_SHORTCUTS } from "@wtfoc/common";
 
 const KNOWN_TOP_LEVEL_KEYS = new Set(["embedder", "extractor", "ignore"]);
+const KNOWN_SHORTCUTS = new Set(Object.keys(URL_SHORTCUTS));
+
+function isValidUrl(value: string): boolean {
+	return value.startsWith("http://") || value.startsWith("https://") || KNOWN_SHORTCUTS.has(value);
+}
 
 export function validateProjectConfig(raw: unknown, filePath: string): ProjectConfig {
 	if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
@@ -43,6 +48,14 @@ function validateEmbedderConfig(value: unknown, filePath: string): void {
 		if (typeof embedder.url !== "string") {
 			throw new ConfigValidationError(filePath, "embedder.url", "a string", typeof embedder.url);
 		}
+		if (!isValidUrl(embedder.url)) {
+			throw new ConfigValidationError(
+				filePath,
+				"embedder.url",
+				"a URL (http:// or https://) or shortcut (lmstudio, ollama)",
+				`"${embedder.url}"`,
+			);
+		}
 		if (!embedder.model) {
 			throw new ConfigValidationError(
 				filePath,
@@ -77,8 +90,18 @@ function validateExtractorConfig(value: unknown, filePath: string): void {
 		);
 	}
 
-	if (extractor.url !== undefined && typeof extractor.url !== "string") {
-		throw new ConfigValidationError(filePath, "extractor.url", "a string", typeof extractor.url);
+	if (extractor.url !== undefined) {
+		if (typeof extractor.url !== "string") {
+			throw new ConfigValidationError(filePath, "extractor.url", "a string", typeof extractor.url);
+		}
+		if (!isValidUrl(extractor.url)) {
+			throw new ConfigValidationError(
+				filePath,
+				"extractor.url",
+				"a URL (http:// or https://) or shortcut (lmstudio, ollama)",
+				`"${extractor.url}"`,
+			);
+		}
 	}
 
 	if (extractor.model !== undefined && typeof extractor.model !== "string") {
