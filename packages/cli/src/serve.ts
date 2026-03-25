@@ -1,10 +1,11 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import type { CollectionHead, Embedder, Segment, VectorEntry, VectorIndex } from "@wtfoc/common";
+import type { CollectionHead, Embedder, Segment, VectorIndex } from "@wtfoc/common";
 import type { VectorBackend } from "@wtfoc/search";
 import {
 	analyzeEdgeResolution,
 	buildSourceIndex,
 	createVectorIndex,
+	mountCollection,
 	query,
 	trace,
 } from "@wtfoc/search";
@@ -22,45 +23,6 @@ interface LoadedState {
 	manifest: CollectionHead;
 	segments: Segment[];
 	vectorIndex: VectorIndex;
-}
-
-async function loadCollection(
-	store: ReturnType<typeof createStore>,
-	manifest: CollectionHead,
-): Promise<{ segments: Segment[]; vectorIndex: VectorIndex }> {
-	const rawBackend = process.env.WTFOC_VECTOR_BACKEND ?? "inmemory";
-	const backend: VectorBackend = rawBackend === "qdrant" ? "qdrant" : "inmemory";
-	const dimensions = manifest.embeddingDimensions ?? 384;
-	const vectorIndex = await createVectorIndex({
-		backend,
-		collectionName: manifest.name,
-		dimensions,
-		qdrantUrl: process.env.WTFOC_QDRANT_URL,
-		qdrantApiKey: process.env.WTFOC_QDRANT_API_KEY,
-	});
-	const segments: Segment[] = [];
-
-	for (const segSummary of manifest.segments) {
-		const segBytes = await store.storage.download(segSummary.id);
-		const segment = JSON.parse(new TextDecoder().decode(segBytes)) as Segment;
-		segments.push(segment);
-
-		const entries: VectorEntry[] = segment.chunks.map((c) => ({
-			id: c.id,
-			vector: new Float32Array(c.embedding),
-			storageId: c.storageId || segSummary.id,
-			metadata: {
-				sourceType: c.sourceType,
-				source: c.source,
-				sourceUrl: c.sourceUrl ?? "",
-				content: c.content,
-				...c.metadata,
-			},
-		}));
-		await vectorIndex.add(entries);
-	}
-
-	return { segments, vectorIndex };
 }
 
 function json(res: ServerResponse, data: unknown, status = 200) {
@@ -92,8 +54,22 @@ export async function startServer(options: ServeOptions): Promise<void> {
 		process.exit(1);
 	}
 
-	const { segments, vectorIndex } = await loadCollection(store, head.manifest);
-	const state: LoadedState = { manifest: head.manifest, segments, vectorIndex };
+	const rawBackend = process.env.WTFOC_VECTOR_BACKEND ?? "inmemory";
+	const backend: VectorBackend = rawBackend === "qdrant" ? "qdrant" : "inmemory";
+	const dimensions = head.manifest.embeddingDimensions ?? 384;
+	const vectorIndex = await createVectorIndex({
+		backend,
+		collectionName: head.manifest.name,
+		dimensions,
+		qdrantUrl: process.env.WTFOC_QDRANT_URL,
+		qdrantApiKey: process.env.WTFOC_QDRANT_API_KEY,
+	});
+	const mounted = await mountCollection(head.manifest, store.storage, vectorIndex);
+	const state: LoadedState = {
+		manifest: head.manifest,
+		segments: mounted.segments,
+		vectorIndex: mounted.vectorIndex,
+	};
 	console.error(
 		`✅ Loaded "${collection}": ${head.manifest.totalChunks} chunks, ${head.manifest.segments.length} segments`,
 	);

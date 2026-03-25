@@ -284,6 +284,93 @@ describe("mountCollection", () => {
 		expect(index.entries[0]?.id).toBe("chunk-seg-via-rev");
 	});
 
+	it("includes chunk.metadata fields in vector entry metadata", async () => {
+		const seg: Segment = {
+			schemaVersion: 1,
+			embeddingModel: "test-model",
+			embeddingDimensions: 3,
+			chunks: [
+				{
+					id: "chunk-meta",
+					storageId: "blob-meta",
+					content: "Test content",
+					embedding: [0.1, 0.2, 0.3],
+					terms: ["test"],
+					source: "source-meta",
+					sourceType: "repo",
+					metadata: { customKey: "customValue", anotherKey: "anotherValue" },
+				},
+			],
+			edges: [],
+		};
+		const storage = makeStorage({ "seg-meta": seg });
+		const index = makeVectorIndex();
+
+		const head: CollectionHead = {
+			schemaVersion: 1,
+			collectionId: "meta-test",
+			name: "meta",
+			currentRevisionId: null,
+			prevHeadId: null,
+			segments: [{ id: "seg-meta", sourceTypes: ["repo"], chunkCount: 1 }],
+			totalChunks: 1,
+			embeddingModel: "test-model",
+			embeddingDimensions: 3,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		};
+
+		await mountCollection(head, storage, index);
+
+		const entry = index.entries[0];
+		expect(entry?.metadata.customKey).toBe("customValue");
+		expect(entry?.metadata.anotherKey).toBe("anotherValue");
+		expect(entry?.metadata.source).toBe("source-meta");
+		expect(entry?.metadata.content).toBe("Test content");
+	});
+
+	it("falls back storageId to segment ref when chunk.storageId is empty", async () => {
+		const seg: Segment = {
+			schemaVersion: 1,
+			embeddingModel: "test-model",
+			embeddingDimensions: 3,
+			chunks: [
+				{
+					id: "chunk-no-sid",
+					storageId: "",
+					content: "No storage ID",
+					embedding: [0.1, 0.2, 0.3],
+					terms: ["test"],
+					source: "source-no-sid",
+					sourceType: "repo",
+					metadata: {},
+				},
+			],
+			edges: [],
+		};
+		const storage = makeStorage({ "seg-fallback": seg });
+		const index = makeVectorIndex();
+
+		const head: CollectionHead = {
+			schemaVersion: 1,
+			collectionId: "sid-test",
+			name: "sid",
+			currentRevisionId: null,
+			prevHeadId: null,
+			segments: [{ id: "seg-fallback", sourceTypes: ["repo"], chunkCount: 1 }],
+			totalChunks: 1,
+			embeddingModel: "test-model",
+			embeddingDimensions: 3,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		};
+
+		await mountCollection(head, storage, index);
+
+		const entry = index.entries[0];
+		expect(entry?.storageId).toBe("seg-fallback");
+	});
+
 	it("falls back to head segments when no resolveRevision provided", async () => {
 		const seg = makeSegment("seg-direct");
 		const storage = makeStorage({ "seg-direct": seg });
