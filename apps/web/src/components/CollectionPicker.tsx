@@ -15,6 +15,51 @@ function timeAgo(iso: string): string {
 	return `${Math.floor(days / 30)}mo ago`;
 }
 
+function CollectionGrid({ collections }: { collections: CollectionSummary[] }) {
+	return (
+		<div class="collection-grid">
+			{collections.map((c) => (
+				<button
+					key={c.name}
+					type="button"
+					class={`collection-card card-enter ${c.name === collection.value ? "active" : ""}`}
+					onClick={() => {
+						collection.value = c.name;
+					}}
+				>
+					<h3>{c.name}</h3>
+					<div class="collection-meta">
+						<span>
+							<strong>{(c.chunks / 1000).toFixed(1)}K</strong> chunks
+						</span>
+						<span>
+							<strong>{c.segments}</strong> segments
+						</span>
+						<span>updated {timeAgo(c.updated)}</span>
+					</div>
+				</button>
+			))}
+		</div>
+	);
+}
+
+function SkeletonGrid() {
+	return (
+		<div class="collection-grid">
+			{[1, 2, 3].map((i) => (
+				<div key={i} class="collection-card" style={{ cursor: "default" }}>
+					<div class="skeleton" style={{ height: "1rem", width: "60%", marginBottom: "0.5rem" }} />
+					<div style={{ display: "flex", gap: "1rem" }}>
+						<div class="skeleton" style={{ height: "0.7rem", width: "30%" }} />
+						<div class="skeleton" style={{ height: "0.7rem", width: "25%" }} />
+						<div class="skeleton" style={{ height: "0.7rem", width: "20%" }} />
+					</div>
+				</div>
+			))}
+		</div>
+	);
+}
+
 export function CollectionPicker() {
 	const [collections, setCollections] = useState<CollectionSummary[]>([]);
 	const [error, setError] = useState<string | null>(null);
@@ -35,50 +80,23 @@ export function CollectionPicker() {
 			});
 	}, []);
 
-	if (error) return <ErrorBanner message={error} />;
-	if (!loaded)
-		return (
-			<div class="muted" style={{ padding: "2rem", textAlign: "center" }}>
-				Loading collections...
-			</div>
-		);
-	if (collections.length === 0)
-		return (
-			<div class="muted" style={{ padding: "2rem", textAlign: "center" }}>
-				No collections found.
-			</div>
-		);
-
 	return (
 		<div>
-			<h2 style={{ fontSize: "1.1rem", marginBottom: "0.5rem" }}>Collections</h2>
+			<CidInput />
+
+			<h2 style={{ fontSize: "1.1rem", marginBottom: "0.5rem", marginTop: "2rem" }}>Collections</h2>
 			<p class="muted" style={{ fontSize: "0.85rem", marginBottom: "1rem" }}>
 				Pick a collection — real chunks, real traces, stored on FOC.
 			</p>
-			<div class="collection-grid">
-				{collections.map((c) => (
-					<button
-						key={c.name}
-						type="button"
-						class={`collection-card card-enter ${c.name === collection.value ? "active" : ""}`}
-						onClick={() => {
-							collection.value = c.name;
-						}}
-					>
-						<h3>{c.name}</h3>
-						<div class="collection-meta">
-							<span>
-								<strong>{(c.chunks / 1000).toFixed(1)}K</strong> chunks
-							</span>
-							<span>
-								<strong>{c.segments}</strong> segments
-							</span>
-							<span>updated {timeAgo(c.updated)}</span>
-						</div>
-					</button>
-				))}
-			</div>
-			<CidInput />
+
+			{error && <ErrorBanner message={error} />}
+			{!loaded && <SkeletonGrid />}
+			{loaded && collections.length === 0 && !error && (
+				<p class="muted" style={{ textAlign: "center", padding: "1rem" }}>
+					No collections found.
+				</p>
+			)}
+			{loaded && collections.length > 0 && <CollectionGrid collections={collections} />}
 		</div>
 	);
 }
