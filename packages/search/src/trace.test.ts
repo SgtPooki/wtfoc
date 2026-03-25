@@ -1,6 +1,6 @@
 import type { Embedder, Segment, VectorEntry, VectorIndex } from "@wtfoc/common";
 import { describe, expect, it } from "vitest";
-import { trace } from "./trace.js";
+import { trace } from "./trace/index.js";
 
 // ─── Mock embedder ───────────────────────────────────────────────────────────
 const mockEmbedder: Embedder = {
