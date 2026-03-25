@@ -2,40 +2,95 @@
 
 > What the FOC happened? Trace it.
 
-**Decentralized knowledge tracing and recall on [FOC](https://docs.filecoin.cloud) (Filecoin Onchain Cloud).**
+**Cross-source knowledge tracing on [Filecoin Onchain Cloud](https://docs.filecoin.cloud).** Ingest from Slack, GitHub, docs, code, Discord, and Hacker News. Extract relationship edges. Trace evidence-backed connections across all sources — with verifiable, content-addressed citations stored on decentralized storage.
 
-wtfoc ingests knowledge from multiple sources (Slack, GitHub, docs, code), extracts relationship edges, stores everything on verifiable decentralized storage, and traces evidence-backed connections across sources.
-
-## The Problem
+## Why
 
 A customer complains in Slack. Someone files an issue. Someone else fixes it in a PR. These connections live in people's heads. When someone leaves, so does the context.
 
-## The Solution
+wtfoc makes those connections queryable. One trace surfaces the Slack complaint, the GitHub issue, the PR that fixed it, and the code that changed — all linked by extracted edges, not keyword matches.
 
-```bash
-# Ingest your sources (source adapters are pluggable)
-wtfoc ingest slack ./exports/foc-support.json --collection team-intel
-wtfoc ingest github FilOzone/synapse-sdk --collection team-intel
+## Try It Now
 
-# Trace incidents across all sources
-wtfoc trace "upload failures" --collection team-intel
+### Point Claude at the hosted MCP endpoint
+
+No setup required. Add this to your Claude Code or Claude Desktop MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "wtfoc": {
+      "url": "https://wtfoc.xyz/mcp"
+    }
+  }
+}
 ```
 
-One query surfaces the Slack complaint, the GitHub issue, the PR that fixed it, and the code that changed — all with verifiable content-addressed citations.
+Then ask Claude: *"Trace upload failures across the foc-ecosystem-nomic collection"*
+
+### Browse the web UI
+
+Visit [wtfoc.xyz](https://wtfoc.xyz) to search and trace collections interactively, including a force-directed graph visualization of cross-source connections.
+
+### Install agent skills
+
+```bash
+npx skills add SgtPooki/wtfoc
+```
+
+Installs `/trace-analyze`, `/collection-setup`, and `/drift-check` skills for Claude Code, Cursor, Codex, and other agents.
+
+## Use the CLI
+
+```bash
+npx @wtfoc/cli ingest github FilOzone/synapse-sdk -c my-collection
+npx @wtfoc/cli ingest slack ./exports/support.json -c my-collection
+npx @wtfoc/cli ingest website https://docs.example.com -c my-collection
+
+npx @wtfoc/cli trace "upload failures" -c my-collection
+npx @wtfoc/cli query "session key auth" -c my-collection -k 20
+```
+
+Or install globally: `npm install -g @wtfoc/cli`
+
+## Run Your Own MCP Server
+
+For local/private collections, run the MCP server on stdio:
+
+```json
+{
+  "mcpServers": {
+    "wtfoc": {
+      "command": "npx",
+      "args": ["@wtfoc/mcp-server"]
+    }
+  }
+}
+```
+
+## Self-Host the Web Server
+
+Deploy the full web UI + REST API + MCP endpoint:
+
+```bash
+docker pull ghcr.io/sgtpooki/wtfoc
+docker run -p 3577:3577 \
+  -e WTFOC_EMBEDDER_URL=http://ollama:11434/v1 \
+  -e WTFOC_EMBEDDER_MODEL=nomic-embed-text \
+  -v ~/.wtfoc:/root/.wtfoc \
+  ghcr.io/sgtpooki/wtfoc
+```
+
+The server exposes:
+- **Web UI** at `/`
+- **REST API** at `/api/collections`
+- **MCP endpoint** at `/mcp` (Streamable HTTP, read-only)
 
 ## FOC for RAG
 
-The right way to position FOC in `wtfoc` is as the immutable system of record for a knowledge base, not as the online query engine. In practice that means storing canonical source snapshots and segment snapshots on FOC so the same collection can be verified, rehydrated, and re-queried later, while embedders and vector indices stay swappable.
+FOC is the immutable system of record for your knowledge base. Collections are content-addressed — any collection can be verified, shared by CID, rehydrated, and re-queried by anyone without trusting a central server. Embedders and vector indices stay swappable.
 
-Storing only embeddings on FOC is not enough: it weakens provenance, makes re-embedding harder when models change, and gives a poor CID story because a consumer cannot recover the evidence behind a result. The recommended storage layout and CID reuse story are documented in [docs/foc-rag-storage.md](docs/foc-rag-storage.md).
-
-## Demos
-
-| Demo | What it shows | Run it |
-|------|--------------|--------|
-| [Upload Flow Trace](docs/demos/upload-flow-trace/) | Map the file upload flow across SDK code, GitHub issues, PRs, docs, and SP backend — 5 source types, ~16K chunks | `./docs/demos/upload-flow-trace/run.sh` |
-
-See [docs/user-stories.md](docs/user-stories.md) for the full story catalog.
+See [docs/foc-rag-storage.md](docs/foc-rag-storage.md) for the storage layout and CID reuse story.
 
 ## Packages
 
@@ -44,7 +99,8 @@ See [docs/user-stories.md](docs/user-stories.md) for the full story catalog.
 | [`@wtfoc/common`](packages/common/) | Shared types, interfaces, schemas | `npm i @wtfoc/common` |
 | [`@wtfoc/store`](packages/store/) | Storage backends (local, FOC) + manifest management | `npm i @wtfoc/store` |
 | [`@wtfoc/ingest`](packages/ingest/) | Source adapters + chunking + edge extraction | `npm i @wtfoc/ingest` |
-| [`@wtfoc/search`](packages/search/) | Embedder + vector index + query + trace | `npm i @wtfoc/search` |
+| [`@wtfoc/search`](packages/search/) | Embedders + vector index + query + trace | `npm i @wtfoc/search` |
+| [`@wtfoc/mcp-server`](packages/mcp-server/) | MCP server for Claude and other AI assistants | `npm i @wtfoc/mcp-server` |
 | [`@wtfoc/cli`](packages/cli/) | CLI wrapping all packages | `npm i -g @wtfoc/cli` |
 
 Every package is standalone. Use only what you need.
@@ -53,57 +109,27 @@ Every package is standalone. Use only what you need.
 
 wtfoc is built on interfaces, not implementations. Swap any component:
 
-- **Embedder** — transformers.js (default, local) → OpenAI, Ollama, Cohere, vLLM
-- **Vector Index** — in-memory (default) → Qdrant, Pinecone, Weaviate
-- **Storage** — FOC (default) → local filesystem, S3, GCS, IPFS-only
-- **Sources** — Slack JSON, GitHub (default) → Jira, Discord, Linear, any data source
-- **Edge Extraction** — regex (default) → LLM-based, AST-based, custom
-
-BYO RAG index: plug in your existing Qdrant collection and use `wtfoc trace` on top of it.
+| Seam | Default | Swap to |
+|------|---------|---------|
+| **Embedder** | transformers.js (local) | OpenAI, Ollama, Cohere, vLLM |
+| **Vector Index** | In-memory | Qdrant, Pinecone, Weaviate |
+| **Storage** | Local filesystem | FOC (Filecoin-backed IPFS), S3, GCS |
+| **Sources** | Slack, GitHub, Discord, HN, websites, code repos | Any `SourceAdapter` implementation |
+| **Edge Extraction** | Regex-based | LLM-based, AST-based, custom |
 
 See [SPEC.md](SPEC.md) for the full architecture.
 
+## Demos
+
+| Demo | What it shows |
+|------|--------------|
+| [Upload Flow Trace](docs/demos/upload-flow-trace/) | Map file upload across SDK code, GitHub issues, PRs, docs, and SP backend — 5 source types, ~16K chunks |
+
+See [docs/user-stories.md](docs/user-stories.md) for the full story catalog.
+
 ## Development
 
-```bash
-# Prerequisites
-node >= 24, pnpm
-
-# Setup
-pnpm install
-pnpm -r build
-
-# Test
-pnpm -r test
-
-# Lint
-pnpm biome check .
-```
-
-### Spec-Driven Development
-
-This project uses [spec-kit](https://github.com/github/spec-kit) for spec-driven development. Every change requires a spec, cross-reviewed by a different AI agent before implementation.
-
-```
-/speckit.constitution  → establish project principles
-/speckit.specify       → create specifications
-/speckit.clarify       → clarify and de-risk (before /plan)
-/speckit.plan          → create implementation plans
-/speckit.checklist     → generate quality checklists (optional)
-/speckit.tasks         → generate actionable tasks
-/speckit.analyze       → validate alignment & surface inconsistencies (optional)
-/speckit.implement     → execute implementation
-/speckit.taskstoissues → convert tasks to GitHub issues (optional)
-```
-
-Feature specs: [`.specify/specs/`](.specify/specs/)
-Constitution: [`.specify/memory/constitution.md`](.specify/memory/constitution.md)
-Project rules: [SPEC.md](SPEC.md)
-Agent instructions: [AGENTS.md](AGENTS.md)
-
-## Architecture
-
-See [SPEC.md](SPEC.md) for foundational rules and [Issue #1](https://github.com/SgtPooki/wtfoc/issues/1) for the full architecture discussion (6 review rounds with Cursor + Codex).
+See [DEVELOPMENT.md](DEVELOPMENT.md) for setup, testing, and contribution guidelines.
 
 ## License
 
