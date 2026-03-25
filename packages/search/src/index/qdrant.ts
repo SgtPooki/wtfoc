@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
 	type ScoredEntry,
 	VectorDimensionMismatchError,
@@ -16,6 +17,17 @@ export interface QdrantVectorIndexOptions {
 	 * from a previous version persisting in the collection.
 	 */
 	recreate?: boolean;
+}
+
+/**
+ * Convert an arbitrary string ID into a UUID-formatted string.
+ * Qdrant requires point IDs to be UUIDs or unsigned integers.
+ * We derive a deterministic UUID from the SHA-256 of the original ID.
+ */
+function toQdrantId(id: string): string {
+	const hex = createHash("sha256").update(id).digest("hex");
+	// Format as UUID v4-style: 8-4-4-4-12
+	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
 
 /**
@@ -57,11 +69,12 @@ export class QdrantVectorIndex implements VectorIndex {
 		await this.#ensureCollection(client);
 
 		const points = entries.map((entry) => ({
-			id: entry.id,
+			id: toQdrantId(entry.id),
 			vector: Array.from(entry.vector),
 			payload: {
 				...entry.metadata,
 				storageId: entry.storageId,
+				_wtfoc_id: entry.id,
 			},
 		}));
 
@@ -92,14 +105,14 @@ export class QdrantVectorIndex implements VectorIndex {
 
 			return results.map((point) => {
 				const payload = (point.payload ?? {}) as Record<string, unknown>;
-				const { storageId, ...metadata } = payload;
+				const { storageId, _wtfoc_id, ...metadata } = payload;
 				const vector = Array.isArray(point.vector)
 					? new Float32Array(point.vector as number[])
 					: new Float32Array();
 
 				return {
 					entry: {
-						id: String(point.id),
+						id: String(_wtfoc_id ?? point.id),
 						vector,
 						storageId: String(storageId ?? ""),
 						metadata: Object.fromEntries(
@@ -124,7 +137,7 @@ export class QdrantVectorIndex implements VectorIndex {
 		try {
 			await client.delete(this.#options.collectionName, {
 				wait: true,
-				points: ids,
+				points: ids.map(toQdrantId),
 			});
 			this.#size = Math.max(0, this.#size - ids.length);
 		} catch (err) {
@@ -160,8 +173,6 @@ export class QdrantVectorIndex implements VectorIndex {
 	}
 
 	async #doEnsureCollection(client: import("@qdrant/js-client-rest").QdrantClient): Promise<void> {
-		// When recreate is set, drop the existing collection to avoid stale vectors
-		// from a previous manifest version persisting after reload.
 		if (this.#options.recreate) {
 			try {
 				await client.deleteCollection(this.#options.collectionName);
