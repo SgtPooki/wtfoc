@@ -22,6 +22,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Cache embedder model
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.pnpm/@huggingface+transformers*/node_modules/@huggingface/transformers/.cache
+          key: embedder-minilm-q8-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
       - name: Build packages
         run: pnpm -r build
 
@@ -31,5 +37,47 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Test
+      - name: Test (unit)
         run: pnpm test
+
+      - name: Pre-warm embedder model cache
+        run: node -e "const {TransformersEmbedder} = await import('./packages/search/dist/index.js'); await new TransformersEmbedder(undefined, {dtype:'q8'}).embed('warmup'); console.log('Model cached')"
+
+      - name: Test (e2e API)
+        run: pnpm exec vitest run --config tests/e2e/vitest.config.ts
+
+  e2e-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache embedder model
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.pnpm/@huggingface+transformers*/node_modules/@huggingface/transformers/.cache
+          key: embedder-minilm-q8-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Build packages
+        run: pnpm -r build
+
+      - name: Build web server
+        run: pnpm --filter @wtfoc/web build:server
+
+      - name: Pre-warm embedder model cache
+        run: node -e "const {TransformersEmbedder} = await import('./packages/search/dist/index.js'); await new TransformersEmbedder(undefined, {dtype:'q8'}).embed('warmup'); console.log('Model cached')"
+
+      - name: Install Playwright browsers
+        run: pnpm --filter @wtfoc/e2e exec playwright install --with-deps chromium
+
+      - name: Test (e2e UI)
+        run: pnpm --filter @wtfoc/e2e test:ui
