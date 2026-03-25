@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import type { Chunk, Edge, SourceAdapter } from "@wtfoc/common";
 import { WtfocError } from "@wtfoc/common";
 import { RegexEdgeExtractor } from "../edges/extractor.js";
+import { type ChatGroupingAccessors, groupChatMessages } from "./chat-utils.js";
 
 // ─── DiscordChatExporter JSON shape ──────────────────────────────────────────
 
@@ -35,8 +36,11 @@ export interface DiscordAdapterConfig {
 	limit: number;
 }
 
-/** Window (ms) within which consecutive messages from the same author are grouped. */
-const GROUPING_WINDOW_MS = 5 * 60 * 1000;
+const dceAccessors: ChatGroupingAccessors<DceMessage> = {
+	authorId: (m) => m.author.id,
+	timestampMs: (m) => new Date(m.timestamp).getTime(),
+	text: (m) => m.content,
+};
 
 // ─── Discord-specific edge patterns ─────────────────────────────────────────
 
@@ -151,7 +155,7 @@ export class DiscordAdapter implements SourceAdapter<DiscordAdapterConfig> {
 		const sinceDate = config.since ? new Date(config.since) : undefined;
 
 		// Group consecutive messages from the same author within GROUPING_WINDOW_MS
-		const groups = groupMessages(data.messages, sinceDate);
+		const groups = groupChatMessages(data.messages, dceAccessors, sinceDate?.getTime());
 
 		for (const group of groups) {
 			const content = group.messages.map((m) => m.content).join("\n");
@@ -261,7 +265,7 @@ export class DiscordAdapter implements SourceAdapter<DiscordAdapterConfig> {
 			// Messages come newest-first from Discord API — reverse for chronological order
 			allMessages.reverse();
 
-			const groups = groupMessages(allMessages, undefined);
+			const groups = groupChatMessages(allMessages, dceAccessors);
 
 			for (const group of groups) {
 				const content = group.messages.map((m) => m.content).join("\n");
@@ -322,39 +326,4 @@ export class DiscordAdapter implements SourceAdapter<DiscordAdapterConfig> {
 			return null;
 		}
 	}
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-interface MessageGroup {
-	authorId: string;
-	messages: DceMessage[];
-}
-
-/**
- * Group consecutive messages from the same author within GROUPING_WINDOW_MS.
- * Optionally filter by a `since` date.
- */
-function groupMessages(messages: DceMessage[], sinceDate: Date | undefined): MessageGroup[] {
-	const groups: MessageGroup[] = [];
-
-	for (const msg of messages) {
-		if (sinceDate && new Date(msg.timestamp) < sinceDate) continue;
-		if (!msg.content.trim()) continue;
-
-		const lastGroup = groups[groups.length - 1];
-		if (lastGroup && lastGroup.authorId === msg.author.id) {
-			const lastMsg = lastGroup.messages.at(-1);
-			if (!lastMsg) continue;
-			const gap = new Date(msg.timestamp).getTime() - new Date(lastMsg.timestamp).getTime();
-			if (gap <= GROUPING_WINDOW_MS) {
-				lastGroup.messages.push(msg);
-				continue;
-			}
-		}
-
-		groups.push({ authorId: msg.author.id, messages: [msg] });
-	}
-
-	return groups;
 }

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { Chunk, Edge, SourceAdapter } from "@wtfoc/common";
 import { WtfocError } from "@wtfoc/common";
 import { RegexEdgeExtractor } from "../edges/extractor.js";
+import { type ChatGroupingAccessors, groupChatMessages } from "./chat-utils.js";
 
 // ─── Slack API response shapes ──────────────────────────────────────────────
 
@@ -38,9 +39,6 @@ export interface SlackAdapterConfig {
 	/** Max messages to fetch (default: 1000) */
 	limit: number;
 }
-
-/** Window (ms) within which consecutive messages from the same author are grouped. */
-const GROUPING_WINDOW_MS = 5 * 60 * 1000;
 
 // ─── Slack-specific edge patterns ───────────────────────────────────────────
 
@@ -138,7 +136,12 @@ export class SlackAdapter implements SourceAdapter<SlackAdapterConfig> {
 		allMessages.reverse();
 
 		// Group consecutive messages from same author within window
-		const groups = groupMessages(allMessages);
+		const slackAccessors: ChatGroupingAccessors<SlackMessage & { authorName: string }> = {
+			authorId: (m) => m.user ?? "unknown",
+			timestampMs: (m) => Number.parseFloat(m.ts) * 1000,
+			text: (m) => m.text,
+		};
+		const groups = groupChatMessages(allMessages, slackAccessors);
 
 		for (const group of groups) {
 			const content = group.messages.map((m) => m.text).join("\n");
@@ -309,35 +312,4 @@ export class SlackAdapter implements SourceAdapter<SlackAdapterConfig> {
 			return userId;
 		}
 	}
-}
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-interface MessageGroup {
-	userId: string;
-	messages: Array<SlackMessage & { authorName: string }>;
-}
-
-function groupMessages(messages: Array<SlackMessage & { authorName: string }>): MessageGroup[] {
-	const groups: MessageGroup[] = [];
-
-	for (const msg of messages) {
-		if (!msg.text.trim()) continue;
-
-		const userId = msg.user ?? "unknown";
-		const lastGroup = groups[groups.length - 1];
-		if (lastGroup && lastGroup.userId === userId) {
-			const lastMsg = lastGroup.messages[lastGroup.messages.length - 1];
-			if (!lastMsg) continue;
-			const gap = (Number.parseFloat(msg.ts) - Number.parseFloat(lastMsg.ts)) * 1000;
-			if (gap <= GROUPING_WINDOW_MS) {
-				lastGroup.messages.push(msg);
-				continue;
-			}
-		}
-
-		groups.push({ userId, messages: [msg] });
-	}
-
-	return groups;
 }
