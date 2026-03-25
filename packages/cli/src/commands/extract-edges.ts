@@ -10,18 +10,9 @@ import {
 	writeExtractionStatus,
 	writeOverlayEdges,
 } from "@wtfoc/ingest";
-import { LocalManifestStore } from "@wtfoc/store";
 import type { Command } from "commander";
 import { type ExtractorCliOpts, resolveExtractorConfig } from "../extractor-config.js";
-import { getFormat, getStore, withExtractorOptions } from "../helpers.js";
-
-function getManifestDir(store: { manifests: unknown }): string {
-	if (store.manifests instanceof LocalManifestStore) {
-		return store.manifests.dir;
-	}
-	const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? ".";
-	return `${homeDir}/.wtfoc/projects`;
-}
+import { getFormat, getManifestDir, getStore, withExtractorOptions } from "../helpers.js";
 
 /**
  * Map a segment chunk to the Chunk interface for extractors.

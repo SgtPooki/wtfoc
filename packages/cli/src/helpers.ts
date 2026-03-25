@@ -6,7 +6,7 @@ import {
 	OpenAIEmbedder,
 	TransformersEmbedder,
 } from "@wtfoc/search";
-import { createStore } from "@wtfoc/store";
+import { createStore, LocalManifestStore } from "@wtfoc/store";
 import type { Command } from "commander";
 import type { OutputFormat } from "./output.js";
 
@@ -61,6 +61,14 @@ export function getStore(program: Command) {
 	const globalOpts = program.opts();
 	const storageType = (globalOpts.storage ?? "local") as "local" | "foc";
 	return createStore({ storage: storageType });
+}
+
+export function getManifestDir(store: { manifests: unknown }): string {
+	if (store.manifests instanceof LocalManifestStore) {
+		return store.manifests.dir;
+	}
+	const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? ".";
+	return `${homeDir}/.wtfoc/projects`;
 }
 
 export function getFormat(opts: { json?: boolean; quiet?: boolean }): OutputFormat {

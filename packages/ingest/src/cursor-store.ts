@@ -21,15 +21,26 @@ export async function readCursors(cursorPath: string): Promise<CursorData | null
 	try {
 		const data = await readFile(cursorPath, "utf-8");
 		const parsed = JSON.parse(data) as CursorData;
-		if (parsed.schemaVersion !== 1 || typeof parsed.cursors !== "object") {
+		if (
+			parsed.schemaVersion !== 1 ||
+			!parsed.cursors ||
+			typeof parsed.cursors !== "object" ||
+			Array.isArray(parsed.cursors)
+		) {
 			return null;
 		}
 		return parsed;
-	} catch (err) {
-		if (err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT") {
+	} catch (err: unknown) {
+		if (
+			err &&
+			typeof err === "object" &&
+			"code" in err &&
+			(err as { code?: string }).code === "ENOENT"
+		) {
 			return null;
 		}
-		// Corrupt file — treat as absent (graceful fallback per edge case C4)
+		const message = err instanceof Error ? err.message : String(err);
+		console.warn(`[wtfoc] Warning: failed to read cursor file at ${cursorPath}: ${message}`);
 		return null;
 	}
 }

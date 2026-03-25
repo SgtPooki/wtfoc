@@ -120,8 +120,11 @@ export async function mountCollection(
 		await vectorIndex.add(entries);
 	}
 
-	// Reconcile: delete orphan vectors not in the current manifest
-	if (options?.reconcile && isReconcilable(vectorIndex)) {
+	// Reconcile: delete orphan vectors not in the current manifest.
+	// When skipSegmentIds is used, skip reconciliation — the skipped segments
+	// are already indexed but not in `segments`, so reconcile would incorrectly
+	// delete their vectors.
+	if (options?.reconcile && !skipIds?.size && isReconcilable(vectorIndex)) {
 		signal?.throwIfAborted();
 		const expectedIds = new Set<string>();
 		for (const seg of segments) {

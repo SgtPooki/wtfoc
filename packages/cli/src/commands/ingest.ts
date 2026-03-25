@@ -20,13 +20,14 @@ import {
 	segmentId,
 	writeCursors,
 } from "@wtfoc/ingest";
-import { bundleAndUpload, generateCollectionId, LocalManifestStore } from "@wtfoc/store";
+import { bundleAndUpload, generateCollectionId } from "@wtfoc/store";
 import type { Command } from "commander";
 import { type ExtractorCliOpts, resolveExtractorConfig } from "../extractor-config.js";
 import {
 	createEmbedder,
 	type EmbedderOpts,
 	getFormat,
+	getManifestDir,
 	getStore,
 	parseSinceDuration,
 	withEmbedderOptions,
@@ -111,10 +112,7 @@ export function registerIngestCommand(program: Command): void {
 
 			// Cursor-based incremental ingest: read stored cursor, use as since if no explicit --since
 			const sourceKey = buildSourceKey(sourceType, sourceArg);
-			const manifestDir =
-				store.manifests instanceof LocalManifestStore
-					? store.manifests.dir
-					: (process.env.HOME ?? process.env.USERPROFILE ?? ".") + "/.wtfoc/projects";
+			const manifestDir = getManifestDir(store);
 			const cursorPath = cursorFilePath(manifestDir, opts.collection);
 			const cursorData = await readCursors(cursorPath);
 
@@ -328,18 +326,24 @@ export function registerIngestCommand(program: Command): void {
 			}
 
 			// Persist cursor after successful ingest (FR-001, FR-004: only on success)
+			// Use max(existing, computed) to prevent cursor regression from explicit --since or out-of-order timestamps
 			if (maxTimestamp) {
+				const existingCursorValue = cursorData?.cursors?.[sourceKey]?.cursorValue;
+				const nextCursorValue =
+					existingCursorValue && existingCursorValue > maxTimestamp
+						? existingCursorValue
+						: maxTimestamp;
 				const updatedCursors = cursorData ?? { schemaVersion: 1 as const, cursors: {} };
 				updatedCursors.cursors[sourceKey] = {
 					sourceKey,
 					adapterType: sourceType,
-					cursorValue: maxTimestamp,
+					cursorValue: nextCursorValue,
 					lastRunAt: new Date().toISOString(),
 					chunksIngested: totalChunksIngested,
 				};
 				await writeCursors(cursorPath, updatedCursors);
 				if (format !== "quiet") {
-					console.error(`   Saved cursor for next run: ${maxTimestamp}`);
+					console.error(`   Saved cursor for next run: ${nextCursorValue}`);
 				}
 			}
 		},

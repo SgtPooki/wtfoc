@@ -534,6 +534,45 @@ describe("mountCollection", () => {
 		expect(index.entries).toHaveLength(2);
 	});
 
+	it("skips reconcile when skipSegmentIds is provided to avoid deleting skipped segment vectors", async () => {
+		const seg1 = makeSegment("seg-already");
+		const seg2 = makeSegment("seg-new");
+		const storage = makeStorage({ "seg-already": seg1, "seg-new": seg2 });
+		const index = makeVectorIndex();
+
+		const reconcileMock =
+			vi.fn<(ids: ReadonlySet<string>, signal?: AbortSignal) => Promise<void>>();
+		Object.assign(index, { reconcile: reconcileMock });
+
+		const head: CollectionHead = {
+			schemaVersion: 1,
+			collectionId: "skip-rec-test",
+			name: "skip-rec",
+			currentRevisionId: null,
+			prevHeadId: null,
+			segments: [
+				{ id: "seg-already", sourceTypes: ["repo"], chunkCount: 1 },
+				{ id: "seg-new", sourceTypes: ["repo"], chunkCount: 1 },
+			],
+			totalChunks: 2,
+			embeddingModel: "test-model",
+			embeddingDimensions: 3,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		};
+
+		await mountCollection(head, storage, index, {
+			skipSegmentIds: new Set(["seg-already"]),
+			reconcile: true,
+		});
+
+		// Reconcile should NOT be called when skipSegmentIds is provided
+		expect(reconcileMock).not.toHaveBeenCalled();
+		// Only the new segment should be indexed
+		expect(index.entries).toHaveLength(1);
+		expect(index.entries[0]?.id).toBe("chunk-seg-new");
+	});
+
 	it("skips reconcile on non-reconcilable vector index", async () => {
 		const seg = makeSegment("seg-plain");
 		const storage = makeStorage({ "seg-plain": seg });

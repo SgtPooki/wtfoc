@@ -1,7 +1,7 @@
 # Implementation Plan: Incremental Ingest Pipeline
 
 **Branch**: `118-incremental-ingest` | **Date**: 2026-03-25 | **Spec**: [spec.md](spec.md)
-**Input**: Feature specification from `/specs/118-incremental-ingest/spec.md`
+**Input**: Feature specification from [spec.md](spec.md)
 
 ## Summary
 

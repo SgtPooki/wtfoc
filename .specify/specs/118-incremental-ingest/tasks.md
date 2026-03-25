@@ -1,6 +1,6 @@
 # Tasks: Incremental Ingest Pipeline
 
-**Input**: Design documents from `/specs/118-incremental-ingest/`
+**Input**: Design documents from `.specify/specs/118-incremental-ingest/`
 **Prerequisites**: plan.md (required), spec.md (required), research.md, data-model.md, contracts/
 
 **Tests**: Tests are included as this project requires test-first development per constitution.

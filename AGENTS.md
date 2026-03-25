@@ -149,7 +149,7 @@ GitHub-hosted agents also read:
 - TypeScript strict mode, ESM only, Node >=24 + vitest, @qdrant/js-client-rest, commander, valibot; NEW: oxc-parser (JS/TS AST), raw fetch (LLM calls) (117-edge-extraction-pipeline)
 - Local filesystem + optional FOC; Qdrant for vectors (117-edge-extraction-pipeline)
 - TypeScript (strict, ESM-only), Node >= 24 + @wtfoc/common (interfaces), @wtfoc/ingest (adapters, chunker), @wtfoc/store (manifest, storage), @wtfoc/search (mount, vector index), commander (CLI) (118-incremental-ingest)
-- Local filesystem (JSON sidecar files alongside manifests), optional FOC/Qdran (118-incremental-ingest)
+- Local filesystem (JSON sidecar files alongside manifests), optional FOC/Qdrant (118-incremental-ingest)
 
 ## Recent Changes
 - 012-e2e-integration-pipeline: Added TypeScript strict mode, ESM only, Node >=24 + `@wtfoc/common`, `@wtfoc/ingest`, `@wtfoc/store`, `@wtfoc/search` (workspace packages only)
