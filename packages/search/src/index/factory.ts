@@ -11,6 +11,11 @@ export interface VectorIndexConfig {
 	dimensions: number;
 	qdrantUrl?: string;
 	qdrantApiKey?: string;
+	/**
+	 * If true, drop and recreate the Qdrant collection on first use.
+	 * Defaults to true to avoid stale vectors from previous loads.
+	 */
+	recreate?: boolean;
 }
 
 /**
@@ -33,6 +38,7 @@ export async function createVectorIndex(config: VectorIndexConfig): Promise<Vect
 				apiKey: config.qdrantApiKey,
 				collectionName: config.collectionName,
 				dimensions: config.dimensions,
+				recreate: config.recreate ?? true,
 			});
 		} catch (err) {
 			throw new Error(

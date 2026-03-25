@@ -5,6 +5,12 @@ export interface QdrantVectorIndexOptions {
 	apiKey?: string;
 	collectionName: string;
 	dimensions: number;
+	/**
+	 * If true, drop and recreate the Qdrant collection on first use.
+	 * Use this when loading a fresh manifest to avoid stale vectors
+	 * from a previous version persisting in the collection.
+	 */
+	recreate?: boolean;
 }
 
 /**
@@ -127,6 +133,24 @@ export class QdrantVectorIndex implements VectorIndex {
 
 	async #ensureCollection(client: import("@qdrant/js-client-rest").QdrantClient): Promise<void> {
 		if (this.#ensured) return;
+
+		// When recreate is set, drop the existing collection to avoid stale vectors
+		// from a previous manifest version persisting after reload.
+		if (this.#options.recreate) {
+			try {
+				await client.deleteCollection(this.#options.collectionName);
+			} catch {
+				// Collection didn't exist — that's fine
+			}
+			await client.createCollection(this.#options.collectionName, {
+				vectors: {
+					size: this.#options.dimensions,
+					distance: "Cosine",
+				},
+			});
+			this.#ensured = true;
+			return;
+		}
 
 		try {
 			const info = await client.getCollection(this.#options.collectionName);

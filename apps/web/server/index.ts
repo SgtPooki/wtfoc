@@ -206,7 +206,7 @@ async function getCollectionByCid(cid: string): Promise<LoadedCollection> {
 		const dimensions = manifest.embeddingDimensions ?? 384;
 		const vectorIndex = await createVectorIndex({
 			backend: VECTOR_BACKEND,
-			collectionName: `cid-${cid.slice(0, 16)}`,
+			collectionName: `cid-${cid}`,
 			dimensions,
 			qdrantUrl: QDRANT_URL,
 			qdrantApiKey: QDRANT_API_KEY,
