@@ -203,14 +203,10 @@ async function getCollectionByCid(cid: string): Promise<LoadedCollection> {
 		console.error(`⏳ Fetching collection from CID ${cid.slice(0, 16)}...`);
 		const { manifest, storage } = await resolveCollectionByCid(cid);
 
-		const dimensions = manifest.embeddingDimensions ?? 384;
-		const vectorIndex = await createVectorIndex({
-			backend: VECTOR_BACKEND,
-			collectionName: `cid-${cid}`,
-			dimensions,
-			qdrantUrl: QDRANT_URL,
-			qdrantApiKey: QDRANT_API_KEY,
-		});
+		// CID-loaded collections always use in-memory to prevent unbounded
+		// Qdrant collection creation from arbitrary user-supplied CIDs.
+		const { InMemoryVectorIndex } = await import("@wtfoc/search");
+		const vectorIndex = new InMemoryVectorIndex();
 		const mounted = await mountCollection(manifest, storage, vectorIndex);
 
 		const now = Date.now();

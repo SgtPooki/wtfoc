@@ -188,6 +188,10 @@ export class QdrantVectorIndex implements VectorIndex {
 			return;
 		}
 
+		// TODO: When an existing collection is reused, stale vectors from
+		// previous manifest versions remain. A reconciliation step should
+		// diff current segment chunk IDs against stored point IDs and delete
+		// orphans. See issue #101 follow-up.
 		try {
 			const info = await client.getCollection(this.#options.collectionName);
 			this.#size = info.points_count ?? 0;
