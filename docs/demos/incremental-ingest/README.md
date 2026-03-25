@@ -16,49 +16,34 @@ Answer: **Incremental.** You can add sources to a collection over days, weeks, o
 
 ## What Happens
 
-The script runs 5 rounds of ingestion against the **same collection**, showing the chunk count grow and traces improve:
+The script runs 3 rounds of ingestion against the **same collection**, showing the chunk count grow and traces improve:
 
-### Round 1: Start with one repo
+> **Note:** This demo is contrived for speed (~3 min) using a single repo. In practice, incremental ingestion shines with multiple repos and source types added over days or weeks.
+
+### Round 1: Start with source code
 
 ```bash
 ./wtfoc init incremental-demo --local
-./wtfoc ingest repo FilOzone/synapse-sdk -c incremental-demo
+./wtfoc ingest repo SgtPooki/wtfoc -c incremental-demo
 ```
 
-Trace "how does upload work?" returns only code results.
+Trace "how does ingest work?" returns only code and markdown results.
 
 ### Round 2: Add GitHub activity
 
 ```bash
-./wtfoc ingest github FilOzone/synapse-sdk -c incremental-demo --since 90d
+./wtfoc ingest github SgtPooki/wtfoc -c incremental-demo --since 90d
 ```
 
 Same trace now returns code + issues + PRs. The collection grew; nothing was replaced.
 
-### Round 3: Add another repo
+### Round 3: Re-ingest — dedup in action
 
 ```bash
-./wtfoc ingest repo filecoin-project/filecoin-pin -c incremental-demo
-./wtfoc ingest github filecoin-project/filecoin-pin -c incremental-demo --since 90d
-```
-
-Same trace now shows cross-repo connections.
-
-### Round 4: Re-ingest — dedup in action
-
-```bash
-./wtfoc ingest repo FilOzone/synapse-sdk -c incremental-demo
+./wtfoc ingest repo SgtPooki/wtfoc -c incremental-demo
 ```
 
 Output shows chunks **skipped as duplicates**. Chunk count barely changes. Content-hash dedup means re-ingesting is safe and cheap.
-
-### Round 5: Add a docs site
-
-```bash
-./wtfoc ingest website https://docs.filecoin.cloud/ -c incremental-demo
-```
-
-Now the collection spans code, issues, PRs, and documentation. Traces connect all of them.
 
 ## How Deduplication Works
 
@@ -122,12 +107,12 @@ The architecture supports all of this — segments are immutable, manifest chain
 
 ## The Demo Line
 
-> "This isn't one-shot. I started with one repo, added GitHub issues, added another repo, added a docs site — all into the same collection over 5 rounds. Duplicate content was automatically skipped. Each round made the traces richer. For production, a weekly cron with overlapping `--since` windows keeps it fresh."
+> "This isn't one-shot. I started with source code, added GitHub issues, then re-ingested — same collection, duplicates automatically skipped. Each round made the traces richer. For production, a weekly cron with overlapping `--since` windows keeps it fresh."
 
 ## Reproduction
 
 ```bash
-# Full 5-round demo
+# Full 3-round demo
 ./docs/demos/incremental-ingest/run.sh
 
 # With LM Studio embedder

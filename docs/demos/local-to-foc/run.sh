@@ -4,7 +4,7 @@ set -euo pipefail
 # local-to-foc.sh — Build locally, promote to Filecoin, share the CID
 #
 # Usage:
-#   ./docs/demos/local-to-foc/run.sh                                # full demo
+#   ./docs/demos/local-to-foc/run.sh                                # quick demo (~3 min)
 #   ./docs/demos/local-to-foc/run.sh --collection foc-upload-flow   # promote existing collection
 #   ./docs/demos/local-to-foc/run.sh --dry-run                      # show what would upload
 #   ./docs/demos/local-to-foc/run.sh --skip-ingest                  # skip ingest, do promote
@@ -53,7 +53,7 @@ if [[ "$SKIP_INGEST" == "false" ]]; then
 
 	echo "📄 Ingesting source code..."
 	echo "   → SgtPooki/wtfoc"
-	$CLI ingest repo SgtPooki/wtfoc -c "$COLLECTION" $EMBEDDER_ARGS --batch-size 200 2>&1 | grep -E "(chunks|Ingested|batches|Finished)" || true
+	$CLI ingest repo SgtPooki/wtfoc -c "$COLLECTION" $EMBEDDER_ARGS --batch-size 500 2>&1 | grep -E "(chunks|Ingested|batches|Finished)" || true
 	echo ""
 
 	echo "🐙 Ingesting GitHub activity (last 90 days)..."

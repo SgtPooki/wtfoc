@@ -22,17 +22,16 @@ Or run against an existing collection (like the upload-flow-trace one):
 
 ### Step 1: Ingest partial data
 
-The script deliberately ingests only 2 of the 4 FOC stack repos:
+The script ingests a single repo (this one) — deliberately incomplete so there are references pointing outside the collection:
 
 ```bash
 ./wtfoc init gap-analysis-demo --local
-./wtfoc ingest repo FilOzone/synapse-sdk -c gap-analysis-demo
-./wtfoc ingest repo filecoin-project/filecoin-pin -c gap-analysis-demo
-./wtfoc ingest github FilOzone/synapse-sdk -c gap-analysis-demo --since 90d
-./wtfoc ingest github filecoin-project/filecoin-pin -c gap-analysis-demo --since 90d
+./wtfoc ingest repo SgtPooki/wtfoc -c gap-analysis-demo
 ```
 
-No docs sites. No SP code. Deliberately incomplete.
+No external repos. No docs sites. That's the point — the system tells you what's missing.
+
+> **Note:** This demo is contrived for speed (~2 min). For richer gap analysis with more unresolved edges, use `--collection foc-upload-flow` with a pre-built multi-repo collection.
 
 ### Step 2: Unresolved edges
 
@@ -52,7 +51,7 @@ Surfaces the repos and websites your data references but you haven't ingested, r
 
 ## The Demo Line
 
-> "I ingested 2 repos and their recent GitHub activity. The system found edges pointing outside the collection and recommends ingesting `filecoin-project/curio`, `FilOzone/filecoin-services`, and the PDP specification — because the code I already ingested references them."
+> "I ingested one repo. The system found edges pointing outside the collection and recommends ingesting referenced repos, docs sites, and specs — because the code I already ingested references them."
 
 ## Why It Matters
 

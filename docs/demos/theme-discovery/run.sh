@@ -4,9 +4,15 @@ set -euo pipefail
 # theme-discovery.sh — Discover semantic themes in a collection
 #
 # Usage:
-#   ./docs/demos/theme-discovery/run.sh                       # full ingest + themes
-#   ./docs/demos/theme-discovery/run.sh --skip-ingest          # themes only (collection must exist)
-#   ./docs/demos/theme-discovery/run.sh --collection foc-upload-flow  # use existing collection
+#   ./docs/demos/theme-discovery/run.sh                                # uses wtfoc-quick-start collection
+#   ./docs/demos/theme-discovery/run.sh --collection foc-upload-flow   # use a different collection
+#
+# Prerequisites: run the quick-start demo first to create the collection:
+#   ./docs/demos/quick-start/run.sh
+#
+# This demo is contrived for speed — it runs clustering on an existing
+# single-repo collection. For richer theme clusters across multiple repos
+# and source types, use --collection with a larger pre-built collection.
 #
 # See docs/demos/theme-discovery/README.md for the full writeup.
 
@@ -14,14 +20,12 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 cd "$REPO_ROOT"
 
-COLLECTION="theme-discovery-demo"
+COLLECTION="wtfoc-quick-start"
 EMBEDDER_ARGS=""
-SKIP_INGEST=false
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
-		--skip-ingest) SKIP_INGEST=true; shift ;;
-		--collection|-c) COLLECTION="$2"; SKIP_INGEST=true; shift 2 ;;
+		--collection|-c) COLLECTION="$2"; shift 2 ;;
 		lmstudio) EMBEDDER_ARGS="--embedder-url lmstudio --embedder-model mxbai-embed-large-v1"; shift ;;
 		--embedder-url|--embedder-model|--embedder-key|--embedder)
 			EMBEDDER_ARGS="$EMBEDDER_ARGS $1 $2"; shift 2 ;;
@@ -37,31 +41,21 @@ echo "║  What is your engineering conversation actually about?║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo ""
 
-if [[ "$SKIP_INGEST" == "false" ]]; then
-	echo "📦 Creating collection..."
-	$CLI init "$COLLECTION" --local
+# Verify collection exists
+if ! $CLI status -c "$COLLECTION" >/dev/null 2>&1; then
+	echo "❌ Collection '$COLLECTION' not found."
 	echo ""
-
-	echo "🐙 Ingesting GitHub activity (last 90 days)..."
+	echo "Run the quick-start demo first:"
+	echo "  ./docs/demos/quick-start/run.sh"
 	echo ""
-	for repo in "FilOzone/synapse-sdk" "filecoin-project/filecoin-pin" "filecoin-project/curio" "FilOzone/filecoin-services"; do
-		echo "   → $repo"
-		$CLI ingest github "$repo" -c "$COLLECTION" $EMBEDDER_ARGS --since 90d 2>&1 | grep -E "(chunks|Ingested)" || true
-		echo ""
-	done
-
-	echo "📄 Ingesting source code..."
-	echo ""
-	for repo in "FilOzone/synapse-sdk" "filecoin-project/filecoin-pin"; do
-		echo "   → $repo"
-		$CLI ingest repo "$repo" -c "$COLLECTION" $EMBEDDER_ARGS --batch-size 200 2>&1 | grep -E "(chunks|Ingested|batches)" || true
-		echo ""
-	done
-
-	echo ""
-	$CLI status -c "$COLLECTION"
-	echo ""
+	echo "Or specify an existing collection:"
+	echo "  ./docs/demos/theme-discovery/run.sh --collection <name>"
+	exit 1
 fi
+
+echo "📦 Using collection: $COLLECTION"
+$CLI status -c "$COLLECTION"
+echo ""
 
 # ─── Theme Discovery ────────────────────────────────────
 echo "═══════════════════════════════════════════════════════"
@@ -91,3 +85,6 @@ echo "Try different thresholds:"
 echo "  ./wtfoc themes -c $COLLECTION --threshold 0.90  # broad themes"
 echo "  ./wtfoc themes -c $COLLECTION --threshold 0.75  # fine-grained"
 echo "  ./wtfoc themes -c $COLLECTION --all             # show all clusters"
+echo ""
+echo "For richer themes across multiple repos and source types:"
+echo "  ./docs/demos/theme-discovery/run.sh --collection foc-upload-flow"

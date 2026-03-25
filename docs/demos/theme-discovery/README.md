@@ -8,7 +8,7 @@ Run one command. Get the 5-10 semantic themes your engineering conversation is a
 
 The demo line:
 
-> "Here are the 7 key topics your entire engineering conversation across 4 repos, 2 doc sites, and 90 days is actually about — automatically."
+> "Here are the key topics your engineering conversation is actually about — automatically, no LLM, pure math."
 
 ## Run It
 
@@ -24,9 +24,11 @@ Or against an existing collection:
 
 ## What Happens
 
-### Ingest multi-repo activity
+### Ingest source data
 
-The script ingests GitHub issues/PRs from 4 repos and source code from 2 repos to build a representative collection.
+The script ingests this repo to build a collection quickly (~2 min). For richer themes across multiple repos and source types, use `--collection foc-upload-flow`.
+
+> **Note:** This demo is contrived for speed. In practice, theme discovery is most interesting with multi-repo collections spanning code, issues, docs, and community discussions.
 
 ### Broad themes (default threshold: 0.85)
 

@@ -40,22 +40,14 @@ Or against the upload-flow-trace collection:
 
 ### Collection setup
 
-Drift analysis requires **both** documentation sources and GitHub sources in the same collection:
+The quick demo ingests this repo (which has both code and markdown docs):
 
 ```bash
-# Docs (the "should be true" layer)
-./wtfoc ingest website https://docs.filecoin.cloud/ -c drift-analysis-demo
-./wtfoc ingest website https://filecoin.cloud/ -c drift-analysis-demo
-
-# GitHub activity (the "what actually happened" layer)
-./wtfoc ingest github FilOzone/synapse-sdk -c drift-analysis-demo --since 90d
-./wtfoc ingest github filecoin-project/filecoin-pin -c drift-analysis-demo --since 90d
-./wtfoc ingest github filecoin-project/curio -c drift-analysis-demo --since 90d
-
-# Source code (the "ground truth" layer)
-./wtfoc ingest repo FilOzone/synapse-sdk -c drift-analysis-demo
-./wtfoc ingest repo filecoin-project/filecoin-pin -c drift-analysis-demo
+./wtfoc init drift-analysis-demo --local
+./wtfoc ingest repo SgtPooki/wtfoc -c drift-analysis-demo
 ```
+
+> **Note:** This demo is contrived for speed (~2 min). For real-world drift analysis comparing docs sites against GitHub activity across multiple repos, use `--collection foc-upload-flow` with a pre-built collection that has both documentation and GitHub sources.
 
 ### How drift-check works
 
