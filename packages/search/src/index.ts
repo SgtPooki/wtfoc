@@ -7,7 +7,11 @@ export { analyzeEdgeResolution, buildSourceIndex, resolves } from "./edge-resolu
 export type { OpenAIEmbedderOptions } from "./embedders/openai.js";
 export { OpenAIEmbedder } from "./embedders/openai.js";
 export { TransformersEmbedder } from "./embedders/transformers.js";
+export type { VectorBackend, VectorIndexConfig } from "./index/factory.js";
+export { createVectorIndex } from "./index/factory.js";
 export { InMemoryVectorIndex } from "./index/in-memory.js";
+export type { QdrantVectorIndexOptions } from "./index/qdrant.js";
+export { QdrantVectorIndex } from "./index/qdrant.js";
 export type { MountedCollection, MountOptions } from "./mount.js";
 export { mountCollection } from "./mount.js";
 export type { QueryOptions, QueryResult } from "./query.js";

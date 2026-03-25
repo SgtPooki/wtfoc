@@ -1,5 +1,5 @@
 import { VectorDimensionMismatchError, type VectorEntry } from "@wtfoc/common";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryVectorIndex } from "./in-memory.js";
 
 function makeEntry(
@@ -14,6 +14,10 @@ function makeEntry(
 		metadata: overrides?.metadata ?? { sourceType: "test" },
 	};
 }
+
+afterEach(() => {
+	vi.restoreAllMocks();
+});
 
 describe("InMemoryVectorIndex", () => {
 	it("returns search results sorted by cosine similarity", async () => {
@@ -109,5 +113,62 @@ describe("InMemoryVectorIndex", () => {
 				score: result.score,
 			})),
 		);
+	});
+
+	it("uses upsert semantics — replaces entries with the same ID", async () => {
+		const index = new InMemoryVectorIndex();
+		await index.add([makeEntry("dup", [1, 0], { metadata: { version: "1" } })]);
+		await index.add([makeEntry("dup", [0, 1], { metadata: { version: "2" } })]);
+
+		expect(index.size).toBe(1);
+
+		const results = await index.search(new Float32Array([0, 1]), 1);
+		expect(results[0]?.entry.metadata.version).toBe("2");
+		expect(results[0]?.score).toBeCloseTo(1);
+	});
+
+	it("deletes entries by ID", async () => {
+		const index = new InMemoryVectorIndex();
+		await index.add([makeEntry("keep", [1, 0]), makeEntry("remove", [0, 1])]);
+
+		expect(index.size).toBe(2);
+		await index.delete(["remove"]);
+		expect(index.size).toBe(1);
+
+		const results = await index.search(new Float32Array([1, 0]), 10);
+		expect(results).toHaveLength(1);
+		expect(results[0]?.entry.id).toBe("keep");
+	});
+
+	it("delete is a no-op for nonexistent IDs", async () => {
+		const index = new InMemoryVectorIndex();
+		await index.add([makeEntry("a", [1, 0])]);
+
+		await index.delete(["nonexistent"]);
+		expect(index.size).toBe(1);
+	});
+
+	it("logs a warning when entry count exceeds threshold", async () => {
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const index = new InMemoryVectorIndex({ sizeWarningThreshold: 3 });
+
+		await index.add([
+			makeEntry("a", [1, 0]),
+			makeEntry("b", [0.9, 0.1]),
+			makeEntry("c", [0.8, 0.2]),
+		]);
+
+		expect(warnSpy).toHaveBeenCalledOnce();
+		expect(warnSpy.mock.calls[0]?.[0]).toMatch(/InMemoryVectorIndex has 3 entries/);
+	});
+
+	it("emits size warning only once", async () => {
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const index = new InMemoryVectorIndex({ sizeWarningThreshold: 2 });
+
+		await index.add([makeEntry("a", [1, 0]), makeEntry("b", [0, 1])]);
+		await index.add([makeEntry("c", [0.5, 0.5])]);
+
+		expect(warnSpy).toHaveBeenCalledOnce();
 	});
 });

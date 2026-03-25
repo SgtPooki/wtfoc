@@ -1,8 +1,8 @@
 import {
 	type ScoredEntry,
+	type SerializableVectorIndex,
 	VectorDimensionMismatchError,
 	type VectorEntry,
-	type VectorIndex,
 } from "@wtfoc/common";
 
 interface SerializedVectorEntry {
@@ -16,12 +16,20 @@ interface SerializedVectorIndex {
 	entries: SerializedVectorEntry[];
 }
 
-export class InMemoryVectorIndex implements VectorIndex {
-	readonly #entries: VectorEntry[] = [];
+const DEFAULT_SIZE_WARNING_THRESHOLD = 50_000;
+
+export class InMemoryVectorIndex implements SerializableVectorIndex {
+	readonly #entries = new Map<string, VectorEntry>();
 	#dimensions: number | null = null;
+	readonly #sizeWarningThreshold: number;
+	#sizeWarningEmitted = false;
+
+	constructor(options?: { sizeWarningThreshold?: number }) {
+		this.#sizeWarningThreshold = options?.sizeWarningThreshold ?? DEFAULT_SIZE_WARNING_THRESHOLD;
+	}
 
 	get size(): number {
-		return this.#entries.length;
+		return this.#entries.size;
 	}
 
 	async add(entries: VectorEntry[]): Promise<void> {
@@ -31,22 +39,30 @@ export class InMemoryVectorIndex implements VectorIndex {
 
 		for (const entry of entries) {
 			this.#assertDimensions(entry.vector);
-			this.#entries.push({
+			this.#entries.set(entry.id, {
 				...entry,
 				vector: new Float32Array(entry.vector),
 				metadata: { ...entry.metadata },
 			});
 		}
+
+		this.#checkSizeWarning();
+	}
+
+	async delete(ids: string[]): Promise<void> {
+		for (const id of ids) {
+			this.#entries.delete(id);
+		}
 	}
 
 	async search(query: Float32Array, topK: number): Promise<ScoredEntry[]> {
-		if (topK <= 0 || this.#entries.length === 0) {
+		if (topK <= 0 || this.#entries.size === 0) {
 			return [];
 		}
 
 		this.#assertQueryDimensions(query);
 
-		return this.#entries
+		return [...this.#entries.values()]
 			.map((entry) => ({
 				entry: {
 					...entry,
@@ -61,7 +77,7 @@ export class InMemoryVectorIndex implements VectorIndex {
 
 	async serialize(): Promise<Uint8Array> {
 		const payload: SerializedVectorIndex = {
-			entries: this.#entries.map((entry) => ({
+			entries: [...this.#entries.values()].map((entry) => ({
 				id: entry.id,
 				vector: Array.from(entry.vector),
 				storageId: entry.storageId,
@@ -76,19 +92,21 @@ export class InMemoryVectorIndex implements VectorIndex {
 		const decoded = new TextDecoder().decode(data);
 		const parsed = JSON.parse(decoded) as SerializedVectorIndex;
 
-		this.#entries.length = 0;
+		this.#entries.clear();
 		this.#dimensions = null;
 
 		for (const entry of parsed.entries) {
 			const vector = new Float32Array(entry.vector);
 			this.#assertDimensions(vector);
-			this.#entries.push({
+			this.#entries.set(entry.id, {
 				id: entry.id,
 				vector,
 				storageId: entry.storageId,
 				metadata: { ...entry.metadata },
 			});
 		}
+
+		this.#checkSizeWarning();
 	}
 
 	#assertDimensions(vector: Float32Array): void {
@@ -105,6 +123,17 @@ export class InMemoryVectorIndex implements VectorIndex {
 	#assertQueryDimensions(vector: Float32Array): void {
 		if (this.#dimensions !== null && vector.length !== this.#dimensions) {
 			throw new VectorDimensionMismatchError(this.#dimensions, vector.length, "query");
+		}
+	}
+
+	#checkSizeWarning(): void {
+		if (this.#sizeWarningThreshold <= 0) return; // disabled
+		if (!this.#sizeWarningEmitted && this.#entries.size >= this.#sizeWarningThreshold) {
+			this.#sizeWarningEmitted = true;
+			console.warn(
+				`⚠️  InMemoryVectorIndex has ${this.#entries.size} entries (threshold: ${this.#sizeWarningThreshold}). ` +
+					`Consider using a persistent vector backend (e.g., WTFOC_VECTOR_BACKEND=qdrant) for large collections.`,
+			);
 		}
 	}
 }

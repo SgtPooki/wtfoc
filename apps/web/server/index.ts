@@ -14,10 +14,11 @@ import { createMcpServer } from "@wtfoc/mcp-server/server";
 import {
 	analyzeEdgeResolution,
 	buildSourceIndex,
-	InMemoryVectorIndex,
+	createVectorIndex,
 	query,
 	trace,
 } from "@wtfoc/search";
+import type { VectorBackend } from "@wtfoc/search";
 import { createStore, resolveCollectionByCid } from "@wtfoc/store";
 import { mountCollection } from "@wtfoc/search";
 
@@ -28,6 +29,39 @@ const PORT = Number(process.env["WTFOC_PORT"] ?? "3577");
 const WEB_DIR = process.env["WTFOC_WEB_DIR"] ?? join(__dirname, "..", "dist");
 const DATA_DIR = process.env["WTFOC_DATA_DIR"];
 const MANIFEST_DIR = process.env["WTFOC_MANIFEST_DIR"];
+const VECTOR_BACKEND = parseVectorBackend(process.env["WTFOC_VECTOR_BACKEND"]);
+const QDRANT_URL = process.env["WTFOC_QDRANT_URL"] ?? "http://localhost:6333";
+const QDRANT_API_KEY = process.env["WTFOC_QDRANT_API_KEY"];
+const COLLECTION_TTL_MS = parseTtl(process.env["WTFOC_COLLECTION_TTL"]);
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function parseVectorBackend(value: string | undefined): VectorBackend {
+	if (!value || value === "inmemory") return "inmemory";
+	if (value === "qdrant") return "qdrant";
+	console.error(
+		`[wtfoc] Unknown WTFOC_VECTOR_BACKEND "${value}", falling back to "inmemory".`,
+	);
+	return "inmemory";
+}
+
+function parseTtl(value: string | undefined): number {
+	if (!value) return 0; // 0 = disabled
+	const match = value.match(/^(\d+)(ms|s|m|h|d)$/);
+	if (!match) {
+		console.error(
+			`[wtfoc] Invalid TTL "${value}" — expected format: <number><unit> (ms|s|m|h|d). Disabled.`,
+		);
+		return 0;
+	}
+	const [, num, unit] = match;
+	if (unit !== "ms" && unit !== "s" && unit !== "m" && unit !== "h" && unit !== "d") return 0;
+	const n = Number(num);
+	const multipliers: Record<"ms" | "s" | "m" | "h" | "d", number> = {
+		ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000,
+	};
+	return n * multipliers[unit];
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -36,6 +70,7 @@ interface LoadedCollection {
 	segments: Segment[];
 	vectorIndex: VectorIndex;
 	loadedAt: number;
+	lastAccessedAt: number;
 }
 
 interface CachedFile {
@@ -91,13 +126,23 @@ let embedder: Embedder;
 
 async function getCollection(name: string): Promise<LoadedCollection | null> {
 	const cached = collectionCache.get(name);
-	if (cached) return cached;
+	if (cached) {
+		cached.lastAccessedAt = Date.now();
+		return cached;
+	}
 
 	const head = await store.manifests.getHead(name);
 	if (!head) return null;
 
-	console.error(`⏳ Loading collection "${name}"...`);
-	const vectorIndex = new InMemoryVectorIndex();
+	console.error(`⏳ Loading collection "${name}" (${VECTOR_BACKEND} backend)...`);
+	const dimensions = head.manifest.embeddingDimensions ?? 384;
+	const vectorIndex = await createVectorIndex({
+		backend: VECTOR_BACKEND,
+		collectionName: head.manifest.collectionId,
+		dimensions,
+		qdrantUrl: QDRANT_URL,
+		qdrantApiKey: QDRANT_API_KEY,
+	});
 	const segments: Segment[] = [];
 
 	for (const segSummary of head.manifest.segments) {
@@ -120,16 +165,18 @@ async function getCollection(name: string): Promise<LoadedCollection | null> {
 		await vectorIndex.add(entries);
 	}
 
+	const now = Date.now();
 	const loaded: LoadedCollection = {
 		manifest: head.manifest,
 		segments,
 		vectorIndex,
-		loadedAt: Date.now(),
+		loadedAt: now,
+		lastAccessedAt: now,
 	};
 
 	collectionCache.set(name, loaded);
 	console.error(
-		`✅ Loaded "${name}": ${head.manifest.totalChunks} chunks, ${head.manifest.segments.length} segments`,
+		`✅ Loaded "${name}": ${head.manifest.totalChunks} chunks, ${head.manifest.segments.length} segments (${VECTOR_BACKEND})`,
 	);
 	return loaded;
 }
@@ -141,7 +188,10 @@ const CID_MAX_CONCURRENT = 5;
 
 async function getCollectionByCid(cid: string): Promise<LoadedCollection> {
 	const cached = collectionCache.get(`cid:${cid}`);
-	if (cached) return cached;
+	if (cached) {
+		cached.lastAccessedAt = Date.now();
+		return cached;
+	}
 
 	// Deduplicate in-flight requests for the same CID
 	const existing = cidInflight.get(cid);
@@ -155,14 +205,23 @@ async function getCollectionByCid(cid: string): Promise<LoadedCollection> {
 		console.error(`⏳ Fetching collection from CID ${cid.slice(0, 16)}...`);
 		const { manifest, storage } = await resolveCollectionByCid(cid);
 
-		const vectorIndex = new InMemoryVectorIndex();
+		const dimensions = manifest.embeddingDimensions ?? 384;
+		const vectorIndex = await createVectorIndex({
+			backend: VECTOR_BACKEND,
+			collectionName: `cid-${cid}`,
+			dimensions,
+			qdrantUrl: QDRANT_URL,
+			qdrantApiKey: QDRANT_API_KEY,
+		});
 		const mounted = await mountCollection(manifest, storage, vectorIndex);
 
+		const now = Date.now();
 		const loaded: LoadedCollection = {
 			manifest,
 			segments: mounted.segments,
 			vectorIndex: mounted.vectorIndex,
-			loadedAt: Date.now(),
+			loadedAt: now,
+			lastAccessedAt: now,
 		};
 
 		collectionCache.set(`cid:${cid}`, loaded);
@@ -584,11 +643,35 @@ async function main() {
 		}
 	});
 
+	// ─── TTL eviction sweep ─────────────────────────────────────────────
+	if (COLLECTION_TTL_MS > 0) {
+		const SWEEP_INTERVAL = Math.max(60_000, COLLECTION_TTL_MS / 2);
+		setInterval(() => {
+			const now = Date.now();
+			for (const [key, col] of collectionCache) {
+				if (now - col.lastAccessedAt > COLLECTION_TTL_MS) {
+					collectionCache.delete(key);
+					console.error(`♻️  Evicted idle collection "${key}" (TTL ${process.env["WTFOC_COLLECTION_TTL"]})`);
+				}
+			}
+		}, SWEEP_INTERVAL).unref();
+		console.error(`   TTL: ${process.env["WTFOC_COLLECTION_TTL"]} (sweep every ${Math.round(SWEEP_INTERVAL / 1000)}s)`);
+	}
+
+	// TODO: Qdrant CID collection cleanup — wtfoc-cid-* collections persist
+	// in Qdrant across restarts. Need a timestamp-aware cleanup mechanism
+	// (e.g., sentinel point with _wtfoc_last_accessed) to garbage-collect
+	// old CID collections without losing data for active users. Filed as
+	// follow-up work.
+
 	server.listen(PORT, () => {
 		console.error(`\n🌐 wtfoc web running at http://localhost:${PORT}`);
 		console.error(`   API: http://localhost:${PORT}/api/collections`);
 		console.error(`   MCP: http://localhost:${PORT}/mcp`);
 		console.error(`   UI:  http://localhost:${PORT}/`);
+		if (VECTOR_BACKEND !== "inmemory") {
+			console.error(`   Vector backend: ${VECTOR_BACKEND} (${QDRANT_URL})`);
+		}
 	});
 }
 

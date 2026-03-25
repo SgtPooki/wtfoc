@@ -1,9 +1,10 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { CollectionHead, Embedder, Segment, VectorEntry, VectorIndex } from "@wtfoc/common";
+import type { VectorBackend } from "@wtfoc/search";
 import {
 	analyzeEdgeResolution,
 	buildSourceIndex,
-	InMemoryVectorIndex,
+	createVectorIndex,
 	query,
 	trace,
 } from "@wtfoc/search";
@@ -27,7 +28,16 @@ async function loadCollection(
 	store: ReturnType<typeof createStore>,
 	manifest: CollectionHead,
 ): Promise<{ segments: Segment[]; vectorIndex: VectorIndex }> {
-	const vectorIndex = new InMemoryVectorIndex();
+	const rawBackend = process.env.WTFOC_VECTOR_BACKEND ?? "inmemory";
+	const backend: VectorBackend = rawBackend === "qdrant" ? "qdrant" : "inmemory";
+	const dimensions = manifest.embeddingDimensions ?? 384;
+	const vectorIndex = await createVectorIndex({
+		backend,
+		collectionName: manifest.name,
+		dimensions,
+		qdrantUrl: process.env.WTFOC_QDRANT_URL,
+		qdrantApiKey: process.env.WTFOC_QDRANT_API_KEY,
+	});
 	const segments: Segment[] = [];
 
 	for (const segSummary of manifest.segments) {
