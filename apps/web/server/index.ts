@@ -137,6 +137,7 @@ async function getCollection(name: string): Promise<LoadedCollection | null> {
 // ─── CID Collection Loading ─────────────────────────────────────────────────
 
 const cidInflight = new Map<string, Promise<LoadedCollection>>();
+const CID_MAX_CONCURRENT = 5;
 
 async function getCollectionByCid(cid: string): Promise<LoadedCollection> {
 	const cached = collectionCache.get(`cid:${cid}`);
@@ -145,6 +146,10 @@ async function getCollectionByCid(cid: string): Promise<LoadedCollection> {
 	// Deduplicate in-flight requests for the same CID
 	const existing = cidInflight.get(cid);
 	if (existing) return existing;
+
+	if (cidInflight.size >= CID_MAX_CONCURRENT) {
+		throw Object.assign(new Error("Too many concurrent CID fetches"), { code: "CID_BUSY" });
+	}
 
 	const promise = (async () => {
 		console.error(`⏳ Fetching collection from CID ${cid.slice(0, 16)}...`);
@@ -391,7 +396,8 @@ async function main() {
 				if (endpoint === "query") {
 					const q = params.get("q");
 					if (!q) return jsonResponse(res, { error: "Missing ?q= parameter" }, 400);
-					const topK = Number(params.get("k") ?? "10");
+					if (q.length > 2000) return jsonResponse(res, { error: "Query too long" }, 400);
+					const topK = Math.min(Math.max(1, Number(params.get("k") ?? "10") || 10), 100);
 					const result = await query(q, embedder, col.vectorIndex, { topK });
 					return jsonResponse(res, result);
 				}
@@ -399,6 +405,7 @@ async function main() {
 				if (endpoint === "trace") {
 					const q = params.get("q");
 					if (!q) return jsonResponse(res, { error: "Missing ?q= parameter" }, 400);
+					if (q.length > 2000) return jsonResponse(res, { error: "Query too long" }, 400);
 					const result = await trace(q, embedder, col.vectorIndex, col.segments);
 					return jsonResponse(res, {
 						query: result.query,
@@ -468,6 +475,7 @@ async function main() {
 					const code = err instanceof Error && "code" in err ? (err as { code: string }).code : "";
 					if (code === "CID_INVALID") return jsonResponse(res, { error: "Invalid CID format", code }, 400);
 					if (code === "CID_NOT_MANIFEST") return jsonResponse(res, { error: "CID does not point to a wtfoc collection", code }, 422);
+					if (code === "CID_BUSY") return jsonResponse(res, { error: "Too many concurrent CID requests, try again later" }, 503);
 					throw err;
 				}
 			}
