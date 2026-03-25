@@ -29,8 +29,7 @@ RUN rm -rf node_modules/.pnpm/sharp@* node_modules/.pnpm/@img* \
          -exec sh -ec 'rm -rf "$1"; mkdir -p "$1"; cp -a docker/sharp-stub/. "$1/"' _ {} \; \
     && test "$(find node_modules/.pnpm -path '*/node_modules/sharp/package.json' | wc -l)" -ge 1 \
        || (echo "sharp stub: expected stub package.json under a sharp path (pnpm layout changed?)" >&2; exit 1) \
-    && rm -rf node_modules/.pnpm/node-datachannel* \
-    node_modules/.pnpm/@assemblyscript* \
+    && rm -rf node_modules/.pnpm/@assemblyscript* \
     node_modules/.pnpm/@babel* \
     node_modules/.pnpm/@xenova* \
     node_modules/.pnpm/protobufjs* \
