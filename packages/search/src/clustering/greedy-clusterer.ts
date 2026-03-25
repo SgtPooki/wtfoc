@@ -1,8 +1,8 @@
 /**
  * Greedy single-pass threshold-based clusterer.
  * Groups chunks by cosine similarity >= threshold (default 0.85).
- * Exemplar selection: 3 closest to cluster centroid.
- * Label extraction: first 5-7 meaningful words from top exemplar.
+ * Exemplar selection: N closest to cluster centroid.
+ * Label: first non-code exemplar's meaningful words.
  */
 
 import type {
@@ -13,7 +13,7 @@ import type {
 	ThemeCluster,
 } from "@wtfoc/common";
 import { centroid, dot, normalize } from "./cosine.js";
-import { extractLabel } from "./labels.js";
+import { extractLabelFromCandidates } from "./labels.js";
 
 const DEFAULT_THRESHOLD = 0.85;
 const DEFAULT_MAX_EXEMPLARS = 3;
@@ -36,30 +36,24 @@ export class GreedyClusterer implements Clusterer {
 		const normalized = vectors.map((v) => normalize(new Float32Array(v)));
 
 		// Greedy single-pass clustering
-		// Each cluster stores indices into the original arrays
 		const clusterMembers: number[][] = [];
 		const assigned = new Set<number>();
 
 		for (let i = 0; i < normalized.length; i++) {
 			signal?.throwIfAborted();
-
 			if (assigned.has(i)) continue;
 
-			// Start a new cluster with this vector as seed
-			const members = [i];
-			assigned.add(i);
-
-			// Find all unassigned vectors similar to the seed
 			const seed = normalized[i];
 			if (!seed) continue;
+
+			const members = [i];
+			assigned.add(i);
 
 			for (let j = i + 1; j < normalized.length; j++) {
 				if (assigned.has(j)) continue;
 				const candidate = normalized[j];
 				if (!candidate) continue;
-
-				const sim = dot(seed, candidate);
-				if (sim >= threshold) {
+				if (dot(seed, candidate) >= threshold) {
 					members.push(j);
 					assigned.add(j);
 				}
@@ -78,14 +72,12 @@ export class GreedyClusterer implements Clusterer {
 			const memberIndices = clusterMembers[ci];
 			if (!memberIndices) continue;
 
-			// Singletons go to noise
+			// Singletons → noise
 			if (memberIndices.length === 1) {
 				const idx = memberIndices[0];
 				if (idx !== undefined) {
 					const id = ids[idx];
-					if (id !== undefined) {
-						noise.push(id);
-					}
+					if (id) noise.push(id);
 				}
 				continue;
 			}
@@ -106,18 +98,19 @@ export class GreedyClusterer implements Clusterer {
 			});
 			distances.sort((a, b) => b.sim - a.sim);
 
-			const exemplarIds = distances
-				.slice(0, maxExemplars)
+			const exemplarIndices = distances.slice(0, maxExemplars);
+			const exemplarIds = exemplarIndices
 				.map((d) => ids[d.idx])
 				.filter((id): id is string => id !== undefined);
 
-			// Label from top exemplar content
-			const topExemplarIdx = distances[0]?.idx;
-			const topContent = topExemplarIdx !== undefined ? (contents[topExemplarIdx] ?? "") : "";
-			const label = extractLabel(topContent);
+			// Label from exemplar content — prefer non-code exemplars
+			const exemplarContents = exemplarIndices
+				.map((d) => contents[d.idx])
+				.filter((c): c is string => c !== undefined);
+			const label = extractLabelFromCandidates(exemplarContents);
 
 			clusters.push({
-				id: `cluster-${ci}`,
+				id: "",
 				label,
 				exemplarIds,
 				memberIds,
@@ -125,12 +118,10 @@ export class GreedyClusterer implements Clusterer {
 			});
 		}
 
-		// Re-number cluster IDs to be contiguous (after noise removal)
+		// Assign contiguous IDs
 		for (let i = 0; i < clusters.length; i++) {
 			const cluster = clusters[i];
-			if (cluster) {
-				cluster.id = `cluster-${i}`;
-			}
+			if (cluster) cluster.id = `cluster-${i}`;
 		}
 
 		return {

@@ -74,14 +74,27 @@ const MIN_WORDS = 5;
 const MAX_WORDS = 7;
 
 /**
+ * Returns true if content is mostly code/markup (code fences, HTML tags, etc.)
+ */
+export function isCodeHeavy(content: string): boolean {
+	const codePattern = /^```|^<[a-z]|^\s*\{|^\s*import |^\s*export |^\s*const |^\s*function /m;
+	const codeBlocks = (content.match(/```[\s\S]*?```/g) ?? []).join("").length;
+	const htmlTags = (content.match(/<[^>]+>/g) ?? []).join("").length;
+	const total = content.length;
+	if (total === 0) return true;
+	return codePattern.test(content.slice(0, 50)) || (codeBlocks + htmlTags) / total > 0.5;
+}
+
+/**
  * Extract a human-readable label from exemplar content.
  * Takes the first 5-7 meaningful (non-stop) words from the content.
  */
 export function extractLabel(content: string): string {
-	// Collapse whitespace, strip markdown/code fences, take first line-ish
 	const cleaned = content
 		.replace(/```[\s\S]*?```/g, " ")
 		.replace(/`[^`]*`/g, " ")
+		.replace(/<[^>]+>/g, " ")
+		.replace(/&[a-z]+;/g, " ")
 		.replace(/[#*_~>|[\](){}]/g, " ")
 		.replace(/https?:\/\/\S+/g, " ")
 		.replace(/\s+/g, " ")
@@ -99,7 +112,6 @@ export function extractLabel(content: string): string {
 	}
 
 	if (meaningful.length < MIN_WORDS) {
-		// Fall back: take any words up to MAX_WORDS
 		const fallback = words
 			.slice(0, MAX_WORDS)
 			.map((w) => w.replace(/[^a-zA-Z0-9-]/g, ""))
@@ -108,4 +120,23 @@ export function extractLabel(content: string): string {
 	}
 
 	return meaningful.join(" ");
+}
+
+/**
+ * Try multiple content candidates for a label, preferring non-code content.
+ */
+export function extractLabelFromCandidates(candidates: string[]): string {
+	// Try non-code candidates first
+	for (const content of candidates) {
+		if (!isCodeHeavy(content)) {
+			const label = extractLabel(content);
+			if (label !== "unlabelled cluster") return label;
+		}
+	}
+	// Fall back to any candidate
+	for (const content of candidates) {
+		const label = extractLabel(content);
+		if (label !== "unlabelled cluster") return label;
+	}
+	return "unlabelled cluster";
 }

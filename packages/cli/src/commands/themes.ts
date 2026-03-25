@@ -1,7 +1,9 @@
 import { GreedyClusterer } from "@wtfoc/search";
 import type { Command } from "commander";
 import { getFormat, getStore, loadCollection } from "../helpers.js";
-import type { OutputFormat } from "../output.js";
+
+const DEFAULT_DISPLAY_LIMIT = 20;
+const DEFAULT_MIN_DISPLAY_SIZE = 3;
 
 export function registerThemesCommand(program: Command): void {
 	program
@@ -10,97 +12,100 @@ export function registerThemesCommand(program: Command): void {
 		.requiredOption("-c, --collection <name>", "Collection name")
 		.option("-t, --threshold <number>", "Cosine similarity threshold", "0.85")
 		.option("-e, --exemplars <number>", "Max exemplars per cluster", "3")
-		.action(async (opts: { collection: string; threshold: string; exemplars: string }) => {
-			const store = getStore(program);
-			const format = getFormat(program.opts());
+		.option(
+			"--min-size <number>",
+			"Minimum cluster size to display",
+			String(DEFAULT_MIN_DISPLAY_SIZE),
+		)
+		.option("--all", "Show all clusters (not just top 20)")
+		.option("-n, --limit <number>", "Max clusters to display", String(DEFAULT_DISPLAY_LIMIT))
+		.action(
+			async (opts: {
+				collection: string;
+				threshold: string;
+				exemplars: string;
+				minSize: string;
+				all?: boolean;
+				limit: string;
+			}) => {
+				const store = getStore(program);
+				const format = getFormat(program.opts());
 
-			const head = await store.manifests.getHead(opts.collection);
-			if (!head) {
-				console.error(`Error: collection "${opts.collection}" not found`);
-				process.exit(1);
-			}
-
-			if (format !== "quiet") console.error("Loading collection...");
-			const { segments } = await loadCollection(store, head.manifest);
-
-			// Build lookup maps from segments
-			const idToContent = new Map<string, string>();
-			const idToVector = new Map<string, Float32Array>();
-
-			for (const segment of segments) {
-				for (const chunk of segment.chunks) {
-					idToContent.set(chunk.id, chunk.content);
-					idToVector.set(chunk.id, new Float32Array(chunk.embedding));
+				const head = await store.manifests.getHead(opts.collection);
+				if (!head) {
+					console.error(`Error: collection "${opts.collection}" not found`);
+					process.exit(1);
 				}
-			}
 
-			const ids: string[] = [];
-			const vectors: Float32Array[] = [];
-			const contents: string[] = [];
+				if (format !== "quiet") console.error("Loading collection...");
+				const { segments } = await loadCollection(store, head.manifest);
 
-			for (const [id, content] of idToContent) {
-				const vec = idToVector.get(id);
-				if (!vec) continue;
-				ids.push(id);
-				vectors.push(vec);
-				contents.push(content);
-			}
+				const idToContent = new Map<string, string>();
+				const ids: string[] = [];
+				const vectors: Float32Array[] = [];
+				const contents: string[] = [];
 
-			if (format !== "quiet") {
-				console.error(`Clustering ${ids.length} chunks (threshold=${opts.threshold})...`);
-			}
+				for (const segment of segments) {
+					for (const chunk of segment.chunks) {
+						if (!idToContent.has(chunk.id)) {
+							idToContent.set(chunk.id, chunk.content);
+							ids.push(chunk.id);
+							vectors.push(new Float32Array(chunk.embedding));
+							contents.push(chunk.content);
+						}
+					}
+				}
 
-			const clusterer = new GreedyClusterer();
-			const result = await clusterer.cluster(
-				{ ids, vectors, contents },
-				{
-					threshold: Number.parseFloat(opts.threshold),
-					maxExemplars: Number.parseInt(opts.exemplars, 10),
-				},
-			);
+				const threshold = Number.parseFloat(opts.threshold);
+				const minDisplaySize = Number.parseInt(opts.minSize, 10);
 
-			console.log(formatThemes(result, contents, idToContent, format));
-		});
-}
+				if (format !== "quiet") {
+					console.error(`Clustering ${ids.length} chunks (threshold=${threshold})...`);
+				}
 
-function formatThemes(
-	result: {
-		clusters: Array<{
-			id: string;
-			label: string;
-			exemplarIds: string[];
-			memberIds: string[];
-			size: number;
-		}>;
-		noise: string[];
-		totalProcessed: number;
-	},
-	_contents: string[],
-	idToContent: Map<string, string>,
-	format: OutputFormat,
-): string {
-	if (format === "json") return JSON.stringify(result, null, "\t");
-	if (format === "quiet") return "";
+				const clusterer = new GreedyClusterer();
+				const result = await clusterer.cluster(
+					{ ids, vectors, contents },
+					{
+						threshold,
+						maxExemplars: Number.parseInt(opts.exemplars, 10),
+					},
+				);
 
-	const lines: string[] = [];
-	lines.push(
-		`Themes: ${result.clusters.length} clusters, ${result.noise.length} noise, ${result.totalProcessed} total\n`,
-	);
+				// JSON always returns the full, unfiltered result
+				if (format === "json") {
+					console.log(JSON.stringify(result, null, "\t"));
+					return;
+				}
 
-	for (const cluster of result.clusters) {
-		lines.push(`--- ${cluster.id}: ${cluster.label} (${cluster.size} chunks) ---`);
+				// Human output: sort by size, filter by min-size, limit display count
+				const sorted = [...result.clusters].sort((a, b) => b.size - a.size);
+				const displayClusters = sorted.filter((c) => c.size >= minDisplaySize);
+				const displayLimit = opts.all ? displayClusters.length : Number.parseInt(opts.limit, 10);
+				const shown = displayClusters.slice(0, displayLimit);
 
-		for (const exId of cluster.exemplarIds) {
-			const content = idToContent.get(exId) ?? "";
-			const snippet = content.slice(0, 120).replace(/\n/g, " ");
-			lines.push(`  [exemplar] ${snippet}${content.length > 120 ? "..." : ""}`);
-		}
-		lines.push("");
-	}
+				if (format === "quiet") return;
 
-	if (result.noise.length > 0) {
-		lines.push(`Noise: ${result.noise.length} unclustered chunks`);
-	}
+				console.log(
+					`Themes: ${result.clusters.length} clusters (showing top ${shown.length} with ${minDisplaySize}+ members), ${result.noise.length} noise, ${result.totalProcessed} total\n`,
+				);
 
-	return lines.join("\n");
+				for (const cluster of shown) {
+					console.log(`--- ${cluster.id}: ${cluster.label} (${cluster.size} chunks) ---`);
+					for (const exId of cluster.exemplarIds) {
+						const content = idToContent.get(exId) ?? "";
+						const snippet = content.slice(0, 120).replace(/\n/g, " ");
+						console.log(`  [exemplar] ${snippet}${content.length > 120 ? "..." : ""}`);
+					}
+					console.log("");
+				}
+
+				if (displayClusters.length > shown.length) {
+					console.log(
+						`(${displayClusters.length - shown.length} more clusters not shown — use --all or -n to see more)`,
+					);
+				}
+				console.log(`Noise: ${result.noise.length} unclustered chunks`);
+			},
+		);
 }
