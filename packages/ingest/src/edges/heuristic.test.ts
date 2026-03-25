@@ -8,6 +8,8 @@ function makeChunk(content: string, id = "chunk-1"): Chunk {
 		content,
 		sourceType: "slack-message",
 		source: "#general",
+		chunkIndex: 0,
+		totalChunks: 1,
 		metadata: {},
 	};
 }

@@ -8,6 +8,8 @@ function makeChunk(id = "chunk-1"): Chunk {
 		content: "Fixes #42 in the codebase",
 		sourceType: "github-pr",
 		source: "owner/repo#10",
+		chunkIndex: 0,
+		totalChunks: 1,
 		metadata: {},
 	};
 }

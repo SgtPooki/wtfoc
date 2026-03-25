@@ -16,8 +16,22 @@ interface ExtractorRegistration {
  */
 export class CompositeEdgeExtractor implements EdgeExtractor {
 	readonly #extractors: ExtractorRegistration[] = [];
+	readonly #names = new Set<string>();
+	#onError?: (extractorName: string, error: unknown) => void;
+
+	/**
+	 * Set an optional error handler for extractor failures.
+	 * If not set, failures are logged to stderr.
+	 */
+	set onError(handler: (extractorName: string, error: unknown) => void) {
+		this.#onError = handler;
+	}
 
 	register(registration: { name: string; extractor: EdgeExtractor; enabled?: boolean }): void {
+		if (this.#names.has(registration.name)) {
+			throw new Error(`Duplicate extractor name: "${registration.name}"`);
+		}
+		this.#names.add(registration.name);
 		this.#extractors.push({
 			name: registration.name,
 			extractor: registration.extractor,
@@ -41,8 +55,12 @@ export class CompositeEdgeExtractor implements EdgeExtractor {
 				} catch (err) {
 					if (err instanceof DOMException && err.name === "AbortError") throw err;
 					if (signal?.aborted) throw signal.reason;
-					// Fail-open: log and return no edges for this extractor
-					console.error(`[wtfoc] Edge extractor "${reg.name}" failed:`, err);
+					// Fail-open: report via handler or stderr
+					if (this.#onError) {
+						this.#onError(reg.name, err);
+					} else {
+						console.error(`[wtfoc] Edge extractor "${reg.name}" failed:`, err);
+					}
 					return { extractorName: reg.name, edges: [] as Edge[] };
 				}
 			}),

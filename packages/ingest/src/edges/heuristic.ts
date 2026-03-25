@@ -44,6 +44,7 @@ export class HeuristicEdgeExtractor implements EdgeExtractor {
 
 		const edges: Edge[] = [];
 		for (const chunk of chunks) {
+			signal?.throwIfAborted();
 			edges.push(...this.#extractSlackPermalinks(chunk));
 			edges.push(...this.#extractJiraKeys(chunk));
 			edges.push(...this.#extractMarkdownLinks(chunk));
