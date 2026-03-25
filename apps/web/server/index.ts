@@ -33,6 +33,7 @@ const VECTOR_BACKEND = parseVectorBackend(process.env["WTFOC_VECTOR_BACKEND"]);
 const QDRANT_URL = process.env["WTFOC_QDRANT_URL"] ?? "http://localhost:6333";
 const QDRANT_API_KEY = process.env["WTFOC_QDRANT_API_KEY"];
 const COLLECTION_TTL_MS = parseTtl(process.env["WTFOC_COLLECTION_TTL"]);
+const QDRANT_CID_TTL_MS = parseTtl(process.env["WTFOC_QDRANT_CID_TTL"] ?? "7d");
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -47,17 +48,19 @@ function parseVectorBackend(value: string | undefined): VectorBackend {
 
 function parseTtl(value: string | undefined): number {
 	if (!value) return 0; // 0 = disabled
-	const match = value.match(/^(\d+)(ms|s|m|h)$/);
+	const match = value.match(/^(\d+)(ms|s|m|h|d)$/);
 	if (!match) {
 		console.error(
-			`[wtfoc] Invalid WTFOC_COLLECTION_TTL "${value}" — expected format: <number><unit> (ms|s|m|h). TTL eviction disabled.`,
+			`[wtfoc] Invalid TTL "${value}" — expected format: <number><unit> (ms|s|m|h|d). Disabled.`,
 		);
 		return 0;
 	}
 	const [, num, unit] = match;
-	if (unit !== "ms" && unit !== "s" && unit !== "m" && unit !== "h") return 0;
+	if (unit !== "ms" && unit !== "s" && unit !== "m" && unit !== "h" && unit !== "d") return 0;
 	const n = Number(num);
-	const multipliers: Record<"ms" | "s" | "m" | "h", number> = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 };
+	const multipliers: Record<"ms" | "s" | "m" | "h" | "d", number> = {
+		ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000,
+	};
 	return n * multipliers[unit];
 }
 
@@ -203,10 +206,14 @@ async function getCollectionByCid(cid: string): Promise<LoadedCollection> {
 		console.error(`⏳ Fetching collection from CID ${cid.slice(0, 16)}...`);
 		const { manifest, storage } = await resolveCollectionByCid(cid);
 
-		// CID-loaded collections always use in-memory to prevent unbounded
-		// Qdrant collection creation from arbitrary user-supplied CIDs.
-		const { InMemoryVectorIndex } = await import("@wtfoc/search");
-		const vectorIndex = new InMemoryVectorIndex();
+		const dimensions = manifest.embeddingDimensions ?? 384;
+		const vectorIndex = await createVectorIndex({
+			backend: VECTOR_BACKEND,
+			collectionName: `cid-${cid}`,
+			dimensions,
+			qdrantUrl: QDRANT_URL,
+			qdrantApiKey: QDRANT_API_KEY,
+		});
 		const mounted = await mountCollection(manifest, storage, vectorIndex);
 
 		const now = Date.now();
@@ -650,6 +657,36 @@ async function main() {
 			}
 		}, SWEEP_INTERVAL).unref();
 		console.error(`   TTL: ${process.env["WTFOC_COLLECTION_TTL"]} (sweep every ${Math.round(SWEEP_INTERVAL / 1000)}s)`);
+	}
+
+	// ─── Qdrant CID collection cleanup ──────────────────────────────────
+	// Periodically delete wtfoc-cid-* Qdrant collections that haven't been
+	// accessed recently. Prevents unbounded growth from arbitrary CID requests.
+	if (VECTOR_BACKEND === "qdrant" && QDRANT_CID_TTL_MS > 0) {
+		const CID_SWEEP_INTERVAL = Math.max(3_600_000, QDRANT_CID_TTL_MS / 4); // at least hourly
+		setInterval(async () => {
+			try {
+				const { QdrantClient } = await import("@qdrant/js-client-rest");
+				const client = new QdrantClient({ url: QDRANT_URL, apiKey: QDRANT_API_KEY, checkCompatibility: false });
+				const { collections } = (await client.getCollections()).collections
+					? await client.getCollections()
+					: { collections: [] };
+				const cidCollections = collections.filter((c) => c.name.startsWith("wtfoc-cid-"));
+				const now = Date.now();
+				for (const col of cidCollections) {
+					const cacheKey = `cid:${col.name.slice("wtfoc-cid-".length)}`;
+					const cached = collectionCache.get(cacheKey);
+					if (!cached || now - cached.lastAccessedAt > QDRANT_CID_TTL_MS) {
+						await client.deleteCollection(col.name);
+						collectionCache.delete(cacheKey);
+						console.error(`🗑️  Cleaned up stale Qdrant CID collection "${col.name}"`);
+					}
+				}
+			} catch (err) {
+				console.error("[wtfoc] Qdrant CID cleanup error:", err instanceof Error ? err.message : err);
+			}
+		}, CID_SWEEP_INTERVAL).unref();
+		console.error(`   Qdrant CID cleanup: ${process.env["WTFOC_QDRANT_CID_TTL"] ?? "7d"} (sweep every ${Math.round(CID_SWEEP_INTERVAL / 3_600_000)}h)`);
 	}
 
 	server.listen(PORT, () => {
