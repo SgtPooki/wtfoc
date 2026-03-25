@@ -233,6 +233,9 @@ export function registerReindexCommand(program: Command): void {
 				console.error(`   ${chunksProcessed} chunks re-embedded with ${modelName}`);
 				console.error(`   Old segments preserved (immutable audit trail)`);
 			}
+
+			// synapse-sdk keeps HTTP connections alive with no cleanup method
+			if (storageType === "foc") process.exit(0);
 		},
 	);
 }

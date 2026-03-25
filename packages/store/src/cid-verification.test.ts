@@ -1,64 +1,94 @@
 /**
  * CID Verification — confirms that per-segment CIDs computed by the bundler
- * match the CIDs of files inside a directory CAR.
+ * (bare mode = raw content CIDs) match the actual blocks inside a directory CAR.
  *
- * Background: createCarFromFile(bare: true) produces raw content CIDs via
- * addByteStream, while createCarFromFiles uses addAll with paths (UnixFS
- * file CIDs). These are DIFFERENT. The bundler must use non-bare mode
- * so per-segment CIDs match what's inside the uploaded directory CAR.
+ * Background: createCarFromFile({ bare: true }) produces raw content CIDs that
+ * match the content blocks inside directory CARs built by createCarFromFiles.
+ * Non-bare (wrapped) mode adds a directory wrapper node whose CID does NOT
+ * appear in the directory CAR — that was the root cause of issue #139.
  */
+import { CarBlockIterator } from "@ipld/car";
 import { describe, expect, it } from "vitest";
 
-describe("CID verification: wrapped CID matches directory-internal CID", () => {
-	it("wrapped CID is a valid IPFS CID and differs from bare CID", async () => {
+describe("CID verification: bare CIDs match directory CAR blocks", () => {
+	it("bare CIDs appear as blocks in the directory CAR", async () => {
 		const fp = await import("filecoin-pin");
 
-		const content = new TextEncoder().encode(
-			JSON.stringify({ test: "cid-verification", schemaVersion: 1 }),
+		const content1 = new TextEncoder().encode(JSON.stringify({ seg: "one", schemaVersion: 1 }));
+		const content2 = new TextEncoder().encode(JSON.stringify({ seg: "two", schemaVersion: 1 }));
+
+		// Compute per-segment CIDs using bare mode (what bundler now uses)
+		const bareCar1 = await fp.createCarFromFile(
+			new File([Buffer.from(content1)], "seg-1.json", { type: "application/json" }),
+			{ bare: true },
+		);
+		const bareCar2 = await fp.createCarFromFile(
+			new File([Buffer.from(content2)], "seg-2.json", { type: "application/json" }),
+			{ bare: true },
 		);
 
-		// Non-bare CID (what bundler uses for per-segment CID)
-		const wrappedFile = new File([Buffer.from(content)], "test.json", {
-			type: "application/json",
-		});
-		const wrappedCar = await fp.createCarFromFile(wrappedFile);
-		const wrappedCid = wrappedCar.rootCid.toString();
+		// Build directory CAR (same as bundler step 2)
+		const dirCar = await fp.createCarFromFiles([
+			new File([Buffer.from(content1)], "segments/seg-1.json", { type: "application/json" }),
+			new File([Buffer.from(content2)], "segments/seg-2.json", { type: "application/json" }),
+		]);
 
-		expect(wrappedCid).toMatch(/^baf/);
+		// Walk all blocks in the directory CAR
+		const blockCids = new Set<string>();
+		const iterator = await CarBlockIterator.fromBytes(dirCar.carBytes);
+		for await (const block of iterator) {
+			blockCids.add(block.cid.toString());
+		}
 
-		// Multi-file directory CAR — root CID differs from individual file CIDs
-		const file1 = new File([Buffer.from(content)], "segments/file1.json", {
-			type: "application/json",
-		});
-		const file2 = new File(
-			[Buffer.from(new TextEncoder().encode(JSON.stringify({ other: true })))],
-			"segments/file2.json",
-			{ type: "application/json" },
-		);
-		const dirCar = await fp.createCarFromFiles([file1, file2]);
-		const dirRootCid = dirCar.rootCid.toString();
-
-		// Directory root CID is the directory itself, not any individual file
-		expect(dirRootCid).toMatch(/^baf/);
-		expect(dirRootCid).not.toBe(wrappedCid);
+		// Bare CIDs MUST appear as blocks — this is the fix for #139
+		expect(blockCids.has(bareCar1.rootCid.toString())).toBe(true);
+		expect(blockCids.has(bareCar2.rootCid.toString())).toBe(true);
 	});
 
-	it("bare CID differs from wrapped CID — bare must NOT be used for per-segment IDs", async () => {
+	it("wrapped (non-bare) CIDs do NOT appear in directory CAR — regression guard", async () => {
+		const fp = await import("filecoin-pin");
+
+		const content = new TextEncoder().encode(JSON.stringify({ seg: "one", schemaVersion: 1 }));
+
+		// Wrapped CID (the old broken approach)
+		const wrappedCar = await fp.createCarFromFile(
+			new File([Buffer.from(content)], "seg-1.json", { type: "application/json" }),
+		);
+
+		// Directory CAR
+		const dirCar = await fp.createCarFromFiles([
+			new File([Buffer.from(content)], "segments/seg-1.json", { type: "application/json" }),
+			new File(
+				[Buffer.from(new TextEncoder().encode(JSON.stringify({ other: true })))],
+				"segments/seg-2.json",
+				{ type: "application/json" },
+			),
+		]);
+
+		const blockCids = new Set<string>();
+		const iterator = await CarBlockIterator.fromBytes(dirCar.carBytes);
+		for await (const block of iterator) {
+			blockCids.add(block.cid.toString());
+		}
+
+		// Wrapped CID must NOT be in the directory CAR — this was the #139 bug
+		expect(blockCids.has(wrappedCar.rootCid.toString())).toBe(false);
+	});
+
+	it("bare CID differs from wrapped CID", async () => {
 		const fp = await import("filecoin-pin");
 
 		const content = new TextEncoder().encode(JSON.stringify({ regression: true }));
 
-		const bareFile = new File([Buffer.from(content)], "test.json", {
-			type: "application/json",
-		});
-		const bareCar = await fp.createCarFromFile(bareFile, { bare: true });
+		const bareCar = await fp.createCarFromFile(
+			new File([Buffer.from(content)], "test.json", { type: "application/json" }),
+			{ bare: true },
+		);
 
-		const wrappedFile = new File([Buffer.from(content)], "test.json", {
-			type: "application/json",
-		});
-		const wrappedCar = await fp.createCarFromFile(wrappedFile);
+		const wrappedCar = await fp.createCarFromFile(
+			new File([Buffer.from(content)], "test.json", { type: "application/json" }),
+		);
 
-		// These MUST differ — this is the regression guard
 		expect(bareCar.rootCid.toString()).not.toBe(wrappedCar.rootCid.toString());
 	});
 });

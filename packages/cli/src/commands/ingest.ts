@@ -10,6 +10,7 @@ import {
 	getAvailableSourceTypes,
 	HeuristicChunkScorer,
 	HeuristicEdgeExtractor,
+	LlmEdgeExtractor,
 	mergeEdges,
 	RegexEdgeExtractor,
 	rechunkOversized,
@@ -18,6 +19,7 @@ import {
 import { bundleAndUpload, generateCollectionId } from "@wtfoc/store";
 import type { Command } from "commander";
 import { getProjectConfig } from "../cli.js";
+import { type ExtractorCliOpts, resolveExtractorConfig } from "../extractor-config.js";
 import {
 	createEmbedder,
 	type EmbedderOpts,
@@ -25,24 +27,27 @@ import {
 	getStore,
 	parseSinceDuration,
 	withEmbedderOptions,
+	withExtractorOptions,
 } from "../helpers.js";
 
 export function registerIngestCommand(program: Command): void {
-	withEmbedderOptions(
-		program
-			.command("ingest <sourceType> [args...]")
-			.description("Ingest from a source (repo, slack, github, website)")
-			.requiredOption("-c, --collection <name>", "Collection name")
-			.option("--since <duration>", "Only fetch items newer than duration (e.g. 90d)")
-			.option(
-				"--batch-size <number>",
-				"Chunks per batch (default: 500, reduces memory for large sources)",
-				"500",
-			)
-			.option(
-				"--max-chunk-chars <number>",
-				`Max characters per chunk — oversized chunks are split (default: ${DEFAULT_MAX_CHUNK_CHARS})`,
-			),
+	withExtractorOptions(
+		withEmbedderOptions(
+			program
+				.command("ingest <sourceType> [args...]")
+				.description("Ingest from a source (repo, slack, github, website)")
+				.requiredOption("-c, --collection <name>", "Collection name")
+				.option("--since <duration>", "Only fetch items newer than duration (e.g. 90d)")
+				.option(
+					"--batch-size <number>",
+					"Chunks per batch (default: 500, reduces memory for large sources)",
+					"500",
+				)
+				.option(
+					"--max-chunk-chars <number>",
+					`Max characters per chunk — oversized chunks are split (default: ${DEFAULT_MAX_CHUNK_CHARS})`,
+				),
+		),
 	).action(
 		async (
 			sourceType: string,
@@ -52,13 +57,17 @@ export function registerIngestCommand(program: Command): void {
 				since?: string;
 				batchSize: string;
 				maxChunkChars?: string;
-			} & EmbedderOpts,
+			} & EmbedderOpts &
+				ExtractorCliOpts,
 		) => {
 			const store = getStore(program);
 			const format = getFormat(program.opts());
 
 			// Get or create manifest
 			const head = await store.manifests.getHead(opts.collection);
+
+			// Resolve extractor config early (fail fast on bad config)
+			const extractorConfig = resolveExtractorConfig(opts);
 
 			// Initialize embedder
 			if (format !== "quiet") console.error("⏳ Loading embedder...");
@@ -149,6 +158,22 @@ export function registerIngestCommand(program: Command): void {
 				compositeExtractor.register({ name: "regex", extractor: new RegexEdgeExtractor() });
 				compositeExtractor.register({ name: "heuristic", extractor: new HeuristicEdgeExtractor() });
 				compositeExtractor.register({ name: "code", extractor: new CodeEdgeExtractor() });
+
+				if (extractorConfig.enabled) {
+					compositeExtractor.register({
+						name: "llm",
+						extractor: new LlmEdgeExtractor({
+							baseUrl: extractorConfig.baseUrl,
+							model: extractorConfig.model,
+							apiKey: extractorConfig.apiKey,
+							jsonMode: extractorConfig.jsonMode,
+							timeoutMs: extractorConfig.timeoutMs,
+							maxConcurrency: extractorConfig.maxConcurrency,
+							maxInputTokens: extractorConfig.maxInputTokens,
+						}),
+					});
+				}
+
 				const edges = mergeEdges([
 					{ extractorName: "adapter", edges: await adapter.extractEdges(batchChunks) },
 					{ extractorName: "composite", edges: await compositeExtractor.extract(batchChunks) },
@@ -279,6 +304,9 @@ export function registerIngestCommand(program: Command): void {
 					`✅ Ingested ${parts.join(", ")} from ${sourceArg} into "${opts.collection}"`,
 				);
 			}
+
+			// synapse-sdk keeps HTTP connections alive with no cleanup method
+			if (storageType === "foc") process.exit(0);
 		},
 	);
 }

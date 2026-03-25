@@ -17,6 +17,15 @@ export {
 export { CodeEdgeExtractor } from "./edges/code.js";
 export { CompositeEdgeExtractor } from "./edges/composite.js";
 export { extractPackageJsonDeps, extractRequirementsTxtDeps } from "./edges/dependency-parser.js";
+export {
+	type ContextStatus,
+	computeContextHash,
+	type ExtractionStatusData,
+	getContextsToProcess,
+	readExtractionStatus,
+	statusFilePath,
+	writeExtractionStatus,
+} from "./edges/extraction-status.js";
 export type { ChangedFile } from "./edges/extractor.js";
 export {
 	buildBatchRepoAffinity,
@@ -25,7 +34,18 @@ export {
 	RegexEdgeExtractor,
 } from "./edges/extractor.js";
 export { HeuristicEdgeExtractor } from "./edges/heuristic.js";
+export { LlmEdgeExtractor, type LlmEdgeExtractorOptions } from "./edges/llm.js";
+export type { LlmClientOptions } from "./edges/llm-client.js";
+export { chatCompletion, parseJsonResponse } from "./edges/llm-client.js";
+export { buildExtractionMessages, estimateTokens } from "./edges/llm-prompt.js";
 export { edgeKey, mergeEdges } from "./edges/merge.js";
+export {
+	mergeOverlayEdges,
+	type OverlayEdgeData,
+	overlayFilePath,
+	readOverlayEdges,
+	writeOverlayEdges,
+} from "./edges/overlay-store.js";
 export { HeuristicChunkScorer } from "./scoring.js";
 export {
 	buildSegment,

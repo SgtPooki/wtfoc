@@ -1,15 +1,24 @@
 import type { CollectionHead } from "@wtfoc/common";
-import { bundleAndUpload, createStore } from "@wtfoc/store";
+import { bundleAndUpload, createStore, validateIpniIndexing } from "@wtfoc/store";
 import type { Command } from "commander";
 import { getFormat } from "../helpers.js";
+
+const DEFAULT_COPIES = 2;
 
 export function registerPromoteCommand(program: Command): void {
 	program
 		.command("promote <collection>")
 		.description("Promote a local collection to FOC (Filecoin Onchain Cloud) storage")
 		.option("--dry-run", "Show what would be uploaded without uploading")
-		.action(async (collectionName: string, opts: { dryRun?: boolean }) => {
+		.option("--copies <n>", "Number of storage copies for redundancy", String(DEFAULT_COPIES))
+		.action(async (collectionName: string, opts: { dryRun?: boolean; copies?: string }) => {
 			const format = getFormat(program.opts());
+			const rawCopies = Number(opts.copies ?? DEFAULT_COPIES);
+			if (!Number.isFinite(rawCopies) || rawCopies < 1 || !Number.isInteger(rawCopies)) {
+				console.error(`Error: --copies must be a positive integer, got "${opts.copies}"`);
+				process.exit(2);
+			}
+			const copies = rawCopies;
 			const localStore = createStore({ storage: "local" });
 
 			const head = await localStore.manifests.getHead(collectionName);
@@ -80,7 +89,8 @@ export function registerPromoteCommand(program: Command): void {
 					console.error(`\n   Share this CID to let anyone query your collection:`);
 					console.error(`   ${manifestCid}`);
 				}
-				return;
+				// synapse-sdk keeps HTTP connections alive with no cleanup method
+				process.exit(0);
 			}
 
 			if (format !== "quiet") {
@@ -88,6 +98,7 @@ export function registerPromoteCommand(program: Command): void {
 				console.error(
 					`   ${segmentsToPromote.length} segments to upload (${head.manifest.totalChunks} chunks)`,
 				);
+				console.error(`   ${copies} storage copies for redundancy`);
 			}
 
 			if (opts.dryRun) {
@@ -111,9 +122,7 @@ export function registerPromoteCommand(program: Command): void {
 			const focStore = createStore({ storage: "foc", privateKey });
 
 			// Download each segment from local storage and prepare for bundling
-			const bundleSegments: import("@wtfoc/ingest").SegmentChunk[] extends never
-				? { id: string; data: Uint8Array }[]
-				: { id: string; data: Uint8Array }[] = [];
+			const bundleSegments: { id: string; data: Uint8Array }[] = [];
 
 			for (const seg of segmentsToPromote) {
 				if (format !== "quiet") {
@@ -123,41 +132,69 @@ export function registerPromoteCommand(program: Command): void {
 				bundleSegments.push({ id: seg.id, data });
 			}
 
-			// Bundle and upload to FOC
 			if (format !== "quiet") {
-				console.error("   ⏳ Bundling into CAR and uploading to FOC...");
+				console.error("   ⏳ Bundling segments + manifest into CAR and uploading to FOC...");
 			}
 
-			const bundleResult = await bundleAndUpload(bundleSegments, focStore.storage);
+			const bundleResult = await bundleAndUpload(bundleSegments, focStore.storage, {
+				copies,
+				buildManifest({ segmentCids, pieceCid, carRootCid }) {
+					const updatedSegments = head.manifest.segments.map((seg) => {
+						const cid = segmentCids.get(seg.id);
+						if (cid) {
+							return { ...seg, ipfsCid: cid };
+						}
+						return seg;
+					});
 
-			// Update manifest with CID info
-			const updatedSegments = head.manifest.segments.map((seg) => {
-				const cid = bundleResult.segmentCids.get(seg.id);
-				if (cid) {
-					return { ...seg, ipfsCid: cid };
-				}
-				return seg;
+					return {
+						...head.manifest,
+						segments: updatedSegments,
+						batches: [
+							...existingBatches,
+							{
+								pieceCid,
+								carRootCid,
+								segmentIds: bundleSegments.map((s) => {
+									const cid = segmentCids.get(s.id);
+									return cid ?? s.id;
+								}),
+								createdAt: new Date().toISOString(),
+							},
+						],
+						updatedAt: new Date().toISOString(),
+					};
+				},
 			});
 
-			const updatedManifest: CollectionHead = {
+			const manifestCid = bundleResult.manifestCid;
+
+			// Build local manifest using the same data as the CAR manifest.
+			// bundleResult.batch has the same pieceCid/carRootCid that
+			// buildManifest received, so local and CAR manifests stay in sync.
+			const finalManifest: CollectionHead = {
 				...head.manifest,
-				segments: updatedSegments,
+				segments: head.manifest.segments.map((seg) => {
+					const cid = bundleResult.segmentCids.get(seg.id);
+					if (cid) return { ...seg, ipfsCid: cid };
+					return seg;
+				}),
 				batches: [...existingBatches, bundleResult.batch],
-				updatedAt: new Date().toISOString(),
+				updatedAt: bundleResult.batch.createdAt,
 			};
 
-			// Upload manifest JSON to Filecoin so it can be resolved by CID
+			// Write updated manifest back to local store
+			await localStore.manifests.putHead(collectionName, finalManifest, head.headId);
+
+			// Post-upload IPNI validation
 			if (format !== "quiet") {
-				console.error("   ⏳ Uploading manifest to Filecoin...");
+				console.error("   ⏳ Validating IPNI indexing...");
 			}
 
-			const manifestJson = JSON.stringify(updatedManifest);
-			const manifestBytes = new TextEncoder().encode(manifestJson);
-			const manifestResult = await focStore.storage.upload(manifestBytes);
-			const manifestCid = manifestResult.ipfsCid ?? manifestResult.id;
-
-			// Write updated manifest back to local store
-			await localStore.manifests.putHead(collectionName, updatedManifest, head.headId);
+			const cidsToValidate = bundleResult.childBlockCids;
+			const ipniResults = await validateIpniIndexing(cidsToValidate);
+			const indexed = ipniResults.filter((r) => r.indexed).length;
+			const notIndexed = ipniResults.filter((r) => !r.indexed);
 
 			if (format === "json") {
 				console.log(
@@ -168,17 +205,36 @@ export function registerPromoteCommand(program: Command): void {
 						carRootCid: bundleResult.batch.carRootCid,
 						segments: segmentsToPromote.length,
 						chunks: head.manifest.totalChunks,
+						copies,
+						ipniValidation: {
+							total: cidsToValidate.length,
+							indexed,
+							notIndexed: notIndexed.length,
+						},
 					}),
 				);
 			} else if (format !== "quiet") {
 				console.error(`\n✅ Promoted "${collectionName}" to FOC`);
-				console.error(`   Manifest CID: ${manifestCid}`);
+				if (manifestCid) {
+					console.error(`   Manifest CID: ${manifestCid}`);
+				}
 				console.error(`   PieceCID: ${bundleResult.batch.pieceCid}`);
 				console.error(`   CAR root: ${bundleResult.batch.carRootCid}`);
-				console.error(`   ${segmentsToPromote.length} segments uploaded`);
+				console.error(`   ${segmentsToPromote.length} segments uploaded (${copies} copies)`);
+				console.error(`   IPNI: ${indexed}/${cidsToValidate.length} CIDs indexed`);
+				if (notIndexed.length > 0) {
+					console.error(
+						`   ⚠️  ${notIndexed.length} CIDs not yet indexed on IPNI (may take time to propagate)`,
+					);
+				}
 				console.error(`   Local manifest updated with IPFS CIDs`);
-				console.error(`\n   Share this CID to let anyone query your collection:`);
-				console.error(`   ${manifestCid}`);
+				if (manifestCid) {
+					console.error(`\n   Share this CID to let anyone query your collection:`);
+					console.error(`   ${manifestCid}`);
+				}
 			}
+
+			// synapse-sdk keeps HTTP connections alive with no cleanup method
+			process.exit(0);
 		});
 }
