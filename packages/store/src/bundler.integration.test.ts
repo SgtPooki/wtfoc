@@ -1,5 +1,6 @@
 import type { CollectionHead, StorageBackend, StorageResult } from "@wtfoc/common";
 import { CURRENT_SCHEMA_VERSION } from "@wtfoc/common";
+import { CID } from "multiformats/cid";
 import { describe, expect, it } from "vitest";
 import { bundleAndUpload } from "./bundler.js";
 import { validateManifestSchema } from "./schema.js";
@@ -87,7 +88,9 @@ describe("bundler → manifest integration", () => {
 		// Validate the manifest round-trips through schema validation
 		const validated = validateManifestSchema(manifest);
 		expect(validated.batches).toHaveLength(1);
-		expect(validated.batches?.[0].pieceCid).toBe("baga6ea4seaq-integration-test");
+		// PieceCID is now computed locally from segments-only CAR
+		const Piece = await import("@filoz/synapse-core/piece");
+		expect(Piece.isPieceCID(CID.parse(validated.batches?.[0].pieceCid ?? ""))).toBe(true);
 		// segmentIds now contain IPFS CIDs matching segments[].id
 		expect(validated.batches?.[0].segmentIds).toEqual([segCid]);
 		expect(validated.segments[0].id).toBe(segCid);
@@ -185,5 +188,74 @@ describe("bundler → manifest integration", () => {
 
 		// Two uploads occurred (one per ingest)
 		expect(storage.uploadCalls).toHaveLength(2);
+	});
+
+	it("buildManifest callback receives segment CIDs and PieceCID, manifest included in CAR", async () => {
+		const storage = createMockFocStorage();
+		const segmentData = makeSegmentJson("seg-manifest");
+
+		let callbackReceived: {
+			segmentCids: Map<string, string>;
+			pieceCid: string;
+			carRootCid: string;
+		} | null = null;
+
+		const result = await bundleAndUpload([{ id: "seg-manifest", data: segmentData }], storage, {
+			buildManifest(info) {
+				callbackReceived = info;
+				return {
+					schemaVersion: CURRENT_SCHEMA_VERSION,
+					collectionId: "test-manifest-cid",
+					name: "test-manifest",
+					currentRevisionId: null,
+					prevHeadId: null,
+					segments: [
+						{
+							id: info.segmentCids.get("seg-manifest") as string,
+							sourceTypes: ["repo"],
+							chunkCount: 1,
+							ipfsCid: info.segmentCids.get("seg-manifest"),
+						},
+					],
+					totalChunks: 1,
+					embeddingModel: "test-model",
+					embeddingDimensions: 2,
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString(),
+					batches: [
+						{
+							pieceCid: info.pieceCid,
+							carRootCid: info.carRootCid,
+							segmentIds: [info.segmentCids.get("seg-manifest") as string],
+							createdAt: new Date().toISOString(),
+						},
+					],
+				};
+			},
+		});
+
+		// Callback was invoked with valid data
+		expect(callbackReceived).not.toBeNull();
+		expect(callbackReceived?.segmentCids.has("seg-manifest")).toBe(true);
+		const Piece = await import("@filoz/synapse-core/piece");
+		expect(Piece.isPieceCID(CID.parse(callbackReceived?.pieceCid ?? ""))).toBe(true);
+		expect(callbackReceived?.carRootCid).toMatch(/^baf/);
+
+		// manifestCid is set and valid
+		expect(result.manifestCid).toBeTruthy();
+		expect(result.manifestCid).toMatch(/^baf/);
+
+		// childBlockCids contains segment + manifest CIDs
+		expect(result.childBlockCids).toContain(result.segmentCids.get("seg-manifest"));
+		expect(result.childBlockCids).toContain(result.manifestCid);
+
+		// Exactly one upload
+		expect(storage.uploadCalls).toHaveLength(1);
+
+		// Upload metadata contains childBlockCids
+		const meta = storage.uploadCalls[0].metadata;
+		expect(meta?.childBlockCids).toBeTruthy();
+		const parsedChildCids: string[] = JSON.parse(meta?.childBlockCids ?? "[]");
+		expect(parsedChildCids).toContain(result.manifestCid);
 	});
 });
