@@ -11,6 +11,8 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  # Use the triggering commit SHA consistently across all steps
+  COMMIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
   build-and-push:
@@ -26,8 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # For workflow_run, checkout the commit that triggered CI
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ env.COMMIT_SHA }}
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -57,7 +58,7 @@ jobs:
           context: .
           push: false
           load: true
-          tags: wtfoc:smoke-${{ github.sha }}
+          tags: wtfoc:smoke-${{ env.COMMIT_SHA }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -67,7 +68,7 @@ jobs:
             -w /app/apps/web \
             -v "${GITHUB_WORKSPACE}/apps/web/smoke-embed.mjs:/app/apps/web/smoke-embed.mjs:ro" \
             -v "${GITHUB_WORKSPACE}/apps/web/smoke-mcp.mjs:/app/apps/web/smoke-mcp.mjs:ro" \
-            "wtfoc:smoke-${GITHUB_SHA}" \
+            "wtfoc:smoke-${COMMIT_SHA}" \
             sh -lc "node smoke-embed.mjs && node smoke-mcp.mjs"
 
       - name: Build and push

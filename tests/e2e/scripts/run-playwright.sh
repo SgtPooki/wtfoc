@@ -4,13 +4,15 @@
 # On macOS, Chromium sometimes exits with SIGABRT (134) during process
 # cleanup even when all tests pass. This script only forgives exit 134
 # when the JSON report confirms zero test failures.
-set -euo pipefail
+set -uo pipefail
 
 REPORT_FILE="test-results/results.json"
 
 # Run Playwright with JSON reporter alongside the default one
+# Note: `set +e` because we capture the exit code explicitly
 EXIT_CODE=0
-PLAYWRIGHT_JSON_OUTPUT_NAME="$REPORT_FILE" npx playwright test --reporter=list,json 2>&1 || EXIT_CODE=$?
+# Use node_modules/.bin directly — pnpm exec swallows exit codes from signals
+PLAYWRIGHT_JSON_OUTPUT_NAME="$REPORT_FILE" ./node_modules/.bin/playwright test --reporter=list,json 2>&1 || EXIT_CODE=$?
 
 if [ "$EXIT_CODE" -eq 0 ]; then
   exit 0
