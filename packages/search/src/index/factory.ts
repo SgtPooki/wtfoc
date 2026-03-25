@@ -13,7 +13,8 @@ export interface VectorIndexConfig {
 	qdrantApiKey?: string;
 	/**
 	 * If true, drop and recreate the Qdrant collection on first use.
-	 * Defaults to true to avoid stale vectors from previous loads.
+	 * Defaults to false — Qdrant's upsert handles updates naturally.
+	 * Only use for destructive reindexing workflows, not normal loads.
 	 */
 	recreate?: boolean;
 }
@@ -38,7 +39,7 @@ export async function createVectorIndex(config: VectorIndexConfig): Promise<Vect
 				apiKey: config.qdrantApiKey,
 				collectionName: `wtfoc-${config.collectionName}`,
 				dimensions: config.dimensions,
-				recreate: config.recreate ?? true,
+				recreate: config.recreate ?? false,
 			});
 		} catch (err) {
 			throw new Error(

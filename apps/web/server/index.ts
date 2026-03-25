@@ -136,7 +136,7 @@ async function getCollection(name: string): Promise<LoadedCollection | null> {
 	const dimensions = head.manifest.embeddingDimensions ?? 384;
 	const vectorIndex = await createVectorIndex({
 		backend: VECTOR_BACKEND,
-		collectionName: name,
+		collectionName: head.manifest.collectionId,
 		dimensions,
 		qdrantUrl: QDRANT_URL,
 		qdrantApiKey: QDRANT_API_KEY,
