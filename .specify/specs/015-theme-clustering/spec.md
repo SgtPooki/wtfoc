@@ -2,7 +2,7 @@
 
 **Feature Branch**: `015-theme-clustering`
 **Created**: 2026-03-25
-**Status**: Draft (revised per Codex review + owner feedback)
+**Status**: Ratified (2026-03-25, after Codex review + owner feedback + final consistency pass)
 **Input**: Pluggable, incremental theme clustering over stored chunk embeddings to discover and track common topics across all ingested sources.
 
 ## User Scenarios & Testing *(mandatory)*
@@ -79,7 +79,7 @@ A CI pipeline or agent runs `wtfoc themes -c foc-ecosystem --json` to get struct
 ### Functional Requirements
 
 - **FR-001**: A `Clusterer` interface MUST be defined in `@wtfoc/common` as a pluggable seam, following the same pattern as `Embedder`, `VectorIndex`, `StorageBackend`, etc.
-- **FR-002**: The `Clusterer` interface MUST support two modes: batch clustering (full rebuild) and incremental assignment (assign new chunks to existing clusters, form new clusters for outliers).
+- **FR-002**: The `Clusterer` interface MUST support two modes via `ClusterRequest.options.mode`: batch clustering (full rebuild) and incremental assignment (assign new chunks to existing clusters via `existingState`, form new clusters for outliers).
 - **FR-003**: The `Clusterer` interface MUST be algorithm-neutral — no centroid, k, or density parameters in the shared contract. Algorithm-specific options are passed via a typed options object.
 - **FR-004**: A default `Clusterer` implementation MUST be provided in `@wtfoc/search`, suitable for collections up to 50K+ chunks without OOM.
 - **FR-005**: Each cluster MUST expose evidence-backed summaries: exemplar chunks (most representative members), top terms, source type distribution, chunk count, and confidence score.
@@ -97,7 +97,7 @@ A CI pipeline or agent runs `wtfoc themes -c foc-ecosystem --json` to get struct
 
 ### Key Entities
 
-- **Clusterer** (interface): Pluggable clustering algorithm. Methods: `cluster(request)` for batch mode, `assign(request)` for incremental mode. Lives in `@wtfoc/common`.
+- **Clusterer** (interface): Pluggable clustering algorithm. Single method: `cluster(request)` where `request.options.mode` selects batch or incremental behavior and `request.existingState` provides prior clusters for incremental mode. Lives in `@wtfoc/common`.
 - **ClusterRequest**: Input to the clusterer — chunk IDs, embedding references, optional existing cluster state, algorithm-specific options (e.g., `targetClusterCount`, `minClusterSize`, `similarityThreshold`). Default similarity threshold for incremental assignment: cosine similarity >= 0.85 (0.75 was tested in production and produced mega-clusters).
 - **ClusterResult**: Output from the clusterer — array of clusters, each with: cluster ID, member chunk IDs, exemplar chunk IDs, confidence score, optional algorithm-specific metadata.
 - **ThemeCluster**: A group of semantically similar chunks. Contains: cluster ID, member chunk IDs, exemplar chunk IDs, size, top terms, source type distribution, signal score aggregates, confidence, auto-generated label.

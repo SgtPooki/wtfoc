@@ -27,7 +27,7 @@
 **CRITICAL**: No user story work can begin until this phase is complete
 
 - [ ] T005 Create cosine similarity utility with pre-normalization and top-k heap in packages/search/src/clustering/cosine.ts
-- [ ] T006 [P] Create cluster state read/write module (load/save JSON from `~/.wtfoc/clusters/{collection}/state.json`) in packages/search/src/clustering/cluster-state.ts
+- [ ] T006 [P] Create cluster state read/write module (load/save JSON from `~/.wtfoc/clusters/{collection}/{revision}/state.json`) in packages/search/src/clustering/cluster-state.ts
 - [ ] T007 [P] Create cluster label extraction utility (first meaningful words from exemplar text, stop-word filtered) in packages/search/src/clustering/labels.ts
 - [ ] T008 Create packages/search/src/clustering/index.ts re-exporting all clustering modules
 - [ ] T009 Export clustering modules from packages/search/src/index.ts

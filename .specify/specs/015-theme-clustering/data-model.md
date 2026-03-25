@@ -4,7 +4,7 @@
 
 ### Clusterer (interface — `@wtfoc/common`)
 
-Pluggable seam for clustering algorithms. The 8th pluggable interface alongside Embedder, VectorIndex, StorageBackend, SourceAdapter, ManifestStore, EdgeExtractor, and ChunkScorer.
+Pluggable seam for clustering algorithms. Added alongside existing seams: Embedder, VectorIndex, StorageBackend, SourceAdapter, ManifestStore, EdgeExtractor. (ChunkScorer and Clusterer are both new seams to be added to SPEC.md as part of this feature.)
 
 ### ClusterRequest
 
@@ -66,9 +66,11 @@ User-facing enriched cluster for CLI/API output. Not persisted — computed on t
 
 | Field | Type | Description |
 |-------|------|-------------|
+| id | string | Cluster ID (from ClusterResult) |
 | rank | number | 1-based rank by size |
 | size | number | Number of member chunks |
-| label | string | Auto-generated heuristic label from top terms |
+| small | boolean | True if cluster has fewer than minClusterSize members (excluded from default CLI output, included in JSON) |
+| label | string | Auto-generated heuristic label from exemplar text (stop-word filtered) |
 | topTerms | string[] | Most representative terms (extracted from exemplar text, stop-word filtered) |
 | exemplars | ExemplarChunk[] | Representative chunks with content + source |
 | sourceDistribution | Record<string, number> | sourceType → chunk count |
