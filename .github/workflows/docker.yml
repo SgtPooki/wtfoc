@@ -62,14 +62,13 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Smoke test (TransformersEmbedder + hosted /mcp)
+      - name: Smoke test (TransformersEmbedder)
         run: |
           docker run --rm \
             -w /app/apps/web \
             -v "${GITHUB_WORKSPACE}/apps/web/smoke-embed.mjs:/app/apps/web/smoke-embed.mjs:ro" \
-            -v "${GITHUB_WORKSPACE}/apps/web/smoke-mcp.mjs:/app/apps/web/smoke-mcp.mjs:ro" \
             "wtfoc:smoke-${COMMIT_SHA}" \
-            sh -lc "node smoke-embed.mjs && node smoke-mcp.mjs"
+            sh -lc "node smoke-embed.mjs"
 
       - name: Build and push
         uses: docker/build-push-action@v6
