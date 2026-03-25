@@ -7,3 +7,5 @@ dist/
 .gh-cache/
 .claude/worktrees/
 tests/e2e/test-results/
+tests/e2e/playwright-report/
+blob-report/
