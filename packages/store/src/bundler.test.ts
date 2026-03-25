@@ -1,5 +1,6 @@
 import type { StorageBackend, StorageResult } from "@wtfoc/common";
 import { WtfocError } from "@wtfoc/common";
+import { CID } from "multiformats/cid";
 import { describe, expect, it } from "vitest";
 import { bundleAndUpload } from "./bundler.js";
 
@@ -40,7 +41,9 @@ describe("bundleAndUpload", () => {
 		const result = await bundleAndUpload(segments, storage);
 
 		expect(storage.uploadCalls).toHaveLength(1);
-		expect(result.batch.pieceCid).toBe("baga6ea4seaq-test-piece");
+		// PieceCID is now computed locally from the segments-only CAR
+		const Piece = await import("@filoz/synapse-core/piece");
+		expect(Piece.isPieceCID(CID.parse(result.batch.pieceCid))).toBe(true);
 		// segmentIds contain IPFS CIDs (not input IDs) matching manifest segments[].id
 		expect(result.batch.segmentIds).toHaveLength(2);
 		for (const sid of result.batch.segmentIds) {
@@ -125,10 +128,11 @@ describe("bundleAndUpload", () => {
 		expect(storage.uploadCalls).toHaveLength(0);
 	});
 
-	it("[US2] per-segment CID matches wrapped (non-bare) CAR CID for same content", async () => {
-		// Verify the bundler's per-segment CID matches what createCarFromFile (non-bare) produces.
-		// MUST use non-bare mode — bare mode produces raw content CIDs that differ from
-		// the UnixFS file CIDs inside directory CARs.
+	it("[US2] per-segment CID matches bare CAR CID for same content", async () => {
+		// Verify the bundler's per-segment CID matches what createCarFromFile({ bare: true }) produces.
+		// Must use bare mode — bare CIDs are the raw content blocks that appear inside
+		// directory CARs. Non-bare (wrapped) CIDs add a directory wrapper that doesn't
+		// match blocks in the directory CAR (issue #139).
 		const storage = mockStorage();
 		const data = makeSegmentData("round-trip content");
 		const segments = [{ id: "seg-rt", data }];
@@ -136,13 +140,13 @@ describe("bundleAndUpload", () => {
 		const bundleResult = await bundleAndUpload(segments, storage);
 		const cidFromBundle = bundleResult.segmentCids.get("seg-rt");
 
-		// Independently compute the CID using non-bare mode (matching bundler)
+		// Independently compute the CID using bare mode (matching bundler)
 		const fp = await import("filecoin-pin");
 		const file = new File([Buffer.from(data)], "seg-rt.json", { type: "application/json" });
-		const wrappedCar = await fp.createCarFromFile(file);
-		const cidFromWrapped = wrappedCar.rootCid.toString();
+		const bareCar = await fp.createCarFromFile(file, { bare: true });
+		const cidFromBare = bareCar.rootCid.toString();
 
-		expect(cidFromBundle).toBe(cidFromWrapped);
+		expect(cidFromBundle).toBe(cidFromBare);
 	});
 
 	it("[US2] SegmentSummary.id from bundler is a valid IPFS CID", async () => {

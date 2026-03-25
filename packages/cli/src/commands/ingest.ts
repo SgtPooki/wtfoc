@@ -346,6 +346,9 @@ export function registerIngestCommand(program: Command): void {
 					console.error(`   Saved cursor for next run: ${nextCursorValue}`);
 				}
 			}
+
+			// synapse-sdk keeps HTTP connections alive with no cleanup method
+			if (storageType === "foc") process.exit(0);
 		},
 	);
 }
