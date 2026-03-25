@@ -6,7 +6,7 @@ Each demo has a human-readable **README.md** (the narrative) and an executable *
 
 | Demo | Time | What it shows | Command |
 |------|------|--------------|---------|
-| [Quick Start](quick-start/) | ~2 min | 3 commands, no API key, works offline | `./docs/demos/quick-start/run.sh` |
+| [Quick Start](quick-start/) | ~2 min | 3 commands, no API key, local embeddings | `./docs/demos/quick-start/run.sh` |
 | [Upload Flow Trace](upload-flow-trace/) | ~15 min | Cross-repo feature trace across 5 source types | `./docs/demos/upload-flow-trace/run.sh` |
 | [Gap Analysis](gap-analysis/) | ~5 min | System finds what's missing from your collection | `./docs/demos/gap-analysis/run.sh` |
 | [Theme Discovery](theme-discovery/) | ~5 min | Semantic clustering — no LLM, pure math | `./docs/demos/theme-discovery/run.sh` |
@@ -21,18 +21,18 @@ Times assume first-run ingest. With `--skip-ingest` on a pre-built collection, t
 
 For a recording or live presentation, run them in this order:
 
-1. **Quick Start** — Establish credibility: zero setup cost, works offline
+1. **Quick Start** — Establish credibility: zero setup cost, no API key
 2. **Upload Flow Trace** — The hero story: cross-repo architecture tracing with real results
 3. **Gap Analysis** — The "aha" moment: the system tells you what to ingest next
 4. **Theme Discovery** — Instant orientation: what is the conversation actually about?
 5. **Incremental Ingest** — Answer the "one-shot or incremental?" question
 6. **Drift Analysis** — The detective: docs say X, GitHub says Y — who's right?
-6. **Local to FOC** — The trust arc: same collection, now on Filecoin with a shareable CID
-7. **Full Stack** — The finale: Claude uses wtfoc as a tool, web UI shows the graph
+7. **Local to FOC** — The trust arc: same collection, now on Filecoin with a shareable CID
+8. **Full Stack** — The finale: Claude uses wtfoc as a tool, web UI shows the graph
 
 ## Shared Flags
 
-All `run.sh` scripts support:
+Most `run.sh` scripts support these flags (exceptions: `incremental-ingest` does not support `--skip-ingest` since the multi-round flow is the point):
 
 ```bash
 --skip-ingest                    # Skip collection setup, run analysis only

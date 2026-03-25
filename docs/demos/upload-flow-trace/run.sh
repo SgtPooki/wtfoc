@@ -4,9 +4,9 @@ set -euo pipefail
 # upload-flow-trace.sh — Trace the upload flow across the FOC stack
 #
 # Usage:
-#   ./scripts/demo-upload-flow.sh                    # full ingest + traces
-#   ./scripts/demo-upload-flow.sh --skip-ingest      # traces only (collection must exist)
-#   ./scripts/demo-upload-flow.sh --embedder-url lmstudio --embedder-model mxbai-embed-large-v1
+#   ./docs/demos/upload-flow-trace/run.sh                    # full ingest + traces
+#   ./docs/demos/upload-flow-trace/run.sh --skip-ingest      # traces only (collection must exist)
+#   ./docs/demos/upload-flow-trace/run.sh --embedder-url lmstudio --embedder-model mxbai-embed-large-v1
 #
 # See docs/demos/upload-flow-trace/README.md for the full writeup.
 

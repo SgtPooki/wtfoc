@@ -35,7 +35,7 @@ Or with an existing collection:
 ./wtfoc ingest github SgtPooki/wtfoc -c local-to-foc-demo --since 90d
 ```
 
-Three commands, no API key, works offline. This is the on-ramp.
+Three commands, no API key. Local indexing and query work offline; ingesting from GitHub requires network access. This is the on-ramp.
 
 ### Phase 2: Verify it works
 

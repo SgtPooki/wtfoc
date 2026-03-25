@@ -1,6 +1,6 @@
 # Demo: Quick Start — Local-First, Zero-Key
 
-Three commands. No API key. No Docker. Works entirely offline.
+Three commands. No API key. No Docker. Local embeddings — no cloud services needed. Ingest requires network access to clone repos.
 
 ## The Point
 

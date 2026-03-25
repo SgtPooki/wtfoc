@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# quick-start.sh — Local-first demo: 3 commands, no API key, works offline
+# quick-start.sh — Local-first demo: 3 commands, no API key, local embeddings
 #
 # Usage:
 #   ./docs/demos/quick-start/run.sh                       # full demo
@@ -32,7 +32,7 @@ CLI="$REPO_ROOT/wtfoc"
 
 echo "╔══════════════════════════════════════════════════════╗"
 echo "║  wtfoc — Quick Start                                ║"
-echo "║  Three commands, no API key, works offline           ║"
+echo "║  Three commands, no API key, local embeddings         ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo ""
 
@@ -71,7 +71,7 @@ $CLI query "embedder model" -c "$COLLECTION" $EMBEDDER_ARGS 2>/dev/null
 echo ""
 
 echo "═══════════════════════════════════════════════════════"
-echo "Done! Three commands, zero API keys, fully offline."
+echo "Done! Three commands, zero API keys, local embeddings."
 echo ""
 echo "Next steps:"
 echo "  ./wtfoc trace \"your question here\" -c $COLLECTION"
