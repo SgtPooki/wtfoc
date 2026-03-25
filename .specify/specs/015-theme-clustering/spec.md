@@ -85,12 +85,12 @@ A CI pipeline or agent runs `wtfoc themes -c foc-ecosystem --json` to get struct
 - **FR-005**: Each cluster MUST expose evidence-backed summaries: exemplar chunks (most representative members), top terms, source type distribution, chunk count, and confidence score.
 - **FR-006**: Each cluster MUST include aggregated signal scores when chunks have signal data (average per signal type across cluster members).
 - **FR-007**: System MUST support filtering clusters by signal type via `--signal <type>` flag. Filter rule: show only clusters where the requested signal type has the highest average score among all signal types for that cluster.
-- **FR-008**: System MUST support optional `--target-clusters <number>` hint for algorithms that accept it. This is a hint, not a requirement — the algorithm may produce more or fewer clusters.
+- **FR-008**: System MUST support optional `--target-clusters <number>` hint for algorithms that accept it. This is a hint, not a requirement — the algorithm may produce more or fewer clusters. No fixed default cap — the default algorithm is threshold-driven and determines cluster count organically. CLI output limits displayed clusters (default: top 20) without capping the underlying count.
 - **FR-009**: System MUST support JSON output via `--json` flag with a stable schema.
 - **FR-010**: System MUST load the collection via the `mountCollection()` path to ensure revision-stable analysis and access to signal scores.
 - **FR-011**: System MUST handle collections with no signal scores gracefully (omit signal aggregates, still cluster by embeddings).
 - **FR-012**: System MUST sort clusters by size (largest first) in default output.
-- **FR-013**: Cluster state MUST be persisted as a mutable derived artifact outside immutable segments, keyed by collection ID and revision. This enables incremental updates without violating immutable segment constraints.
+- **FR-013**: Cluster state MUST be persisted in a separate cluster-state store (`~/.wtfoc/clusters/{collection}/{revision}/state.json`), not in segments or manifests. This keeps derived mutable state outside core collection metadata and enables incremental updates without violating immutable segment constraints.
 - **FR-014**: System MUST support `--rebuild` flag to force a full batch recluster, ignoring existing cluster state.
 - **FR-015**: Cluster labels MUST be auto-generated from exemplar content and stored terms, clearly marked as heuristic. LLM-based naming is a future enrichment, not an MVP requirement.
 - **FR-016**: `SPEC.md` and the constitution MUST be updated to list `Clusterer` as an official pluggable seam.
@@ -98,7 +98,7 @@ A CI pipeline or agent runs `wtfoc themes -c foc-ecosystem --json` to get struct
 ### Key Entities
 
 - **Clusterer** (interface): Pluggable clustering algorithm. Methods: `cluster(request)` for batch mode, `assign(request)` for incremental mode. Lives in `@wtfoc/common`.
-- **ClusterRequest**: Input to the clusterer — chunk IDs, embedding references, optional existing cluster state, algorithm-specific options (e.g., `targetClusterCount`, `minClusterSize`, `similarityThreshold`).
+- **ClusterRequest**: Input to the clusterer — chunk IDs, embedding references, optional existing cluster state, algorithm-specific options (e.g., `targetClusterCount`, `minClusterSize`, `similarityThreshold`). Default similarity threshold for incremental assignment: cosine similarity >= 0.75.
 - **ClusterResult**: Output from the clusterer — array of clusters, each with: cluster ID, member chunk IDs, exemplar chunk IDs, confidence score, optional algorithm-specific metadata.
 - **ThemeCluster**: A group of semantically similar chunks. Contains: cluster ID, member chunk IDs, exemplar chunk IDs, size, top terms, source type distribution, signal score aggregates, confidence, auto-generated label.
 - **ClusterState**: Persisted mutable artifact containing current cluster assignments for a collection. Keyed by collection ID. Updated incrementally or rebuilt on demand. Not stored in segments.
@@ -118,8 +118,16 @@ A CI pipeline or agent runs `wtfoc themes -c foc-ecosystem --json` to get struct
 - The default `Clusterer` implementation uses ANN-based incremental clustering, not k-means. K-means may be offered as an alternative implementation.
 - Cluster labels are heuristic (derived from stored terms and exemplar content) and clearly marked as such — not authoritative summaries.
 - LLM-based cluster naming and deep analysis are future enrichments (P2+), separate from the core clustering interface.
-- Cluster state is a mutable derived artifact stored outside segments (e.g., as a JSON sidecar file in the manifest directory or a dedicated cluster store). Its persistence format is an implementation detail.
+- Cluster state is stored in `~/.wtfoc/clusters/{collection}/{revision}/state.json` — a dedicated store separate from manifests and segments.
 - Edge evidence enrichment (showing how chunks within a cluster are connected by edges) is desirable but can be a follow-up enhancement.
+
+## Clarifications
+
+### Session 2026-03-25
+
+- Q: Where should cluster state be persisted? → A: Separate cluster-state store at `~/.wtfoc/clusters/{collection}/{revision}/state.json`, not in manifests or segments.
+- Q: What is the default similarity threshold for incremental assignment? → A: Cosine similarity >= 0.75 (moderate — balanced between over-fragmentation and over-merging).
+- Q: What is the default maximum cluster count? → A: No fixed cap. The default algorithm is threshold-driven; cluster count is determined organically. CLI limits displayed clusters to top 20.
 
 ## Related Issues
 
