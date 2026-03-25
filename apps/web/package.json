@@ -12,8 +12,10 @@
 		"start": "node server/dist/index.js"
 	},
 	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.12.1",
 		"@preact/signals": "^2.0.0",
 		"@wtfoc/common": "workspace:*",
+		"@wtfoc/mcp-server": "workspace:*",
 		"@wtfoc/search": "workspace:*",
 		"@wtfoc/store": "workspace:*",
 		"d3-force": "^3.0.0",

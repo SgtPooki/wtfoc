@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { dirname, extname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type {
 	CollectionHead,
 	Embedder,
@@ -9,6 +10,7 @@ import type {
 	VectorEntry,
 	VectorIndex,
 } from "@wtfoc/common";
+import { createMcpServer } from "@wtfoc/mcp-server/server";
 import {
 	analyzeEdgeResolution,
 	buildSourceIndex,
@@ -241,6 +243,65 @@ async function main() {
 		console.error(`⚠️  No web app found at ${WEB_DIR} — API-only mode`);
 	}
 
+	// ─── MCP over HTTP (Streamable HTTP transport, stateless) ────────────
+	// Each request gets a fresh McpServer + transport. Read-only: no ingest.
+	const embedderModel = embedder.model ?? "unknown";
+
+	async function handleMcp(req: IncomingMessage, res: ServerResponse): Promise<void> {
+		// CORS headers for MCP
+		res.setHeader("Access-Control-Allow-Origin", "*");
+		res.setHeader("Access-Control-Expose-Headers", "mcp-session-id");
+
+		if (req.method === "GET") {
+			// SSE stream for server-initiated notifications (not used in stateless)
+			res.writeHead(405, { "Content-Type": "text/plain" });
+			res.end("SSE not supported in stateless mode. Use POST to send MCP requests.");
+			return;
+		}
+
+		if (req.method === "DELETE") {
+			// Session termination (no-op in stateless mode)
+			res.writeHead(200);
+			res.end();
+			return;
+		}
+
+		if (req.method !== "POST") {
+			res.writeHead(405, { "Content-Type": "text/plain" });
+			res.end("Method not allowed");
+			return;
+		}
+
+		// Parse JSON body
+		const body = await new Promise<string>((resolve, reject) => {
+			const chunks: Buffer[] = [];
+			req.on("data", (chunk: Buffer) => chunks.push(chunk));
+			req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
+			req.on("error", reject);
+		});
+
+		let parsedBody: unknown;
+		try {
+			parsedBody = JSON.parse(body);
+		} catch {
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: "Invalid JSON" }));
+			return;
+		}
+
+		// Create a fresh server + transport per request (stateless)
+		const mcpServer = createMcpServer(store, embedder, embedderModel, { readOnly: true });
+		const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+
+		res.on("close", () => {
+			transport.close().catch(() => {});
+			mcpServer.close().catch(() => {});
+		});
+
+		await mcpServer.connect(transport);
+		await transport.handleRequest(req, res, parsedBody);
+	}
+
 	const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
 		const url = req.url ?? "/";
 		const params = parseQuery(url);
@@ -250,14 +311,19 @@ async function main() {
 		if (req.method === "OPTIONS") {
 			res.writeHead(204, {
 				"Access-Control-Allow-Origin": "*",
-				"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-				"Access-Control-Allow-Headers": "Content-Type",
+				"Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+				"Access-Control-Allow-Headers": "Content-Type, mcp-session-id",
+				"Access-Control-Expose-Headers": "mcp-session-id",
 			});
 			res.end();
 			return;
 		}
 
 		try {
+			// ─── MCP endpoint ───
+			if (path === "/mcp") {
+				return handleMcp(req, res);
+			}
 			// ─── Shared endpoint handler ───
 			async function handleEndpoint(
 				col: LoadedCollection,
@@ -446,6 +512,7 @@ async function main() {
 	server.listen(PORT, () => {
 		console.error(`\n🌐 wtfoc web running at http://localhost:${PORT}`);
 		console.error(`   API: http://localhost:${PORT}/api/collections`);
+		console.error(`   MCP: http://localhost:${PORT}/mcp`);
 		console.error(`   UI:  http://localhost:${PORT}/`);
 	});
 }
