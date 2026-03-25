@@ -11,7 +11,7 @@ export type { VectorBackend, VectorIndexConfig } from "./index/factory.js";
 export { createVectorIndex } from "./index/factory.js";
 export { InMemoryVectorIndex } from "./index/in-memory.js";
 export type { QdrantVectorIndexOptions } from "./index/qdrant.js";
-export { QdrantVectorIndex } from "./index/qdrant.js";
+export { QdrantCollectionGc, QdrantVectorIndex } from "./index/qdrant.js";
 export type { MountedCollection, MountOptions } from "./mount.js";
 export { mountCollection } from "./mount.js";
 export type { QueryOptions, QueryResult } from "./query.js";
