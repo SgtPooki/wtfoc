@@ -4,6 +4,7 @@ import {
 	VectorDimensionMismatchError,
 	type VectorEntry,
 	type VectorIndex,
+	WtfocError,
 } from "@wtfoc/common";
 
 export interface QdrantVectorIndexOptions {
@@ -256,7 +257,7 @@ export class QdrantVectorIndex implements VectorIndex {
 				}
 			}
 
-			nextOffset = result.next_page_offset;
+			nextOffset = result.next_page_offset as string | number | null | undefined;
 		} while (nextOffset != null);
 
 		// Flush remaining stale points
@@ -306,10 +307,11 @@ export class QdrantCollectionGc {
 			});
 			return this.#client;
 		} catch (err) {
-			throw new Error(
+			throw new WtfocError(
 				"Failed to initialize Qdrant client in QdrantCollectionGc. " +
-					'Ensure "@qdrant/js-client-rest" is installed.' +
-					(err instanceof Error ? ` (${err.message})` : ""),
+					'Ensure "@qdrant/js-client-rest" is installed.',
+				"QDRANT_INIT_FAILED",
+				{ cause: err },
 			);
 		}
 	}

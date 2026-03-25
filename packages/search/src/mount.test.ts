@@ -402,8 +402,9 @@ describe("mountCollection", () => {
 		const index = makeVectorIndex();
 
 		// Add reconcile method to mock index
-		const reconcileMock = vi.fn(async () => {});
-		(index as Record<string, unknown>).reconcile = reconcileMock;
+		const reconcileMock =
+			vi.fn<(ids: ReadonlySet<string>, signal?: AbortSignal) => Promise<void>>();
+		Object.assign(index, { reconcile: reconcileMock });
 
 		const head: CollectionHead = {
 			schemaVersion: 1,
@@ -423,10 +424,10 @@ describe("mountCollection", () => {
 
 		expect(reconcileMock).toHaveBeenCalledOnce();
 		const call = reconcileMock.mock.calls[0];
-		expect(call).toBeTruthy();
-		const [expectedIds] = call ?? [];
+		expect(call).toBeDefined();
+		const expectedIds = call?.[0];
 		expect(expectedIds).toBeInstanceOf(Set);
-		expect(expectedIds.has("chunk-seg-rec")).toBe(true);
+		expect(expectedIds?.has("chunk-seg-rec")).toBe(true);
 	});
 
 	it("does not call reconcile when option is false", async () => {
@@ -434,8 +435,9 @@ describe("mountCollection", () => {
 		const storage = makeStorage({ "seg-norec": seg });
 		const index = makeVectorIndex();
 
-		const reconcileMock = vi.fn(async () => {});
-		(index as Record<string, unknown>).reconcile = reconcileMock;
+		const reconcileMock =
+			vi.fn<(ids: ReadonlySet<string>, signal?: AbortSignal) => Promise<void>>();
+		Object.assign(index, { reconcile: reconcileMock });
 
 		const head: CollectionHead = {
 			schemaVersion: 1,

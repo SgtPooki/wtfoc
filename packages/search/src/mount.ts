@@ -132,5 +132,5 @@ export async function mountCollection(
 function isReconcilable(index: VectorIndex): index is VectorIndex & {
 	reconcile(expectedIds: ReadonlySet<string>, signal?: AbortSignal): Promise<void>;
 } {
-	return typeof (index as Record<string, unknown>).reconcile === "function";
+	return "reconcile" in index && typeof index.reconcile === "function";
 }
