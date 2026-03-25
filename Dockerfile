@@ -4,6 +4,8 @@ WORKDIR /app
 
 # ─── Install all deps (for building) ─────────────────────────────────────────
 FROM base AS deps
+# prebuild-install needs curl to download prebuilt native addons (node-datachannel)
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/common/package.json packages/common/
 COPY packages/store/package.json packages/store/
