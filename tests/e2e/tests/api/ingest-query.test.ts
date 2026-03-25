@@ -53,8 +53,10 @@ describe("ingest → query round-trip", () => {
 		const collections = await res.json() as Array<{ name: string; chunks: number }>;
 		expect(collections.length).toBeGreaterThanOrEqual(1);
 		const col = collections.find((c) => c.name === "test-project");
-		expect(col).toBeTruthy();
-		expect(col!.chunks).toBeGreaterThan(0);
+		if (!col) {
+			throw new Error('Expected collection "test-project" to be present');
+		}
+		expect(col.chunks).toBeGreaterThan(0);
 	});
 
 	it("returns collection status with embedding model", async () => {
@@ -73,7 +75,8 @@ describe("ingest → query round-trip", () => {
 		expect(data.results.length).toBeGreaterThan(0);
 
 		// Top result should be semantically relevant to "upload file storage"
-		const topResult = data.results[0]!;
+		const topResult = data.results[0];
+		if (!topResult) throw new Error("Expected at least one result");
 		expect(topResult.score).toBeGreaterThan(0);
 		expect(topResult.content.length).toBeGreaterThan(0);
 		expect(topResult.source).toBeTruthy();

@@ -6,6 +6,7 @@
  * and the server needs env vars pointing at the seeded temp dirs.
  */
 import { type ChildProcess, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -17,13 +18,25 @@ import { seedCollection } from "../../helpers/seed.js";
 
 const MONO_ROOT = resolve(import.meta.dirname ?? ".", "../../../..");
 const SERVER_ENTRY = resolve(MONO_ROOT, "apps/web/server/dist/index.js");
-const PORT = 3599;
+const PORT = (() => {
+	const value = process.env["WTFOC_TEST_PORT"];
+	if (value === undefined) return 3599;
+	const parsed = Number.parseInt(value, 10);
+	return Number.isNaN(parsed) ? 3599 : parsed;
+})();
 
 let serverProcess: ChildProcess | null = null;
 let dataDir: string;
 let manifestDir: string;
 
 export default async function globalSetup(_config: FullConfig) {
+	if (!existsSync(SERVER_ENTRY)) {
+		throw new Error(
+			`Server entry not found: ${SERVER_ENTRY}\n` +
+			"Run 'pnpm build && pnpm --filter @wtfoc/web build:server' first.",
+		);
+	}
+
 	dataDir = await mkdtemp(join(tmpdir(), "wtfoc-e2e-ui-data-"));
 	manifestDir = await mkdtemp(join(tmpdir(), "wtfoc-e2e-ui-manifest-"));
 
@@ -39,7 +52,7 @@ export default async function globalSetup(_config: FullConfig) {
 	], { storage, manifests, embedder });
 
 	// Start the web server
-	serverProcess = spawn("node", [SERVER_ENTRY], {
+	const child = spawn("node", [SERVER_ENTRY], {
 		env: {
 			...process.env,
 			WTFOC_PORT: String(PORT),
@@ -50,13 +63,14 @@ export default async function globalSetup(_config: FullConfig) {
 		},
 		stdio: ["ignore", "pipe", "pipe"],
 	});
+	serverProcess = child;
 
 	// Wait for server ready
 	await new Promise<void>((resolve, reject) => {
 		const timeout = setTimeout(() => reject(new Error("Server start timeout (30s)")), 30_000);
 		let stderr = "";
 
-		serverProcess!.stderr?.on("data", (chunk: Buffer) => {
+		child.stderr?.on("data", (chunk: Buffer) => {
 			stderr += chunk.toString();
 			if (stderr.includes("wtfoc web running at")) {
 				clearTimeout(timeout);
@@ -64,12 +78,12 @@ export default async function globalSetup(_config: FullConfig) {
 			}
 		});
 
-		serverProcess!.on("error", (err) => {
+		child.on("error", (err) => {
 			clearTimeout(timeout);
 			reject(err);
 		});
 
-		serverProcess!.on("exit", (code) => {
+		child.on("exit", (code) => {
 			clearTimeout(timeout);
 			reject(new Error(`Server exited early (code ${code}):\n${stderr}`));
 		});
@@ -79,12 +93,13 @@ export default async function globalSetup(_config: FullConfig) {
 	return async () => {
 		if (serverProcess && serverProcess.exitCode === null) {
 			serverProcess.kill("SIGTERM");
+			const proc = serverProcess;
 			await new Promise<void>((resolve) => {
 				const t = setTimeout(() => {
-					serverProcess?.kill("SIGKILL");
+					proc.kill("SIGKILL");
 					resolve();
 				}, 5_000);
-				serverProcess!.on("exit", () => {
+				proc.on("exit", () => {
 					clearTimeout(t);
 					resolve();
 				});

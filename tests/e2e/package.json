@@ -5,7 +5,7 @@
 	"type": "module",
 	"scripts": {
 		"test": "vitest run",
-		"test:api": "vitest run --project api",
+		"test:api": "vitest run",
 		"test:ui": "./scripts/run-playwright.sh"
 	},
 	"devDependencies": {

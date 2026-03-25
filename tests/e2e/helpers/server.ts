@@ -3,6 +3,7 @@
  */
 import type { ChildProcess } from "node:child_process";
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 const MONO_ROOT = resolve(import.meta.dirname ?? ".", "../../..");
@@ -25,14 +26,27 @@ export interface RunningServer {
 }
 
 export async function startServer(opts: ServerOptions): Promise<RunningServer> {
+	if (!existsSync(SERVER_ENTRY)) {
+		throw new Error(
+			`Server entry not found: ${SERVER_ENTRY}\n` +
+			"Run 'pnpm build && pnpm --filter @wtfoc/web build:server' first.",
+		);
+	}
+
 	const env: Record<string, string> = {
-		...process.env as Record<string, string>,
 		WTFOC_PORT: String(opts.port),
 		WTFOC_DATA_DIR: opts.dataDir,
 		WTFOC_MANIFEST_DIR: opts.manifestDir,
 		WTFOC_WEB_DIR: resolve(MONO_ROOT, "apps/web/dist"),
 		WTFOC_VECTOR_BACKEND: "inmemory",
 	};
+
+	// Inherit safe env vars from parent process
+	for (const [key, value] of Object.entries(process.env)) {
+		if (value !== undefined && !(key in env)) {
+			env[key] = value;
+		}
+	}
 
 	if (opts.embedderUrl) {
 		env["WTFOC_EMBEDDER_URL"] = opts.embedderUrl;
