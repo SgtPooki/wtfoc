@@ -14,7 +14,9 @@ export {
 	type MarkdownChunkerOptions,
 	rechunkOversized,
 } from "./chunker.js";
+export { CodeEdgeExtractor } from "./edges/code.js";
 export { CompositeEdgeExtractor } from "./edges/composite.js";
+export { extractPackageJsonDeps, extractRequirementsTxtDeps } from "./edges/dependency-parser.js";
 export type { ChangedFile } from "./edges/extractor.js";
 export {
 	buildBatchRepoAffinity,
