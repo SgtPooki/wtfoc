@@ -3,7 +3,7 @@
 
 export { getAdapter, getAvailableSourceTypes, registerAdapter } from "./adapter-registry.js";
 export { DiscordAdapter, type DiscordAdapterConfig } from "./adapters/discord.js";
-export { type ExecFn, GitHubAdapter, type GitHubAdapterConfig } from "./adapters/github.js";
+export { type ExecFn, GitHubAdapter, type GitHubAdapterConfig } from "./adapters/github/index.js";
 export { HackerNewsAdapter, type HackerNewsAdapterConfig } from "./adapters/hackernews.js";
 export { RepoAdapter, type RepoAdapterConfig } from "./adapters/repo.js";
 export { SlackAdapter, type SlackAdapterConfig } from "./adapters/slack.js";
@@ -31,7 +31,7 @@ export {
 // Register built-in adapters
 import { registerAdapter as _register } from "./adapter-registry.js";
 import { DiscordAdapter as _DiscordAdapter } from "./adapters/discord.js";
-import { GitHubAdapter as _GitHubAdapter } from "./adapters/github.js";
+import { GitHubAdapter as _GitHubAdapter } from "./adapters/github/index.js";
 import { HackerNewsAdapter as _HackerNewsAdapter } from "./adapters/hackernews.js";
 import { RepoAdapter as _RepoAdapter } from "./adapters/repo.js";
 import { SlackAdapter as _SlackAdapter } from "./adapters/slack.js";

@@ -1,7 +1,7 @@
 import { GitHubCliMissingError, GitHubNotFoundError, GitHubRateLimitError } from "@wtfoc/common";
 import { describe, expect, it } from "vitest";
-import type { ExecFn, GitHubAdapterConfig } from "./github.js";
-import { GitHubAdapter } from "./github.js";
+import type { ExecFn, GitHubAdapterConfig } from "./github/index.js";
+import { GitHubAdapter } from "./github/index.js";
 
 function mockExec(responses: Array<{ stdout?: string; stderr?: string; error?: boolean }>): ExecFn {
 	let callIndex = 0;
