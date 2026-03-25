@@ -15,7 +15,6 @@ import {
 	analyzeEdgeResolution,
 	buildSourceIndex,
 	createVectorIndex,
-	InMemoryVectorIndex,
 	query,
 	trace,
 } from "@wtfoc/search";
@@ -30,21 +29,36 @@ const PORT = Number(process.env["WTFOC_PORT"] ?? "3577");
 const WEB_DIR = process.env["WTFOC_WEB_DIR"] ?? join(__dirname, "..", "dist");
 const DATA_DIR = process.env["WTFOC_DATA_DIR"];
 const MANIFEST_DIR = process.env["WTFOC_MANIFEST_DIR"];
-const VECTOR_BACKEND = (process.env["WTFOC_VECTOR_BACKEND"] ?? "inmemory") as VectorBackend;
+const VECTOR_BACKEND = parseVectorBackend(process.env["WTFOC_VECTOR_BACKEND"]);
 const QDRANT_URL = process.env["WTFOC_QDRANT_URL"] ?? "http://localhost:6333";
 const QDRANT_API_KEY = process.env["WTFOC_QDRANT_API_KEY"];
 const COLLECTION_TTL_MS = parseTtl(process.env["WTFOC_COLLECTION_TTL"]);
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+function parseVectorBackend(value: string | undefined): VectorBackend {
+	if (!value || value === "inmemory") return "inmemory";
+	if (value === "qdrant") return "qdrant";
+	console.error(
+		`[wtfoc] Unknown WTFOC_VECTOR_BACKEND "${value}", falling back to "inmemory".`,
+	);
+	return "inmemory";
+}
+
 function parseTtl(value: string | undefined): number {
 	if (!value) return 0; // 0 = disabled
 	const match = value.match(/^(\d+)(ms|s|m|h)$/);
-	if (!match) return 0;
+	if (!match) {
+		console.error(
+			`[wtfoc] Invalid WTFOC_COLLECTION_TTL "${value}" — expected format: <number><unit> (ms|s|m|h). TTL eviction disabled.`,
+		);
+		return 0;
+	}
 	const [, num, unit] = match;
+	if (unit !== "ms" && unit !== "s" && unit !== "m" && unit !== "h") return 0;
 	const n = Number(num);
-	const multipliers: Record<string, number> = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 };
-	return n * (multipliers[unit!] ?? 0);
+	const multipliers: Record<"ms" | "s" | "m" | "h", number> = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 };
+	return n * multipliers[unit];
 }
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -189,7 +203,14 @@ async function getCollectionByCid(cid: string): Promise<LoadedCollection> {
 		console.error(`⏳ Fetching collection from CID ${cid.slice(0, 16)}...`);
 		const { manifest, storage } = await resolveCollectionByCid(cid);
 
-		const vectorIndex = new InMemoryVectorIndex();
+		const dimensions = manifest.embeddingDimensions ?? 384;
+		const vectorIndex = await createVectorIndex({
+			backend: VECTOR_BACKEND,
+			collectionName: `cid-${cid.slice(0, 16)}`,
+			dimensions,
+			qdrantUrl: QDRANT_URL,
+			qdrantApiKey: QDRANT_API_KEY,
+		});
 		const mounted = await mountCollection(manifest, storage, vectorIndex);
 
 		const now = Date.now();

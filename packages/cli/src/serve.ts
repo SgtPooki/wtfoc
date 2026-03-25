@@ -28,7 +28,7 @@ async function loadCollection(
 	store: ReturnType<typeof createStore>,
 	manifest: CollectionHead,
 ): Promise<{ segments: Segment[]; vectorIndex: VectorIndex }> {
-	const backend = (process.env.WTFOC_VECTOR_BACKEND ?? "inmemory") as VectorBackend;
+	const backend = (process.env.WTFOC_VECTOR_BACKEND ?? "inmemory") as VectorBackend; // factory validates
 	const dimensions = manifest.embeddingDimensions ?? 384;
 	const vectorIndex = await createVectorIndex({
 		backend,

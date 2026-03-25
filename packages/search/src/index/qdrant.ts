@@ -37,8 +37,8 @@ export class QdrantVectorIndex implements VectorIndex {
 			id: entry.id,
 			vector: Array.from(entry.vector),
 			payload: {
-				storageId: entry.storageId,
 				...entry.metadata,
+				storageId: entry.storageId,
 			},
 		}));
 
@@ -47,7 +47,7 @@ export class QdrantVectorIndex implements VectorIndex {
 			points,
 		});
 
-		this.#size += entries.length;
+		await this.#refreshSize(client);
 	}
 
 	async search(query: Float32Array, topK: number): Promise<ScoredEntry[]> {
@@ -99,7 +99,7 @@ export class QdrantVectorIndex implements VectorIndex {
 				wait: true,
 				points: ids,
 			});
-			this.#size = Math.max(0, this.#size - ids.length);
+			await this.#refreshSize(client);
 		} catch (err) {
 			// Ignore if collection doesn't exist
 			if (!isNotFoundError(err)) throw err;
@@ -109,13 +109,20 @@ export class QdrantVectorIndex implements VectorIndex {
 	async #getClient(): Promise<import("@qdrant/js-client-rest").QdrantClient> {
 		if (this.#client) return this.#client;
 
-		const { QdrantClient } = await import("@qdrant/js-client-rest");
-		this.#client = new QdrantClient({
-			url: this.#options.url,
-			apiKey: this.#options.apiKey,
-			checkCompatibility: false,
-		});
-		return this.#client;
+		try {
+			const { QdrantClient } = await import("@qdrant/js-client-rest");
+			this.#client = new QdrantClient({
+				url: this.#options.url,
+				apiKey: this.#options.apiKey,
+				checkCompatibility: false,
+			});
+			return this.#client;
+		} catch (err) {
+			throw new Error(
+				"Failed to load @qdrant/js-client-rest. Install it or set WTFOC_VECTOR_BACKEND=inmemory." +
+					(err instanceof Error ? ` (${err.message})` : ""),
+			);
+		}
 	}
 
 	async #ensureCollection(client: import("@qdrant/js-client-rest").QdrantClient): Promise<void> {
@@ -135,6 +142,15 @@ export class QdrantVectorIndex implements VectorIndex {
 				},
 			});
 			this.#ensured = true;
+		}
+	}
+
+	async #refreshSize(client: import("@qdrant/js-client-rest").QdrantClient): Promise<void> {
+		try {
+			const info = await client.getCollection(this.#options.collectionName);
+			this.#size = info.points_count ?? this.#size;
+		} catch {
+			// Non-critical — size is best-effort for Qdrant backend
 		}
 	}
 }

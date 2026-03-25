@@ -151,9 +151,6 @@ importers:
 
   packages/search:
     dependencies:
-      '@qdrant/js-client-rest':
-        specifier: ^1.17.0
-        version: 1.17.0(typescript@5.9.3)
       '@wtfoc/common':
         specifier: workspace:*
         version: link:../common
@@ -168,6 +165,9 @@ importers:
       '@huggingface/transformers':
         specifier: ^3.8.1
         version: 3.8.1
+      '@qdrant/js-client-rest':
+        specifier: ^1.17.0
+        version: 1.17.0(typescript@5.9.3)
 
   packages/store:
     dependencies:
@@ -8917,8 +8917,10 @@ snapshots:
       '@qdrant/openapi-typescript-fetch': 1.2.6
       typescript: 5.9.3
       undici: 7.24.5
+    optional: true
 
-  '@qdrant/openapi-typescript-fetch@1.2.6': {}
+  '@qdrant/openapi-typescript-fetch@1.2.6':
+    optional: true
 
   '@react-native/assets-registry@0.84.1':
     optional: true
