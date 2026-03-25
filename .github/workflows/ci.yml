@@ -31,5 +31,35 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Test
+      - name: Test (unit)
         run: pnpm test
+
+      - name: Test (e2e API)
+        run: vitest run --config tests/e2e/vitest.config.ts
+
+  e2e-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm -r build
+
+      - name: Build web server
+        run: pnpm --filter @wtfoc/web build:server
+
+      - name: Install Playwright browsers
+        run: pnpm --filter @wtfoc/e2e exec playwright install --with-deps chromium
+
+      - name: Test (e2e UI)
+        run: pnpm --filter @wtfoc/e2e test:ui
