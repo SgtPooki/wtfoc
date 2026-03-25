@@ -2,20 +2,25 @@ import type { Segment } from "@wtfoc/common";
 import { type Chunk, type CollectionHead, CURRENT_SCHEMA_VERSION } from "@wtfoc/common";
 import {
 	buildSegment,
+	buildSourceKey,
 	CodeEdgeExtractor,
 	CompositeEdgeExtractor,
+	cursorFilePath,
 	DEFAULT_MAX_CHUNK_CHARS,
 	getAdapter,
 	getAvailableSourceTypes,
+	getCursorSince,
 	HeuristicChunkScorer,
 	HeuristicEdgeExtractor,
 	LlmEdgeExtractor,
 	mergeEdges,
 	RegexEdgeExtractor,
+	readCursors,
 	rechunkOversized,
 	segmentId,
+	writeCursors,
 } from "@wtfoc/ingest";
-import { bundleAndUpload, generateCollectionId } from "@wtfoc/store";
+import { bundleAndUpload, generateCollectionId, LocalManifestStore } from "@wtfoc/store";
 import type { Command } from "commander";
 import { type ExtractorCliOpts, resolveExtractorConfig } from "../extractor-config.js";
 import {
@@ -103,7 +108,27 @@ export function registerIngestCommand(program: Command): void {
 			}
 
 			const rawConfig: Record<string, unknown> = { source: sourceArg };
-			if (opts.since) rawConfig.since = parseSinceDuration(opts.since);
+
+			// Cursor-based incremental ingest: read stored cursor, use as since if no explicit --since
+			const sourceKey = buildSourceKey(sourceType, sourceArg);
+			const manifestDir =
+				store.manifests instanceof LocalManifestStore
+					? store.manifests.dir
+					: (process.env.HOME ?? process.env.USERPROFILE ?? ".") + "/.wtfoc/projects";
+			const cursorPath = cursorFilePath(manifestDir, opts.collection);
+			const cursorData = await readCursors(cursorPath);
+
+			if (opts.since) {
+				rawConfig.since = parseSinceDuration(opts.since);
+			} else {
+				const storedSince = getCursorSince(cursorData, sourceKey);
+				if (storedSince) {
+					rawConfig.since = storedSince;
+					if (format !== "quiet") {
+						console.error(`   Resuming from cursor: ${storedSince}`);
+					}
+				}
+			}
 
 			if (format !== "quiet") console.error(`⏳ Ingesting ${sourceType}: ${sourceArg}...`);
 
@@ -260,7 +285,12 @@ export function registerIngestCommand(program: Command): void {
 
 			// Stream chunks from adapter, rechunk oversized ones, then dedup
 			let rechunkedCount = 0;
+			let maxTimestamp = "";
 			for await (const rawChunk of adapter.ingest(config)) {
+				// Track max timestamp from source-provided data for cursor persistence (FR-009)
+				const chunkTs =
+					rawChunk.timestamp ?? rawChunk.metadata.updatedAt ?? rawChunk.metadata.createdAt ?? "";
+				if (chunkTs > maxTimestamp) maxTimestamp = chunkTs;
 				const chunks = rechunkOversized([rawChunk], maxChunkChars);
 				if (chunks.length > 1) rechunkedCount += chunks.length;
 
@@ -295,6 +325,22 @@ export function registerIngestCommand(program: Command): void {
 				console.error(
 					`✅ Ingested ${parts.join(", ")} from ${sourceArg} into "${opts.collection}"`,
 				);
+			}
+
+			// Persist cursor after successful ingest (FR-001, FR-004: only on success)
+			if (maxTimestamp) {
+				const updatedCursors = cursorData ?? { schemaVersion: 1 as const, cursors: {} };
+				updatedCursors.cursors[sourceKey] = {
+					sourceKey,
+					adapterType: sourceType,
+					cursorValue: maxTimestamp,
+					lastRunAt: new Date().toISOString(),
+					chunksIngested: totalChunksIngested,
+				};
+				await writeCursors(cursorPath, updatedCursors);
+				if (format !== "quiet") {
+					console.error(`   Saved cursor for next run: ${maxTimestamp}`);
+				}
 			}
 		},
 	);

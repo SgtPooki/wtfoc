@@ -38,6 +38,13 @@ export interface MountOptions {
 	 * chunks are upserted.
 	 */
 	reconcile?: boolean;
+	/**
+	 * Segment IDs to skip during mount. Segments in this set will not be
+	 * downloaded, parsed, or added to the vector index. Use this for
+	 * incremental mounting where some segments are already indexed in a
+	 * persistent vector backend.
+	 */
+	skipSegmentIds?: ReadonlySet<string>;
 }
 
 /**
@@ -75,8 +82,10 @@ export async function mountCollection(
 
 	const segments: Segment[] = [];
 
+	const skipIds = options?.skipSegmentIds;
 	for (const segRef of segmentRefs) {
 		signal?.throwIfAborted();
+		if (skipIds?.has(segRef)) continue;
 		const data = await storage.download(segRef, signal);
 		const text = new TextDecoder().decode(data);
 		let parsed: unknown;

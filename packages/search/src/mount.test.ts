@@ -458,6 +458,82 @@ describe("mountCollection", () => {
 		expect(reconcileMock).not.toHaveBeenCalled();
 	});
 
+	it("skips segments in skipSegmentIds and does not download or index them", async () => {
+		const seg1 = makeSegment("seg-old");
+		const seg2 = makeSegment("seg-new");
+		const downloadSpy = vi.fn(async (id: string): Promise<Uint8Array> => {
+			const segments: Record<string, Segment> = { "seg-old": seg1, "seg-new": seg2 };
+			const seg = segments[id];
+			if (!seg) throw new Error(`Segment ${id} not found`);
+			return new TextEncoder().encode(JSON.stringify(seg));
+		});
+		const storage: StorageBackend = {
+			async upload(): Promise<StorageResult> {
+				return { id: "mock" };
+			},
+			download: downloadSpy,
+		};
+		const index = makeVectorIndex();
+
+		const head: CollectionHead = {
+			schemaVersion: 1,
+			collectionId: "skip-test",
+			name: "skip",
+			currentRevisionId: null,
+			prevHeadId: null,
+			segments: [
+				{ id: "seg-old", sourceTypes: ["repo"], chunkCount: 1 },
+				{ id: "seg-new", sourceTypes: ["repo"], chunkCount: 1 },
+			],
+			totalChunks: 2,
+			embeddingModel: "test-model",
+			embeddingDimensions: 3,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		};
+
+		const mounted = await mountCollection(head, storage, index, {
+			skipSegmentIds: new Set(["seg-old"]),
+		});
+
+		// Only seg-new should be downloaded and indexed
+		expect(downloadSpy).toHaveBeenCalledTimes(1);
+		expect(downloadSpy).toHaveBeenCalledWith("seg-new", undefined);
+		expect(index.entries).toHaveLength(1);
+		expect(index.entries[0]?.id).toBe("chunk-seg-new");
+		// Mounted segments should only include the newly loaded one
+		expect(mounted.segments).toHaveLength(1);
+	});
+
+	it("without skipSegmentIds, all segments are downloaded and indexed (backward compat)", async () => {
+		const seg1 = makeSegment("seg-a");
+		const seg2 = makeSegment("seg-b");
+		const storage = makeStorage({ "seg-a": seg1, "seg-b": seg2 });
+		const index = makeVectorIndex();
+
+		const head: CollectionHead = {
+			schemaVersion: 1,
+			collectionId: "no-skip-test",
+			name: "no-skip",
+			currentRevisionId: null,
+			prevHeadId: null,
+			segments: [
+				{ id: "seg-a", sourceTypes: ["repo"], chunkCount: 1 },
+				{ id: "seg-b", sourceTypes: ["repo"], chunkCount: 1 },
+			],
+			totalChunks: 2,
+			embeddingModel: "test-model",
+			embeddingDimensions: 3,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		};
+
+		const mounted = await mountCollection(head, storage, index);
+
+		expect(mounted.segments).toHaveLength(2);
+		expect(index.entries).toHaveLength(2);
+	});
+
 	it("skips reconcile on non-reconcilable vector index", async () => {
 		const seg = makeSegment("seg-plain");
 		const storage = makeStorage({ "seg-plain": seg });
