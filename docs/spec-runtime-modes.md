@@ -1,6 +1,6 @@
 # Runtime Modes and Responsibilities
 
-> Spec for issue #109 — defines the long-lived server's responsibilities and mode boundaries.
+> Design notes for issue #109 — canonical specs live under `.specify/specs/`.
 
 ## Overview
 

@@ -71,6 +71,8 @@ interface LoadedCollection {
 	headId: string;
 	loadedAt: number;
 	lastAccessedAt: number;
+	/** When we last checked the manifest headId for freshness. */
+	lastValidatedAt: number;
 }
 
 interface CachedFile {
@@ -130,7 +132,7 @@ let embedder: Embedder;
 async function getCollection(name: string): Promise<LoadedCollection | null> {
 	// Fast path: skip manifest IO if the cache was recently validated
 	const cached = collectionCache.get(name);
-	if (cached && Date.now() - cached.lastAccessedAt < FRESHNESS_TTL_MS) {
+	if (cached && Date.now() - cached.lastValidatedAt < FRESHNESS_TTL_MS) {
 		cached.lastAccessedAt = Date.now();
 		return cached;
 	}
@@ -140,6 +142,7 @@ async function getCollection(name: string): Promise<LoadedCollection | null> {
 
 	// Return cached collection if the manifest hasn't changed
 	if (cached && cached.headId === head.headId) {
+		cached.lastValidatedAt = Date.now();
 		cached.lastAccessedAt = Date.now();
 		return cached;
 	}
@@ -174,9 +177,14 @@ async function getCollection(name: string): Promise<LoadedCollection | null> {
 			headId: head.headId,
 			loadedAt: now,
 			lastAccessedAt: now,
+			lastValidatedAt: now,
 		};
 
-		collectionCache.set(name, loaded);
+		// Only write cache if no newer head was loaded while we were working
+		const current = collectionCache.get(name);
+		if (!current || current.loadedAt <= loaded.loadedAt) {
+			collectionCache.set(name, loaded);
+		}
 		console.error(
 			`✅ Loaded "${name}": ${head.manifest.totalChunks} chunks, ${head.manifest.segments.length} segments (${VECTOR_BACKEND})`,
 		);
@@ -233,6 +241,7 @@ async function getCollectionByCid(cid: string): Promise<LoadedCollection> {
 			headId: cid, // CID collections are immutable — CID is the identity
 			loadedAt: now,
 			lastAccessedAt: now,
+			lastValidatedAt: now,
 		};
 
 		collectionCache.set(`cid:${cid}`, loaded);
