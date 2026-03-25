@@ -1,5 +1,6 @@
 import { trace } from "@wtfoc/search";
 import type { Command } from "commander";
+import { getProjectConfig } from "../cli.js";
 import {
 	createEmbedder,
 	type EmbedderOpts,
@@ -27,7 +28,7 @@ export function registerTraceCommand(program: Command): void {
 		}
 
 		if (format !== "quiet") console.error("⏳ Loading embedder + index...");
-		const { embedder } = createEmbedder(opts);
+		const { embedder } = createEmbedder(opts, getProjectConfig()?.embedder);
 		const { vectorIndex, segments } = await loadCollection(store, head.manifest);
 
 		// Check dimension compatibility before querying (skip if dimensions unknown yet)

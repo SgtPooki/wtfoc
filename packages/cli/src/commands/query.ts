@@ -1,5 +1,6 @@
 import { query } from "@wtfoc/search";
 import type { Command } from "commander";
+import { getProjectConfig } from "../cli.js";
 import {
 	createEmbedder,
 	type EmbedderOpts,
@@ -28,7 +29,7 @@ export function registerQueryCommand(program: Command): void {
 		}
 
 		if (format !== "quiet") console.error("⏳ Loading embedder + index...");
-		const { embedder } = createEmbedder(opts);
+		const { embedder } = createEmbedder(opts, getProjectConfig()?.embedder);
 		const { vectorIndex } = await loadCollection(store, head.manifest);
 
 		const collectionDims = head.manifest.embeddingDimensions;

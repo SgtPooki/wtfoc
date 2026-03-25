@@ -11,6 +11,7 @@ export default defineConfig({
 			"@wtfoc/store": resolve(rootDir, "packages/store/src/index.ts"),
 			"@wtfoc/ingest": resolve(rootDir, "packages/ingest/src/index.ts"),
 			"@wtfoc/search": resolve(rootDir, "packages/search/src/index.ts"),
+			"@wtfoc/config": resolve(rootDir, "packages/config/src/index.ts"),
 		},
 	},
 	test: {

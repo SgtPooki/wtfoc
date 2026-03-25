@@ -1,4 +1,5 @@
 import type { Command } from "commander";
+import { getProjectConfig } from "../cli.js";
 import { createEmbedder, type EmbedderOpts, getStore, withEmbedderOptions } from "../helpers.js";
 
 export function registerServeCommand(program: Command): void {
@@ -10,7 +11,7 @@ export function registerServeCommand(program: Command): void {
 			.option("-p, --port <number>", "Port to listen on", "3577"),
 	).action(async (opts: { collection: string; port: string } & EmbedderOpts) => {
 		const store = getStore(program);
-		const { embedder } = createEmbedder(opts);
+		const { embedder } = createEmbedder(opts, getProjectConfig()?.embedder);
 
 		// Load UI HTML at startup (bundled alongside the CLI)
 		const { readFile } = await import("node:fs/promises");

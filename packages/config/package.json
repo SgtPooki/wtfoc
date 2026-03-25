@@ -1,0 +1,37 @@
+{
+	"name": "@wtfoc/config",
+	"version": "0.0.1",
+	"description": "Project configuration loader for .wtfoc.json files",
+	"type": "module",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/SgtPooki/wtfoc.git",
+		"directory": "packages/config"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"engines": {
+		"node": ">=24"
+	},
+	"exports": {
+		".": "./dist/index.js"
+	},
+	"types": "./dist/index.d.ts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc -b",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"@wtfoc/common": "workspace:*",
+		"ignore": "^7.0.0"
+	},
+	"devDependencies": {
+		"typescript": "^5.8.0",
+		"vitest": "^4.1.0"
+	}
+}

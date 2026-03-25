@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readdir } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { extname, join, relative } from "node:path";
 import type { Chunk } from "@wtfoc/common";
 
 export const DEFAULT_INCLUDE = new Set([
@@ -30,6 +30,7 @@ export async function walkFiles(
 	dir: string,
 	includeExts: Set<string>,
 	excludeDirs: string[],
+	ignoreFilter?: (path: string) => boolean,
 ): Promise<string[]> {
 	const files: string[] = [];
 
@@ -37,14 +38,23 @@ export async function walkFiles(
 		const entries = await readdir(currentDir, { withFileTypes: true });
 		for (const entry of entries) {
 			const fullPath = join(currentDir, entry.name);
+			const relativePath = relative(dir, fullPath).replace(/\\/g, "/");
 			if (entry.isDirectory()) {
-				if (!excludeDirs.includes(entry.name) && !entry.name.startsWith(".")) {
-					await walk(fullPath);
+				if (excludeDirs.includes(entry.name) || entry.name.startsWith(".")) {
+					continue;
 				}
+				if (ignoreFilter && !ignoreFilter(relativePath)) {
+					continue;
+				}
+				await walk(fullPath);
 			} else if (entry.isFile()) {
-				if (includeExts.has(extname(entry.name))) {
-					files.push(fullPath);
+				if (!includeExts.has(extname(entry.name))) {
+					continue;
 				}
+				if (ignoreFilter && !ignoreFilter(relativePath)) {
+					continue;
+				}
+				files.push(fullPath);
 			}
 		}
 	}

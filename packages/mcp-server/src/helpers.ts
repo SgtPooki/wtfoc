@@ -1,4 +1,5 @@
-import type { CollectionHead, Embedder } from "@wtfoc/common";
+import type { CollectionHead, Embedder, ResolvedEmbedderConfig } from "@wtfoc/common";
+import { resolveUrlShortcut } from "@wtfoc/config";
 import type { MountedCollection } from "@wtfoc/search";
 import {
 	InMemoryVectorIndex,
@@ -10,10 +11,6 @@ import type { createStore } from "@wtfoc/store";
 
 export type LoadedCollection = MountedCollection;
 
-/**
- * Load all segments from a collection into an in-memory vector index.
- * Delegates to the canonical mountCollection from @wtfoc/search.
- */
 export async function loadCollection(
 	store: ReturnType<typeof createStore>,
 	manifest: CollectionHead,
@@ -23,28 +20,31 @@ export async function loadCollection(
 }
 
 /**
- * Create an embedder from environment variables.
+ * Create an embedder from resolved config or environment variables.
  *
- * WTFOC_EMBEDDER=api + WTFOC_EMBEDDER_URL + WTFOC_EMBEDDER_MODEL → OpenAI-compatible API
- * Otherwise → local TransformersEmbedder (MiniLM, 384d)
+ * When resolvedConfig is provided (from .wtfoc.json + env merge),
+ * it takes priority. Otherwise falls back to env-var-only behavior.
  */
-export function createEmbedder(): { embedder: Embedder; modelName: string } {
+export function createEmbedder(resolvedConfig?: ResolvedEmbedderConfig): {
+	embedder: Embedder;
+	modelName: string;
+} {
+	const url =
+		resolvedConfig?.url ??
+		(process.env.WTFOC_EMBEDDER_URL
+			? resolveUrlShortcut(process.env.WTFOC_EMBEDDER_URL)
+			: undefined);
+	const model = resolvedConfig?.model ?? process.env.WTFOC_EMBEDDER_MODEL;
+	const key =
+		resolvedConfig?.key ?? process.env.WTFOC_EMBEDDER_KEY ?? process.env.WTFOC_OPENAI_API_KEY;
 	const type = process.env.WTFOC_EMBEDDER ?? "local";
-	const url = process.env.WTFOC_EMBEDDER_URL;
-	const model = process.env.WTFOC_EMBEDDER_MODEL;
-	const key = process.env.WTFOC_EMBEDDER_KEY;
 
 	if (type === "api" || url || model) {
-		const urlShortcuts: Record<string, string> = {
-			lmstudio: "http://localhost:1234/v1",
-			ollama: "http://localhost:11434/v1",
-		};
-		const rawUrl = url ?? type;
-		const baseUrl = urlShortcuts[rawUrl] ?? rawUrl;
+		const baseUrl = url ?? resolveUrlShortcut(type);
 
 		if (!baseUrl.startsWith("http")) {
 			throw new Error(
-				`WTFOC_EMBEDDER_URL must be a URL or shortcut (lmstudio, ollama). Got: "${rawUrl}"`,
+				`WTFOC_EMBEDDER_URL must be a URL or shortcut (lmstudio, ollama). Got: "${baseUrl}"`,
 			);
 		}
 
@@ -55,7 +55,7 @@ export function createEmbedder(): { embedder: Embedder; modelName: string } {
 			);
 		}
 
-		const apiKey = key ?? process.env.WTFOC_OPENAI_API_KEY ?? "no-key";
+		const apiKey = key ?? "no-key";
 		const embedder = new OpenAIEmbedder({ apiKey, baseUrl, model });
 		return { embedder, modelName: model };
 	}
@@ -65,7 +65,6 @@ export function createEmbedder(): { embedder: Embedder; modelName: string } {
 		const embedder = new TransformersEmbedder();
 		return { embedder, modelName: "Xenova/all-MiniLM-L6-v2" };
 	} catch {
-		// Fallback to zero-vector if transformers unavailable
 		return {
 			embedder: {
 				dimensions: 384,

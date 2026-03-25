@@ -1,8 +1,19 @@
 // @wtfoc/common — Pure contracts, schemas, and types
 // See SPEC.md Rule #2 for seam definitions
 
+export type {
+	EmbedderConfig,
+	ExtractorConfig,
+	ProjectConfig,
+	ResolvedConfig,
+	ResolvedEmbedderConfig,
+	ResolvedExtractorConfig,
+} from "./config-types.js";
+export { BUILTIN_IGNORE_PATTERNS, URL_SHORTCUTS } from "./config-types.js";
 export {
 	CollectionHeadConflictError,
+	ConfigParseError,
+	ConfigValidationError,
 	EmbedFailedError,
 	GitHubApiError,
 	GitHubCliMissingError,

@@ -21,6 +21,8 @@ export interface RepoAdapterConfig {
 	chunkerOptions?: MarkdownChunkerOptions;
 	/** Max file size in bytes to process (default: 100KB) */
 	maxFileSize?: number;
+	/** Ignore filter from .wtfoc.json — returns true for files to INCLUDE */
+	ignoreFilter?: (path: string) => boolean;
 }
 
 export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
@@ -52,7 +54,7 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 		const excludeDirs = opts.exclude ?? DEFAULT_EXCLUDE;
 		const maxFileSize = opts.maxFileSize ?? 100_000;
 
-		const files = await walkFiles(repoPath, includeExts, excludeDirs);
+		const files = await walkFiles(repoPath, includeExts, excludeDirs, opts.ignoreFilter);
 
 		for (const filePath of files) {
 			const fileInfo = await stat(filePath);
