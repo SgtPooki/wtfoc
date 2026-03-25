@@ -139,6 +139,8 @@ GitHub-hosted agents also read:
 ## Active Technologies
 - TypeScript strict mode, ESM only, Node >=24 + `@wtfoc/common`, `@wtfoc/ingest`, `@wtfoc/store`, `@wtfoc/search` (workspace packages only) (012-e2e-integration-pipeline)
 - LocalStorageBackend + LocalManifestStore (temp directories, cleaned up after tests) (012-e2e-integration-pipeline)
+- TypeScript strict mode, ESM only, Node >=24 + `@wtfoc/common` (interface), `@wtfoc/search` (implementation), `@wtfoc/cli` (command) (015-theme-clustering)
+- Cluster state as JSON files in `~/.wtfoc/clusters/{collection}/{revision}/state.json` (015-theme-clustering)
 
 ## Recent Changes
 - 012-e2e-integration-pipeline: Added TypeScript strict mode, ESM only, Node >=24 + `@wtfoc/common`, `@wtfoc/ingest`, `@wtfoc/store`, `@wtfoc/search` (workspace packages only)
