@@ -110,7 +110,7 @@ export class FocStorageBackend implements StorageBackend {
 		signal?.throwIfAborted();
 
 		// Try public IPFS gateways first (works for any IPFS CID, returns content)
-		const gateways = ["https://dweb.link/ipfs/", "https://inbrowser.link/ipfs/"];
+		const gateways = ["https://dweb.link/ipfs/", "https://trustless-gateway.link/ipfs/"];
 		for (const gateway of gateways) {
 			try {
 				const response = await fetch(`${gateway}${id}`, { signal });

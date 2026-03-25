@@ -19,22 +19,53 @@ export function registerPromoteCommand(program: Command): void {
 			}
 
 			// Check if already promoted (has batch records with PieceCIDs)
+			// Batch segmentIds may contain either local IDs or IPFS CIDs,
+			// so we check both when determining if a segment is already promoted.
 			const existingBatches = head.manifest.batches ?? [];
-			const alreadyPromotedSegments = new Set<string>();
+			const alreadyPromotedIds = new Set<string>();
 			for (const batch of existingBatches) {
 				for (const segId of batch.segmentIds) {
-					alreadyPromotedSegments.add(segId);
+					alreadyPromotedIds.add(segId);
 				}
 			}
 
 			// Find segments that haven't been promoted yet
 			const segmentsToPromote = head.manifest.segments.filter(
-				(s) => !s.ipfsCid || !alreadyPromotedSegments.has(s.ipfsCid),
+				(s) => !alreadyPromotedIds.has(s.id) && (!s.ipfsCid || !alreadyPromotedIds.has(s.ipfsCid)),
 			);
 
 			if (segmentsToPromote.length === 0) {
+				// All segments already on Filecoin — just upload/re-upload the manifest
+				const privateKey = process.env.WTFOC_PRIVATE_KEY;
+				if (!privateKey) {
+					if (format !== "quiet") {
+						console.error(`✅ Collection "${collectionName}" is already fully promoted to FOC.`);
+						console.error("   Set WTFOC_PRIVATE_KEY to re-upload the manifest and get a shareable CID.");
+					}
+					return;
+				}
+
 				if (format !== "quiet") {
-					console.error(`✅ Collection "${collectionName}" is already fully promoted to FOC.`);
+					console.error(`✅ Segments already on Filecoin. Uploading manifest...`);
+				}
+
+				const focStore = createStore({ storage: "foc", privateKey });
+				const manifestJson = JSON.stringify(head.manifest);
+				const manifestBytes = new TextEncoder().encode(manifestJson);
+				const manifestResult = await focStore.storage.upload(manifestBytes);
+				const manifestCid = manifestResult.ipfsCid ?? manifestResult.id;
+
+				if (format === "json") {
+					console.log(JSON.stringify({
+						collection: collectionName,
+						manifestCid,
+						pieceCid: existingBatches[existingBatches.length - 1]?.pieceCid,
+						carRootCid: existingBatches[existingBatches.length - 1]?.carRootCid,
+						segments: 0,
+						chunks: head.manifest.totalChunks,
+					}));
+				} else if (format !== "quiet") {
+					console.error(`   Manifest CID: ${manifestCid}`);
 					if (existingBatches.length > 0) {
 						const lastBatch = existingBatches[existingBatches.length - 1];
 						if (lastBatch) {
@@ -42,6 +73,8 @@ export function registerPromoteCommand(program: Command): void {
 							console.error(`   CAR root: ${lastBatch.carRootCid}`);
 						}
 					}
+					console.error(`\n   Share this CID to let anyone query your collection:`);
+					console.error(`   ${manifestCid}`);
 				}
 				return;
 			}
@@ -109,6 +142,16 @@ export function registerPromoteCommand(program: Command): void {
 				updatedAt: new Date().toISOString(),
 			};
 
+			// Upload manifest JSON to Filecoin so it can be resolved by CID
+			if (format !== "quiet") {
+				console.error("   ⏳ Uploading manifest to Filecoin...");
+			}
+
+			const manifestJson = JSON.stringify(updatedManifest);
+			const manifestBytes = new TextEncoder().encode(manifestJson);
+			const manifestResult = await focStore.storage.upload(manifestBytes);
+			const manifestCid = manifestResult.ipfsCid ?? manifestResult.id;
+
 			// Write updated manifest back to local store
 			await localStore.manifests.putHead(collectionName, updatedManifest, head.headId);
 
@@ -116,6 +159,7 @@ export function registerPromoteCommand(program: Command): void {
 				console.log(
 					JSON.stringify({
 						collection: collectionName,
+						manifestCid,
 						pieceCid: bundleResult.batch.pieceCid,
 						carRootCid: bundleResult.batch.carRootCid,
 						segments: segmentsToPromote.length,
@@ -124,10 +168,13 @@ export function registerPromoteCommand(program: Command): void {
 				);
 			} else if (format !== "quiet") {
 				console.error(`\n✅ Promoted "${collectionName}" to FOC`);
+				console.error(`   Manifest CID: ${manifestCid}`);
 				console.error(`   PieceCID: ${bundleResult.batch.pieceCid}`);
 				console.error(`   CAR root: ${bundleResult.batch.carRootCid}`);
 				console.error(`   ${segmentsToPromote.length} segments uploaded`);
 				console.error(`   Local manifest updated with IPFS CIDs`);
+				console.error(`\n   Share this CID to let anyone query your collection:`);
+				console.error(`   ${manifestCid}`);
 			}
 		});
 }

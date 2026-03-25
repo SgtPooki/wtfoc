@@ -272,27 +272,35 @@ export function validateManifestSchema(data: unknown): CollectionHead {
 		}
 		manifest.batches = data.batches.map((item, index) => validateBatchRecord(item, index));
 
-		const segmentIdSet = new Set(manifest.segments.map((segment) => segment.id));
-		const seenSegmentIds = new Set<string>();
+		// Batch segmentIds contain IPFS CIDs (from bundleAndUpload), not local segment IDs.
+		// Build a lookup from any known identifier (local ID or IPFS CID) to the canonical
+		// segment ID, so we can validate membership and detect duplicates consistently.
+		const idToCanonical = new Map<string, string>();
+		for (const segment of manifest.segments) {
+			idToCanonical.set(segment.id, segment.id);
+			if (segment.ipfsCid) idToCanonical.set(segment.ipfsCid, segment.id);
+		}
+		const seenCanonicalIds = new Set<string>();
 		for (let index = 0; index < manifest.batches.length; index++) {
 			const batch = manifest.batches[index];
 			if (!batch) continue;
 			for (const segmentId of batch.segmentIds) {
-				if (!segmentIdSet.has(segmentId)) {
+				const canonical = idToCanonical.get(segmentId);
+				if (canonical === undefined) {
 					throw new WtfocError(
 						`Invalid head manifest: batches[${index}].segmentIds references unknown segment "${segmentId}"`,
 						"SCHEMA_INVALID",
 						{ field: `batches[${index}].segmentIds` },
 					);
 				}
-				if (seenSegmentIds.has(segmentId)) {
+				if (seenCanonicalIds.has(canonical)) {
 					throw new WtfocError(
 						`Invalid head manifest: segment "${segmentId}" appears in multiple batch records`,
 						"SCHEMA_INVALID",
 						{ field: `batches[${index}].segmentIds` },
 					);
 				}
-				seenSegmentIds.add(segmentId);
+				seenCanonicalIds.add(canonical);
 			}
 		}
 	}
