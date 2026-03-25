@@ -4,6 +4,7 @@ import {
 	VectorDimensionMismatchError,
 	type VectorEntry,
 	type VectorIndex,
+	WtfocError,
 } from "@wtfoc/common";
 
 export interface QdrantVectorIndexOptions {
@@ -191,10 +192,6 @@ export class QdrantVectorIndex implements VectorIndex {
 			return;
 		}
 
-		// TODO: When an existing collection is reused, stale vectors from
-		// previous manifest versions remain. A reconciliation step should
-		// diff current segment chunk IDs against stored point IDs and delete
-		// orphans. See issue #101 follow-up.
 		try {
 			const info = await client.getCollection(this.#options.collectionName);
 			this.#size = info.points_count ?? 0;
@@ -207,6 +204,77 @@ export class QdrantVectorIndex implements VectorIndex {
 					distance: "Cosine",
 				},
 			});
+		}
+	}
+
+	/**
+	 * Delete orphan vectors that are not in `expectedIds`.
+	 * Uses cursor-based scroll to enumerate all points and deletes
+	 * stale ones in batches. Skips the GC sentinel point.
+	 *
+	 * @param expectedIds - Set of wtfoc chunk IDs that should exist
+	 * @param signal - Optional AbortSignal for cancellation
+	 */
+	async reconcile(expectedIds: ReadonlySet<string>, signal?: AbortSignal): Promise<void> {
+		const client = await this.#getClient();
+		await this.#ensureCollection(client);
+
+		const BATCH_SIZE = 1000;
+		const DELETE_BATCH_SIZE = 500;
+
+		const stalePointIds: string[] = [];
+		let nextOffset: string | number | null | undefined;
+
+		// Cursor-based scroll through all points, flushing deletes incrementally
+		do {
+			signal?.throwIfAborted();
+
+			const result = await client.scroll(this.#options.collectionName, {
+				limit: BATCH_SIZE,
+				offset: nextOffset,
+				with_payload: { include: ["_wtfoc_id", "_wtfoc_sentinel"] },
+				with_vector: false,
+			});
+
+			for (const point of result.points) {
+				const payload = point.payload as Record<string, unknown> | undefined;
+				// Skip sentinel point used by GC
+				if (payload?._wtfoc_sentinel === true) continue;
+
+				const wtfocId = payload?._wtfoc_id;
+				// Treat missing/invalid _wtfoc_id as orphaned (not just mismatched)
+				if (typeof wtfocId !== "string" || !expectedIds.has(wtfocId)) {
+					stalePointIds.push(String(point.id));
+				}
+
+				// Flush deletes incrementally to keep memory bounded
+				if (stalePointIds.length >= DELETE_BATCH_SIZE) {
+					signal?.throwIfAborted();
+					await client.delete(this.#options.collectionName, {
+						wait: true,
+						points: stalePointIds.splice(0, DELETE_BATCH_SIZE),
+					});
+				}
+			}
+
+			nextOffset = result.next_page_offset as string | number | null | undefined;
+		} while (nextOffset != null);
+
+		// Flush remaining stale points
+		if (stalePointIds.length > 0) {
+			signal?.throwIfAborted();
+			await client.delete(this.#options.collectionName, {
+				wait: true,
+				points: stalePointIds,
+			});
+		}
+
+		// Refresh size from Qdrant after reconciliation
+		try {
+			const info = await client.getCollection(this.#options.collectionName);
+			this.#size = info.points_count ?? 0;
+		} catch {
+			// Best-effort size refresh
 		}
 	}
 }
@@ -239,10 +307,11 @@ export class QdrantCollectionGc {
 			});
 			return this.#client;
 		} catch (err) {
-			throw new Error(
+			throw new WtfocError(
 				"Failed to initialize Qdrant client in QdrantCollectionGc. " +
-					'Ensure "@qdrant/js-client-rest" is installed.' +
-					(err instanceof Error ? ` (${err.message})` : ""),
+					'Ensure "@qdrant/js-client-rest" is installed.',
+				"QDRANT_INIT_FAILED",
+				{ cause: err },
 			);
 		}
 	}
