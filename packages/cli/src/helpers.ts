@@ -46,6 +46,17 @@ export function withEmbedderOptions<T extends Command>(cmd: T): T {
 		.option("--embedder-model <model>", "Embedder model name") as T;
 }
 
+export function withExtractorOptions<T extends Command>(cmd: T): T {
+	return cmd
+		.option("--extractor-enabled", "Enable LLM edge extraction")
+		.option("--extractor-url <url>", "LLM API base URL (or shortcut: lmstudio, ollama)")
+		.option("--extractor-model <model>", "LLM model name for edge extraction")
+		.option("--extractor-key <key>", "LLM API key")
+		.option("--extractor-json-mode <mode>", "JSON response mode: auto (default), on, off")
+		.option("--extractor-timeout <ms>", "LLM request timeout in ms (default: 60000)")
+		.option("--extractor-concurrency <n>", "Max parallel LLM requests (default: 4)") as T;
+}
+
 export function getStore(program: Command) {
 	const globalOpts = program.opts();
 	const storageType = (globalOpts.storage ?? "local") as "local" | "foc";
