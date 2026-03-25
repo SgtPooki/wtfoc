@@ -22,6 +22,7 @@ export {
 	inferRepoFromContent,
 	RegexEdgeExtractor,
 } from "./edges/extractor.js";
+export { HeuristicEdgeExtractor } from "./edges/heuristic.js";
 export { edgeKey, mergeEdges } from "./edges/merge.js";
 export { HeuristicChunkScorer } from "./scoring.js";
 export {

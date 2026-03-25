@@ -7,6 +7,7 @@ import {
 	getAdapter,
 	getAvailableSourceTypes,
 	HeuristicChunkScorer,
+	HeuristicEdgeExtractor,
 	RegexEdgeExtractor,
 	rechunkOversized,
 	segmentId,
@@ -136,6 +137,7 @@ export function registerIngestCommand(program: Command): void {
 				// Extract edges for this batch
 				const compositeExtractor = new CompositeEdgeExtractor();
 				compositeExtractor.register({ name: "regex", extractor: new RegexEdgeExtractor() });
+				compositeExtractor.register({ name: "heuristic", extractor: new HeuristicEdgeExtractor() });
 				const edges = [
 					...(await adapter.extractEdges(batchChunks)),
 					...(await compositeExtractor.extract(batchChunks)),
