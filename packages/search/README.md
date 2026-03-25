@@ -47,8 +47,8 @@ const traceResult = await trace('upload failures', embedder, vectorIndex, mounte
 ```typescript
 import { buildSourceIndex, analyzeEdgeResolution } from '@wtfoc/search';
 
-const sourceIndex = buildSourceIndex(segments);
-const stats = analyzeEdgeResolution(segments, sourceIndex);
+const sourceIndex = buildSourceIndex(mounted.segments);
+const stats = analyzeEdgeResolution(mounted.segments, sourceIndex);
 // stats.totalEdges, stats.resolvedEdges, stats.unresolvedEdges
 ```
 

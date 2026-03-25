@@ -43,15 +43,16 @@ Installs `/trace-analyze`, `/collection-setup`, and `/drift-check` skills for Cl
 ## Use the CLI
 
 ```bash
-npx @wtfoc/cli ingest github FilOzone/synapse-sdk -c my-collection
-npx @wtfoc/cli ingest slack ./exports/support.json -c my-collection
-npx @wtfoc/cli ingest website https://docs.example.com -c my-collection
+# Install globally (or use npx @wtfoc/cli)
+npm install -g wtfoc
 
-npx @wtfoc/cli trace "upload failures" -c my-collection
-npx @wtfoc/cli query "session key auth" -c my-collection -k 20
+wtfoc ingest github FilOzone/synapse-sdk -c my-collection
+wtfoc ingest slack ./exports/support.json -c my-collection
+wtfoc ingest website https://docs.example.com -c my-collection
+
+wtfoc trace "upload failures" -c my-collection
+wtfoc query "session key auth" -c my-collection -k 20
 ```
-
-Or install globally: `npm install -g @wtfoc/cli`
 
 ## Run Your Own MCP Server
 

@@ -17,7 +17,7 @@ npm install @wtfoc/ingest
 | `slack` | Slack export JSON | Channel messages and threads |
 | `discord` | Discord export JSON | Channel messages and threads |
 | `website` | URL | Crawled web pages |
-| `hackernews` | HN item ID or search query | Stories, comments, and discussions |
+| `hackernews` | Search query | Stories, comments, and discussions |
 
 ## Usage
 
@@ -35,7 +35,9 @@ const extractor = new RegexEdgeExtractor();
 const edges = extractor.extract(chunks);
 
 // Build a segment from chunks + embeddings + edges
-const segmentChunks = chunks.map((chunk, i) => ({ chunk, embedding: embeddings[i] }));
+// embedder.embedBatch() returns Float32Array[] — convert to number[] for storage
+const embeddings = await embedder.embedBatch(chunks.map(c => c.content));
+const segmentChunks = chunks.map((chunk, i) => ({ chunk, embedding: Array.from(embeddings[i]) }));
 const segment = buildSegment(segmentChunks, edges, {
   embeddingModel: 'nomic-embed-text',
   embeddingDimensions: 768,
