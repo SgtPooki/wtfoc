@@ -50,6 +50,29 @@ Do not run `pnpm lint` by itself after edits. Run `pnpm lint:fix`, then fix any 
 - Never add I/O, SDK wrappers, or business logic to `@wtfoc/common`.
 - Never use real secrets, PII, wallet keys, or non-synthetic fixtures in the repo.
 
+## Issue and Commit Discipline (NON-NEGOTIABLE)
+
+**Every piece of work must have a GitHub issue.** If there is no issue for what you are about to do, create one first.
+
+**Every commit that completes work on an issue must include `fixes #<number>` in the commit message body.** This ensures the issue is automatically closed when the commit lands on main (whether via direct push or PR merge). Use the exact format:
+
+```
+feat(search): add theme clustering command
+
+Implements k-means clustering over stored embeddings with evidence-rich
+cluster summaries.
+
+fixes #59
+```
+
+Rules:
+- Use `fixes #N` (not `closes #N`, not `resolves #N`) for consistency
+- Place it on its own line at the end of the commit message body
+- If a commit addresses multiple issues, add multiple `fixes` lines
+- If a commit partially addresses an issue, do NOT use `fixes` — instead reference it with `relates to #N` or `progress on #N`
+- Before pushing, verify that every completed issue has a commit with `fixes #N` — do not leave issues open when the work is done
+- When creating a new feature that has no issue, create the issue first, then reference it in your commit
+
 ## Edit Checklist
 
 Before editing:
@@ -66,6 +89,7 @@ After editing:
 - Run targeted tests for the changed package, then `pnpm test` if behavior changed or cross-package impact is plausible.
 - Run `pnpm -r build` for cross-package or API changes.
 - Update [`SPEC.md`](SPEC.md), README files, or specs when public behavior or contracts changed.
+- Ensure your commit message includes `fixes #N` for every issue your change completes.
 
 ## Comment Policy
 
