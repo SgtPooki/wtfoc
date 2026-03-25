@@ -9,6 +9,7 @@ import {
 	getAvailableSourceTypes,
 	HeuristicChunkScorer,
 	HeuristicEdgeExtractor,
+	LlmEdgeExtractor,
 	mergeEdges,
 	RegexEdgeExtractor,
 	rechunkOversized,
@@ -16,6 +17,7 @@ import {
 } from "@wtfoc/ingest";
 import { bundleAndUpload, generateCollectionId } from "@wtfoc/store";
 import type { Command } from "commander";
+import { type ExtractorCliOpts, resolveExtractorConfig } from "../extractor-config.js";
 import {
 	createEmbedder,
 	type EmbedderOpts,
@@ -23,24 +25,27 @@ import {
 	getStore,
 	parseSinceDuration,
 	withEmbedderOptions,
+	withExtractorOptions,
 } from "../helpers.js";
 
 export function registerIngestCommand(program: Command): void {
-	withEmbedderOptions(
-		program
-			.command("ingest <sourceType> [args...]")
-			.description("Ingest from a source (repo, slack, github, website)")
-			.requiredOption("-c, --collection <name>", "Collection name")
-			.option("--since <duration>", "Only fetch items newer than duration (e.g. 90d)")
-			.option(
-				"--batch-size <number>",
-				"Chunks per batch (default: 500, reduces memory for large sources)",
-				"500",
-			)
-			.option(
-				"--max-chunk-chars <number>",
-				`Max characters per chunk — oversized chunks are split (default: ${DEFAULT_MAX_CHUNK_CHARS})`,
-			),
+	withExtractorOptions(
+		withEmbedderOptions(
+			program
+				.command("ingest <sourceType> [args...]")
+				.description("Ingest from a source (repo, slack, github, website)")
+				.requiredOption("-c, --collection <name>", "Collection name")
+				.option("--since <duration>", "Only fetch items newer than duration (e.g. 90d)")
+				.option(
+					"--batch-size <number>",
+					"Chunks per batch (default: 500, reduces memory for large sources)",
+					"500",
+				)
+				.option(
+					"--max-chunk-chars <number>",
+					`Max characters per chunk — oversized chunks are split (default: ${DEFAULT_MAX_CHUNK_CHARS})`,
+				),
+		),
 	).action(
 		async (
 			sourceType: string,
@@ -50,7 +55,8 @@ export function registerIngestCommand(program: Command): void {
 				since?: string;
 				batchSize: string;
 				maxChunkChars?: string;
-			} & EmbedderOpts,
+			} & EmbedderOpts &
+				ExtractorCliOpts,
 		) => {
 			const store = getStore(program);
 			const format = getFormat(program.opts());
@@ -141,6 +147,24 @@ export function registerIngestCommand(program: Command): void {
 				compositeExtractor.register({ name: "regex", extractor: new RegexEdgeExtractor() });
 				compositeExtractor.register({ name: "heuristic", extractor: new HeuristicEdgeExtractor() });
 				compositeExtractor.register({ name: "code", extractor: new CodeEdgeExtractor() });
+
+				// Register LLM extractor if configured
+				const extractorConfig = resolveExtractorConfig(opts);
+				if (extractorConfig.enabled) {
+					compositeExtractor.register({
+						name: "llm",
+						extractor: new LlmEdgeExtractor({
+							baseUrl: extractorConfig.baseUrl,
+							model: extractorConfig.model,
+							apiKey: extractorConfig.apiKey,
+							jsonMode: extractorConfig.jsonMode,
+							timeoutMs: extractorConfig.timeoutMs,
+							maxConcurrency: extractorConfig.maxConcurrency,
+							maxInputTokens: extractorConfig.maxInputTokens,
+						}),
+					});
+				}
+
 				const edges = mergeEdges([
 					{ extractorName: "adapter", edges: await adapter.extractEdges(batchChunks) },
 					{ extractorName: "composite", edges: await compositeExtractor.extract(batchChunks) },
