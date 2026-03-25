@@ -69,16 +69,20 @@ describe("QdrantCollectionGc", () => {
 			const gc = createGc();
 			mockCollections.set("wtfoc-cid-abc", []);
 
+			const nowSpy = vi.spyOn(Date, "now");
+			nowSpy.mockReturnValueOnce(1000).mockReturnValueOnce(2000);
+
 			await gc.touchCollection("wtfoc-cid-abc", 3);
 			const first = mockCollections.get("wtfoc-cid-abc")?.[0]?.payload._wtfoc_last_accessed;
+			expect(first).toBe(1000);
 
-			// Small delay to ensure different timestamp
-			await new Promise((r) => setTimeout(r, 5));
 			await gc.touchCollection("wtfoc-cid-abc", 3);
 
 			const points = mockCollections.get("wtfoc-cid-abc");
 			expect(points).toHaveLength(1); // still one point (upsert)
-			expect(points?.[0]?.payload._wtfoc_last_accessed).toBeGreaterThanOrEqual(first as number);
+			expect(points?.[0]?.payload._wtfoc_last_accessed).toBe(2000);
+
+			nowSpy.mockRestore();
 		});
 	});
 

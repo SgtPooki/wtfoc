@@ -99,6 +99,8 @@ interface LoadedCollection {
 	lastAccessedAt: number;
 	/** When we last checked the manifest headId for freshness. */
 	lastValidatedAt: number;
+	/** When we last wrote the GC sentinel to Qdrant (CID collections only). */
+	lastSentinelTouchedAt: number;
 }
 
 interface CachedFile {
@@ -204,6 +206,7 @@ async function getCollection(name: string): Promise<LoadedCollection | null> {
 			loadedAt: now,
 			lastAccessedAt: now,
 			lastValidatedAt: now,
+			lastSentinelTouchedAt: 0,
 		};
 
 		// Only write cache if no newer head was loaded while we were working
@@ -237,10 +240,10 @@ async function getCollectionByCid(cid: string): Promise<LoadedCollection> {
 	if (cached) {
 		cached.lastAccessedAt = Date.now();
 		// Debounced sentinel touch — only update Qdrant if >5 min since last touch
-		if (qdrantGc && Date.now() - cached.lastValidatedAt > 300_000) {
+		if (qdrantGc && Date.now() - cached.lastSentinelTouchedAt > 300_000) {
 			const dims = cached.manifest.embeddingDimensions ?? 384;
 			qdrantGc.touchCollection(`wtfoc-cid-${cid}`, dims).catch(() => {});
-			cached.lastValidatedAt = Date.now();
+			cached.lastSentinelTouchedAt = Date.now();
 		}
 		return cached;
 	}
@@ -276,6 +279,7 @@ async function getCollectionByCid(cid: string): Promise<LoadedCollection> {
 			loadedAt: now,
 			lastAccessedAt: now,
 			lastValidatedAt: now,
+			lastSentinelTouchedAt: now,
 		};
 
 		collectionCache.set(`cid:${cid}`, loaded);
@@ -731,7 +735,10 @@ async function main() {
 			return active;
 		};
 
+		let sweepInProgress = false;
 		setInterval(async () => {
+			if (sweepInProgress) return; // skip if previous sweep still running
+			sweepInProgress = true;
 			try {
 				const deleted = await qdrantGc.sweep({
 					maxIdleMs: CID_GC_MAX_IDLE_MS,
@@ -748,6 +755,8 @@ async function main() {
 				}
 			} catch (err) {
 				console.error("⚠️  Qdrant GC sweep failed:", err);
+			} finally {
+				sweepInProgress = false;
 			}
 		}, CID_GC_SWEEP_INTERVAL_MS).unref();
 

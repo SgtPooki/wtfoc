@@ -230,13 +230,21 @@ export class QdrantCollectionGc {
 
 	async #getClient(): Promise<import("@qdrant/js-client-rest").QdrantClient> {
 		if (this.#client) return this.#client;
-		const { QdrantClient } = await import("@qdrant/js-client-rest");
-		this.#client = new QdrantClient({
-			url: this.#url,
-			apiKey: this.#apiKey,
-			checkCompatibility: false,
-		});
-		return this.#client;
+		try {
+			const { QdrantClient } = await import("@qdrant/js-client-rest");
+			this.#client = new QdrantClient({
+				url: this.#url,
+				apiKey: this.#apiKey,
+				checkCompatibility: false,
+			});
+			return this.#client;
+		} catch (err) {
+			throw new Error(
+				"Failed to initialize Qdrant client in QdrantCollectionGc. " +
+					'Ensure "@qdrant/js-client-rest" is installed.' +
+					(err instanceof Error ? ` (${err.message})` : ""),
+			);
+		}
 	}
 
 	/**
@@ -342,21 +350,21 @@ export class QdrantCollectionGc {
 		}
 
 		const now = Date.now();
-		const deleted: string[] = [];
+		const deletedSet = new Set<string>();
 
 		// Delete idle collections past TTL
 		for (const entry of entries) {
 			if (now - entry.lastAccessed > opts.maxIdleMs) {
 				await this.deleteCollection(entry.name);
-				deleted.push(entry.name);
+				deletedSet.add(entry.name);
 			}
 		}
 
 		// If still over cap, delete least-recently-accessed first
-		const remaining = cidCollections.length - deleted.length;
+		const remaining = cidCollections.length - deletedSet.size;
 		if (remaining > opts.maxCollections) {
 			const survivors = entries
-				.filter((e) => !deleted.includes(e.name))
+				.filter((e) => !deletedSet.has(e.name))
 				.sort((a, b) => a.lastAccessed - b.lastAccessed);
 
 			const toDelete = remaining - opts.maxCollections;
@@ -364,11 +372,11 @@ export class QdrantCollectionGc {
 				const survivor = survivors[i];
 				if (!survivor) continue;
 				await this.deleteCollection(survivor.name);
-				deleted.push(survivor.name);
+				deletedSet.add(survivor.name);
 			}
 		}
 
-		return deleted;
+		return [...deletedSet];
 	}
 }
 
