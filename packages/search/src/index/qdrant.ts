@@ -208,6 +208,153 @@ export class QdrantVectorIndex implements VectorIndex {
 	}
 }
 
+const SENTINEL_ID = "00000000-0000-0000-0000-000000000000";
+
+/**
+ * Standalone Qdrant garbage collector for CID-loaded collections.
+ * Operates independently of individual QdrantVectorIndex instances —
+ * holds its own client reference so it can enumerate and delete collections.
+ */
+export class QdrantCollectionGc {
+	readonly #url: string;
+	readonly #apiKey: string | undefined;
+	#client: import("@qdrant/js-client-rest").QdrantClient | null = null;
+
+	constructor(url: string, apiKey?: string) {
+		this.#url = url;
+		this.#apiKey = apiKey;
+	}
+
+	async #getClient(): Promise<import("@qdrant/js-client-rest").QdrantClient> {
+		if (this.#client) return this.#client;
+		const { QdrantClient } = await import("@qdrant/js-client-rest");
+		this.#client = new QdrantClient({
+			url: this.#url,
+			apiKey: this.#apiKey,
+			checkCompatibility: false,
+		});
+		return this.#client;
+	}
+
+	/**
+	 * Upsert a sentinel point that records when this collection was last accessed.
+	 * The sentinel is a zero-vector point with metadata in its payload.
+	 */
+	async touchCollection(collectionName: string, dimensions: number): Promise<void> {
+		const client = await this.#getClient();
+		await client.upsert(collectionName, {
+			wait: true,
+			points: [
+				{
+					id: SENTINEL_ID,
+					vector: new Array(dimensions).fill(0),
+					payload: {
+						_wtfoc_sentinel: true,
+						_wtfoc_last_accessed: Date.now(),
+					},
+				},
+			],
+		});
+	}
+
+	/**
+	 * List all Qdrant collections matching the `wtfoc-cid-` prefix.
+	 * Returns collection names.
+	 */
+	async listCidCollections(): Promise<string[]> {
+		const client = await this.#getClient();
+		const { collections } = await client.getCollections();
+		return collections.map((c) => c.name).filter((name) => name.startsWith("wtfoc-cid-"));
+	}
+
+	/**
+	 * Read the sentinel point from a collection.
+	 * Returns the `_wtfoc_last_accessed` timestamp, or null if no sentinel exists.
+	 */
+	async getLastAccessed(collectionName: string): Promise<number | null> {
+		const client = await this.#getClient();
+		try {
+			const points = await client.retrieve(collectionName, {
+				ids: [SENTINEL_ID],
+				with_payload: true,
+				with_vector: false,
+			});
+			const point = points[0];
+			if (!point) return null;
+			const payload = point.payload as Record<string, unknown> | undefined;
+			if (!payload?._wtfoc_sentinel) return null;
+			return typeof payload._wtfoc_last_accessed === "number" ? payload._wtfoc_last_accessed : null;
+		} catch {
+			return null;
+		}
+	}
+
+	/**
+	 * Delete a Qdrant collection entirely.
+	 */
+	async deleteCollection(collectionName: string): Promise<void> {
+		const client = await this.#getClient();
+		try {
+			await client.deleteCollection(collectionName);
+		} catch (err) {
+			if (!isNotFoundError(err)) throw err;
+		}
+	}
+
+	/**
+	 * Sweep CID collections that have been idle beyond `maxIdleMs`.
+	 * Respects `activeCollections` set — never deletes a collection that is
+	 * currently loaded in the in-process cache.
+	 *
+	 * Returns the names of deleted collections.
+	 */
+	async sweep(opts: {
+		maxIdleMs: number;
+		maxCollections: number;
+		activeCollections: Set<string>;
+	}): Promise<string[]> {
+		const cidCollections = await this.listCidCollections();
+		if (cidCollections.length === 0) return [];
+
+		// Gather last-accessed timestamps
+		const entries: Array<{ name: string; lastAccessed: number }> = [];
+		for (const name of cidCollections) {
+			if (opts.activeCollections.has(name)) continue;
+			const lastAccessed = await this.getLastAccessed(name);
+			entries.push({ name, lastAccessed: lastAccessed ?? 0 });
+		}
+
+		const now = Date.now();
+		const deleted: string[] = [];
+
+		// Delete idle collections past TTL
+		for (const entry of entries) {
+			if (now - entry.lastAccessed > opts.maxIdleMs) {
+				await this.deleteCollection(entry.name);
+				deleted.push(entry.name);
+			}
+		}
+
+		// If still over cap, delete least-recently-accessed first
+		const remaining = cidCollections.length - deleted.length;
+		if (remaining > opts.maxCollections) {
+			const survivors = entries
+				.filter((e) => !deleted.includes(e.name))
+				.sort((a, b) => a.lastAccessed - b.lastAccessed);
+
+			const toDelete = remaining - opts.maxCollections;
+			for (let i = 0; i < toDelete && i < survivors.length; i++) {
+				const survivor = survivors[i];
+				if (!survivor) continue;
+				await this.deleteCollection(survivor.name);
+				deleted.push(survivor.name);
+			}
+		}
+
+		return deleted;
+	}
+}
+
 function isNotFoundError(err: unknown): boolean {
 	if (err instanceof Error && "status" in err) {
 		return (err as { status: number }).status === 404;

@@ -15,6 +15,7 @@ import {
 	buildSourceIndex,
 	createVectorIndex,
 	mountCollection,
+	QdrantCollectionGc,
 	query,
 	trace,
 } from "@wtfoc/search";
@@ -32,6 +33,9 @@ const VECTOR_BACKEND = parseVectorBackend(process.env["WTFOC_VECTOR_BACKEND"]);
 const QDRANT_URL = process.env["WTFOC_QDRANT_URL"] ?? "http://localhost:6333";
 const QDRANT_API_KEY = process.env["WTFOC_QDRANT_API_KEY"];
 const COLLECTION_TTL_MS = parseTtl(process.env["WTFOC_COLLECTION_TTL"]);
+const CID_GC_MAX_IDLE_MS = parseTtl(process.env["WTFOC_CID_GC_MAX_IDLE"]) || 7 * 86_400_000; // default 7d
+const CID_GC_MAX_COLLECTIONS = Number(process.env["WTFOC_CID_GC_MAX_COLLECTIONS"] ?? "50");
+const CID_GC_SWEEP_INTERVAL_MS = parseTtl(process.env["WTFOC_CID_GC_INTERVAL"]) || 3_600_000; // default 1h
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -203,11 +207,19 @@ async function getCollection(name: string): Promise<LoadedCollection | null> {
 
 const cidInflight = new Map<string, Promise<LoadedCollection>>();
 const CID_MAX_CONCURRENT = 5;
+const qdrantGc =
+	VECTOR_BACKEND === "qdrant" ? new QdrantCollectionGc(QDRANT_URL, QDRANT_API_KEY) : null;
 
 async function getCollectionByCid(cid: string): Promise<LoadedCollection> {
 	const cached = collectionCache.get(`cid:${cid}`);
 	if (cached) {
 		cached.lastAccessedAt = Date.now();
+		// Debounced sentinel touch — only update Qdrant if >5 min since last touch
+		if (qdrantGc && Date.now() - cached.lastValidatedAt > 300_000) {
+			const dims = cached.manifest.embeddingDimensions ?? 384;
+			qdrantGc.touchCollection(`wtfoc-cid-${cid}`, dims).catch(() => {});
+			cached.lastValidatedAt = Date.now();
+		}
 		return cached;
 	}
 
@@ -245,6 +257,9 @@ async function getCollectionByCid(cid: string): Promise<LoadedCollection> {
 		};
 
 		collectionCache.set(`cid:${cid}`, loaded);
+		if (qdrantGc) {
+			qdrantGc.touchCollection(`wtfoc-cid-${cid}`, dimensions).catch(() => {});
+		}
 		console.error(
 			`✅ Loaded CID ${cid.slice(0, 16)}...: ${manifest.totalChunks} chunks, ${manifest.segments.length} segments`,
 		);
@@ -678,11 +693,40 @@ async function main() {
 		console.error(`   TTL: ${process.env["WTFOC_COLLECTION_TTL"]} (sweep every ${Math.round(SWEEP_INTERVAL / 1000)}s)`);
 	}
 
-	// TODO: Qdrant CID collection cleanup — wtfoc-cid-* collections persist
-	// in Qdrant across restarts. Need a timestamp-aware cleanup mechanism
-	// (e.g., sentinel point with _wtfoc_last_accessed) to garbage-collect
-	// old CID collections without losing data for active users. Filed as
-	// follow-up work.
+	// ─── Qdrant CID collection garbage collection ──────────────────────
+	if (qdrantGc) {
+		const activeQdrantNames = (): Set<string> => {
+			const active = new Set<string>();
+			for (const [key] of collectionCache) {
+				if (key.startsWith("cid:")) {
+					active.add(`wtfoc-${key.replace(":", "-")}`);
+				}
+			}
+			return active;
+		};
+
+		setInterval(async () => {
+			try {
+				const deleted = await qdrantGc.sweep({
+					maxIdleMs: CID_GC_MAX_IDLE_MS,
+					maxCollections: CID_GC_MAX_COLLECTIONS,
+					activeCollections: activeQdrantNames(),
+				});
+				if (deleted.length > 0) {
+					console.error(`♻️  Qdrant GC: deleted ${deleted.length} idle CID collection(s): ${deleted.join(", ")}`);
+					// Also evict from in-process cache
+					for (const name of deleted) {
+						const cid = name.replace("wtfoc-cid-", "");
+						collectionCache.delete(`cid:${cid}`);
+					}
+				}
+			} catch (err) {
+				console.error("⚠️  Qdrant GC sweep failed:", err);
+			}
+		}, CID_GC_SWEEP_INTERVAL_MS).unref();
+
+		console.error(`   Qdrant GC: sweep every ${Math.round(CID_GC_SWEEP_INTERVAL_MS / 60_000)}min, max idle ${Math.round(CID_GC_MAX_IDLE_MS / 86_400_000)}d, max ${CID_GC_MAX_COLLECTIONS} CID collections`);
+	}
 
 	server.listen(PORT, () => {
 		console.error(`\n🌐 wtfoc web running at http://localhost:${PORT}`);
