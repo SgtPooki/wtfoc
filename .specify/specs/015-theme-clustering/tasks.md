@@ -28,12 +28,12 @@
 
 - [ ] T005 Create cosine similarity utility with pre-normalization and top-k heap in packages/search/src/clustering/cosine.ts
 - [ ] T006 [P] Create cluster state read/write module (load/save JSON from `~/.wtfoc/clusters/{collection}/state.json`) in packages/search/src/clustering/cluster-state.ts
-- [ ] T007 [P] Create TF-IDF term extraction utility for cluster labeling in packages/search/src/clustering/terms.ts
+- [ ] T007 [P] Create cluster label extraction utility (first meaningful words from exemplar text, stop-word filtered) in packages/search/src/clustering/labels.ts
 - [ ] T008 Create packages/search/src/clustering/index.ts re-exporting all clustering modules
 - [ ] T009 Export clustering modules from packages/search/src/index.ts
 - [ ] T010 [P] Write tests for cosine similarity utility in packages/search/src/clustering/cosine.test.ts
 - [ ] T011 [P] Write tests for cluster state persistence in packages/search/src/clustering/cluster-state.test.ts
-- [ ] T012 [P] Write tests for TF-IDF term extraction in packages/search/src/clustering/terms.test.ts
+- [ ] T012 [P] Write tests for cluster label extraction in packages/search/src/clustering/labels.test.ts
 
 **Checkpoint**: Foundation ready — Clusterer interface defined, utilities tested, state persistence working
 
@@ -49,7 +49,7 @@
 
 - [ ] T013 [US1] Implement `AnnClusterer` with batch mode (greedy threshold-based single-pass clustering) in packages/search/src/clustering/ann-clusterer.ts
 - [ ] T014 [US1] Implement exemplar selection (3 closest to cluster centroid) in the AnnClusterer
-- [ ] T015 [US1] Implement `enrichClusters()` — builds ThemeCluster output from ClusterResult + segment data (exemplar content, source distribution, signal aggregates, TF-IDF labels) in packages/search/src/clustering/enrich.ts
+- [ ] T015 [US1] Implement `enrichClusters()` — builds ThemeCluster output from ClusterResult + segment data (exemplar content, source distribution, signal aggregates, exemplar-text labels) in packages/search/src/clustering/enrich.ts
 - [ ] T016 [US1] Create `registerThemesCommand()` in packages/cli/src/commands/themes.ts — loads collection via mountCollection, runs clusterer, enriches, outputs ranked clusters (top 20, largest first)
 - [ ] T017 [US1] Register themes command in packages/cli/src/cli.ts
 - [ ] T018 [US1] Write tests for AnnClusterer batch mode with synthetic fixtures in packages/search/src/clustering/ann-clusterer.test.ts

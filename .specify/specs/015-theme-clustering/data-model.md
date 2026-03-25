@@ -23,7 +23,7 @@ Input to the clusterer.
 |-------|------|---------|-------------|
 | targetClusterCount | number | undefined | Optional hint for target cluster count |
 | minClusterSize | number | 3 | Minimum members for a cluster to be retained |
-| similarityThreshold | number | 0.75 | Cosine similarity threshold for assignment |
+| similarityThreshold | number | 0.85 | Cosine similarity threshold for assignment |
 | mode | "batch" \| "incremental" | "incremental" | Full rebuild or assign-only |
 
 ### ClusterResult
@@ -69,7 +69,7 @@ User-facing enriched cluster for CLI/API output. Not persisted — computed on t
 | rank | number | 1-based rank by size |
 | size | number | Number of member chunks |
 | label | string | Auto-generated heuristic label from top terms |
-| topTerms | string[] | Most representative terms (TF-IDF within cluster) |
+| topTerms | string[] | Most representative terms (extracted from exemplar text, stop-word filtered) |
 | exemplars | ExemplarChunk[] | Representative chunks with content + source |
 | sourceDistribution | Record<string, number> | sourceType → chunk count |
 | signalAggregates | Record<string, number> | signalType → average score |

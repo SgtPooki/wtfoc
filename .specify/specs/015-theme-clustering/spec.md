@@ -98,7 +98,7 @@ A CI pipeline or agent runs `wtfoc themes -c foc-ecosystem --json` to get struct
 ### Key Entities
 
 - **Clusterer** (interface): Pluggable clustering algorithm. Methods: `cluster(request)` for batch mode, `assign(request)` for incremental mode. Lives in `@wtfoc/common`.
-- **ClusterRequest**: Input to the clusterer — chunk IDs, embedding references, optional existing cluster state, algorithm-specific options (e.g., `targetClusterCount`, `minClusterSize`, `similarityThreshold`). Default similarity threshold for incremental assignment: cosine similarity >= 0.75.
+- **ClusterRequest**: Input to the clusterer — chunk IDs, embedding references, optional existing cluster state, algorithm-specific options (e.g., `targetClusterCount`, `minClusterSize`, `similarityThreshold`). Default similarity threshold for incremental assignment: cosine similarity >= 0.85 (0.75 was tested in production and produced mega-clusters).
 - **ClusterResult**: Output from the clusterer — array of clusters, each with: cluster ID, member chunk IDs, exemplar chunk IDs, confidence score, optional algorithm-specific metadata.
 - **ThemeCluster**: A group of semantically similar chunks. Contains: cluster ID, member chunk IDs, exemplar chunk IDs, size, top terms, source type distribution, signal score aggregates, confidence, auto-generated label.
 - **ClusterState**: Persisted mutable artifact containing current cluster assignments for a collection. Keyed by collection ID. Updated incrementally or rebuilt on demand. Not stored in segments.
@@ -126,7 +126,7 @@ A CI pipeline or agent runs `wtfoc themes -c foc-ecosystem --json` to get struct
 ### Session 2026-03-25
 
 - Q: Where should cluster state be persisted? → A: Separate cluster-state store at `~/.wtfoc/clusters/{collection}/{revision}/state.json`, not in manifests or segments.
-- Q: What is the default similarity threshold for incremental assignment? → A: Cosine similarity >= 0.75 (moderate — balanced between over-fragmentation and over-merging).
+- Q: What is the default similarity threshold for incremental assignment? → A: Cosine similarity >= 0.85. Initial suggestion was 0.75 but production testing showed this creates mega-clusters (3,736 items in one cluster). 0.85 is the proven threshold.
 - Q: What is the default maximum cluster count? → A: No fixed cap. The default algorithm is threshold-driven; cluster count is determined organically. CLI limits displayed clusters to top 20.
 
 ## Related Issues

@@ -64,7 +64,8 @@ packages/search/src/
 └── clustering/
     ├── index.ts                  # Re-exports
     ├── ann-clusterer.ts          # Default ANN-based incremental implementation
-    ├── kmeans.ts                 # K-means utility (used internally by ANN for initial seeding)
+    ├── labels.ts                 # Cluster label extraction (exemplar text, stop-word filtered)
+    ├── cosine.ts                 # Optimized cosine similarity with pre-normalization
     └── cluster-state.ts          # ClusterState persistence (read/write JSON)
 
 packages/cli/src/
