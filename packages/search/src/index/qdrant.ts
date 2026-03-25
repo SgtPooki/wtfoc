@@ -224,7 +224,7 @@ export class QdrantVectorIndex implements VectorIndex {
 		const stalePointIds: string[] = [];
 		let nextOffset: string | number | null | undefined;
 
-		// Cursor-based scroll through all points
+		// Cursor-based scroll through all points, flushing deletes incrementally
 		do {
 			signal?.throwIfAborted();
 
@@ -241,21 +241,30 @@ export class QdrantVectorIndex implements VectorIndex {
 				if (payload?._wtfoc_sentinel === true) continue;
 
 				const wtfocId = payload?._wtfoc_id;
-				if (typeof wtfocId === "string" && !expectedIds.has(wtfocId)) {
+				// Treat missing/invalid _wtfoc_id as orphaned (not just mismatched)
+				if (typeof wtfocId !== "string" || !expectedIds.has(wtfocId)) {
 					stalePointIds.push(String(point.id));
+				}
+
+				// Flush deletes incrementally to keep memory bounded
+				if (stalePointIds.length >= DELETE_BATCH_SIZE) {
+					signal?.throwIfAborted();
+					await client.delete(this.#options.collectionName, {
+						wait: true,
+						points: stalePointIds.splice(0, DELETE_BATCH_SIZE),
+					});
 				}
 			}
 
 			nextOffset = result.next_page_offset;
 		} while (nextOffset != null);
 
-		// Delete stale points in batches
-		for (let i = 0; i < stalePointIds.length; i += DELETE_BATCH_SIZE) {
+		// Flush remaining stale points
+		if (stalePointIds.length > 0) {
 			signal?.throwIfAborted();
-			const batch = stalePointIds.slice(i, i + DELETE_BATCH_SIZE);
 			await client.delete(this.#options.collectionName, {
 				wait: true,
-				points: batch,
+				points: stalePointIds,
 			});
 		}
 

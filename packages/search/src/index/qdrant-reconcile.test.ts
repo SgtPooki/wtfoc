@@ -208,8 +208,8 @@ describe("QdrantVectorIndex.reconcile", () => {
 	it("handles multiple scroll pages", async () => {
 		const index = createIndex();
 
-		// Create more points than BATCH_SIZE (1000) — use a smaller set
-		// and override scroll to simulate pagination
+		// Create a small set of points and rely on mocked scroll pagination
+		// to simulate multiple pages of results
 		const points: MockPoint[] = [];
 		for (let i = 0; i < 5; i++) {
 			points.push(makePoint(`uuid-${i}`, `chunk-${i}`));

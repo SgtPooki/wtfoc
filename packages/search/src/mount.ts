@@ -24,9 +24,18 @@ export interface MountOptions {
 	 */
 	resolveRevision?: (revisionId: string, signal?: AbortSignal) => Promise<CollectionRevision>;
 	/**
-	 * If true, delete orphan vectors from the vector index after upserting
-	 * all current chunks. Only effective when the vector index supports
-	 * reconciliation (e.g. QdrantVectorIndex). Defaults to false.
+	 * If true, after mounting and upserting all current chunks, reconcile the
+	 * backing vector index against the expected set of vector IDs derived from
+	 * the mounted segments and delete any orphan vectors.
+	 *
+	 * Reconciliation is an opt-in O(n) operation that may scan the entire
+	 * index for the mounted collection, so it is primarily intended for
+	 * persisted vector backends where stale vectors can accumulate over time.
+	 *
+	 * Only effective when the vector index implementation exposes a
+	 * `reconcile` method (e.g. QdrantVectorIndex). Defaults to false; when
+	 * false, existing vectors are left untouched and only new or updated
+	 * chunks are upserted.
 	 */
 	reconcile?: boolean;
 }
