@@ -11,7 +11,7 @@ set -euo pipefail
 # See docs/demos/upload-flow-trace/README.md for the full writeup.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 cd "$REPO_ROOT"
 
 COLLECTION="foc-upload-flow"

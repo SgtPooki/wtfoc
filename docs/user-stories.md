@@ -30,17 +30,17 @@ Use stable IDs. Do not renumber existing stories.
 |----|-------|------|--------|----------|---------|------|-------|
 | `US-001` | Trace bug lineage across issues, PRs, comments, and repos | Engineer investigating bugs | `validated` | `high` | `docs/demos/upload-flow-trace/run.sh` | `docs/demos/upload-flow-trace.md` | [#54](https://github.com/SgtPooki/wtfoc/issues/54) |
 | `US-002` | Use `wtfoc` as a decentralized evidence layer in a RAG pipeline | AI engineer building RAG systems | `planned` | `high` | `-` | `-` | [#55](https://github.com/SgtPooki/wtfoc/issues/55) |
-| `US-003` | Cluster repeated feature requests and unmet complaints across repos | Product or engineering lead prioritizing work | `planned` | `high` | `-` | `-` | [#57](https://github.com/SgtPooki/wtfoc/issues/57), [#59](https://github.com/SgtPooki/wtfoc/issues/59) |
-| `US-004` | Detect stale documentation and undocumented implemented features | Maintainer or DX owner improving docs quality | `planned` | `medium` | `-` | `-` | [#58](https://github.com/SgtPooki/wtfoc/issues/58) |
-| `US-005` | Build a unified knowledge graph across GitHub, docs sites, and chat | Team lead or DX engineer onboarding to a project | `validated` | `high` | `-` | `-` | `-` |
-| `US-006` | Validate a knowledge graph locally then promote to decentralized storage | Builder evaluating wtfoc before committing to FOC | `planned` | `high` | `-` | `-` | [#60](https://github.com/SgtPooki/wtfoc/issues/60) |
+| `US-003` | Cluster repeated feature requests and unmet complaints across repos | Product or engineering lead prioritizing work | `needs-example` | `high` | `docs/demos/theme-discovery/run.sh` | `docs/demos/theme-discovery/README.md` | [#57](https://github.com/SgtPooki/wtfoc/issues/57), [#59](https://github.com/SgtPooki/wtfoc/issues/59) |
+| `US-004` | Detect stale documentation and undocumented implemented features | Maintainer or DX owner improving docs quality | `needs-example` | `medium` | `docs/demos/drift-analysis/run.sh` | `docs/demos/drift-analysis/README.md` | [#58](https://github.com/SgtPooki/wtfoc/issues/58) |
+| `US-005` | Build a unified knowledge graph across GitHub, docs sites, and chat | Team lead or DX engineer onboarding to a project | `validated` | `high` | `docs/demos/upload-flow-trace/run.sh` | `docs/demos/upload-flow-trace/README.md` | `-` |
+| `US-006` | Validate a knowledge graph locally then promote to decentralized storage | Builder evaluating wtfoc before committing to FOC | `needs-example` | `high` | `docs/demos/local-to-foc/run.sh` | `docs/demos/local-to-foc/README.md` | [#60](https://github.com/SgtPooki/wtfoc/issues/60) |
 | `US-007` | Score and classify ingested chunks by signal type (pain, praise, feature request, etc.) | Product lead or engineer filtering knowledge by intent | `planned` | `high` | `-` | `-` | [#61](https://github.com/SgtPooki/wtfoc/issues/61) |
 | `US-008` | Ingest community discussions from Reddit, HN, and other public forums | Team tracking external signal about their project | `planned` | `medium` | `-` | `-` | [#65](https://github.com/SgtPooki/wtfoc/issues/65) |
-| `US-009` | Visualize the knowledge graph as an interactive web UI | Anyone demoing or exploring cross-source connections | `planned` | `high` | `-` | `-` | [#67](https://github.com/SgtPooki/wtfoc/issues/67) |
+| `US-009` | Visualize the knowledge graph as an interactive web UI | Anyone demoing or exploring cross-source connections | `needs-example` | `high` | `-` | `docs/demos/full-stack/README.md` | [#67](https://github.com/SgtPooki/wtfoc/issues/67) |
 | `US-010` | Review and validate extracted edges before promoting to FOC | Builder curating knowledge graph quality before immutable storage | `planned` | `medium` | `-` | `-` | [#69](https://github.com/SgtPooki/wtfoc/issues/69) |
 | `US-011` | Get notified when high-relevance content is ingested | Team wanting proactive alerts from their knowledge graph | `planned` | `medium` | `-` | `-` | [#70](https://github.com/SgtPooki/wtfoc/issues/70) |
 | `US-012` | Find unresolved TODOs in source code | Tech lead auditing codebase health | `idea` | `-` | `-` | `-` | `-` |
-| `US-013` | Incrementally ingest and monitor sources over time | Team maintaining a living knowledge graph | `proposed` | `high` | `-` | `-` | `-` |
+| `US-013` | Incrementally ingest and monitor sources over time | Team maintaining a living knowledge graph | `needs-example` | `high` | `docs/demos/incremental-ingest/run.sh` | `docs/demos/incremental-ingest/README.md` | [#118](https://github.com/SgtPooki/wtfoc/issues/118) |
 | `US-014` | Surface unanswered community questions that don't match existing knowledge | DX or product lead identifying coverage gaps | `proposed` | `high` | `-` | `-` | `-` |
 
 ## How To Add A Story
@@ -105,11 +105,11 @@ If a story is only an idea, that is fine. Mark it `proposed` and leave missing l
 | Why `wtfoc` | `wtfoc` can combine semantic clustering, explicit evidence links, and cross-repo trace to connect user feedback with implementation reality |
 | Inputs | Issues, comments, discussions, and related code/doc artifacts across one or more repos |
 | Expected output | A cluster of repeated requests with supporting evidence, a likely implemented vs unmet assessment, and likely repos/files/subsystems that would need to change |
-| Example/demo | `-` |
-| Docs | `-` |
+| Example/demo | `docs/demos/theme-discovery/run.sh` |
+| Docs | `docs/demos/theme-discovery/README.md` |
 | Issue/spec | [#57](https://github.com/SgtPooki/wtfoc/issues/57) |
-| Status | `planned` |
-| Open gaps | Need a clustering/output model, a way to assess whether requests appear implemented, and heuristics for mapping feedback clusters to code surfaces |
+| Status | `needs-example` |
+| Open gaps | `themes` command covers clustering; need signal-type classification to distinguish requests from complaints. Need a clustering/output model, a way to assess whether requests appear implemented, and heuristics for mapping feedback clusters to code surfaces |
 
 ### `US-004` Detect stale documentation and undocumented implemented features
 
@@ -121,11 +121,11 @@ If a story is only an idea, that is fine. Mark it `proposed` and leave missing l
 | Why `wtfoc` | `wtfoc` can connect docs, code, tests, issues, and PRs to surface likely contradictions and missing documentation based on evidence |
 | Inputs | Docs files, code, tests, PRs, issues, and changelog-like artifacts across one or more repos |
 | Expected output | A prioritized list of likely stale docs and undocumented features, each with supporting evidence and likely files/docs to update |
-| Example/demo | `-` |
-| Docs | `-` |
+| Example/demo | `docs/demos/drift-analysis/run.sh` |
+| Docs | `docs/demos/drift-analysis/README.md` |
 | Issue/spec | [#58](https://github.com/SgtPooki/wtfoc/issues/58) |
-| Status | `planned` |
-| Open gaps | Need heuristics for code-to-doc and doc-to-code comparison, evidence thresholds for drift, and a useful output format for prioritizing docs work |
+| Status | `needs-example` |
+| Open gaps | `/drift-check` skill works and has been validated on real collections (found undocumented `presignForCommit()` step, unclear upload behavior, missing contract upgrade docs). Needs a dedicated web UI panel and more sophisticated diff heuristics |
 
 ### `US-005` Build a unified knowledge graph across GitHub, docs sites, and chat
 
@@ -137,8 +137,8 @@ If a story is only an idea, that is fine. Mark it `proposed` and leave missing l
 | Why `wtfoc` | `wtfoc` has pluggable source adapters that normalize all sources into chunks with edges, enabling cross-source semantic search and trace |
 | Inputs | GitHub repos, documentation site URLs, Slack/Discord exports or API tokens |
 | Expected output | A single collection where `query` and `trace` return results spanning all ingested sources with source attribution |
-| Example/demo | `-` |
-| Docs | `-` |
+| Example/demo | `docs/demos/upload-flow-trace/run.sh` |
+| Docs | `docs/demos/upload-flow-trace/README.md` |
 | Issue/spec | `-` |
 | Status | `validated` |
 | Open gaps | Validated with GitHub adapter + website adapter (docs.filecoin.cloud, 2,959 chunks). Slack adapter blocked on workspace approval (#10). Discord adapter built but deprioritized. Need a polished onboarding script showing the full multi-source flow. |
@@ -153,11 +153,11 @@ If a story is only an idea, that is fine. Mark it `proposed` and leave missing l
 | Why `wtfoc` | wtfoc already has pluggable storage backends (local, FOC) and content-addressed segments — promotion is a natural migration path |
 | Inputs | An existing local collection with segments and manifest |
 | Expected output | `wtfoc promote <collection> --storage foc` bundles segments into CAR, uploads to FOC, updates manifest with new CIDs |
-| Example/demo | `-` |
-| Docs | `-` |
+| Example/demo | `docs/demos/local-to-foc/run.sh` |
+| Docs | `docs/demos/local-to-foc/README.md` |
 | Issue/spec | [#60](https://github.com/SgtPooki/wtfoc/issues/60) |
-| Status | `planned` |
-| Open gaps | Need to decide on idempotency behavior, whether to support reverse direction (FOC → local), and cleanup of local copies after promotion |
+| Status | `needs-example` |
+| Open gaps | Promote command works but sharing flow needs verification: promote outputs carRootCid (directory of segments) while web UI CID input expects manifest CID. Need to decide on idempotency behavior, whether to support reverse direction (FOC → local), and cleanup of local copies after promotion |
 
 ### `US-007` Score and classify ingested chunks by signal type
 
@@ -265,11 +265,11 @@ If a story is only an idea, that is fine. Mark it `proposed` and leave missing l
 | Why `wtfoc` | The manifest chain already tracks segments and their sources. Extending this to track ingest cursors (last fetched timestamp, source config, `--since` watermark) per source would make incremental updates automatic and idempotent |
 | Inputs | A collection with previously ingested sources, plus new content arriving in those sources over time |
 | Expected output | `wtfoc sync -c my-collection` fetches only new content since the last successful ingest for each source. `wtfoc sources -c my-collection` shows per-source status: last ingested timestamp, cursor position, whether backfill is complete, chunk count. Source ingest config (type, args, `--since`) is persisted in the manifest or a sidecar config so re-running is zero-config |
-| Example/demo | `-` |
-| Docs | `-` |
-| Issue/spec | `-` |
-| Status | `proposed` |
-| Open gaps | Need a source registry schema (type, config, last cursor, backfill status) persisted per collection. Need to decide: store in manifest vs `.wtfoc.json` project config (#39). Need to define cursor semantics per adapter (GitHub uses `since` ISO date, Slack uses message timestamp, HN uses Algolia page offset). Need a `wtfoc sync` or `wtfoc update` command that reads the registry and runs incremental ingests |
+| Example/demo | `docs/demos/incremental-ingest/run.sh` |
+| Docs | `docs/demos/incremental-ingest/README.md` |
+| Issue/spec | [#118](https://github.com/SgtPooki/wtfoc/issues/118) |
+| Status | `needs-example` |
+| Open gaps | Manual incremental ingest works today (append + content-hash dedup + `--since`). Need a source registry schema (type, config, last cursor, backfill status) persisted per collection. Need to decide: store in manifest vs `.wtfoc.json` project config (#39). Need to define cursor semantics per adapter (GitHub uses `since` ISO date, Slack uses message timestamp, HN uses Algolia page offset). Need a `wtfoc sync` or `wtfoc update` command that reads the registry and runs incremental ingests |
 
 ### `US-014` Surface unanswered community questions that don't match existing knowledge
 
