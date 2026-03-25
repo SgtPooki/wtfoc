@@ -101,6 +101,9 @@ export class QdrantVectorIndex implements VectorIndex {
 				limit: topK,
 				with_payload: true,
 				with_vector: true,
+				filter: {
+					must_not: [{ key: "_wtfoc_sentinel", match: { value: true } }],
+				},
 			});
 
 			return results.map((point) => {
@@ -269,9 +272,16 @@ export class QdrantCollectionGc {
 
 	/**
 	 * Read the sentinel point from a collection.
-	 * Returns the `_wtfoc_last_accessed` timestamp, or null if no sentinel exists.
+	 * Returns:
+	 * - `{ status: "found", lastAccessed: number }` if sentinel exists
+	 * - `{ status: "missing" }` if no sentinel point (collection exists but no GC metadata)
+	 * - `{ status: "error" }` if Qdrant is unreachable or returns an unexpected error
 	 */
-	async getLastAccessed(collectionName: string): Promise<number | null> {
+	async getLastAccessed(
+		collectionName: string,
+	): Promise<
+		{ status: "found"; lastAccessed: number } | { status: "missing" } | { status: "error" }
+	> {
 		const client = await this.#getClient();
 		try {
 			const points = await client.retrieve(collectionName, {
@@ -280,12 +290,17 @@ export class QdrantCollectionGc {
 				with_vector: false,
 			});
 			const point = points[0];
-			if (!point) return null;
+			if (!point) return { status: "missing" };
 			const payload = point.payload as Record<string, unknown> | undefined;
-			if (!payload?._wtfoc_sentinel) return null;
-			return typeof payload._wtfoc_last_accessed === "number" ? payload._wtfoc_last_accessed : null;
-		} catch {
-			return null;
+			if (!payload?._wtfoc_sentinel) return { status: "missing" };
+			return typeof payload._wtfoc_last_accessed === "number"
+				? { status: "found", lastAccessed: payload._wtfoc_last_accessed }
+				: { status: "missing" };
+		} catch (err) {
+			// 404 = collection doesn't exist, treat as missing
+			if (isNotFoundError(err)) return { status: "missing" };
+			// Anything else is a transient error — do NOT treat as deletable
+			return { status: "error" };
 		}
 	}
 
@@ -316,12 +331,14 @@ export class QdrantCollectionGc {
 		const cidCollections = await this.listCidCollections();
 		if (cidCollections.length === 0) return [];
 
-		// Gather last-accessed timestamps
+		// Gather last-accessed timestamps (skip collections with transient errors)
 		const entries: Array<{ name: string; lastAccessed: number }> = [];
 		for (const name of cidCollections) {
 			if (opts.activeCollections.has(name)) continue;
-			const lastAccessed = await this.getLastAccessed(name);
-			entries.push({ name, lastAccessed: lastAccessed ?? 0 });
+			const result = await this.getLastAccessed(name);
+			if (result.status === "error") continue; // transient failure — don't delete
+			const lastAccessed = result.status === "found" ? result.lastAccessed : 0;
+			entries.push({ name, lastAccessed });
 		}
 
 		const now = Date.now();

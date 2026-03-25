@@ -104,7 +104,7 @@ describe("QdrantCollectionGc", () => {
 	});
 
 	describe("getLastAccessed", () => {
-		it("returns timestamp from sentinel point", async () => {
+		it("returns found with timestamp from sentinel point", async () => {
 			const gc = createGc();
 			const now = Date.now();
 			mockCollections.set("wtfoc-cid-abc", [
@@ -116,18 +116,18 @@ describe("QdrantCollectionGc", () => {
 			]);
 
 			const result = await gc.getLastAccessed("wtfoc-cid-abc");
-			expect(result).toBe(now);
+			expect(result).toEqual({ status: "found", lastAccessed: now });
 		});
 
-		it("returns null when no sentinel exists", async () => {
+		it("returns missing when no sentinel exists", async () => {
 			const gc = createGc();
 			mockCollections.set("wtfoc-cid-abc", []);
 
 			const result = await gc.getLastAccessed("wtfoc-cid-abc");
-			expect(result).toBeNull();
+			expect(result).toEqual({ status: "missing" });
 		});
 
-		it("returns null for non-sentinel points", async () => {
+		it("returns missing for non-sentinel points", async () => {
 			const gc = createGc();
 			mockCollections.set("wtfoc-cid-abc", [
 				{
@@ -138,7 +138,15 @@ describe("QdrantCollectionGc", () => {
 			]);
 
 			const result = await gc.getLastAccessed("wtfoc-cid-abc");
-			expect(result).toBeNull();
+			expect(result).toEqual({ status: "missing" });
+		});
+
+		it("returns error on transient retrieve failure", async () => {
+			const gc = createGc();
+			mockClient.retrieve.mockRejectedValueOnce(new Error("connection refused"));
+
+			const result = await gc.getLastAccessed("wtfoc-cid-abc");
+			expect(result).toEqual({ status: "error" });
 		});
 	});
 
@@ -249,6 +257,42 @@ describe("QdrantCollectionGc", () => {
 			});
 
 			expect(deleted).toEqual(["wtfoc-cid-no-sentinel"]);
+		});
+
+		it("skips collections with transient retrieve errors", async () => {
+			const gc = createGc();
+			const old = Date.now() - 30 * 86_400_000;
+
+			// One healthy old collection
+			mockCollections.set("wtfoc-cid-old", [
+				{
+					id: "00000000-0000-0000-0000-000000000000",
+					payload: { _wtfoc_sentinel: true, _wtfoc_last_accessed: old },
+					vector: [0],
+				},
+			]);
+			// One collection that will error on retrieve
+			mockCollections.set("wtfoc-cid-erroring", []);
+
+			// Make retrieve fail for the erroring collection
+			const origRetrieve = mockClient.retrieve.getMockImplementation();
+			mockClient.retrieve.mockImplementation(async (name: string, opts: { ids: string[] }) => {
+				if (name === "wtfoc-cid-erroring") throw new Error("connection refused");
+				const points = mockCollections.get(name) ?? [];
+				return points.filter((p: MockPoint) => opts.ids.includes(p.id));
+			});
+
+			const deleted = await gc.sweep({
+				maxIdleMs: 7 * 86_400_000,
+				maxCollections: 50,
+				activeCollections: new Set(),
+			});
+
+			// Should delete the old one but skip the erroring one
+			expect(deleted).toEqual(["wtfoc-cid-old"]);
+			expect(mockCollections.has("wtfoc-cid-erroring")).toBe(true);
+
+			if (origRetrieve) mockClient.retrieve.mockImplementation(origRetrieve);
 		});
 	});
 });

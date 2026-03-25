@@ -33,9 +33,9 @@ const VECTOR_BACKEND = parseVectorBackend(process.env["WTFOC_VECTOR_BACKEND"]);
 const QDRANT_URL = process.env["WTFOC_QDRANT_URL"] ?? "http://localhost:6333";
 const QDRANT_API_KEY = process.env["WTFOC_QDRANT_API_KEY"];
 const COLLECTION_TTL_MS = parseTtl(process.env["WTFOC_COLLECTION_TTL"]);
-const CID_GC_MAX_IDLE_MS = parseTtl(process.env["WTFOC_CID_GC_MAX_IDLE"]) || 7 * 86_400_000; // default 7d
-const CID_GC_MAX_COLLECTIONS = Number(process.env["WTFOC_CID_GC_MAX_COLLECTIONS"] ?? "50");
-const CID_GC_SWEEP_INTERVAL_MS = parseTtl(process.env["WTFOC_CID_GC_INTERVAL"]) || 3_600_000; // default 1h
+const CID_GC_MAX_IDLE_MS = parseTtlWithDefault(process.env["WTFOC_CID_GC_MAX_IDLE"], 7 * 86_400_000);
+const CID_GC_MAX_COLLECTIONS = parsePositiveInt(process.env["WTFOC_CID_GC_MAX_COLLECTIONS"], 50);
+const CID_GC_SWEEP_INTERVAL_MS = parseTtlWithDefault(process.env["WTFOC_CID_GC_INTERVAL"], 3_600_000);
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -64,6 +64,28 @@ function parseTtl(value: string | undefined): number {
 		ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000,
 	};
 	return n * multipliers[unit];
+}
+
+/** Parse a TTL env var with a fallback default. Returns 0 only if explicitly set to "0" or "0ms". */
+function parseTtlWithDefault(value: string | undefined, defaultMs: number): number {
+	if (!value) return defaultMs;
+	if (value === "0" || value === "0ms") return 0; // explicit disable
+	const parsed = parseTtl(value);
+	if (parsed === 0) {
+		console.error(`[wtfoc] Invalid GC TTL "${value}", using default ${defaultMs}ms`);
+		return defaultMs;
+	}
+	return parsed;
+}
+
+function parsePositiveInt(value: string | undefined, defaultVal: number): number {
+	if (!value) return defaultVal;
+	const n = Number(value);
+	if (!Number.isFinite(n) || n < 1) {
+		console.error(`[wtfoc] Invalid positive integer "${value}", using default ${defaultVal}`);
+		return defaultVal;
+	}
+	return Math.floor(n);
 }
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -701,6 +723,10 @@ async function main() {
 				if (key.startsWith("cid:")) {
 					active.add(`wtfoc-${key.replace(":", "-")}`);
 				}
+			}
+			// Protect in-flight CID mounts that haven't been cached yet
+			for (const cid of cidInflight.keys()) {
+				active.add(`wtfoc-cid-${cid}`);
 			}
 			return active;
 		};
