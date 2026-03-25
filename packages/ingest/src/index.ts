@@ -14,6 +14,7 @@ export {
 	type MarkdownChunkerOptions,
 	rechunkOversized,
 } from "./chunker.js";
+export { CompositeEdgeExtractor } from "./edges/composite.js";
 export type { ChangedFile } from "./edges/extractor.js";
 export {
 	buildBatchRepoAffinity,
@@ -21,6 +22,7 @@ export {
 	inferRepoFromContent,
 	RegexEdgeExtractor,
 } from "./edges/extractor.js";
+export { edgeKey, mergeEdges } from "./edges/merge.js";
 export { HeuristicChunkScorer } from "./scoring.js";
 export {
 	buildSegment,
