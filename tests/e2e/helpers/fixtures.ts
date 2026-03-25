@@ -6,11 +6,13 @@ export const FIXTURE_SYNAPSE_SDK = `# Synapse SDK
 
 The synapse-sdk provides decentralized storage on Filecoin.
 It uses content-addressed data structures (CIDs) for immutable references.
+Refs #42 for the gas optimization work that improved upload throughput.
 
 ## Upload API
 
 Use \`synapse.upload(data)\` to store content on the network.
 The upload returns a CID that can be used to retrieve the data later.
+This closes #15 with the new batching approach for multi-file uploads.
 
 ## Retrieval
 

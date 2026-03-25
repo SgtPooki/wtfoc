@@ -17,9 +17,9 @@ test.describe("collection list", () => {
 		const cards = grid.locator(".collection-card");
 		await expect(cards.first()).toBeVisible();
 
-		// Each card shows a name and metadata
+		// Card should show "ui-test" collection name and metadata
 		const firstCard = cards.first();
-		await expect(firstCard.locator("h3")).not.toBeEmpty();
+		await expect(firstCard.locator("h3")).toHaveText("ui-test");
 		await expect(firstCard.locator(".collection-meta")).toBeVisible();
 	});
 

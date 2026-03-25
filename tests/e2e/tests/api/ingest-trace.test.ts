@@ -76,6 +76,14 @@ describe("ingest → trace round-trip", () => {
 		}
 	});
 
+	it("edge extraction produces edges from cross-references in fixtures", async () => {
+		const res = await fetch(`${server.baseUrl}/api/collections/trace-test/edges`);
+		expect(res.ok).toBe(true);
+		const data = await res.json() as { totalEdges: number; resolvedEdges: number };
+		// Fixtures contain "Refs #42" and "closes #15" which should produce edges
+		expect(data.totalEdges).toBeGreaterThan(0);
+	});
+
 	it("returns 400 for missing trace query", async () => {
 		const res = await fetch(`${server.baseUrl}/api/collections/trace-test/trace`);
 		expect(res.status).toBe(400);

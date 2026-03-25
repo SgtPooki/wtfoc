@@ -72,11 +72,17 @@ describe("ingest → query round-trip", () => {
 		const data = await res.json() as { results: Array<{ content: string; score: number; source: string }> };
 		expect(data.results.length).toBeGreaterThan(0);
 
-		// Results should be about uploading/storage since that's what we queried
+		// Top result should be semantically relevant to "upload file storage"
 		const topResult = data.results[0]!;
 		expect(topResult.score).toBeGreaterThan(0);
 		expect(topResult.content.length).toBeGreaterThan(0);
 		expect(topResult.source).toBeTruthy();
+		// Content should contain upload/storage-related terms from our fixtures
+		const contentLower = topResult.content.toLowerCase();
+		const hasRelevantTerm = ["upload", "store", "storage", "file", "network"].some(
+			(term) => contentLower.includes(term),
+		);
+		expect(hasRelevantTerm).toBe(true);
 	});
 
 	it("returns results from both sources", async () => {
