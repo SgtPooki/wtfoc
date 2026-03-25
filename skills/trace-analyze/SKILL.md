@@ -27,7 +27,7 @@ Examples:
 Extract the question and collection name from the arguments. If `-c` is missing, list available collections by running:
 
 ```bash
-npx @wtfoc/cli collections 2>/dev/null
+wtfoc collections 2>/dev/null
 ```
 
 and ask the user which collection to use.
@@ -35,15 +35,17 @@ and ask the user which collection to use.
 ### 2. Run the primary trace
 
 ```bash
-npx @wtfoc/cli --json trace "<question>" -c <collection> 2>/dev/null
+wtfoc --json trace "<question>" -c <collection> 2>/dev/null
 ```
 
 Also show the human-readable output:
 ```bash
-npx @wtfoc/cli trace "<question>" -c <collection> 2>/dev/null
+wtfoc trace "<question>" -c <collection> 2>/dev/null
 ```
 
 ### 3. Analyze gaps and run expansion traces
+
+**Skip this step if `--shallow` was provided.** Go directly to step 4 with only the primary trace results.
 
 After the primary trace, analyze which source types and conceptual areas are missing. A feature trace typically needs coverage across these layers:
 
@@ -56,7 +58,7 @@ After the primary trace, analyze which source types and conceptual areas are mis
 For each significant gap, construct a targeted follow-up query and run it:
 
 ```bash
-npx @wtfoc/cli --json trace "<targeted follow-up query>" -c <collection> 2>/dev/null
+wtfoc --json trace "<targeted follow-up query>" -c <collection> 2>/dev/null
 ```
 
 **Examples of gap-filling queries:**
@@ -90,7 +92,7 @@ Combine results from ALL traces (primary + expansions) and produce a structured 
 Based on the remaining gaps, suggest 2-3 additional trace queries. Format as runnable commands:
 
 ```bash
-npx @wtfoc/cli trace "suggested follow-up" -c <collection>
+wtfoc trace "suggested follow-up" -c <collection>
 ```
 
 Or suggest running this skill again with a more targeted question:

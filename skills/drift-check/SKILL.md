@@ -18,20 +18,22 @@ Compare recent GitHub activity against documentation content in a wtfoc collecti
 
 ### 1. Verify collection has both docs and GitHub data
 
+Run a broad query and inspect the `sourceType` fields in the results to determine which source types are present:
+
 ```bash
-npx @wtfoc/cli --json status -c <collection> 2>/dev/null
+wtfoc --json query "overview" -c <collection> -k 50 2>/dev/null
 ```
 
-Check that the collection has both documentation (doc-page, markdown) and GitHub (github-issue, github-pr, github-pr-comment) source types. If not, tell the user what's missing and suggest ingest commands.
+Check that results include both documentation types (doc-page, markdown) and GitHub types (github-issue, github-pr, github-pr-comment). If either category is missing, tell the user what's absent and suggest ingest commands to add it.
 
 ### 2. Find recent high-activity GitHub topics
 
 Run several queries to find what's been actively discussed/changed recently:
 
 ```bash
-npx @wtfoc/cli --json query "breaking change migration update" -c <collection> -k 20 2>/dev/null
-npx @wtfoc/cli --json query "new feature added implemented shipped" -c <collection> -k 20 2>/dev/null
-npx @wtfoc/cli --json query "bug fix resolved fixed patch" -c <collection> -k 20 2>/dev/null
+wtfoc --json query "breaking change migration update" -c <collection> -k 20 2>/dev/null
+wtfoc --json query "new feature added implemented shipped" -c <collection> -k 20 2>/dev/null
+wtfoc --json query "bug fix resolved fixed patch" -c <collection> -k 20 2>/dev/null
 ```
 
 From the results, extract the GitHub-sourced results (github-issue, github-pr, github-pr-comment). Group them by topic/feature area. These represent areas where code is actively changing.
@@ -41,7 +43,7 @@ From the results, extract the GitHub-sourced results (github-issue, github-pr, g
 For each high-activity topic found in step 2, run a trace to see if documentation covers it:
 
 ```bash
-npx @wtfoc/cli --json trace "<topic extracted from GitHub results>" -c <collection> 2>/dev/null
+wtfoc --json trace "<topic extracted from GitHub results>" -c <collection> 2>/dev/null
 ```
 
 Analyze the results:

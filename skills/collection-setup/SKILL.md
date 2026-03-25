@@ -40,26 +40,26 @@ Format as a numbered list of commands the user will approve before running.
 After user approval, run the commands:
 
 ```bash
-npx @wtfoc/cli init <collection-name> --local
+wtfoc init <collection-name> --local
 
 # Docs sites (fast, high value)
-npx @wtfoc/cli ingest website <url> -c <collection-name>
+wtfoc ingest website <url> -c <collection-name>
 
 # GitHub issues/PRs (medium speed)
-npx @wtfoc/cli ingest github <org/repo> -c <collection-name> --since 90d
+wtfoc ingest github <org/repo> -c <collection-name> --since 90d
 
-# Source code (slow, use batching)
-npx @wtfoc/cli ingest repo <org/repo> -c <collection-name>
+# Source code (slower for large repos)
+wtfoc ingest repo <org/repo> -c <collection-name>
 ```
 
-Show progress after each ingest step with `npx @wtfoc/cli status -c <collection-name>`.
+Show progress after each ingest step with `wtfoc status -c <collection-name>`.
 
 ### 4. Validate with a test trace
 
 After ingestion, run a relevant test trace to confirm the collection is working:
 
 ```bash
-npx @wtfoc/cli trace "<relevant question about the project>" -c <collection-name> 2>/dev/null
+wtfoc trace "<relevant question about the project>" -c <collection-name> 2>/dev/null
 ```
 
 Pick a question that should return results from multiple source types.
@@ -67,7 +67,7 @@ Pick a question that should return results from multiple source types.
 ### 5. Summary
 
 Show the final collection status and suggest next steps:
-- How to run traces: `npx @wtfoc/cli trace "your question" -c <collection-name>`
+- How to run traces: `wtfoc trace "your question" -c <collection-name>`
 - How to use trace-analyze: `/trace-analyze <question> -c <collection-name>`
 - How to add more sources later (incremental, resumable)
 - Remind that re-running ingest is safe (dedup skips existing chunks)
