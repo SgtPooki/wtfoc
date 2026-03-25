@@ -8,6 +8,7 @@ FROM base AS deps
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/common/package.json packages/common/
+COPY packages/config/package.json packages/config/
 COPY packages/store/package.json packages/store/
 COPY packages/ingest/package.json packages/ingest/
 COPY packages/search/package.json packages/search/
@@ -71,6 +72,14 @@ COPY --from=build /app/packages/search/node_modules packages/search/node_modules
 COPY --from=build /app/packages/mcp-server/package.json packages/mcp-server/
 COPY --from=build /app/packages/mcp-server/dist packages/mcp-server/dist
 COPY --from=build /app/packages/mcp-server/node_modules packages/mcp-server/node_modules
+# @wtfoc/config — required by mcp-server (static import in index.ts)
+COPY --from=build /app/packages/config/package.json packages/config/
+COPY --from=build /app/packages/config/dist packages/config/dist
+COPY --from=build /app/packages/config/node_modules packages/config/node_modules
+# @wtfoc/ingest — required by mcp-server (dynamic import in server.ts)
+COPY --from=build /app/packages/ingest/package.json packages/ingest/
+COPY --from=build /app/packages/ingest/dist packages/ingest/dist
+COPY --from=build /app/packages/ingest/node_modules packages/ingest/node_modules
 COPY --from=build /app/apps/web/package.json apps/web/
 COPY --from=build /app/apps/web/dist apps/web/dist
 COPY --from=build /app/apps/web/server/dist apps/web/server/dist
