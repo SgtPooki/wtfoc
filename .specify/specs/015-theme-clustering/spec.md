@@ -115,7 +115,7 @@ A CI pipeline or agent runs `wtfoc themes -c foc-ecosystem --json` to get struct
 
 ## Assumptions
 
-- The default `Clusterer` implementation uses ANN-based incremental clustering (proven at scale in the sibling pain-radar project), not k-means. K-means may be offered as an alternative implementation.
+- The default `Clusterer` implementation uses ANN-based incremental clustering, not k-means. K-means may be offered as an alternative implementation.
 - Cluster labels are heuristic (derived from stored terms and exemplar content) and clearly marked as such — not authoritative summaries.
 - LLM-based cluster naming and deep analysis are future enrichments (P2+), separate from the core clustering interface.
 - Cluster state is a mutable derived artifact stored outside segments (e.g., as a JSON sidecar file in the manifest directory or a dedicated cluster store). Its persistence format is an implementation detail.
@@ -141,6 +141,6 @@ A CI pipeline or agent runs `wtfoc themes -c foc-ecosystem --json` to get struct
   - Switched from one-shot to incremental + batch rebuild (FR-002, FR-013, FR-014)
   - Made contract algorithm-neutral — removed centroid/k-means assumptions (FR-003, FR-008)
   - Fixed signal-filter semantics to "highest-scoring signal type" (FR-007, SC-003)
-  - Added pain-radar v2 as reference architecture for default implementation
+  - Added ANN-based incremental clustering as default architecture
   - Updated SC-001 timing for incremental vs batch modes
   - Added SC-005 for implementation swappability validation
