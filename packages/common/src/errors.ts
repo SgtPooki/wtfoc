@@ -148,6 +148,27 @@ export class GitHubApiError extends WtfocError {
 	}
 }
 
+export class ConfigParseError extends WtfocError {
+	constructor(filePath: string, parseError: string) {
+		super(`Failed to parse config file "${filePath}": ${parseError}`, "CONFIG_PARSE", {
+			filePath,
+			parseError,
+		});
+		this.name = "ConfigParseError";
+	}
+}
+
+export class ConfigValidationError extends WtfocError {
+	constructor(filePath: string, field: string, expected: string, got: string) {
+		super(
+			`Invalid config in "${filePath}": ${field} must be ${expected}, got ${got}`,
+			"CONFIG_VALIDATION",
+			{ filePath, field, expected, got },
+		);
+		this.name = "ConfigValidationError";
+	}
+}
+
 export class SchemaUnknownError extends WtfocError {
 	constructor(found: number, maxSupported: number) {
 		super(`Unknown schema version ${found} (max supported: ${maxSupported})`, "SCHEMA_UNKNOWN", {

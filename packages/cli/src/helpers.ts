@@ -1,4 +1,5 @@
-import type { CollectionHead, Embedder } from "@wtfoc/common";
+import type { CollectionHead, Embedder, ResolvedEmbedderConfig } from "@wtfoc/common";
+import { resolveUrlShortcut } from "@wtfoc/config";
 import type { MountedCollection } from "@wtfoc/search";
 import {
 	InMemoryVectorIndex,
@@ -66,42 +67,40 @@ export function getFirstMatchGroup(
 }
 
 /**
- * Create an embedder based on CLI flags.
+ * Create an embedder from resolved config or CLI flags.
  *
- * --embedder-url determines the API endpoint. Well-known shortcuts:
- *   "lmstudio" → http://localhost:1234/v1
- *   "ollama"   → http://localhost:11434/v1
- *   Any URL    → used directly
+ * When resolvedConfig is provided (from .wtfoc.json + env + CLI merge),
+ * it takes priority. Otherwise falls back to raw CLI opts for backwards compat.
  *
- * --embedder-model is REQUIRED for API embedders (no guessing what model is loaded).
- * --embedder local  → use transformers.js (default, no server needed)
+ * URL shortcuts (lmstudio, ollama) are resolved via @wtfoc/config.
  */
-export function createEmbedder(opts: {
-	embedder?: string;
-	embedderUrl?: string;
-	embedderKey?: string;
-	embedderModel?: string;
-}): { embedder: Embedder; modelName: string } {
+export function createEmbedder(
+	opts: {
+		embedder?: string;
+		embedderUrl?: string;
+		embedderKey?: string;
+		embedderModel?: string;
+	},
+	resolvedConfig?: ResolvedEmbedderConfig,
+): { embedder: Embedder; modelName: string } {
+	const url =
+		resolvedConfig?.url ?? (opts.embedderUrl ? resolveUrlShortcut(opts.embedderUrl) : undefined);
+	const model = resolvedConfig?.model ?? opts.embedderModel;
+	const key =
+		resolvedConfig?.key ?? opts.embedderKey ?? process.env.WTFOC_OPENAI_API_KEY ?? "no-key";
 	const type = opts.embedder ?? "local";
 
 	// API-based embedder (any OpenAI-compatible endpoint)
-	if (type === "api" || opts.embedderUrl || opts.embedderModel) {
-		// Resolve URL shortcuts
-		const urlShortcuts: Record<string, string> = {
-			lmstudio: "http://localhost:1234/v1",
-			ollama: "http://localhost:11434/v1",
-		};
-		const rawUrl = opts.embedderUrl ?? type;
-		const baseUrl = urlShortcuts[rawUrl] ?? rawUrl;
+	if (url || model || type === "api") {
+		const baseUrl = url ?? resolveUrlShortcut(type);
 
 		if (!baseUrl.startsWith("http")) {
 			console.error(
-				`Error: --embedder-url must be a URL or shortcut (lmstudio, ollama). Got: "${rawUrl}"`,
+				`Error: --embedder-url must be a URL or shortcut (lmstudio, ollama). Got: "${baseUrl}"`,
 			);
 			process.exit(2);
 		}
 
-		const model = opts.embedderModel;
 		if (!model) {
 			console.error("Error: --embedder-model is required for API embedders.");
 			console.error("  The model name must match what the server has loaded.");
@@ -109,8 +108,7 @@ export function createEmbedder(opts: {
 			process.exit(2);
 		}
 
-		const apiKey = opts.embedderKey ?? process.env.WTFOC_OPENAI_API_KEY ?? "no-key";
-		const embedder = new OpenAIEmbedder({ apiKey, baseUrl, model });
+		const embedder = new OpenAIEmbedder({ apiKey: key, baseUrl, model });
 		return { embedder, modelName: model };
 	}
 

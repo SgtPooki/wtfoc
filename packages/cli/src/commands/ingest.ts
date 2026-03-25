@@ -1,5 +1,6 @@
 import type { Segment } from "@wtfoc/common";
 import { type Chunk, type CollectionHead, CURRENT_SCHEMA_VERSION } from "@wtfoc/common";
+import { createIgnoreFilter } from "@wtfoc/config";
 import {
 	buildSegment,
 	CodeEdgeExtractor,
@@ -16,6 +17,7 @@ import {
 } from "@wtfoc/ingest";
 import { bundleAndUpload, generateCollectionId } from "@wtfoc/store";
 import type { Command } from "commander";
+import { getProjectConfig } from "../cli.js";
 import {
 	createEmbedder,
 	type EmbedderOpts,
@@ -60,7 +62,7 @@ export function registerIngestCommand(program: Command): void {
 
 			// Initialize embedder
 			if (format !== "quiet") console.error("⏳ Loading embedder...");
-			const { embedder, modelName } = createEmbedder(opts);
+			const { embedder, modelName } = createEmbedder(opts, getProjectConfig()?.embedder);
 
 			// Detect model mismatch
 			if (
@@ -99,6 +101,12 @@ export function registerIngestCommand(program: Command): void {
 			if (format !== "quiet") console.error(`⏳ Ingesting ${sourceType}: ${sourceArg}...`);
 
 			const config = adapter.parseConfig(rawConfig);
+			// Apply .wtfoc.json ignore patterns to repo adapter
+			const projectCfg = getProjectConfig();
+			if (sourceType === "repo" && projectCfg) {
+				const ignoreFilter = createIgnoreFilter(projectCfg.ignore);
+				(config as Record<string, unknown>).ignoreFilter = ignoreFilter;
+			}
 			const maxBatch = Number.parseInt(opts.batchSize, 10) || 500;
 			const maxChunkChars = opts.maxChunkChars
 				? Number.parseInt(opts.maxChunkChars, 10)

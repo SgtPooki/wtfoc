@@ -8,6 +8,7 @@
 	"include": ["src"],
 	"references": [
 		{ "path": "../common" },
+		{ "path": "../config" },
 		{ "path": "../store" },
 		{ "path": "../ingest" },
 		{ "path": "../search" }

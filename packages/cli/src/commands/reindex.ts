@@ -7,6 +7,7 @@ import {
 import { buildSegment, DEFAULT_MAX_CHUNK_CHARS, rechunkOversized, segmentId } from "@wtfoc/ingest";
 import { bundleAndUpload, generateCollectionId } from "@wtfoc/store";
 import type { Command } from "commander";
+import { getProjectConfig } from "../cli.js";
 import {
 	createEmbedder,
 	type EmbedderOpts,
@@ -42,7 +43,7 @@ export function registerReindexCommand(program: Command): void {
 		) => {
 			const store = getStore(program);
 			const format = getFormat(program.opts());
-			const { embedder, modelName } = createEmbedder(opts);
+			const { embedder, modelName } = createEmbedder(opts, getProjectConfig()?.embedder);
 			const storageType = (program.opts().storage ?? "local") as string;
 			const batchSize = Number.parseInt(opts.batchSize, 10);
 			const targetName = opts.target ?? opts.collection;
