@@ -77,9 +77,10 @@ export function registerReindexCommand(program: Command): void {
 				);
 			}
 
-			// Load all existing segments and extract chunks + edges
+			// Load all existing segments and extract chunks + edges, preserving embeddings
 			const allChunks: Chunk[] = [];
 			const allEdges: import("@wtfoc/common").Edge[] = [];
+			const existingEmbeddings = new Map<string, number[]>();
 
 			for (const segSummary of head.manifest.segments) {
 				const segBytes = await store.storage.download(segSummary.id);
@@ -97,6 +98,7 @@ export function registerReindexCommand(program: Command): void {
 						totalChunks: 0,
 						metadata: c.metadata,
 					});
+					existingEmbeddings.set(c.id, c.embedding);
 				}
 
 				for (const e of segment.edges) {
@@ -108,32 +110,73 @@ export function registerReindexCommand(program: Command): void {
 				console.error(`   Loaded ${allChunks.length} chunks and ${allEdges.length} edges`);
 			}
 
-			// Optionally re-chunk oversized content
+			// Partial rechunk: only re-chunk oversized, preserve chunks within limit
+			const preservedChunks: Array<{ chunk: Chunk; embedding: number[] }> = [];
+			let chunksToEmbed: Chunk[] = [];
+
 			if (opts.rechunk) {
 				const maxChars = opts.maxChunkChars
 					? Number.parseInt(opts.maxChunkChars, 10)
 					: (embedder.maxInputChars ?? DEFAULT_MAX_CHUNK_CHARS);
-				const before = allChunks.length;
-				const rechunked = rechunkOversized(allChunks, maxChars);
-				allChunks.length = 0;
-				allChunks.push(...rechunked);
-				if (format !== "quiet" && allChunks.length !== before) {
-					console.error(
-						`   Re-chunked: ${before} → ${allChunks.length} chunks (max ${maxChars} chars)`,
-					);
+
+				const withinLimit: Chunk[] = [];
+				const oversized: Chunk[] = [];
+				for (const chunk of allChunks) {
+					if (chunk.content.length <= maxChars) {
+						withinLimit.push(chunk);
+					} else {
+						oversized.push(chunk);
+					}
 				}
+
+				// Preserve within-limit chunks with their original embeddings (FR-007, FR-008)
+				const sameModel = oldModel === modelName;
+				if (sameModel) {
+					for (const chunk of withinLimit) {
+						const emb = existingEmbeddings.get(chunk.id);
+						if (emb) {
+							preservedChunks.push({ chunk, embedding: emb });
+						} else {
+							chunksToEmbed.push(chunk);
+						}
+					}
+				} else {
+					// Model changed — must re-embed everything
+					chunksToEmbed.push(...withinLimit);
+				}
+
+				// Re-chunk oversized, then add to embed queue
+				const rechunked = rechunkOversized(oversized, maxChars);
+				chunksToEmbed.push(...rechunked);
+
+				if (format !== "quiet") {
+					if (preservedChunks.length > 0) {
+						console.error(
+							`   Preserved ${preservedChunks.length} chunks, re-chunked ${oversized.length} oversized → ${rechunked.length} new chunks`,
+						);
+					} else if (oversized.length > 0) {
+						console.error(
+							`   Re-chunked: ${allChunks.length} → ${withinLimit.length + rechunked.length} chunks (max ${maxChars} chars)`,
+						);
+					}
+				}
+			} else {
+				// No rechunk — re-embed all chunks (model change or target change)
+				chunksToEmbed = [...allChunks];
 			}
 
 			// Re-embed in batches, writing manifest after each batch for crash resilience
 			let chunksProcessed = 0;
 
-			for (let i = 0; i < allChunks.length; i += batchSize) {
-				const batchChunks = allChunks.slice(i, i + batchSize);
-				const batchEdges = allEdges.filter((e) => batchChunks.some((c) => c.id === e.sourceId));
-				const batchNum = Math.floor(i / batchSize) + 1;
-				const totalBatches = Math.ceil(allChunks.length / batchSize);
+			// Build the full list: preserved first, then to-embed in batches
+			const allSegmentChunks: Array<{ chunk: Chunk; embedding: number[] }> = [...preservedChunks];
 
-				if (format !== "quiet") {
+			for (let i = 0; i < chunksToEmbed.length; i += batchSize) {
+				const batchChunks = chunksToEmbed.slice(i, i + batchSize);
+				const batchNum = Math.floor(i / batchSize) + 1;
+				const totalBatches = Math.ceil(chunksToEmbed.length / batchSize);
+
+				if (format !== "quiet" && chunksToEmbed.length > 0) {
 					console.error(
 						`⏳ Embedding batch ${batchNum}/${totalBatches} (${batchChunks.length} chunks)...`,
 					);
@@ -141,15 +184,25 @@ export function registerReindexCommand(program: Command): void {
 
 				const embeddings = await embedder.embedBatch(batchChunks.map((c) => c.content));
 
-				const segmentChunks = batchChunks.map((chunk, j) => {
+				for (let j = 0; j < batchChunks.length; j++) {
+					const chunk = batchChunks[j];
 					const emb = embeddings[j];
-					if (!emb) {
+					if (!chunk || !emb) {
 						throw new Error(
 							`Missing embedding for chunk ${j} — expected ${batchChunks.length} embeddings`,
 						);
 					}
-					return { chunk, embedding: Array.from(emb) };
-				});
+					allSegmentChunks.push({ chunk, embedding: Array.from(emb) });
+				}
+			}
+
+			// Now write segments from allSegmentChunks in batch-sized groups
+			for (let i = 0; i < allSegmentChunks.length; i += batchSize) {
+				const batchEntries = allSegmentChunks.slice(i, i + batchSize);
+				const batchChunks = batchEntries.map((e) => e.chunk);
+				const batchEdges = allEdges.filter((e) => batchChunks.some((c) => c.id === e.sourceId));
+
+				const segmentChunks = batchEntries;
 
 				const segment = buildSegment(segmentChunks, batchEdges, {
 					embeddingModel: modelName,

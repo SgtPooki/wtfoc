@@ -38,6 +38,13 @@ export interface MountOptions {
 	 * chunks are upserted.
 	 */
 	reconcile?: boolean;
+	/**
+	 * Segment IDs to skip during mount. Segments in this set will not be
+	 * downloaded, parsed, or added to the vector index. Use this for
+	 * incremental mounting where some segments are already indexed in a
+	 * persistent vector backend.
+	 */
+	skipSegmentIds?: ReadonlySet<string>;
 }
 
 /**
@@ -75,8 +82,10 @@ export async function mountCollection(
 
 	const segments: Segment[] = [];
 
+	const skipIds = options?.skipSegmentIds;
 	for (const segRef of segmentRefs) {
 		signal?.throwIfAborted();
+		if (skipIds?.has(segRef)) continue;
 		const data = await storage.download(segRef, signal);
 		const text = new TextDecoder().decode(data);
 		let parsed: unknown;
@@ -111,8 +120,11 @@ export async function mountCollection(
 		await vectorIndex.add(entries);
 	}
 
-	// Reconcile: delete orphan vectors not in the current manifest
-	if (options?.reconcile && isReconcilable(vectorIndex)) {
+	// Reconcile: delete orphan vectors not in the current manifest.
+	// When skipSegmentIds is used, skip reconciliation — the skipped segments
+	// are already indexed but not in `segments`, so reconcile would incorrectly
+	// delete their vectors.
+	if (options?.reconcile && !skipIds?.size && isReconcilable(vectorIndex)) {
 		signal?.throwIfAborted();
 		const expectedIds = new Set<string>();
 		for (const seg of segments) {

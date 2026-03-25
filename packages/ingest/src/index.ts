@@ -14,6 +14,15 @@ export {
 	type MarkdownChunkerOptions,
 	rechunkOversized,
 } from "./chunker.js";
+export {
+	buildSourceKey,
+	type CursorData,
+	cursorFilePath,
+	getCursorSince,
+	readCursors,
+	type SourceCursor,
+	writeCursors,
+} from "./cursor-store.js";
 export { CodeEdgeExtractor } from "./edges/code.js";
 export { CompositeEdgeExtractor } from "./edges/composite.js";
 export { extractPackageJsonDeps, extractRequirementsTxtDeps } from "./edges/dependency-parser.js";
