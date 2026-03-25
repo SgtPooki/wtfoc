@@ -26,7 +26,7 @@ No setup required. Add this to your Claude Code or Claude Desktop MCP configurat
 }
 ```
 
-Then ask Claude: *"Trace upload failures across the foc-ecosystem-nomic collection"*
+Then ask Claude: *"List the available wtfoc collections, then trace upload failures in the largest one"*
 
 ### Browse the web UI
 

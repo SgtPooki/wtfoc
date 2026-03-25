@@ -30,18 +30,16 @@ import {
 
 // Set up embedder and index
 const embedder = new TransformersEmbedder();
-const index = new InMemoryVectorIndex();
+const vectorIndex = new InMemoryVectorIndex();
 
-// Mount a collection for querying
-const mounted = await mountCollection(store, 'my-collection', { embedder, index });
+// Mount a collection (loads segments into the vector index)
+const mounted = await mountCollection(manifest, storage, vectorIndex);
 
 // Semantic search
-const results = await query(index, embedder, 'upload failures', { topK: 10 });
+const results = await query('upload failures', embedder, vectorIndex, { topK: 10 });
 
 // Cross-source trace — follows edges to build evidence chains
-const traceResult = await trace(index, embedder, store, 'upload failures', {
-  collection: 'my-collection',
-});
+const traceResult = await trace('upload failures', embedder, vectorIndex, mounted.segments);
 ```
 
 ### Edge Resolution
@@ -49,9 +47,9 @@ const traceResult = await trace(index, embedder, store, 'upload failures', {
 ```typescript
 import { buildSourceIndex, analyzeEdgeResolution } from '@wtfoc/search';
 
-const sourceIndex = buildSourceIndex(chunks);
-const stats = analyzeEdgeResolution(edges, sourceIndex);
-// stats.resolved, stats.unresolved, stats.resolutionRate
+const sourceIndex = buildSourceIndex(segments);
+const stats = analyzeEdgeResolution(segments, sourceIndex);
+// stats.totalEdges, stats.resolvedEdges, stats.unresolvedEdges
 ```
 
 ## Related Packages

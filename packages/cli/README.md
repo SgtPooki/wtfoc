@@ -43,9 +43,19 @@ wtfoc serve -c my-collection --port 3000
 |------|-------------|
 | `--collection, -c` | Collection name |
 | `--storage` | Storage backend: `local` (default) or `foc` |
-| `--embedder` | Embedder: `transformers` (default, local) or `openai` |
+| `--embedder` | Embedder type: `local` (default, transformers.js) or `api` |
+| `--embedder-url` | Embedder API URL (or shortcut: `ollama`, `lmstudio`) |
+| `--embedder-model` | Model name (required for `api` embedder) |
+| `--embedder-key` | API key (optional) |
 | `--json` | Output as JSON |
 | `--quiet` | Suppress output (errors only) |
+
+### Using an API embedder (recommended for larger collections)
+
+```bash
+wtfoc query "upload failures" -c my-collection \
+  --embedder-url ollama --embedder-model nomic-embed-text
+```
 
 ## Related Packages
 
