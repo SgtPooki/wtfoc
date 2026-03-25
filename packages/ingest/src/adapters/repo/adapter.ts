@@ -1,35 +1,10 @@
-import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
-import { readdir, readFile, stat } from "node:fs/promises";
-import { extname, join, relative } from "node:path";
-import { promisify } from "node:util";
+import { readFile, stat } from "node:fs/promises";
+import { extname, relative } from "node:path";
 import type { Chunk, Edge, SourceAdapter } from "@wtfoc/common";
-import { chunkMarkdown, type MarkdownChunkerOptions } from "../chunker.js";
-
-const execFileAsync = promisify(execFile);
-
-const DEFAULT_INCLUDE = new Set([
-	".ts",
-	".js",
-	".tsx",
-	".jsx",
-	".md",
-	".mdx",
-	".json",
-	".yaml",
-	".yml",
-	".toml",
-]);
-
-const DEFAULT_EXCLUDE = [
-	"node_modules",
-	"dist",
-	".git",
-	".next",
-	"__pycache__",
-	"coverage",
-	".turbo",
-];
+import { WtfocError } from "@wtfoc/common";
+import { chunkMarkdown, type MarkdownChunkerOptions } from "../../chunker.js";
+import { acquireRepo, extractRepoName } from "./acquisition.js";
+import { chunkCode, DEFAULT_EXCLUDE, DEFAULT_INCLUDE, walkFiles } from "./chunking.js";
 
 function getMatchGroup(match: RegExpMatchArray | RegExpExecArray, index: number): string | null {
 	return typeof match[index] === "string" ? match[index] : null;
@@ -48,19 +23,17 @@ export interface RepoAdapterConfig {
 	maxFileSize?: number;
 }
 
-/**
- * Repo/code source adapter. Clones a GitHub repo (or uses a local path)
- * and walks the file tree to produce typed chunks.
- *
- * sourceType: 'code' for code files, 'markdown' for .md files
- */
 export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 	readonly sourceType = "repo";
 
 	parseConfig(raw: Record<string, unknown>): RepoAdapterConfig {
 		const source = raw.source;
 		if (typeof source !== "string" || !source) {
-			throw new Error("RepoAdapter requires a 'source' option (GitHub owner/repo or local path)");
+			throw new WtfocError(
+				"RepoAdapter requires a 'source' option (GitHub owner/repo or local path)",
+				"REPO_INVALID_CONFIG",
+				{ raw },
+			);
 		}
 		return {
 			source,
@@ -72,7 +45,7 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 
 	async *ingest(config: RepoAdapterConfig): AsyncIterable<Chunk> {
 		const opts = config;
-		const repoPath = await resolveRepoPath(opts.source);
+		const repoPath = await acquireRepo(opts.source);
 		const repo = extractRepoName(opts.source);
 
 		const includeExts = new Set(opts.include ?? [...DEFAULT_INCLUDE]);
@@ -182,106 +155,6 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 
 		return edges;
 	}
-}
-
-// ─── Internal helpers ────────────────────────────────────────────────────────
-
-async function resolveRepoPath(source: string): Promise<string> {
-	if (source.match(/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/)) {
-		const tmpDir = `/tmp/wtfoc-repo-${source.replace("/", "-")}`;
-		try {
-			await stat(tmpDir);
-			// Already cloned — pull latest
-			await execFileAsync("git", ["pull", "--ff-only"], { cwd: tmpDir }).catch(() => {});
-		} catch {
-			// Clone fresh — use execFile to prevent injection
-			await execFileAsync("git", [
-				"clone",
-				"--depth",
-				"1",
-				`https://github.com/${source}.git`,
-				tmpDir,
-			]);
-		}
-		return tmpDir;
-	}
-	return source;
-}
-
-function extractRepoName(source: string): string {
-	if (source.match(/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/)) {
-		return source;
-	}
-	return source.split("/").pop() ?? source;
-}
-
-async function walkFiles(
-	dir: string,
-	includeExts: Set<string>,
-	excludeDirs: string[],
-): Promise<string[]> {
-	const files: string[] = [];
-
-	async function walk(currentDir: string): Promise<void> {
-		const entries = await readdir(currentDir, { withFileTypes: true });
-		for (const entry of entries) {
-			const fullPath = join(currentDir, entry.name);
-			if (entry.isDirectory()) {
-				if (!excludeDirs.includes(entry.name) && !entry.name.startsWith(".")) {
-					await walk(fullPath);
-				}
-			} else if (entry.isFile()) {
-				if (includeExts.has(extname(entry.name))) {
-					files.push(fullPath);
-				}
-			}
-		}
-	}
-
-	await walk(dir);
-	return files.sort();
-}
-
-function chunkCode(content: string, filePath: string, repo: string, sourceUrl: string): Chunk[] {
-	const chunkSize = 512;
-	const overlap = 50;
-	const chunks: Chunk[] = [];
-	let offset = 0;
-	let chunkIndex = 0;
-
-	while (offset < content.length) {
-		const end = Math.min(offset + chunkSize, content.length);
-		const chunkContent = content.slice(offset, end);
-
-		if (chunkContent.trim()) {
-			const id = createHash("sha256").update(chunkContent).digest("hex");
-
-			chunks.push({
-				id,
-				content: chunkContent,
-				sourceType: "code",
-				source: `${repo}/${filePath}`,
-				sourceUrl,
-				chunkIndex,
-				totalChunks: 0,
-				metadata: {
-					filePath,
-					language: extname(filePath).slice(1),
-					repo,
-				},
-			});
-			chunkIndex++;
-		}
-
-		offset = end - overlap;
-		if (end === content.length) break;
-	}
-
-	for (const chunk of chunks) {
-		chunk.totalChunks = chunks.length;
-	}
-
-	return chunks;
 }
 
 function extractImports(content: string): string[] {

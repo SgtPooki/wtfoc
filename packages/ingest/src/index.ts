@@ -5,7 +5,7 @@ export { getAdapter, getAvailableSourceTypes, registerAdapter } from "./adapter-
 export { DiscordAdapter, type DiscordAdapterConfig } from "./adapters/discord.js";
 export { type ExecFn, GitHubAdapter, type GitHubAdapterConfig } from "./adapters/github/index.js";
 export { HackerNewsAdapter, type HackerNewsAdapterConfig } from "./adapters/hackernews.js";
-export { RepoAdapter, type RepoAdapterConfig } from "./adapters/repo.js";
+export { RepoAdapter, type RepoAdapterConfig } from "./adapters/repo/index.js";
 export { SlackAdapter, type SlackAdapterConfig } from "./adapters/slack.js";
 export { WebsiteAdapter, type WebsiteAdapterConfig } from "./adapters/website.js";
 export {
@@ -33,7 +33,7 @@ import { registerAdapter as _register } from "./adapter-registry.js";
 import { DiscordAdapter as _DiscordAdapter } from "./adapters/discord.js";
 import { GitHubAdapter as _GitHubAdapter } from "./adapters/github/index.js";
 import { HackerNewsAdapter as _HackerNewsAdapter } from "./adapters/hackernews.js";
-import { RepoAdapter as _RepoAdapter } from "./adapters/repo.js";
+import { RepoAdapter as _RepoAdapter } from "./adapters/repo/index.js";
 import { SlackAdapter as _SlackAdapter } from "./adapters/slack.js";
 import { WebsiteAdapter as _WebsiteAdapter } from "./adapters/website.js";
 

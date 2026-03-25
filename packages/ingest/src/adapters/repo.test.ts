@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { RepoAdapter } from "./repo.js";
+import { RepoAdapter } from "./repo/index.js";
 
 const FIXTURE_PATH = resolve(import.meta.dirname ?? ".", "../../../../fixtures/test-repo");
 
