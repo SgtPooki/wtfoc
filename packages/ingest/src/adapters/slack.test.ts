@@ -69,7 +69,7 @@ describe("SlackAdapter: parseConfig", () => {
 describe("SlackAdapter: extractEdges", () => {
 	const adapter = new SlackAdapter();
 
-	it("extracts GitHub issue references via RegexEdgeExtractor", () => {
+	it("extracts GitHub issue references via RegexEdgeExtractor", async () => {
 		const chunks = [
 			{
 				id: "chunk-1",
@@ -82,7 +82,7 @@ describe("SlackAdapter: extractEdges", () => {
 			},
 		];
 
-		const edges = adapter.extractEdges(chunks);
+		const edges = await adapter.extractEdges(chunks);
 		expect(edges.length).toBeGreaterThanOrEqual(1);
 		const ghEdge = edges.find((e) => e.targetId === "FilOzone/synapse-sdk#42");
 		expect(ghEdge).toBeDefined();
@@ -90,7 +90,7 @@ describe("SlackAdapter: extractEdges", () => {
 		expect(ghEdge?.confidence).toBe(1.0);
 	});
 
-	it("extracts Slack channel cross-references with IDs", () => {
+	it("extracts Slack channel cross-references with IDs", async () => {
 		const chunks = [
 			{
 				id: "chunk-2",
@@ -103,14 +103,14 @@ describe("SlackAdapter: extractEdges", () => {
 			},
 		];
 
-		const edges = adapter.extractEdges(chunks);
+		const edges = await adapter.extractEdges(chunks);
 		const channelEdge = edges.find((e) => e.targetType === "slack-channel");
 		expect(channelEdge).toBeDefined();
 		expect(channelEdge?.targetId).toBe("slack://C12345ABC");
 		expect(channelEdge?.evidence).toContain("foc-dev");
 	});
 
-	it("extracts plain #channel references", () => {
+	it("extracts plain #channel references", async () => {
 		const chunks = [
 			{
 				id: "chunk-3",
@@ -123,14 +123,14 @@ describe("SlackAdapter: extractEdges", () => {
 			},
 		];
 
-		const edges = adapter.extractEdges(chunks);
+		const edges = await adapter.extractEdges(chunks);
 		const channelEdge = edges.find(
 			(e) => e.targetType === "slack-channel" && e.targetId === "#foc-dev",
 		);
 		expect(channelEdge).toBeDefined();
 	});
 
-	it("skips numeric-only channel refs (likely GitHub issue refs)", () => {
+	it("skips numeric-only channel refs (likely GitHub issue refs)", async () => {
 		const chunks = [
 			{
 				id: "chunk-4",
@@ -143,12 +143,12 @@ describe("SlackAdapter: extractEdges", () => {
 			},
 		];
 
-		const edges = adapter.extractEdges(chunks);
+		const edges = await adapter.extractEdges(chunks);
 		const channelEdges = edges.filter((e) => e.targetType === "slack-channel");
 		expect(channelEdges.length).toBe(0);
 	});
 
-	it("extracts Slack message permalink references", () => {
+	it("extracts Slack message permalink references", async () => {
 		const chunks = [
 			{
 				id: "chunk-5",
@@ -161,7 +161,7 @@ describe("SlackAdapter: extractEdges", () => {
 			},
 		];
 
-		const edges = adapter.extractEdges(chunks);
+		const edges = await adapter.extractEdges(chunks);
 		const msgEdge = edges.find((e) => e.targetType === "slack-message");
 		expect(msgEdge).toBeDefined();
 		expect(msgEdge?.targetId).toBe("slack://C12345ABC/p1234567890123456");

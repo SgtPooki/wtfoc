@@ -101,10 +101,10 @@ export class DiscordAdapter implements SourceAdapter<DiscordAdapterConfig> {
 		}
 	}
 
-	extractEdges(chunks: Chunk[]): Edge[] {
+	async extractEdges(chunks: Chunk[]): Promise<Edge[]> {
 		// Use the shared RegexEdgeExtractor for GitHub URL / issue references
 		const extractor = new RegexEdgeExtractor();
-		const edges = extractor.extract(chunks);
+		const edges = await extractor.extract(chunks);
 
 		// Add Discord-specific edges
 		for (const chunk of chunks) {

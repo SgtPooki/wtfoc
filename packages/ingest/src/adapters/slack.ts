@@ -172,10 +172,10 @@ export class SlackAdapter implements SourceAdapter<SlackAdapterConfig> {
 		}
 	}
 
-	extractEdges(chunks: Chunk[]): Edge[] {
+	async extractEdges(chunks: Chunk[]): Promise<Edge[]> {
 		// Use shared RegexEdgeExtractor for GitHub URL / issue references
 		const extractor = new RegexEdgeExtractor();
-		const edges = extractor.extract(chunks);
+		const edges = await extractor.extract(chunks);
 
 		// Add Slack-specific edges
 		for (const chunk of chunks) {

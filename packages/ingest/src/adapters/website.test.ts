@@ -60,7 +60,7 @@ describe("WebsiteAdapter", () => {
 	});
 
 	describe("extractEdges", () => {
-		it("extracts markdown link references", () => {
+		it("extracts markdown link references", async () => {
 			const chunks: Chunk[] = [
 				{
 					id: "abc123",
@@ -74,7 +74,7 @@ describe("WebsiteAdapter", () => {
 				},
 			];
 
-			const edges = adapter.extractEdges(chunks);
+			const edges = await adapter.extractEdges(chunks);
 			expect(edges).toHaveLength(1);
 			expect(edges[0]).toEqual({
 				type: "references",
@@ -86,7 +86,7 @@ describe("WebsiteAdapter", () => {
 			});
 		});
 
-		it("extracts GitHub issue/PR URL references", () => {
+		it("extracts GitHub issue/PR URL references", async () => {
 			const chunks: Chunk[] = [
 				{
 					id: "def456",
@@ -100,7 +100,7 @@ describe("WebsiteAdapter", () => {
 				},
 			];
 
-			const edges = adapter.extractEdges(chunks);
+			const edges = await adapter.extractEdges(chunks);
 			expect(edges).toHaveLength(1);
 			expect(edges[0]).toEqual({
 				type: "references",
@@ -112,7 +112,7 @@ describe("WebsiteAdapter", () => {
 			});
 		});
 
-		it("extracts both link types from same chunk", () => {
+		it("extracts both link types from same chunk", async () => {
 			const chunks: Chunk[] = [
 				{
 					id: "ghi789",
@@ -127,12 +127,12 @@ describe("WebsiteAdapter", () => {
 				},
 			];
 
-			const edges = adapter.extractEdges(chunks);
+			const edges = await adapter.extractEdges(chunks);
 			expect(edges).toHaveLength(2);
 			expect(edges.map((e) => e.targetType).sort()).toEqual(["issue", "url"]);
 		});
 
-		it("returns empty array for chunks without links", () => {
+		it("returns empty array for chunks without links", async () => {
 			const chunks: Chunk[] = [
 				{
 					id: "nope",
@@ -146,11 +146,11 @@ describe("WebsiteAdapter", () => {
 				},
 			];
 
-			const edges = adapter.extractEdges(chunks);
+			const edges = await adapter.extractEdges(chunks);
 			expect(edges).toHaveLength(0);
 		});
 
-		it("ignores relative markdown links", () => {
+		it("ignores relative markdown links", async () => {
 			const chunks: Chunk[] = [
 				{
 					id: "rel",
@@ -164,7 +164,7 @@ describe("WebsiteAdapter", () => {
 				},
 			];
 
-			const edges = adapter.extractEdges(chunks);
+			const edges = await adapter.extractEdges(chunks);
 			expect(edges).toHaveLength(0);
 		});
 	});

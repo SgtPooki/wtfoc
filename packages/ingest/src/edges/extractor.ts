@@ -125,7 +125,7 @@ interface RepoContext {
  * For `changes` edges (PR changed files), use the standalone `extractChangedFileEdges` helper.
  */
 export class RegexEdgeExtractor implements EdgeExtractor {
-	extract(chunks: Chunk[]): Edge[] {
+	async extract(chunks: Chunk[]): Promise<Edge[]> {
 		const batchAffinity = buildBatchRepoAffinity(chunks);
 		const edges: Edge[] = [];
 		for (const chunk of chunks) {

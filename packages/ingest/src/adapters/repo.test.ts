@@ -114,7 +114,7 @@ describe("RepoAdapter", () => {
 				chunks.push(chunk);
 			}
 
-			const edges = adapter.extractEdges(chunks);
+			const edges = await adapter.extractEdges(chunks);
 			const importEdges = edges.filter((e) => e.type === "references" && e.targetType === "file");
 			expect(importEdges.length).toBeGreaterThan(0);
 		});
@@ -129,7 +129,7 @@ describe("RepoAdapter", () => {
 				chunks.push(chunk);
 			}
 
-			const edges = adapter.extractEdges(chunks);
+			const edges = await adapter.extractEdges(chunks);
 			const issueEdges = edges.filter((e) => e.type === "references" && e.targetType === "issue");
 			expect(issueEdges.length).toBeGreaterThan(0);
 		});
@@ -144,7 +144,7 @@ describe("RepoAdapter", () => {
 				chunks.push(chunk);
 			}
 
-			const edges = adapter.extractEdges(chunks);
+			const edges = await adapter.extractEdges(chunks);
 			const urlEdges = edges.filter((e) => e.type === "references" && e.targetType === "url");
 			expect(urlEdges.length).toBeGreaterThan(0);
 		});
@@ -159,7 +159,7 @@ describe("RepoAdapter", () => {
 				chunks.push(chunk);
 			}
 
-			const edges = adapter.extractEdges(chunks);
+			const edges = await adapter.extractEdges(chunks);
 			for (const edge of edges) {
 				expect(edge.confidence).toBe(1.0);
 			}

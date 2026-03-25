@@ -4,7 +4,15 @@ import {
 	CURRENT_SCHEMA_VERSION,
 	type Embedder,
 } from "@wtfoc/common";
-import { buildSegment, getAdapter, RegexEdgeExtractor, segmentId } from "@wtfoc/ingest";
+import {
+	buildSegment,
+	CompositeEdgeExtractor,
+	getAdapter,
+	HeuristicEdgeExtractor,
+	mergeEdges,
+	RegexEdgeExtractor,
+	segmentId,
+} from "@wtfoc/ingest";
 import { type createStore, generateCollectionId } from "@wtfoc/store";
 
 function parseSinceDuration(duration: string): string {
@@ -87,8 +95,13 @@ export async function handleIngest(
 		if (batchChunks.length === 0) return;
 		batchNumber++;
 
-		const edgeExtractor = new RegexEdgeExtractor();
-		const edges = [...adapter.extractEdges(batchChunks), ...edgeExtractor.extract(batchChunks)];
+		const compositeExtractor = new CompositeEdgeExtractor();
+		compositeExtractor.register({ name: "regex", extractor: new RegexEdgeExtractor() });
+		compositeExtractor.register({ name: "heuristic", extractor: new HeuristicEdgeExtractor() });
+		const edges = mergeEdges([
+			{ extractorName: "adapter", edges: await adapter.extractEdges(batchChunks) },
+			{ extractorName: "composite", edges: await compositeExtractor.extract(batchChunks) },
+		]);
 
 		const embeddings = await embedder.embedBatch(batchChunks.map((c) => c.content));
 

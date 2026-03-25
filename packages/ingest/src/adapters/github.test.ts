@@ -201,7 +201,7 @@ describe("GitHubAdapter: edge extraction", () => {
 			chunks.push(chunk);
 		}
 
-		const edges = adapter.extractEdges(chunks);
+		const edges = await adapter.extractEdges(chunks);
 		expect(edges.length).toBeGreaterThan(0);
 
 		const hasRefs = edges.some((e) => e.type === "references");

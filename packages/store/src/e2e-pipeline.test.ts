@@ -125,7 +125,7 @@ describe("E2E pipeline: ingest → store → mount → query", () => {
 			chunks.length,
 		);
 		const edgeExtractor = new RegexEdgeExtractor();
-		const edges = edgeExtractor.extract(chunks);
+		const edges = await edgeExtractor.extract(chunks);
 		const segment = buildTestSegment(chunks, edges, embeddings);
 
 		const segBytes = new TextEncoder().encode(JSON.stringify(segment));
@@ -210,7 +210,7 @@ describe("E2E pipeline: edge extraction and trace", () => {
 			chunkOverlap: 0,
 		});
 		const edgeExtractor = new RegexEdgeExtractor();
-		const edges = edgeExtractor.extract(chunks);
+		const edges = await edgeExtractor.extract(chunks);
 
 		expect(edges.length).toBeGreaterThan(0);
 		expect(edges.some((e) => e.type === "references" || e.type === "closes")).toBe(true);
@@ -243,7 +243,7 @@ describe("E2E pipeline: edge extraction and trace", () => {
 
 		const allChunks = [chunkA, chunkB];
 		const edgeExtractor = new RegexEdgeExtractor();
-		const edges = edgeExtractor.extract(allChunks);
+		const edges = await edgeExtractor.extract(allChunks);
 		expect(edges.length).toBeGreaterThan(0);
 
 		const embeddings = requireEmbeddings(

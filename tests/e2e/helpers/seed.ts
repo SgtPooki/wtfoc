@@ -39,7 +39,7 @@ export async function seedCollection(
 
 		const embeddings = await embedder.embedBatch(chunks.map((c) => c.content));
 		const edgeExtractor = new RegexEdgeExtractor();
-		const edges = edgeExtractor.extract(chunks);
+		const edges = await edgeExtractor.extract(chunks);
 
 		const segment = buildSegment(
 			chunks.map((chunk, i) => {

@@ -94,7 +94,7 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 		}
 	}
 
-	extractEdges(chunks: Chunk[]): Edge[] {
+	async extractEdges(chunks: Chunk[]): Promise<Edge[]> {
 		const edges: Edge[] = [];
 
 		for (const chunk of chunks) {
