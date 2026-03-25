@@ -1,11 +1,11 @@
 import type { Embedder } from "@wtfoc/common";
+import type { MountedCollection } from "@wtfoc/search";
 import {
 	InMemoryVectorIndex,
 	mountCollection,
 	OpenAIEmbedder,
 	TransformersEmbedder,
 } from "@wtfoc/search";
-import type { MountedCollection } from "@wtfoc/search";
 import type { createStore } from "@wtfoc/store";
 
 export type { MountedCollection as LoadedCollection } from "@wtfoc/search";

@@ -1,6 +1,11 @@
 import type { Embedder } from "@wtfoc/common";
-import { InMemoryVectorIndex, mountCollection, OpenAIEmbedder, TransformersEmbedder } from "@wtfoc/search";
 import type { MountedCollection } from "@wtfoc/search";
+import {
+	InMemoryVectorIndex,
+	mountCollection,
+	OpenAIEmbedder,
+	TransformersEmbedder,
+} from "@wtfoc/search";
 import { createStore } from "@wtfoc/store";
 import type { Command } from "commander";
 import type { OutputFormat } from "./output.js";
