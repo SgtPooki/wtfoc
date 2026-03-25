@@ -40,6 +40,8 @@ Use stable IDs. Do not renumber existing stories.
 | `US-010` | Review and validate extracted edges before promoting to FOC | Builder curating knowledge graph quality before immutable storage | `planned` | `medium` | `-` | `-` | [#69](https://github.com/SgtPooki/wtfoc/issues/69) |
 | `US-011` | Get notified when high-relevance content is ingested | Team wanting proactive alerts from their knowledge graph | `planned` | `medium` | `-` | `-` | [#70](https://github.com/SgtPooki/wtfoc/issues/70) |
 | `US-012` | Find unresolved TODOs in source code | Tech lead auditing codebase health | `idea` | `-` | `-` | `-` | `-` |
+| `US-013` | Incrementally ingest and monitor sources over time | Team maintaining a living knowledge graph | `proposed` | `high` | `-` | `-` | `-` |
+| `US-014` | Surface unanswered community questions that don't match existing knowledge | DX or product lead identifying coverage gaps | `proposed` | `high` | `-` | `-` | `-` |
 
 ## How To Add A Story
 
@@ -252,6 +254,38 @@ If a story is only an idea, that is fine. Mark it `proposed` and leave missing l
 | Issue/spec | `-` |
 | Status | `idea` |
 | Open gaps | Need to extract TODO comments as a distinct chunk type or metadata tag during repo ingest; closed-issue detection requires GitHub API enrichment; could be a `/todo-audit` skill or drift-check variant |
+
+### `US-013` Incrementally ingest and monitor sources over time
+
+| Field | Value |
+|-------|-------|
+| Story | Add sources incrementally to a collection, track what's been ingested and when, monitor for new content, and avoid re-fetching history that's already captured |
+| User | Team maintaining a living knowledge graph that stays current with ongoing work |
+| Pain | Today every ingest run either re-fetches everything or requires manually tracking `--since` dates. There's no record of what sources were ingested, when, or with what parameters. Re-ingesting a repo means re-fetching all issues even if you only need the last week. Large collections become expensive to keep fresh |
+| Why `wtfoc` | The manifest chain already tracks segments and their sources. Extending this to track ingest cursors (last fetched timestamp, source config, `--since` watermark) per source would make incremental updates automatic and idempotent |
+| Inputs | A collection with previously ingested sources, plus new content arriving in those sources over time |
+| Expected output | `wtfoc sync -c my-collection` fetches only new content since the last successful ingest for each source. `wtfoc sources -c my-collection` shows per-source status: last ingested timestamp, cursor position, whether backfill is complete, chunk count. Source ingest config (type, args, `--since`) is persisted in the manifest or a sidecar config so re-running is zero-config |
+| Example/demo | `-` |
+| Docs | `-` |
+| Issue/spec | `-` |
+| Status | `proposed` |
+| Open gaps | Need a source registry schema (type, config, last cursor, backfill status) persisted per collection. Need to decide: store in manifest vs `.wtfoc.json` project config (#39). Need to define cursor semantics per adapter (GitHub uses `since` ISO date, Slack uses message timestamp, HN uses Algolia page offset). Need a `wtfoc sync` or `wtfoc update` command that reads the registry and runs incremental ingests |
+
+### `US-014` Surface unanswered community questions that don't match existing knowledge
+
+| Field | Value |
+|-------|-------|
+| Story | Find common questions asked in Slack, Reddit, HN, and Discord that don't have matching answers in the ingested knowledge graph, so teams can identify documentation gaps, missing features, or poorly connected content |
+| User | DX lead, product owner, or support engineer identifying what users are asking that the project doesn't address |
+| Pain | Community channels are full of questions, but there's no way to know which questions are answered by existing docs/code and which represent real gaps. Manually reading every channel is not scalable. Even with wtfoc's trace, you have to ask the right question — you don't know what questions *others* are asking |
+| Why `wtfoc` | wtfoc already ingests community sources and scores chunks by signal type (question signal via #61). By collecting question-scored chunks and running them as queries against the rest of the collection, wtfoc can identify which questions have strong matches (answered) and which have weak or no matches (gaps) |
+| Inputs | A collection with community sources (Slack, HN, Discord) plus internal sources (GitHub, docs, code) already ingested |
+| Expected output | A ranked list of unanswered questions: community chunks with high `question` signal score but low trace/query match confidence against internal sources. Each entry shows the question text, source, and the best (but weak) matches found. Optionally grouped by topic cluster. Could be a CLI command (`wtfoc gaps -c my-collection`), a skill (`/find-gaps`), or a web UI panel |
+| Example/demo | `-` |
+| Docs | `-` |
+| Issue/spec | `-` |
+| Status | `proposed` |
+| Open gaps | Need to define "unanswered" threshold (e.g., best trace match < 0.4 confidence). Need to decide whether to use the `question` signal score from #61 or a simpler heuristic (chunks containing "?"). Need dedup/clustering so 20 people asking the same question shows as one gap, not 20. Related to US-003 (clustering) and US-004 (stale docs) |
 
 ## Story Template
 
