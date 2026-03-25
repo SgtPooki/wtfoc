@@ -33,7 +33,6 @@ const VECTOR_BACKEND = parseVectorBackend(process.env["WTFOC_VECTOR_BACKEND"]);
 const QDRANT_URL = process.env["WTFOC_QDRANT_URL"] ?? "http://localhost:6333";
 const QDRANT_API_KEY = process.env["WTFOC_QDRANT_API_KEY"];
 const COLLECTION_TTL_MS = parseTtl(process.env["WTFOC_COLLECTION_TTL"]);
-const QDRANT_CID_TTL_MS = parseTtl(process.env["WTFOC_QDRANT_CID_TTL"] ?? "7d");
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -659,35 +658,11 @@ async function main() {
 		console.error(`   TTL: ${process.env["WTFOC_COLLECTION_TTL"]} (sweep every ${Math.round(SWEEP_INTERVAL / 1000)}s)`);
 	}
 
-	// ─── Qdrant CID collection cleanup ──────────────────────────────────
-	// Periodically delete wtfoc-cid-* Qdrant collections that haven't been
-	// accessed recently. Prevents unbounded growth from arbitrary CID requests.
-	if (VECTOR_BACKEND === "qdrant" && QDRANT_CID_TTL_MS > 0) {
-		const CID_SWEEP_INTERVAL = Math.max(3_600_000, QDRANT_CID_TTL_MS / 4); // at least hourly
-		setInterval(async () => {
-			try {
-				const { QdrantClient } = await import("@qdrant/js-client-rest");
-				const client = new QdrantClient({ url: QDRANT_URL, apiKey: QDRANT_API_KEY, checkCompatibility: false });
-				const { collections } = (await client.getCollections()).collections
-					? await client.getCollections()
-					: { collections: [] };
-				const cidCollections = collections.filter((c) => c.name.startsWith("wtfoc-cid-"));
-				const now = Date.now();
-				for (const col of cidCollections) {
-					const cacheKey = `cid:${col.name.slice("wtfoc-cid-".length)}`;
-					const cached = collectionCache.get(cacheKey);
-					if (!cached || now - cached.lastAccessedAt > QDRANT_CID_TTL_MS) {
-						await client.deleteCollection(col.name);
-						collectionCache.delete(cacheKey);
-						console.error(`🗑️  Cleaned up stale Qdrant CID collection "${col.name}"`);
-					}
-				}
-			} catch (err) {
-				console.error("[wtfoc] Qdrant CID cleanup error:", err instanceof Error ? err.message : err);
-			}
-		}, CID_SWEEP_INTERVAL).unref();
-		console.error(`   Qdrant CID cleanup: ${process.env["WTFOC_QDRANT_CID_TTL"] ?? "7d"} (sweep every ${Math.round(CID_SWEEP_INTERVAL / 3_600_000)}h)`);
-	}
+	// TODO: Qdrant CID collection cleanup — wtfoc-cid-* collections persist
+	// in Qdrant across restarts. Need a timestamp-aware cleanup mechanism
+	// (e.g., sentinel point with _wtfoc_last_accessed) to garbage-collect
+	// old CID collections without losing data for active users. Filed as
+	// follow-up work.
 
 	server.listen(PORT, () => {
 		console.error(`\n🌐 wtfoc web running at http://localhost:${PORT}`);
