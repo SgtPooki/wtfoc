@@ -12,12 +12,14 @@ const DIMENSIONS = 384;
 export class TransformersEmbedder implements Embedder {
 	readonly dimensions = DIMENSIONS;
 	readonly model: string;
+	readonly #dtype: string;
 
 	#pipeline: FeatureExtractionPipeline | null = null;
 	#initPromise: Promise<void> | null = null;
 
-	constructor(model: string = DEFAULT_MODEL) {
+	constructor(model: string = DEFAULT_MODEL, options?: { dtype?: string }) {
 		this.model = model;
+		this.#dtype = options?.dtype ?? "fp32";
 	}
 
 	async #ensureReady(signal?: AbortSignal): Promise<void> {
@@ -35,7 +37,7 @@ export class TransformersEmbedder implements Embedder {
 						options?: Record<string, unknown>,
 					) => Promise<FeatureExtractionPipeline>;
 					this.#pipeline = await pipelineFn("feature-extraction", this.model, {
-						dtype: "fp32",
+						dtype: this.#dtype,
 					} as Record<string, unknown>);
 				} catch (err) {
 					this.#initPromise = null;
