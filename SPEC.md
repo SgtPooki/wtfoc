@@ -32,6 +32,8 @@ Every component is an interface. Users can swap, replace, or eject any part of t
 | **SourceAdapter** | `SourceAdapter` | Slack JSON, GitHub (gh CLI) | Jira, Discord, Linear, Confluence, any data source |
 | **ManifestStore** | `ManifestStore` | FOC-backed head+segments | Local-only, S3-backed, any mutable index |
 | **EdgeExtractor** | `EdgeExtractor` | Regex-based (refs, closes, changes) | LLM-based, AST-based, custom extractors |
+| **ChunkScorer** | `ChunkScorer` | Keyword-based signal scorer | LLM-based, sentiment analysis, custom scorers |
+| **Clusterer** | `Clusterer` | Greedy threshold-based (cosine >= 0.85) | HDBSCAN, k-means, spectral clustering |
 
 **Interfaces at seams, concrete code elsewhere.** Only extract an interface at defined seams or when there are two real implementations.
 

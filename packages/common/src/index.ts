@@ -19,6 +19,13 @@ export {
 	WtfocError,
 } from "./errors.js";
 export type { ChunkScorer } from "./interfaces/chunk-scorer.js";
+export type {
+	Clusterer,
+	ClusterOptions,
+	ClusterRequest,
+	ClusterResult,
+	ThemeCluster,
+} from "./interfaces/clusterer.js";
 export type { EdgeExtractor } from "./interfaces/edge-extractor.js";
 export type { Embedder } from "./interfaces/embedder.js";
 export type { ManifestStore, StoredHead } from "./interfaces/manifest-store.js";

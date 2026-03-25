@@ -10,6 +10,7 @@ import { registerReindexCommand } from "./commands/reindex.js";
 import { registerServeCommand } from "./commands/serve.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerSuggestSourcesCommand } from "./commands/suggest-sources.js";
+import { registerThemesCommand } from "./commands/themes.js";
 import { registerTraceCommand } from "./commands/trace.js";
 import { registerUnresolvedEdgesCommand } from "./commands/unresolved-edges.js";
 import { registerVerifyCommand } from "./commands/verify.js";
@@ -36,5 +37,6 @@ registerSuggestSourcesCommand(program);
 registerReindexCommand(program);
 registerPromoteCommand(program);
 registerServeCommand(program);
+registerThemesCommand(program);
 
 program.parse();

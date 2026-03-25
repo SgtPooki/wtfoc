@@ -1,6 +1,7 @@
 // @wtfoc/search — Embedder + vector index + query + trace
 // See SPEC.md for search/trace architecture
 
+export { centroid, dot, extractLabel, GreedyClusterer, normalize } from "./clustering/index.js";
 export type { EdgeResolutionStats, SourceIndex } from "./edge-resolution.js";
 export { analyzeEdgeResolution, buildSourceIndex, resolves } from "./edge-resolution.js";
 export type { OpenAIEmbedderOptions } from "./embedders/openai.js";
