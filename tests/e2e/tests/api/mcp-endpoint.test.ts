@@ -6,8 +6,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { TransformersEmbedder } from "@wtfoc/search";
 import { LocalManifestStore, LocalStorageBackend } from "@wtfoc/store";
+import { createTestEmbedder } from "../../helpers/embedder.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FIXTURE_SYNAPSE_SDK } from "../../helpers/fixtures.js";
 import { seedCollection } from "../../helpers/seed.js";
@@ -21,7 +21,7 @@ beforeAll(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "wtfoc-e2e-mcp-data-"));
 	manifestDir = await mkdtemp(join(tmpdir(), "wtfoc-e2e-mcp-manifest-"));
 
-	const embedder = new TransformersEmbedder();
+	const embedder = createTestEmbedder();
 	const storage = new LocalStorageBackend(dataDir);
 	const manifests = new LocalManifestStore(manifestDir);
 

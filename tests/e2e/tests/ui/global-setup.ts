@@ -11,8 +11,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { FullConfig } from "@playwright/test";
-import { TransformersEmbedder } from "@wtfoc/search";
 import { LocalManifestStore, LocalStorageBackend } from "@wtfoc/store";
+import { createTestEmbedder } from "../../helpers/embedder.js";
 import { FIXTURE_FOC_CLI, FIXTURE_KNOWLEDGE_BASE, FIXTURE_SYNAPSE_SDK } from "../../helpers/fixtures.js";
 import { seedCollection } from "../../helpers/seed.js";
 
@@ -41,7 +41,7 @@ export default async function globalSetup(_config: FullConfig) {
 	manifestDir = await mkdtemp(join(tmpdir(), "wtfoc-e2e-ui-manifest-"));
 
 	// Seed test data
-	const embedder = new TransformersEmbedder();
+	const embedder = createTestEmbedder();
 	const storage = new LocalStorageBackend(dataDir);
 	const manifests = new LocalManifestStore(manifestDir);
 

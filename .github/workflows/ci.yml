@@ -22,6 +22,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Cache embedder model
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.pnpm/@huggingface+transformers*/node_modules/@huggingface/transformers/.cache
+          key: embedder-model-minilm-q8
+
       - name: Build packages
         run: pnpm -r build
 
@@ -35,7 +41,7 @@ jobs:
         run: pnpm test
 
       - name: Pre-warm embedder model cache
-        run: node -e "const {TransformersEmbedder} = await import('./packages/search/dist/index.js'); await new TransformersEmbedder().embed('warmup'); console.log('Model cached')"
+        run: node -e "const {TransformersEmbedder} = await import('./packages/search/dist/index.js'); await new TransformersEmbedder(undefined, {dtype:'q8'}).embed('warmup'); console.log('Model cached')"
 
       - name: Test (e2e API)
         run: pnpm exec vitest run --config tests/e2e/vitest.config.ts
@@ -55,6 +61,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Cache embedder model
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.pnpm/@huggingface+transformers*/node_modules/@huggingface/transformers/.cache
+          key: embedder-model-minilm-q8
+
       - name: Build packages
         run: pnpm -r build
 
@@ -62,7 +74,7 @@ jobs:
         run: pnpm --filter @wtfoc/web build:server
 
       - name: Pre-warm embedder model cache
-        run: node -e "const {TransformersEmbedder} = await import('./packages/search/dist/index.js'); await new TransformersEmbedder().embed('warmup'); console.log('Model cached')"
+        run: node -e "const {TransformersEmbedder} = await import('./packages/search/dist/index.js'); await new TransformersEmbedder(undefined, {dtype:'q8'}).embed('warmup'); console.log('Model cached')"
 
       - name: Install Playwright browsers
         run: pnpm --filter @wtfoc/e2e exec playwright install --with-deps chromium
