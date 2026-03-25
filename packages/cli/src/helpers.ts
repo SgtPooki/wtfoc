@@ -1,4 +1,4 @@
-import type { Embedder } from "@wtfoc/common";
+import type { CollectionHead, Embedder } from "@wtfoc/common";
 import type { MountedCollection } from "@wtfoc/search";
 import {
 	InMemoryVectorIndex,
@@ -147,7 +147,7 @@ export function createEmbedder(opts: {
 
 export async function loadCollection(
 	store: ReturnType<typeof createStore>,
-	manifest: import("@wtfoc/common").CollectionHead,
+	manifest: CollectionHead,
 ): Promise<LoadedCollection> {
 	const vectorIndex = new InMemoryVectorIndex();
 	return mountCollection(manifest, store.storage, vectorIndex);

@@ -1,4 +1,4 @@
-import type { Embedder } from "@wtfoc/common";
+import type { CollectionHead, Embedder } from "@wtfoc/common";
 import type { MountedCollection } from "@wtfoc/search";
 import {
 	InMemoryVectorIndex,
@@ -8,7 +8,7 @@ import {
 } from "@wtfoc/search";
 import type { createStore } from "@wtfoc/store";
 
-export type { MountedCollection as LoadedCollection } from "@wtfoc/search";
+export type LoadedCollection = MountedCollection;
 
 /**
  * Load all segments from a collection into an in-memory vector index.
@@ -16,8 +16,8 @@ export type { MountedCollection as LoadedCollection } from "@wtfoc/search";
  */
 export async function loadCollection(
 	store: ReturnType<typeof createStore>,
-	manifest: import("@wtfoc/common").CollectionHead,
-): Promise<MountedCollection> {
+	manifest: CollectionHead,
+): Promise<LoadedCollection> {
 	const vectorIndex = new InMemoryVectorIndex();
 	return mountCollection(manifest, store.storage, vectorIndex);
 }
