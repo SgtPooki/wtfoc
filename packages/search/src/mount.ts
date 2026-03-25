@@ -23,6 +23,12 @@ export interface MountOptions {
 	 * loading segments directly from the head (pre-publication state).
 	 */
 	resolveRevision?: (revisionId: string, signal?: AbortSignal) => Promise<CollectionRevision>;
+	/**
+	 * If true, delete orphan vectors from the vector index after upserting
+	 * all current chunks. Only effective when the vector index supports
+	 * reconciliation (e.g. QdrantVectorIndex). Defaults to false.
+	 */
+	reconcile?: boolean;
 }
 
 /**
@@ -96,5 +102,26 @@ export async function mountCollection(
 		await vectorIndex.add(entries);
 	}
 
+	// Reconcile: delete orphan vectors not in the current manifest
+	if (options?.reconcile && isReconcilable(vectorIndex)) {
+		signal?.throwIfAborted();
+		const expectedIds = new Set<string>();
+		for (const seg of segments) {
+			for (const chunk of seg.chunks) {
+				expectedIds.add(chunk.id);
+			}
+		}
+		await vectorIndex.reconcile(expectedIds, signal);
+	}
+
 	return { revision, segments, vectorIndex };
+}
+
+/**
+ * Type guard for vector indices that support reconciliation (e.g. QdrantVectorIndex).
+ */
+function isReconcilable(index: VectorIndex): index is VectorIndex & {
+	reconcile(expectedIds: ReadonlySet<string>, signal?: AbortSignal): Promise<void>;
+} {
+	return typeof (index as Record<string, unknown>).reconcile === "function";
 }

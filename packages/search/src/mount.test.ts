@@ -7,7 +7,7 @@ import type {
 	VectorEntry,
 	VectorIndex,
 } from "@wtfoc/common";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mountCollection } from "./mount.js";
 
 function makeSegment(id: string): Segment {
@@ -394,5 +394,89 @@ describe("mountCollection", () => {
 
 		expect(mounted.revision).toBeNull();
 		expect(mounted.segments).toHaveLength(1);
+	});
+
+	it("calls reconcile on a reconcilable vector index when option is set", async () => {
+		const seg = makeSegment("seg-rec");
+		const storage = makeStorage({ "seg-rec": seg });
+		const index = makeVectorIndex();
+
+		// Add reconcile method to mock index
+		const reconcileMock = vi.fn(async () => {});
+		(index as Record<string, unknown>).reconcile = reconcileMock;
+
+		const head: CollectionHead = {
+			schemaVersion: 1,
+			collectionId: "reconcile-test",
+			name: "reconcile",
+			currentRevisionId: null,
+			prevHeadId: null,
+			segments: [{ id: "seg-rec", sourceTypes: ["repo"], chunkCount: 1 }],
+			totalChunks: 1,
+			embeddingModel: "test-model",
+			embeddingDimensions: 3,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		};
+
+		await mountCollection(head, storage, index, { reconcile: true });
+
+		expect(reconcileMock).toHaveBeenCalledOnce();
+		const call = reconcileMock.mock.calls[0];
+		expect(call).toBeTruthy();
+		const [expectedIds] = call ?? [];
+		expect(expectedIds).toBeInstanceOf(Set);
+		expect(expectedIds.has("chunk-seg-rec")).toBe(true);
+	});
+
+	it("does not call reconcile when option is false", async () => {
+		const seg = makeSegment("seg-norec");
+		const storage = makeStorage({ "seg-norec": seg });
+		const index = makeVectorIndex();
+
+		const reconcileMock = vi.fn(async () => {});
+		(index as Record<string, unknown>).reconcile = reconcileMock;
+
+		const head: CollectionHead = {
+			schemaVersion: 1,
+			collectionId: "norec-test",
+			name: "norec",
+			currentRevisionId: null,
+			prevHeadId: null,
+			segments: [{ id: "seg-norec", sourceTypes: ["repo"], chunkCount: 1 }],
+			totalChunks: 1,
+			embeddingModel: "test-model",
+			embeddingDimensions: 3,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		};
+
+		await mountCollection(head, storage, index);
+
+		expect(reconcileMock).not.toHaveBeenCalled();
+	});
+
+	it("skips reconcile on non-reconcilable vector index", async () => {
+		const seg = makeSegment("seg-plain");
+		const storage = makeStorage({ "seg-plain": seg });
+		const index = makeVectorIndex();
+		// No reconcile method — plain VectorIndex
+
+		const head: CollectionHead = {
+			schemaVersion: 1,
+			collectionId: "plain-test",
+			name: "plain",
+			currentRevisionId: null,
+			prevHeadId: null,
+			segments: [{ id: "seg-plain", sourceTypes: ["repo"], chunkCount: 1 }],
+			totalChunks: 1,
+			embeddingModel: "test-model",
+			embeddingDimensions: 3,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		};
+
+		// Should not throw even with reconcile: true
+		await expect(mountCollection(head, storage, index, { reconcile: true })).resolves.not.toThrow();
 	});
 });
