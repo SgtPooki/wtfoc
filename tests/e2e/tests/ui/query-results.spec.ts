@@ -41,8 +41,8 @@ test.describe("query results", () => {
 	test("search input is visible when collection is selected", async ({ page }) => {
 		await page.goto("/?collection=ui-test");
 
-		// Search container should be present
-		const searchRow = page.locator(".search-row input");
-		await expect(searchRow).toBeVisible({ timeout: 10_000 });
+		// SearchBar is always rendered in Layout — use placeholder for stable selection
+		const searchInput = page.getByPlaceholder("Trace a question");
+		await expect(searchInput).toBeVisible({ timeout: 10_000 });
 	});
 });
