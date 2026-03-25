@@ -1,5 +1,5 @@
-import { readFile, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 export interface ContextStatus {
 	contextId: string;
@@ -42,6 +42,7 @@ export async function writeExtractionStatus(
 	statusPath: string,
 	data: ExtractionStatusData,
 ): Promise<void> {
+	await mkdir(dirname(statusPath), { recursive: true });
 	const tmpPath = `${statusPath}.tmp.${Date.now()}`;
 	await writeFile(tmpPath, JSON.stringify(data, null, 2));
 	await rename(tmpPath, statusPath);

@@ -1,5 +1,5 @@
-import { readFile, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type { Edge } from "@wtfoc/common";
 import { edgeKey } from "./merge.js";
 
@@ -37,6 +37,7 @@ export async function readOverlayEdges(filePath: string): Promise<OverlayEdgeDat
  * Write overlay edges to disk atomically (temp + rename).
  */
 export async function writeOverlayEdges(filePath: string, data: OverlayEdgeData): Promise<void> {
+	await mkdir(dirname(filePath), { recursive: true });
 	const tmpPath = `${filePath}.tmp.${Date.now()}`;
 	await writeFile(tmpPath, JSON.stringify(data, null, 2));
 	await rename(tmpPath, filePath);

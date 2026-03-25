@@ -13,7 +13,11 @@ import { validateManifestSchema } from "../schema.js";
  * headId = SHA-256 of the serialized manifest JSON.
  */
 export class LocalManifestStore implements ManifestStore {
-	constructor(private readonly manifestDir: string) {}
+	readonly dir: string;
+
+	constructor(manifestDir: string) {
+		this.dir = manifestDir;
+	}
 
 	async getHead(projectName: string): Promise<StoredHead | null> {
 		let data: string;
@@ -40,7 +44,7 @@ export class LocalManifestStore implements ManifestStore {
 			throw new ManifestConflictError(prevHeadId, currentHeadId);
 		}
 
-		await mkdir(this.manifestDir, { recursive: true });
+		await mkdir(this.dir, { recursive: true });
 		const serialized = JSON.stringify(manifest, null, "\t");
 		await writeFile(this.filePath(projectName), serialized, "utf-8");
 
@@ -50,7 +54,7 @@ export class LocalManifestStore implements ManifestStore {
 
 	async listProjects(): Promise<string[]> {
 		try {
-			const files = await readdir(this.manifestDir);
+			const files = await readdir(this.dir);
 			return files.filter((f) => f.endsWith(".json")).map((f) => f.replace(/\.json$/, ""));
 		} catch {
 			return [];
@@ -58,7 +62,7 @@ export class LocalManifestStore implements ManifestStore {
 	}
 
 	private filePath(projectName: string): string {
-		const base = resolve(this.manifestDir);
+		const base = resolve(this.dir);
 		const resolved = resolve(base, `${projectName}.json`);
 		const rel = relative(base, resolved);
 		if (rel.startsWith("..") || isAbsolute(rel)) {
