@@ -36,7 +36,7 @@ export async function createVectorIndex(config: VectorIndexConfig): Promise<Vect
 			return new QdrantVectorIndex({
 				url: config.qdrantUrl ?? "http://localhost:6333",
 				apiKey: config.qdrantApiKey,
-				collectionName: config.collectionName,
+				collectionName: `wtfoc-${config.collectionName}`,
 				dimensions: config.dimensions,
 				recreate: config.recreate ?? true,
 			});
