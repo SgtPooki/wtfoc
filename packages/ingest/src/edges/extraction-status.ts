@@ -25,7 +25,12 @@ export async function readExtractionStatus(
 	try {
 		const data = await readFile(statusPath, "utf-8");
 		return JSON.parse(data) as ExtractionStatusData;
-	} catch {
+	} catch (err) {
+		// Distinguish missing file from corrupt file
+		if (err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT") {
+			return null;
+		}
+		console.error(`[wtfoc] Warning: failed to read extraction status at ${statusPath}:`, err);
 		return null;
 	}
 }

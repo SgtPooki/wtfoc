@@ -24,7 +24,11 @@ export async function readOverlayEdges(filePath: string): Promise<OverlayEdgeDat
 	try {
 		const data = await readFile(filePath, "utf-8");
 		return JSON.parse(data) as OverlayEdgeData;
-	} catch {
+	} catch (err) {
+		if (err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT") {
+			return null;
+		}
+		console.error(`[wtfoc] Warning: failed to read overlay edges at ${filePath}:`, err);
 		return null;
 	}
 }
