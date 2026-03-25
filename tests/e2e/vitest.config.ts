@@ -17,7 +17,11 @@ export default defineConfig({
 	},
 	test: {
 		include: ["tests/api/**/*.test.ts"],
-		testTimeout: 30_000,
-		hookTimeout: 30_000,
+		testTimeout: 60_000,
+		hookTimeout: 60_000,
+		// Run test files sequentially — each file spawns a web server and
+		// initializes TransformersEmbedder which downloads/caches the ONNX model.
+		// Parallel file execution causes model cache corruption on CI.
+		fileParallelism: false,
 	},
 });

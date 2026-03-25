@@ -34,6 +34,9 @@ jobs:
       - name: Test (unit)
         run: pnpm test
 
+      - name: Pre-warm embedder model cache
+        run: node -e "const {TransformersEmbedder} = await import('./packages/search/dist/index.js'); await new TransformersEmbedder().embed('warmup'); console.log('Model cached')"
+
       - name: Test (e2e API)
         run: pnpm exec vitest run --config tests/e2e/vitest.config.ts
 
@@ -57,6 +60,9 @@ jobs:
 
       - name: Build web server
         run: pnpm --filter @wtfoc/web build:server
+
+      - name: Pre-warm embedder model cache
+        run: node -e "const {TransformersEmbedder} = await import('./packages/search/dist/index.js'); await new TransformersEmbedder().embed('warmup'); console.log('Model cached')"
 
       - name: Install Playwright browsers
         run: pnpm --filter @wtfoc/e2e exec playwright install --with-deps chromium
