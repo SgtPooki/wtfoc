@@ -8,6 +8,7 @@
 		"build": "vite build",
 		"build:server": "tsc -p server/tsconfig.json",
 		"build:all": "pnpm build && pnpm build:server",
+		"dev:server": "tsx --watch server/index.ts",
 		"preview": "vite preview",
 		"start": "node server/dist/index.js"
 	},
