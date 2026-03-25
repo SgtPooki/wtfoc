@@ -271,6 +271,9 @@ export function registerIngestCommand(program: Command): void {
 					`✅ Ingested ${parts.join(", ")} from ${sourceArg} into "${opts.collection}"`,
 				);
 			}
+
+			// synapse-sdk keeps HTTP connections alive with no cleanup method
+			if (storageType === "foc") process.exit(0);
 		},
 	);
 }

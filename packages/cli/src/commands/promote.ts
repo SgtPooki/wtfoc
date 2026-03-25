@@ -89,7 +89,8 @@ export function registerPromoteCommand(program: Command): void {
 					console.error(`\n   Share this CID to let anyone query your collection:`);
 					console.error(`   ${manifestCid}`);
 				}
-				return;
+				// synapse-sdk keeps HTTP connections alive with no cleanup method
+				process.exit(0);
 			}
 
 			if (format !== "quiet") {
@@ -232,5 +233,8 @@ export function registerPromoteCommand(program: Command): void {
 					console.error(`   ${manifestCid}`);
 				}
 			}
+
+			// synapse-sdk keeps HTTP connections alive with no cleanup method
+			process.exit(0);
 		});
 }
