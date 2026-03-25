@@ -53,6 +53,7 @@ export class LlmEdgeExtractor implements EdgeExtractor {
 				signal?.throwIfAborted();
 				const release = await semaphore.acquire();
 				try {
+					signal?.throwIfAborted();
 					return await this.#extractBatch(batch, signal);
 				} finally {
 					release();

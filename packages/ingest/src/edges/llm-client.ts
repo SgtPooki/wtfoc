@@ -24,10 +24,10 @@ export interface LlmResponse {
 
 /**
  * Call a chat completion endpoint and return the response content.
- * Supports JSON mode with three-tier fallback:
- * 1. response_format: { type: "json_object" } if jsonMode is "on" or "auto"
- * 2. Plain prompt asking for JSON (if server rejects json_object)
- * 3. Fenced block extraction (parse ```json ... ``` from response)
+ * JSON mode behavior:
+ * - "on": sets response_format: { type: "json_object" } (requires server support)
+ * - "auto" or "off": relies on prompt to produce JSON (most compatible with local servers)
+ * Response parsing uses three-tier fallback: direct JSON → fenced block → bracket extraction
  */
 export async function chatCompletion(
 	messages: ChatMessage[],
@@ -115,8 +115,8 @@ export function parseJsonResponse<T>(content: string): T | null {
 		}
 	}
 
-	// Tier 3: first JSON array or object
-	const bracketMatch = /(\[[\s\S]*\]|\{[\s\S]*\})/.exec(content);
+	// Tier 3: first JSON array or object (non-greedy to avoid over-capture)
+	const bracketMatch = /(\[[\s\S]*?\]|\{[\s\S]*?\})/.exec(content);
 	if (bracketMatch?.[1]) {
 		try {
 			return JSON.parse(bracketMatch[1]) as T;

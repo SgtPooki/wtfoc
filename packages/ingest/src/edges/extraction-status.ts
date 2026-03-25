@@ -57,9 +57,8 @@ export async function computeContextHash(
 ): Promise<string> {
 	const { createHash } = await import("node:crypto");
 	const hash = createHash("sha256");
-	for (const chunk of chunks.sort((a, b) => a.id.localeCompare(b.id))) {
-		hash.update(chunk.id);
-		hash.update(chunk.content);
+	for (const chunk of [...chunks].sort((a, b) => a.id.localeCompare(b.id))) {
+		hash.update(JSON.stringify({ id: chunk.id, content: chunk.content }));
 	}
 	return hash.digest("hex");
 }

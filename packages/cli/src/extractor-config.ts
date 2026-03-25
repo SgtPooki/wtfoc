@@ -57,24 +57,25 @@ export function resolveExtractorConfig(opts: ExtractorCliOpts): LlmExtractorConf
 
 	const rawUrl = opts.extractorUrl ?? process.env.WTFOC_EXTRACTOR_URL;
 	if (!rawUrl) {
-		throw new Error(
-			"--extractor-url is required when LLM extraction is enabled. " +
-				"Provide a base URL (e.g. http://localhost:1234/v1) or shortcut (lmstudio, ollama).",
+		console.error("Error: --extractor-url is required when LLM extraction is enabled.");
+		console.error(
+			"  Provide a base URL (e.g. http://localhost:1234/v1) or shortcut (lmstudio, ollama).",
 		);
+		process.exit(2);
 	}
 	const baseUrl = URL_SHORTCUTS[rawUrl] ?? rawUrl;
 	if (!baseUrl.startsWith("http")) {
-		throw new Error(
-			`--extractor-url must be a URL or shortcut (lmstudio, ollama). Got: "${rawUrl}"`,
+		console.error(
+			`Error: --extractor-url must be a URL or shortcut (lmstudio, ollama). Got: "${rawUrl}"`,
 		);
+		process.exit(2);
 	}
 
 	const model = opts.extractorModel ?? process.env.WTFOC_EXTRACTOR_MODEL;
 	if (!model) {
-		throw new Error(
-			"--extractor-model is required when LLM extraction is enabled. " +
-				"The model name must match what the server has loaded.",
-		);
+		console.error("Error: --extractor-model is required when LLM extraction is enabled.");
+		console.error("  The model name must match what the server has loaded.");
+		process.exit(2);
 	}
 
 	const apiKey = opts.extractorKey ?? process.env.WTFOC_EXTRACTOR_API_KEY;

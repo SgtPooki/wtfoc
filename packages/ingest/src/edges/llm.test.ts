@@ -1,5 +1,5 @@
 import type { Chunk } from "@wtfoc/common";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { LlmEdgeExtractor } from "./llm.js";
 
 function makeChunk(content: string, id = "chunk-1"): Chunk {
@@ -20,6 +20,10 @@ vi.stubGlobal("fetch", mockFetch);
 
 afterEach(() => {
 	mockFetch.mockReset();
+});
+
+afterAll(() => {
+	vi.unstubAllGlobals();
 });
 
 function mockLlmResponse(edges: unknown[]): void {

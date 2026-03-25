@@ -64,6 +64,9 @@ export function registerIngestCommand(program: Command): void {
 			// Get or create manifest
 			const head = await store.manifests.getHead(opts.collection);
 
+			// Resolve extractor config early (fail fast on bad config)
+			const extractorConfig = resolveExtractorConfig(opts);
+
 			// Initialize embedder
 			if (format !== "quiet") console.error("⏳ Loading embedder...");
 			const { embedder, modelName } = createEmbedder(opts);
@@ -148,8 +151,6 @@ export function registerIngestCommand(program: Command): void {
 				compositeExtractor.register({ name: "heuristic", extractor: new HeuristicEdgeExtractor() });
 				compositeExtractor.register({ name: "code", extractor: new CodeEdgeExtractor() });
 
-				// Register LLM extractor if configured
-				const extractorConfig = resolveExtractorConfig(opts);
 				if (extractorConfig.enabled) {
 					compositeExtractor.register({
 						name: "llm",
