@@ -1,5 +1,6 @@
 import type { CollectionHead, StorageBackend, StorageResult } from "@wtfoc/common";
 import { CURRENT_SCHEMA_VERSION } from "@wtfoc/common";
+import { CID } from "multiformats/cid";
 import { describe, expect, it } from "vitest";
 import { bundleAndUpload } from "./bundler.js";
 import { validateManifestSchema } from "./schema.js";
@@ -87,7 +88,9 @@ describe("bundler → manifest integration", () => {
 		// Validate the manifest round-trips through schema validation
 		const validated = validateManifestSchema(manifest);
 		expect(validated.batches).toHaveLength(1);
-		expect(validated.batches?.[0].pieceCid).toBe("baga6ea4seaq-integration-test");
+		// PieceCID is now computed locally from segments-only CAR
+		const Piece = await import("@filoz/synapse-core/piece");
+		expect(Piece.isPieceCID(CID.parse(validated.batches?.[0].pieceCid ?? ""))).toBe(true);
 		// segmentIds now contain IPFS CIDs matching segments[].id
 		expect(validated.batches?.[0].segmentIds).toEqual([segCid]);
 		expect(validated.segments[0].id).toBe(segCid);

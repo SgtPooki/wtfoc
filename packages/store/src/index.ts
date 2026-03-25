@@ -4,7 +4,15 @@
 export { CidReadableStorage } from "./backends/cid-reader.js";
 export { FocStorageBackend, type FocStorageBackendOptions } from "./backends/foc.js";
 export { LocalStorageBackend } from "./backends/local.js";
-export { type BundleSegment, type BundleUploadResult, bundleAndUpload } from "./bundler.js";
+export {
+	type BundleOptions,
+	type BundleSegment,
+	type BundleUploadResult,
+	bundleAndUpload,
+	computeSegmentCids,
+	type IpniValidationResult,
+	validateIpniIndexing,
+} from "./bundler.js";
 export { type CidResolvedCollection, resolveCollectionByCid } from "./cid-resolver.js";
 export {
 	createCollectionDescriptor,
