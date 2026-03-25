@@ -14,16 +14,16 @@ export interface CreateMcpServerOptions {
 /** Strip filesystem paths from error messages to avoid leaking server internals. */
 function sanitizeError(err: unknown): string {
 	if (!(err instanceof Error)) return String(err);
-	// Known safe error types — pass through
-	if (err.message.startsWith("Collection") || err.message.startsWith("Invalid")) {
+	// WtfocError with stable codes — safe to pass through
+	if ("code" in err && typeof (err as { code: unknown }).code === "string") {
 		return err.message;
 	}
-	// Strip absolute paths from Node.js filesystem errors
-	const cleaned = err.message.replace(/\s*'\/[^']*'/g, "");
 	// If it looks like an fs error (ENOENT, EACCES, etc.), genericize it
-	if (/^(ENOENT|EACCES|EPERM|EISDIR|ENOTDIR)/.test(cleaned)) {
+	if (/^(ENOENT|EACCES|EPERM|EISDIR|ENOTDIR)/.test(err.message)) {
 		return "Resource not found";
 	}
+	// Strip POSIX and Windows absolute paths from error messages
+	const cleaned = err.message.replace(/\s*'\/[^']*'/g, "").replace(/\s*'[A-Za-z]:\\[^']*'/g, "");
 	return cleaned;
 }
 

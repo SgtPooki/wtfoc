@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import type { StorageBackend, StorageResult } from "@wtfoc/common";
-import { StorageNotFoundError } from "@wtfoc/common";
+import { StorageNotFoundError, WtfocError } from "@wtfoc/common";
 
 /**
  * Local filesystem storage backend. No wallet, no network.
@@ -46,9 +46,11 @@ export class LocalStorageBackend implements StorageBackend {
 	}
 
 	private safePath(id: string): string {
-		const resolved = resolve(this.dataDir, id);
-		if (!resolved.startsWith(`${resolve(this.dataDir)}/`)) {
-			throw new Error("Invalid storage ID");
+		const base = resolve(this.dataDir);
+		const resolved = resolve(base, id);
+		const rel = relative(base, resolved);
+		if (rel.startsWith("..") || isAbsolute(rel)) {
+			throw new WtfocError("Invalid storage ID", "STORAGE_INVALID_ID", { id });
 		}
 		return resolved;
 	}

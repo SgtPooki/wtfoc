@@ -287,21 +287,54 @@ async function main() {
 
 		mcpInflight++;
 		try {
-			// Parse JSON body with size limit
+			// Parse JSON body with size limit and abort handling
 			const body = await new Promise<string>((resolve, reject) => {
 				const chunks: Buffer[] = [];
 				let total = 0;
-				req.on("data", (chunk: Buffer) => {
+				let settled = false;
+
+				const onData = (chunk: Buffer): void => {
 					total += chunk.byteLength;
 					if (total > MCP_MAX_BODY) {
 						req.destroy();
+						cleanup();
+						settled = true;
 						reject(new Error("body too large"));
 						return;
 					}
 					chunks.push(chunk);
-				});
-				req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
-				req.on("error", reject);
+				};
+				const onEnd = (): void => {
+					cleanup();
+					settled = true;
+					resolve(Buffer.concat(chunks).toString("utf-8"));
+				};
+				const onError = (err: Error): void => {
+					if (settled) return;
+					cleanup();
+					settled = true;
+					reject(err);
+				};
+				const onAbort = (): void => {
+					if (settled) return;
+					cleanup();
+					settled = true;
+					reject(new Error("request aborted"));
+				};
+
+				function cleanup(): void {
+					req.removeListener("data", onData);
+					req.removeListener("end", onEnd);
+					req.removeListener("error", onError);
+					req.removeListener("aborted", onAbort);
+					req.removeListener("close", onAbort);
+				}
+
+				req.on("data", onData);
+				req.on("end", onEnd);
+				req.on("error", onError);
+				req.on("aborted", onAbort);
+				req.on("close", onAbort);
 			});
 
 			let parsedBody: unknown;
@@ -317,10 +350,12 @@ async function main() {
 			const mcpServer = createMcpServer(store, embedder, embedderModel, { readOnly: true });
 			const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
 
-			res.on("close", () => {
+			const cleanup = () => {
 				transport.close().catch(() => {});
 				mcpServer.close().catch(() => {});
-			});
+			};
+			res.once("finish", cleanup);
+			res.once("close", cleanup);
 
 			await mcpServer.connect(transport);
 			await transport.handleRequest(req, res, parsedBody);

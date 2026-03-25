@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import type { CollectionHead, ManifestStore, StoredHead } from "@wtfoc/common";
-import { ManifestConflictError } from "@wtfoc/common";
+import { ManifestConflictError, WtfocError } from "@wtfoc/common";
 import { validateManifestSchema } from "../schema.js";
 
 /**
@@ -58,9 +58,13 @@ export class LocalManifestStore implements ManifestStore {
 	}
 
 	private filePath(projectName: string): string {
-		const resolved = resolve(this.manifestDir, `${projectName}.json`);
-		if (!resolved.startsWith(`${resolve(this.manifestDir)}/`)) {
-			throw new Error("Invalid collection name");
+		const base = resolve(this.manifestDir);
+		const resolved = resolve(base, `${projectName}.json`);
+		const rel = relative(base, resolved);
+		if (rel.startsWith("..") || isAbsolute(rel)) {
+			throw new WtfocError("Invalid collection name", "COLLECTION_INVALID_NAME", {
+				projectName,
+			});
 		}
 		return resolved;
 	}

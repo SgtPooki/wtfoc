@@ -125,6 +125,34 @@ describe("LocalManifestStore", () => {
 		});
 	});
 
+	describe("path traversal protection", () => {
+		it("returns null for getHead with traversal name", async () => {
+			// getHead catches the WtfocError and returns null
+			const result = await store.getHead("../../etc/passwd");
+			expect(result).toBeNull();
+		});
+
+		it("throws COLLECTION_INVALID_NAME for putHead with traversal name", async () => {
+			const manifest = makeManifest({ name: "traversal" });
+			await expect(store.putHead("../escape", manifest, null)).rejects.toMatchObject({
+				code: "COLLECTION_INVALID_NAME",
+			});
+		});
+
+		it("throws COLLECTION_INVALID_NAME for absolute path name", async () => {
+			const manifest = makeManifest({ name: "absolute" });
+			await expect(store.putHead("/etc/passwd", manifest, null)).rejects.toMatchObject({
+				code: "COLLECTION_INVALID_NAME",
+			});
+		});
+
+		it("allows valid collection names", async () => {
+			const manifest = makeManifest({ name: "valid-name" });
+			const result = await store.putHead("valid-name", manifest, null);
+			expect(result.headId).toBeTruthy();
+		});
+	});
+
 	describe("auto-creates manifest directory", () => {
 		it("creates directory on first putHead", async () => {
 			const nestedDir = join(manifestDir, "nested", "manifest", "dir");
