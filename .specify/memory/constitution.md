@@ -10,9 +10,7 @@ Six defined seams: Embedder, VectorIndex, StorageBackend, SourceAdapter, Manifes
 
 ### II. Standalone Packages
 
-Each `@wtfoc/*` package is independently useful. Library packages use peer deps for cross-package refs. Application packages (`cli`) hard-depend on what they compose. `@wtfoc/common` is contracts only — no I/O, no business logic.
-
-Five packages for hackathon: `common`, `store`, `ingest`, `search`, `cli`. Memory and MCP are deferred until core is stable.
+Each `@wtfoc/*` package is independently useful. Library packages use peer deps for cross-package refs. Application packages (`cli`, `mcp-server`) hard-depend on what they compose. `@wtfoc/common` is contracts only — no I/O, no business logic.
 
 ### III. Backend-Neutral Identity
 
@@ -36,9 +34,9 @@ Tests written before implementation where practical. Unit tests use local/in-mem
 
 Why: Each piece costs the SP gas for PDP proofs. Uploading thousands of small pieces is expensive and makes us a bad ecosystem citizen. Bundle into CAR, upload once, track internal CIDs in the manifest.
 
-### VIII. Hackathon-First, Future-Aware
+### VIII. Ship-First, Future-Aware
 
-Ship the demo, but make it worth extending. Every decision optimizes for: (1) working demo that tells a story, (2) clean architecture showing what's possible, (3) code quality that doesn't embarrass us.
+Ship working software, but make it worth extending. Every decision optimizes for: (1) working product that tells a story, (2) clean architecture showing what's possible, (3) code quality that doesn't embarrass us.
 
 ## Technical Constraints
 
@@ -195,4 +193,4 @@ Human creates spec issues (dispatch.sh spec)
 - Changes to interfaces in `@wtfoc/common` require SPEC.md update
 - Features not in SPEC.md require discussion before implementation
 
-**Version**: 1.2.0 | **Ratified**: 2026-03-23 | **Last Amended**: 2026-03-23
+**Version**: 1.3.0 | **Ratified**: 2026-03-23 | **Last Amended**: 2026-03-25

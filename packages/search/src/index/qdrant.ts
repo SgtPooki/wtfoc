@@ -101,6 +101,9 @@ export class QdrantVectorIndex implements VectorIndex {
 				limit: topK,
 				with_payload: true,
 				with_vector: true,
+				filter: {
+					must_not: [{ key: "_wtfoc_sentinel", match: { value: true } }],
+				},
 			});
 
 			return results.map((point) => {
@@ -205,6 +208,175 @@ export class QdrantVectorIndex implements VectorIndex {
 				},
 			});
 		}
+	}
+}
+
+const SENTINEL_ID = "00000000-0000-0000-0000-000000000000";
+
+/**
+ * Standalone Qdrant garbage collector for CID-loaded collections.
+ * Operates independently of individual QdrantVectorIndex instances —
+ * holds its own client reference so it can enumerate and delete collections.
+ */
+export class QdrantCollectionGc {
+	readonly #url: string;
+	readonly #apiKey: string | undefined;
+	#client: import("@qdrant/js-client-rest").QdrantClient | null = null;
+
+	constructor(url: string, apiKey?: string) {
+		this.#url = url;
+		this.#apiKey = apiKey;
+	}
+
+	async #getClient(): Promise<import("@qdrant/js-client-rest").QdrantClient> {
+		if (this.#client) return this.#client;
+		try {
+			const { QdrantClient } = await import("@qdrant/js-client-rest");
+			this.#client = new QdrantClient({
+				url: this.#url,
+				apiKey: this.#apiKey,
+				checkCompatibility: false,
+			});
+			return this.#client;
+		} catch (err) {
+			throw new Error(
+				"Failed to initialize Qdrant client in QdrantCollectionGc. " +
+					'Ensure "@qdrant/js-client-rest" is installed.' +
+					(err instanceof Error ? ` (${err.message})` : ""),
+			);
+		}
+	}
+
+	/**
+	 * Upsert a sentinel point that records when this collection was last accessed.
+	 * The sentinel is a zero-vector point with metadata in its payload.
+	 */
+	async touchCollection(collectionName: string, dimensions: number): Promise<void> {
+		const client = await this.#getClient();
+		await client.upsert(collectionName, {
+			wait: true,
+			points: [
+				{
+					id: SENTINEL_ID,
+					vector: new Array(dimensions).fill(0),
+					payload: {
+						_wtfoc_sentinel: true,
+						_wtfoc_last_accessed: Date.now(),
+					},
+				},
+			],
+		});
+	}
+
+	/**
+	 * List all Qdrant collections matching the `wtfoc-cid-` prefix.
+	 * Returns collection names.
+	 */
+	async listCidCollections(): Promise<string[]> {
+		const client = await this.#getClient();
+		const { collections } = await client.getCollections();
+		return collections.map((c) => c.name).filter((name) => name.startsWith("wtfoc-cid-"));
+	}
+
+	/**
+	 * Read the sentinel point from a collection.
+	 * Returns:
+	 * - `{ status: "found", lastAccessed: number }` if sentinel exists
+	 * - `{ status: "missing" }` if no sentinel point (collection exists but no GC metadata)
+	 * - `{ status: "error" }` if Qdrant is unreachable or returns an unexpected error
+	 */
+	async getLastAccessed(
+		collectionName: string,
+	): Promise<
+		{ status: "found"; lastAccessed: number } | { status: "missing" } | { status: "error" }
+	> {
+		const client = await this.#getClient();
+		try {
+			const points = await client.retrieve(collectionName, {
+				ids: [SENTINEL_ID],
+				with_payload: true,
+				with_vector: false,
+			});
+			const point = points[0];
+			if (!point) return { status: "missing" };
+			const payload = point.payload as Record<string, unknown> | undefined;
+			if (!payload?._wtfoc_sentinel) return { status: "missing" };
+			return typeof payload._wtfoc_last_accessed === "number"
+				? { status: "found", lastAccessed: payload._wtfoc_last_accessed }
+				: { status: "missing" };
+		} catch (err) {
+			// 404 = collection doesn't exist, treat as missing
+			if (isNotFoundError(err)) return { status: "missing" };
+			// Anything else is a transient error — do NOT treat as deletable
+			return { status: "error" };
+		}
+	}
+
+	/**
+	 * Delete a Qdrant collection entirely.
+	 */
+	async deleteCollection(collectionName: string): Promise<void> {
+		const client = await this.#getClient();
+		try {
+			await client.deleteCollection(collectionName);
+		} catch (err) {
+			if (!isNotFoundError(err)) throw err;
+		}
+	}
+
+	/**
+	 * Sweep CID collections that have been idle beyond `maxIdleMs`.
+	 * Respects `activeCollections` set — never deletes a collection that is
+	 * currently loaded in the in-process cache.
+	 *
+	 * Returns the names of deleted collections.
+	 */
+	async sweep(opts: {
+		maxIdleMs: number;
+		maxCollections: number;
+		activeCollections: Set<string>;
+	}): Promise<string[]> {
+		const cidCollections = await this.listCidCollections();
+		if (cidCollections.length === 0) return [];
+
+		// Gather last-accessed timestamps (skip collections with transient errors)
+		const entries: Array<{ name: string; lastAccessed: number }> = [];
+		for (const name of cidCollections) {
+			if (opts.activeCollections.has(name)) continue;
+			const result = await this.getLastAccessed(name);
+			if (result.status === "error") continue; // transient failure — don't delete
+			const lastAccessed = result.status === "found" ? result.lastAccessed : 0;
+			entries.push({ name, lastAccessed });
+		}
+
+		const now = Date.now();
+		const deletedSet = new Set<string>();
+
+		// Delete idle collections past TTL
+		for (const entry of entries) {
+			if (now - entry.lastAccessed > opts.maxIdleMs) {
+				await this.deleteCollection(entry.name);
+				deletedSet.add(entry.name);
+			}
+		}
+
+		// If still over cap, delete least-recently-accessed first
+		const remaining = cidCollections.length - deletedSet.size;
+		if (remaining > opts.maxCollections) {
+			const survivors = entries
+				.filter((e) => !deletedSet.has(e.name))
+				.sort((a, b) => a.lastAccessed - b.lastAccessed);
+
+			const toDelete = remaining - opts.maxCollections;
+			for (let i = 0; i < toDelete && i < survivors.length; i++) {
+				const survivor = survivors[i];
+				if (!survivor) continue;
+				await this.deleteCollection(survivor.name);
+				deletedSet.add(survivor.name);
+			}
+		}
+
+		return [...deletedSet];
 	}
 }
 
