@@ -127,6 +127,7 @@ export class InMemoryVectorIndex implements SerializableVectorIndex {
 	}
 
 	#checkSizeWarning(): void {
+		if (this.#sizeWarningThreshold <= 0) return; // disabled
 		if (!this.#sizeWarningEmitted && this.#entries.size >= this.#sizeWarningThreshold) {
 			this.#sizeWarningEmitted = true;
 			console.warn(

@@ -1,4 +1,9 @@
-import type { ScoredEntry, VectorEntry, VectorIndex } from "@wtfoc/common";
+import {
+	type ScoredEntry,
+	VectorDimensionMismatchError,
+	type VectorEntry,
+	type VectorIndex,
+} from "@wtfoc/common";
 
 export interface QdrantVectorIndexOptions {
 	url: string;
@@ -18,11 +23,13 @@ export interface QdrantVectorIndexOptions {
  * Auto-creates the Qdrant collection on first use.
  *
  * Requires `@qdrant/js-client-rest` to be installed (optional dependency).
+ *
+ * Note: `size` is best-effort and may lag behind actual Qdrant state.
  */
 export class QdrantVectorIndex implements VectorIndex {
 	readonly #options: QdrantVectorIndexOptions;
 	#client: import("@qdrant/js-client-rest").QdrantClient | null = null;
-	#ensured = false;
+	#ensurePromise: Promise<void> | null = null;
 	#size = 0;
 
 	constructor(options: QdrantVectorIndexOptions) {
@@ -35,6 +42,16 @@ export class QdrantVectorIndex implements VectorIndex {
 
 	async add(entries: VectorEntry[]): Promise<void> {
 		if (entries.length === 0) return;
+
+		for (const entry of entries) {
+			if (entry.vector.length !== this.#options.dimensions) {
+				throw new VectorDimensionMismatchError(
+					this.#options.dimensions,
+					entry.vector.length,
+					"entry",
+				);
+			}
+		}
 
 		const client = await this.#getClient();
 		await this.#ensureCollection(client);
@@ -53,11 +70,15 @@ export class QdrantVectorIndex implements VectorIndex {
 			points,
 		});
 
-		await this.#refreshSize(client);
+		this.#size += entries.length;
 	}
 
 	async search(query: Float32Array, topK: number): Promise<ScoredEntry[]> {
 		if (topK <= 0) return [];
+
+		if (query.length !== this.#options.dimensions) {
+			throw new VectorDimensionMismatchError(this.#options.dimensions, query.length, "query");
+		}
 
 		const client = await this.#getClient();
 
@@ -105,7 +126,7 @@ export class QdrantVectorIndex implements VectorIndex {
 				wait: true,
 				points: ids,
 			});
-			await this.#refreshSize(client);
+			this.#size = Math.max(0, this.#size - ids.length);
 		} catch (err) {
 			// Ignore if collection doesn't exist
 			if (!isNotFoundError(err)) throw err;
@@ -132,8 +153,13 @@ export class QdrantVectorIndex implements VectorIndex {
 	}
 
 	async #ensureCollection(client: import("@qdrant/js-client-rest").QdrantClient): Promise<void> {
-		if (this.#ensured) return;
+		if (!this.#ensurePromise) {
+			this.#ensurePromise = this.#doEnsureCollection(client);
+		}
+		return this.#ensurePromise;
+	}
 
+	async #doEnsureCollection(client: import("@qdrant/js-client-rest").QdrantClient): Promise<void> {
 		// When recreate is set, drop the existing collection to avoid stale vectors
 		// from a previous manifest version persisting after reload.
 		if (this.#options.recreate) {
@@ -148,14 +174,12 @@ export class QdrantVectorIndex implements VectorIndex {
 					distance: "Cosine",
 				},
 			});
-			this.#ensured = true;
 			return;
 		}
 
 		try {
 			const info = await client.getCollection(this.#options.collectionName);
 			this.#size = info.points_count ?? 0;
-			this.#ensured = true;
 		} catch (err) {
 			if (!isNotFoundError(err)) throw err;
 
@@ -165,16 +189,6 @@ export class QdrantVectorIndex implements VectorIndex {
 					distance: "Cosine",
 				},
 			});
-			this.#ensured = true;
-		}
-	}
-
-	async #refreshSize(client: import("@qdrant/js-client-rest").QdrantClient): Promise<void> {
-		try {
-			const info = await client.getCollection(this.#options.collectionName);
-			this.#size = info.points_count ?? this.#size;
-		} catch {
-			// Non-critical — size is best-effort for Qdrant backend
 		}
 	}
 }
