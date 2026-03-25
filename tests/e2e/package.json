@@ -1,0 +1,20 @@
+{
+	"name": "@wtfoc/e2e",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"test": "vitest run",
+		"test:api": "vitest run --project api",
+		"test:ui": "playwright test"
+	},
+	"devDependencies": {
+		"@playwright/test": "^1.52.0",
+		"@wtfoc/common": "workspace:*",
+		"@wtfoc/ingest": "workspace:*",
+		"@wtfoc/search": "workspace:*",
+		"@wtfoc/store": "workspace:*",
+		"@wtfoc/mcp-server": "workspace:*",
+		"vitest": "^4.1.0"
+	}
+}
