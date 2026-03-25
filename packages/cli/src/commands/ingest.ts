@@ -5,6 +5,7 @@ import {
 	DEFAULT_MAX_CHUNK_CHARS,
 	getAdapter,
 	getAvailableSourceTypes,
+	HeuristicChunkScorer,
 	RegexEdgeExtractor,
 	rechunkOversized,
 	segmentId,
@@ -120,6 +121,8 @@ export function registerIngestCommand(program: Command): void {
 			}
 
 			// Process chunks in batches to limit memory usage
+			const scorer = new HeuristicChunkScorer();
+
 			let batch: Chunk[] = [];
 			let totalChunksIngested = 0;
 			let totalChunksSkipped = 0;
@@ -138,13 +141,21 @@ export function registerIngestCommand(program: Command): void {
 					console.error(`⏳ Embedding batch ${batchNumber} (${batchChunks.length} chunks)...`);
 				const embeddings = await embedder.embedBatch(batchChunks.map((c) => c.content));
 
+				const signalScoresBatch = scorer.scoreBatch(
+					batchChunks.map((c) => ({ content: c.content, sourceType: c.sourceType })),
+				);
+
 				const segmentChunks = batchChunks.map((chunk, i) => {
 					const emb = embeddings[i];
 					if (!emb)
 						throw new Error(
 							`Missing embedding for chunk ${i} — expected ${batchChunks.length} embeddings`,
 						);
-					return { chunk, embedding: Array.from(emb) };
+					return {
+						chunk,
+						embedding: Array.from(emb),
+						signalScores: signalScoresBatch[i],
+					};
 				});
 
 				const segment = buildSegment(segmentChunks, edges, {

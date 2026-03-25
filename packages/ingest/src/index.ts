@@ -21,6 +21,7 @@ export {
 	inferRepoFromContent,
 	RegexEdgeExtractor,
 } from "./edges/extractor.js";
+export { HeuristicChunkScorer } from "./scoring.js";
 export {
 	buildSegment,
 	type SegmentBuilderOptions,

@@ -24,6 +24,7 @@ const ChunkSchema = v.object({
 	sourceUrl: v.optional(v.string()),
 	timestamp: v.optional(v.string()),
 	metadata: v.record(v.string(), v.string()),
+	signalScores: v.optional(v.record(v.string(), v.number())),
 });
 
 const EdgeSchema = v.object({
@@ -145,6 +146,25 @@ function validateChunk(
 			);
 		}
 		chunk.timestamp = raw.timestamp;
+	}
+	if ("signalScores" in raw && raw.signalScores !== undefined) {
+		if (!isRecord(raw.signalScores)) {
+			throw schemaInvalid(
+				"segment",
+				`chunks[${index}].signalScores must be an object`,
+				`chunks[${index}].signalScores`,
+			);
+		}
+		for (const [key, val] of Object.entries(raw.signalScores)) {
+			if (typeof val !== "number" || !Number.isFinite(val)) {
+				throw schemaInvalid(
+					"segment",
+					`chunks[${index}].signalScores.${key} must be a finite number`,
+					`chunks[${index}].signalScores.${key}`,
+				);
+			}
+		}
+		chunk.signalScores = raw.signalScores as Record<string, number>;
 	}
 
 	return chunk;

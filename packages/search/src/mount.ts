@@ -75,17 +75,23 @@ export async function mountCollection(
 		const segment = parsed as Segment;
 		segments.push(segment);
 
-		const entries: VectorEntry[] = segment.chunks.map((chunk) => ({
-			id: chunk.id,
-			vector: new Float32Array(chunk.embedding),
-			storageId: chunk.storageId,
-			metadata: {
+		const entries: VectorEntry[] = segment.chunks.map((chunk) => {
+			const metadata: Record<string, string> = {
 				content: chunk.content,
 				source: chunk.source,
 				sourceType: chunk.sourceType,
 				sourceUrl: chunk.sourceUrl ?? "",
-			},
-		}));
+			};
+			if (chunk.signalScores && Object.keys(chunk.signalScores).length > 0) {
+				metadata.signalScores = JSON.stringify(chunk.signalScores);
+			}
+			return {
+				id: chunk.id,
+				vector: new Float32Array(chunk.embedding),
+				storageId: chunk.storageId,
+				metadata,
+			};
+		});
 		await vectorIndex.add(entries);
 	}
 

@@ -18,6 +18,7 @@ export {
 	VectorDimensionMismatchError,
 	WtfocError,
 } from "./errors.js";
+export type { ChunkScorer } from "./interfaces/chunk-scorer.js";
 export type { EdgeExtractor } from "./interfaces/edge-extractor.js";
 export type { Embedder } from "./interfaces/embedder.js";
 export type { ManifestStore, StoredHead } from "./interfaces/manifest-store.js";

@@ -142,6 +142,7 @@ export interface Segment {
 		sourceUrl?: string;
 		timestamp?: string;
 		metadata: Record<string, string>;
+		signalScores?: Record<string, number>;
 	}>;
 	edges: Array<{
 		type: string;

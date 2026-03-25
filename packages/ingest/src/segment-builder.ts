@@ -12,6 +12,8 @@ export interface SegmentChunk {
 	embedding: number[];
 	/** BM25 terms extracted from content (optional for MVP) */
 	terms?: string[];
+	/** Heuristic signal scores for this chunk (optional) */
+	signalScores?: Record<string, number>;
 }
 
 /**
@@ -27,18 +29,24 @@ export function buildSegment(
 		schemaVersion: CURRENT_SCHEMA_VERSION,
 		embeddingModel: options.embeddingModel,
 		embeddingDimensions: options.embeddingDimensions,
-		chunks: chunks.map((c) => ({
-			id: c.chunk.id,
-			storageId: c.chunk.id,
-			content: c.chunk.content,
-			embedding: c.embedding,
-			terms: c.terms ?? extractTerms(c.chunk.content),
-			source: c.chunk.source,
-			sourceType: c.chunk.sourceType,
-			sourceUrl: c.chunk.sourceUrl,
-			timestamp: c.chunk.timestamp,
-			metadata: c.chunk.metadata,
-		})),
+		chunks: chunks.map((c) => {
+			const entry: Segment["chunks"][number] = {
+				id: c.chunk.id,
+				storageId: c.chunk.id,
+				content: c.chunk.content,
+				embedding: c.embedding,
+				terms: c.terms ?? extractTerms(c.chunk.content),
+				source: c.chunk.source,
+				sourceType: c.chunk.sourceType,
+				sourceUrl: c.chunk.sourceUrl,
+				timestamp: c.chunk.timestamp,
+				metadata: c.chunk.metadata,
+			};
+			if (c.signalScores && Object.keys(c.signalScores).length > 0) {
+				entry.signalScores = c.signalScores;
+			}
+			return entry;
+		}),
 		edges: edges.map((e) => ({
 			type: e.type,
 			sourceId: e.sourceId,
