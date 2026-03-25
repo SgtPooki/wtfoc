@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+  pull_request:
+    branches: [main]
 
 env:
   REGISTRY: ghcr.io
@@ -20,6 +22,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Log in to GHCR
+        if: github.event_name == 'push'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -28,6 +31,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
+        if: github.event_name == 'push'
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -51,15 +55,34 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Smoke test (TransformersEmbedder + 384-dim embedding)
+      - name: Smoke test (server startup + MCP initialize)
         run: |
-          docker run --rm \
-            -w /app/apps/web \
-            -v "${{ github.workspace }}/apps/web/smoke-embed.mjs:/app/apps/web/smoke-embed.mjs:ro" \
-            "wtfoc:smoke-${{ github.sha }}" \
-            node smoke-embed.mjs
+          cid=$(docker run -d -p 3577:3577 "wtfoc:smoke-${{ github.sha }}")
+          cleanup() {
+            docker logs "$cid" || true
+            docker rm -f "$cid" || true
+          }
+          trap cleanup EXIT
+
+          for i in $(seq 1 60); do
+            if curl -fs http://127.0.0.1:3577/api/collections >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+
+          curl -fsS http://127.0.0.1:3577/api/collections >/dev/null
+          curl -fsS \
+            -X POST \
+            --connect-timeout 5 \
+            --max-time 20 \
+            -H 'content-type: application/json' \
+            -H 'accept: application/json, text/event-stream' \
+            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-05","capabilities":{},"clientInfo":{"name":"github-actions","version":"0.1.0"}}}' \
+            http://127.0.0.1:3577/mcp >/dev/null
 
       - name: Build and push
+        if: github.event_name == 'push'
         uses: docker/build-push-action@v6
         with:
           context: .
