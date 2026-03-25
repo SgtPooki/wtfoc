@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { StorageBackend, StorageResult } from "@wtfoc/common";
 import { StorageNotFoundError } from "@wtfoc/common";
 
@@ -27,7 +27,7 @@ export class LocalStorageBackend implements StorageBackend {
 
 	async download(id: string, signal?: AbortSignal): Promise<Uint8Array> {
 		signal?.throwIfAborted();
-		const filePath = join(this.dataDir, id);
+		const filePath = this.safePath(id);
 		try {
 			return await readFile(filePath);
 		} catch (_cause) {
@@ -38,10 +38,18 @@ export class LocalStorageBackend implements StorageBackend {
 	async verify(id: string, signal?: AbortSignal): Promise<{ exists: boolean; size: number }> {
 		signal?.throwIfAborted();
 		try {
-			const info = await stat(join(this.dataDir, id));
+			const info = await stat(this.safePath(id));
 			return { exists: true, size: info.size };
 		} catch {
 			return { exists: false, size: 0 };
 		}
+	}
+
+	private safePath(id: string): string {
+		const resolved = resolve(this.dataDir, id);
+		if (!resolved.startsWith(`${resolve(this.dataDir)}/`)) {
+			throw new Error("Invalid storage ID");
+		}
+		return resolved;
 	}
 }

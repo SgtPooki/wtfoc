@@ -246,6 +246,9 @@ async function main() {
 	// ─── MCP over HTTP (Streamable HTTP transport, stateless) ────────────
 	// Each request gets a fresh McpServer + transport. Read-only: no ingest.
 	const embedderModel = embedder.model ?? "unknown";
+	const MCP_MAX_BODY = 1 * 1024 * 1024; // 1 MB
+	const MCP_MAX_CONCURRENT = 20;
+	let mcpInflight = 0;
 
 	async function handleMcp(req: IncomingMessage, res: ServerResponse): Promise<void> {
 		// CORS headers for MCP
@@ -253,14 +256,12 @@ async function main() {
 		res.setHeader("Access-Control-Expose-Headers", "mcp-session-id");
 
 		if (req.method === "GET") {
-			// SSE stream for server-initiated notifications (not used in stateless)
 			res.writeHead(405, { "Content-Type": "text/plain" });
 			res.end("SSE not supported in stateless mode. Use POST to send MCP requests.");
 			return;
 		}
 
 		if (req.method === "DELETE") {
-			// Session termination (no-op in stateless mode)
 			res.writeHead(200);
 			res.end();
 			return;
@@ -272,34 +273,65 @@ async function main() {
 			return;
 		}
 
-		// Parse JSON body
-		const body = await new Promise<string>((resolve, reject) => {
-			const chunks: Buffer[] = [];
-			req.on("data", (chunk: Buffer) => chunks.push(chunk));
-			req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
-			req.on("error", reject);
-		});
-
-		let parsedBody: unknown;
-		try {
-			parsedBody = JSON.parse(body);
-		} catch {
-			res.writeHead(400, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ error: "Invalid JSON" }));
+		// Concurrency guard
+		if (mcpInflight >= MCP_MAX_CONCURRENT) {
+			res.writeHead(503, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: "Too many concurrent MCP requests" }));
 			return;
 		}
 
-		// Create a fresh server + transport per request (stateless)
-		const mcpServer = createMcpServer(store, embedder, embedderModel, { readOnly: true });
-		const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+		mcpInflight++;
+		try {
+			// Parse JSON body with size limit
+			const body = await new Promise<string>((resolve, reject) => {
+				const chunks: Buffer[] = [];
+				let total = 0;
+				req.on("data", (chunk: Buffer) => {
+					total += chunk.byteLength;
+					if (total > MCP_MAX_BODY) {
+						req.destroy();
+						reject(new Error("body too large"));
+						return;
+					}
+					chunks.push(chunk);
+				});
+				req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
+				req.on("error", reject);
+			});
 
-		res.on("close", () => {
-			transport.close().catch(() => {});
-			mcpServer.close().catch(() => {});
-		});
+			let parsedBody: unknown;
+			try {
+				parsedBody = JSON.parse(body);
+			} catch {
+				res.writeHead(400, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ error: "Invalid JSON" }));
+				return;
+			}
 
-		await mcpServer.connect(transport);
-		await transport.handleRequest(req, res, parsedBody);
+			// Create a fresh server + transport per request (stateless)
+			const mcpServer = createMcpServer(store, embedder, embedderModel, { readOnly: true });
+			const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+
+			res.on("close", () => {
+				transport.close().catch(() => {});
+				mcpServer.close().catch(() => {});
+			});
+
+			await mcpServer.connect(transport);
+			await transport.handleRequest(req, res, parsedBody);
+		} catch (err) {
+			if (!res.headersSent) {
+				const msg = err instanceof Error && err.message === "body too large"
+					? "Request body too large"
+					: "Internal error";
+				res.writeHead(msg === "Request body too large" ? 413 : 500, {
+					"Content-Type": "application/json",
+				});
+				res.end(JSON.stringify({ error: msg }));
+			}
+		} finally {
+			mcpInflight--;
+		}
 	}
 
 	const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
@@ -505,7 +537,7 @@ async function main() {
 			res.end("Not found");
 		} catch (err) {
 			console.error("API error:", err);
-			jsonResponse(res, { error: err instanceof Error ? err.message : "Internal error" }, 500);
+			jsonResponse(res, { error: "Internal error" }, 500);
 		}
 	});
 

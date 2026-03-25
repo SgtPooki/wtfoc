@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { resolve } from "node:path";
 import type { CollectionHead, ManifestStore, StoredHead } from "@wtfoc/common";
 import { ManifestConflictError } from "@wtfoc/common";
 import { validateManifestSchema } from "../schema.js";
@@ -58,7 +58,11 @@ export class LocalManifestStore implements ManifestStore {
 	}
 
 	private filePath(projectName: string): string {
-		return join(this.manifestDir, `${projectName}.json`);
+		const resolved = resolve(this.manifestDir, `${projectName}.json`);
+		if (!resolved.startsWith(`${resolve(this.manifestDir)}/`)) {
+			throw new Error("Invalid collection name");
+		}
+		return resolved;
 	}
 
 	private computeHeadId(serialized: string): string {

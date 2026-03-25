@@ -11,6 +11,22 @@ export interface CreateMcpServerOptions {
 	readOnly?: boolean;
 }
 
+/** Strip filesystem paths from error messages to avoid leaking server internals. */
+function sanitizeError(err: unknown): string {
+	if (!(err instanceof Error)) return String(err);
+	// Known safe error types — pass through
+	if (err.message.startsWith("Collection") || err.message.startsWith("Invalid")) {
+		return err.message;
+	}
+	// Strip absolute paths from Node.js filesystem errors
+	const cleaned = err.message.replace(/\s*'\/[^']*'/g, "");
+	// If it looks like an fs error (ENOENT, EACCES, etc.), genericize it
+	if (/^(ENOENT|EACCES|EPERM|EISDIR|ENOTDIR)/.test(cleaned)) {
+		return "Resource not found";
+	}
+	return cleaned;
+}
+
 /**
  * Create a configured McpServer with all wtfoc tools registered.
  *
@@ -42,7 +58,7 @@ export function createMcpServer(
 				const text = await handleTrace(store, embedder, { query, collection });
 				return { content: [{ type: "text" as const, text }] };
 			} catch (err) {
-				const msg = err instanceof Error ? err.message : String(err);
+				const msg = sanitizeError(err);
 				return { content: [{ type: "text" as const, text: `Error: ${msg}` }], isError: true };
 			}
 		},
@@ -55,14 +71,20 @@ export function createMcpServer(
 		{
 			queryText: z.string().describe("The search query text"),
 			collection: z.string().describe("Name of the wtfoc collection to search"),
-			topK: z.number().optional().describe("Number of results to return (default: 10)"),
+			topK: z
+				.number()
+				.int()
+				.min(1)
+				.max(100)
+				.optional()
+				.describe("Number of results to return (default: 10, max: 100)"),
 		},
 		async ({ queryText, collection, topK }) => {
 			try {
 				const text = await handleQuery(store, embedder, { queryText, collection, topK });
 				return { content: [{ type: "text" as const, text }] };
 			} catch (err) {
-				const msg = err instanceof Error ? err.message : String(err);
+				const msg = sanitizeError(err);
 				return { content: [{ type: "text" as const, text: `Error: ${msg}` }], isError: true };
 			}
 		},
@@ -80,7 +102,7 @@ export function createMcpServer(
 				const text = await handleStatus(store, { collection });
 				return { content: [{ type: "text" as const, text }] };
 			} catch (err) {
-				const msg = err instanceof Error ? err.message : String(err);
+				const msg = sanitizeError(err);
 				return { content: [{ type: "text" as const, text: `Error: ${msg}` }], isError: true };
 			}
 		},
@@ -96,7 +118,7 @@ export function createMcpServer(
 				const text = await handleListSources(store);
 				return { content: [{ type: "text" as const, text }] };
 			} catch (err) {
-				const msg = err instanceof Error ? err.message : String(err);
+				const msg = sanitizeError(err);
 				return { content: [{ type: "text" as const, text: `Error: ${msg}` }], isError: true };
 			}
 		},
@@ -130,7 +152,7 @@ export function createMcpServer(
 					});
 					return { content: [{ type: "text" as const, text }] };
 				} catch (err) {
-					const msg = err instanceof Error ? err.message : String(err);
+					const msg = sanitizeError(err);
 					return {
 						content: [{ type: "text" as const, text: `Error: ${msg}` }],
 						isError: true,
