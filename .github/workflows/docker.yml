@@ -31,6 +31,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
+        if: github.event_name == 'push'
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -64,7 +65,7 @@ jobs:
           trap cleanup EXIT
 
           for i in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:3577/api/collections >/dev/null; then
+            if curl -fs http://127.0.0.1:3577/api/collections >/dev/null; then
               break
             fi
             sleep 2
