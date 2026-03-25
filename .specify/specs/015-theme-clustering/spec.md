@@ -2,14 +2,14 @@
 
 **Feature Branch**: `015-theme-clustering`
 **Created**: 2026-03-25
-**Status**: Draft
-**Input**: On-demand k-means clustering over stored chunk embeddings to discover common topics across all ingested sources.
+**Status**: Draft (revised per Codex review + owner feedback)
+**Input**: Pluggable, incremental theme clustering over stored chunk embeddings to discover and track common topics across all ingested sources.
 
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Discover themes in a collection (Priority: P1)
 
-A team lead or product owner runs `wtfoc themes -c foc-ecosystem` to see what topics exist across all ingested sources (GitHub, docs, Slack, HN, code). They get a ranked list of theme clusters, each showing representative chunks, source distribution, and the most common signal types. This gives them a bird's-eye view of what the collection contains without having to know what to search for.
+A team lead or product owner runs `wtfoc themes -c foc-ecosystem` to see what topics exist across all ingested sources (GitHub, docs, Slack, HN, code). They get a ranked list of theme clusters, each showing representative exemplar chunks, source distribution, and the most common signal types. This gives them a bird's-eye view of what the collection contains without having to know what to search for.
 
 **Why this priority**: This is the core value — discovery without a query. Everything else builds on having clusters computed.
 
@@ -17,7 +17,7 @@ A team lead or product owner runs `wtfoc themes -c foc-ecosystem` to see what to
 
 **Acceptance Scenarios**:
 
-1. **Given** a collection with 26K+ chunks across multiple source types, **When** the user runs `wtfoc themes -c foc-ecosystem`, **Then** the output shows a ranked list of theme clusters with size, top terms, representative chunk excerpts, and source type distribution.
+1. **Given** a collection with 26K+ chunks across multiple source types, **When** the user runs `wtfoc themes -c foc-ecosystem`, **Then** the output shows a ranked list of theme clusters with size, top terms, exemplar chunk excerpts, and source type distribution.
 2. **Given** a collection with chunks that have signal scores, **When** the user runs the themes command, **Then** each cluster summary includes aggregated signal scores (e.g., "dominant signal: pain (avg 45)").
 3. **Given** a small collection with fewer than 10 chunks, **When** the user runs the themes command, **Then** the system produces a single cluster or a clear message that the collection is too small for meaningful clustering.
 
@@ -25,26 +25,41 @@ A team lead or product owner runs `wtfoc themes -c foc-ecosystem` to see what to
 
 ### User Story 2 - Filter themes by signal type (Priority: P2)
 
-An engineer investigating user pain runs `wtfoc themes -c foc-ecosystem --signal pain` to see only clusters dominated by pain-scored chunks. This surfaces the top complaint themes across Slack, HN, and GitHub issues — grouped by topic rather than by source.
+An engineer investigating user pain runs `wtfoc themes -c foc-ecosystem --signal pain` to see only clusters where pain is the highest-scoring signal type. This surfaces the top complaint themes across Slack, HN, and GitHub issues — grouped by topic rather than by source.
 
-**Why this priority**: Signal-filtered clustering is the main differentiator over basic topic discovery. It connects the signal scoring system (#61) to actionable thematic analysis.
+**Why this priority**: Signal-filtered clustering connects the signal scoring system (#61) to actionable thematic analysis — the main differentiator over basic topic discovery.
 
-**Independent Test**: Can be tested by running with `--signal pain` and verifying all returned clusters have above-average pain signal scores, and that low-pain clusters are excluded.
+**Independent Test**: Can be tested by running with `--signal pain` and verifying all returned clusters have pain as their highest-scoring signal type.
 
 **Acceptance Scenarios**:
 
-1. **Given** a collection with signal-scored chunks, **When** the user runs `wtfoc themes --signal pain -c foc-ecosystem`, **Then** only clusters where pain is the dominant signal type are shown.
+1. **Given** a collection with signal-scored chunks, **When** the user runs `wtfoc themes --signal pain -c foc-ecosystem`, **Then** only clusters where the average pain score is the highest among all signal types for that cluster are shown.
 2. **Given** a collection with no chunks scoring on the requested signal, **When** the user runs with `--signal demand_signal`, **Then** a clear message indicates no clusters match that signal filter.
 
 ---
 
-### User Story 3 - JSON output for programmatic use (Priority: P3)
+### User Story 3 - Incremental cluster updates after new ingestion (Priority: P2)
+
+After ingesting new Slack messages or HN discussions, a user runs `wtfoc themes -c foc-ecosystem` and new chunks are assigned to existing clusters or form new ones — without recomputing the entire cluster set from scratch.
+
+**Why this priority**: Collections grow over time. Recomputing clusters from 26K+ chunks on every run is wasteful when only 200 new chunks arrived. Incremental clustering aligns with the incremental ingest story (US-013).
+
+**Independent Test**: Ingest new content, run themes, verify new chunks appear in existing or new clusters without the full cluster set changing.
+
+**Acceptance Scenarios**:
+
+1. **Given** a collection with existing cluster state and 200 newly ingested chunks, **When** the user runs `wtfoc themes -c foc-ecosystem`, **Then** new chunks are assigned to existing clusters or form new clusters, and previously clustered chunks retain their assignments.
+2. **Given** a user who wants a full rebuild, **When** they run `wtfoc themes --rebuild -c foc-ecosystem`, **Then** all clusters are recomputed from scratch.
+
+---
+
+### User Story 4 - JSON output for programmatic use (Priority: P3)
 
 A CI pipeline or agent runs `wtfoc themes -c foc-ecosystem --json` to get structured cluster data for automated processing — feeding into dashboards, reports, or downstream analysis tools.
 
 **Why this priority**: Programmatic access enables integration with other tools and workflows, but the human-readable CLI output (P1) must work first.
 
-**Independent Test**: Can be tested by running with `--json` and parsing the output as valid JSON with expected schema (clusters array, each with id, size, terms, representative chunks, source distribution, signal aggregates).
+**Independent Test**: Can be tested by running with `--json` and parsing the output as valid JSON with expected schema.
 
 **Acceptance Scenarios**:
 
@@ -54,46 +69,56 @@ A CI pipeline or agent runs `wtfoc themes -c foc-ecosystem --json` to get struct
 
 ### Edge Cases
 
-- What happens when the collection has no embeddings (e.g., all chunks were ingested before the embedder was configured)? System should error with a clear message.
-- How does clustering handle collections with mixed embedding models across segments? System should warn and cluster only chunks from the dominant model.
-- What happens when the user specifies `--k 1` (single cluster) or `--k` larger than the number of chunks? `--k 1` shows a single summary, `--k > n` is capped at n.
-- How are empty or near-empty clusters handled? Clusters with fewer than 3 chunks are merged into the nearest neighbor or excluded from output.
+- What happens when the collection has no embeddings? System errors with a clear message.
+- How does clustering handle collections with mixed embedding models across segments? System warns and clusters only chunks from the dominant model, or errors if no dominant model.
+- How are very small clusters handled? Clusters with fewer than 3 chunks are excluded from default output (available in JSON with a `small: true` flag).
+- What happens on the first run with no existing cluster state? System performs a full batch clustering and persists the initial state.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
-- **FR-001**: System MUST compute theme clusters from stored chunk embeddings on demand, without persisting cluster assignments into segments.
-- **FR-002**: System MUST use k-means clustering as the default algorithm with a sensible default k (sqrt(n/2) capped at a reasonable maximum).
-- **FR-003**: Each cluster MUST expose evidence-backed summaries: representative chunks (closest to centroid), top terms from stored chunk `terms` fields, source type distribution, and chunk count.
-- **FR-004**: Each cluster MUST include aggregated signal scores when chunks have signal data (average per signal type across cluster members).
-- **FR-005**: System MUST support filtering clusters by dominant signal type via `--signal <type>` flag.
-- **FR-006**: System MUST support overriding the number of clusters via `--k <number>` flag.
-- **FR-007**: System MUST support JSON output via `--json` flag with a stable schema.
-- **FR-008**: System MUST load the collection via the `mountCollection()` path to ensure revision-stable analysis and access to signal scores.
-- **FR-009**: System MUST handle collections with no signal scores gracefully (omit signal aggregates, still cluster by embeddings).
-- **FR-010**: System MUST sort clusters by size (largest first) in default output.
+- **FR-001**: A `Clusterer` interface MUST be defined in `@wtfoc/common` as a pluggable seam, following the same pattern as `Embedder`, `VectorIndex`, `StorageBackend`, etc.
+- **FR-002**: The `Clusterer` interface MUST support two modes: batch clustering (full rebuild) and incremental assignment (assign new chunks to existing clusters, form new clusters for outliers).
+- **FR-003**: The `Clusterer` interface MUST be algorithm-neutral — no centroid, k, or density parameters in the shared contract. Algorithm-specific options are passed via a typed options object.
+- **FR-004**: A default `Clusterer` implementation MUST be provided in `@wtfoc/search`, suitable for collections up to 50K+ chunks without OOM.
+- **FR-005**: Each cluster MUST expose evidence-backed summaries: exemplar chunks (most representative members), top terms, source type distribution, chunk count, and confidence score.
+- **FR-006**: Each cluster MUST include aggregated signal scores when chunks have signal data (average per signal type across cluster members).
+- **FR-007**: System MUST support filtering clusters by signal type via `--signal <type>` flag. Filter rule: show only clusters where the requested signal type has the highest average score among all signal types for that cluster.
+- **FR-008**: System MUST support optional `--target-clusters <number>` hint for algorithms that accept it. This is a hint, not a requirement — the algorithm may produce more or fewer clusters.
+- **FR-009**: System MUST support JSON output via `--json` flag with a stable schema.
+- **FR-010**: System MUST load the collection via the `mountCollection()` path to ensure revision-stable analysis and access to signal scores.
+- **FR-011**: System MUST handle collections with no signal scores gracefully (omit signal aggregates, still cluster by embeddings).
+- **FR-012**: System MUST sort clusters by size (largest first) in default output.
+- **FR-013**: Cluster state MUST be persisted as a mutable derived artifact outside immutable segments, keyed by collection ID and revision. This enables incremental updates without violating immutable segment constraints.
+- **FR-014**: System MUST support `--rebuild` flag to force a full batch recluster, ignoring existing cluster state.
+- **FR-015**: Cluster labels MUST be auto-generated from exemplar content and stored terms, clearly marked as heuristic. LLM-based naming is a future enrichment, not an MVP requirement.
+- **FR-016**: `SPEC.md` and the constitution MUST be updated to list `Clusterer` as an official pluggable seam.
 
 ### Key Entities
 
-- **ThemeCluster**: A group of semantically similar chunks discovered via embedding clustering. Contains: cluster ID, size, centroid vector, representative chunk IDs, top terms, source type distribution, signal score aggregates.
-- **ClusterSummary**: The user-facing output for a single cluster. Contains: rank, size, auto-generated label (from top terms), representative chunk excerpts, source breakdown, dominant signal type and scores.
+- **Clusterer** (interface): Pluggable clustering algorithm. Methods: `cluster(request)` for batch mode, `assign(request)` for incremental mode. Lives in `@wtfoc/common`.
+- **ClusterRequest**: Input to the clusterer — chunk IDs, embedding references, optional existing cluster state, algorithm-specific options (e.g., `targetClusterCount`, `minClusterSize`, `similarityThreshold`).
+- **ClusterResult**: Output from the clusterer — array of clusters, each with: cluster ID, member chunk IDs, exemplar chunk IDs, confidence score, optional algorithm-specific metadata.
+- **ThemeCluster**: A group of semantically similar chunks. Contains: cluster ID, member chunk IDs, exemplar chunk IDs, size, top terms, source type distribution, signal score aggregates, confidence, auto-generated label.
+- **ClusterState**: Persisted mutable artifact containing current cluster assignments for a collection. Keyed by collection ID. Updated incrementally or rebuilt on demand. Not stored in segments.
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
-- **SC-001**: Users can discover the top themes in a 26K-chunk collection in under 30 seconds.
-- **SC-002**: Each theme cluster exposes at least 3 representative chunk excerpts with source attribution and URLs.
-- **SC-003**: Signal-filtered output reduces the cluster list to only relevant themes, with zero clusters shown that have below-average scores for the requested signal type.
+- **SC-001**: Users can discover the top themes in a 26K-chunk collection in under 60 seconds (initial batch), and under 10 seconds for incremental updates with fewer than 500 new chunks.
+- **SC-002**: Each theme cluster exposes at least 3 exemplar chunk excerpts with source attribution and URLs.
+- **SC-003**: Signal-filtered output shows only clusters where the requested signal type is the highest-scoring signal, with zero false inclusions.
 - **SC-004**: JSON output is parseable and contains all fields needed to reconstruct the human-readable output programmatically.
+- **SC-005**: Swapping the `Clusterer` implementation (e.g., from ANN-based to k-means) requires no changes to the CLI, web API, or output schema — only the implementation module.
 
 ## Assumptions
 
-- k-means is sufficient for MVP; HDBSCAN or graph-based community detection can be added later as alternative algorithms.
-- Cluster labels are heuristic (derived from stored terms and top content) and clearly marked as such — not authoritative summaries.
-- No new `Clusterer` interface in `@wtfoc/common` for MVP. Concrete implementation lives in `@wtfoc/search`. Interface extraction deferred until a second implementation exists.
-- Clustering is a one-shot computation, not a persistent/watchable process. Caching can be added later keyed by collection revision ID.
+- The default `Clusterer` implementation uses ANN-based incremental clustering (proven at scale in the sibling pain-radar project), not k-means. K-means may be offered as an alternative implementation.
+- Cluster labels are heuristic (derived from stored terms and exemplar content) and clearly marked as such — not authoritative summaries.
+- LLM-based cluster naming and deep analysis are future enrichments (P2+), separate from the core clustering interface.
+- Cluster state is a mutable derived artifact stored outside segments (e.g., as a JSON sidecar file in the manifest directory or a dedicated cluster store). Its persistence format is an implementation detail.
 - Edge evidence enrichment (showing how chunks within a cluster are connected by edges) is desirable but can be a follow-up enhancement.
 
 ## Related Issues
@@ -102,6 +127,20 @@ A CI pipeline or agent runs `wtfoc themes -c foc-ecosystem --json` to get struct
 - **#57** — Detect clustered feature requests and map unmet demand (downstream use case enabled by this)
 - **#58** — Detect stale documentation (clusters can surface doc/code drift)
 - **#61** (closed) — Multi-signal scoring (dependency met — provides signal scores for cluster filtering)
+- **#3** — Improve edge extraction beyond regex (richer edges = richer cluster evidence)
+- **#70** — Notification hooks (alert when new clusters form or grow significantly)
 - **US-003** — Cluster repeated feature requests across repos
 - **US-014** — Surface unanswered community questions
 - **US-013** — Incremental ingest (clusters need to handle growing collections)
+
+## Review History
+
+- **2026-03-25 v1**: Initial draft with k-means, one-shot, no Clusterer interface
+- **2026-03-25 v2**: Revised per Codex review + owner feedback:
+  - Added `Clusterer` interface as official seam (FR-001, FR-003, FR-016)
+  - Switched from one-shot to incremental + batch rebuild (FR-002, FR-013, FR-014)
+  - Made contract algorithm-neutral — removed centroid/k-means assumptions (FR-003, FR-008)
+  - Fixed signal-filter semantics to "highest-scoring signal type" (FR-007, SC-003)
+  - Added pain-radar v2 as reference architecture for default implementation
+  - Updated SC-001 timing for incremental vs batch modes
+  - Added SC-005 for implementation swappability validation
