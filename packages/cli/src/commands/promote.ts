@@ -13,7 +13,12 @@ export function registerPromoteCommand(program: Command): void {
 		.option("--copies <n>", "Number of storage copies for redundancy", String(DEFAULT_COPIES))
 		.action(async (collectionName: string, opts: { dryRun?: boolean; copies?: string }) => {
 			const format = getFormat(program.opts());
-			const copies = opts.copies ? Number(opts.copies) : DEFAULT_COPIES;
+			const rawCopies = Number(opts.copies ?? DEFAULT_COPIES);
+			if (!Number.isFinite(rawCopies) || rawCopies < 1 || !Number.isInteger(rawCopies)) {
+				console.error(`Error: --copies must be a positive integer, got "${opts.copies}"`);
+				process.exit(2);
+			}
+			const copies = rawCopies;
 			const localStore = createStore({ storage: "local" });
 
 			const head = await localStore.manifests.getHead(collectionName);
@@ -163,7 +168,9 @@ export function registerPromoteCommand(program: Command): void {
 
 			const manifestCid = bundleResult.manifestCid;
 
-			// Build local manifest (same as what's in the CAR)
+			// Build local manifest using the same data as the CAR manifest.
+			// bundleResult.batch has the same pieceCid/carRootCid that
+			// buildManifest received, so local and CAR manifests stay in sync.
 			const finalManifest: CollectionHead = {
 				...head.manifest,
 				segments: head.manifest.segments.map((seg) => {
@@ -172,7 +179,7 @@ export function registerPromoteCommand(program: Command): void {
 					return seg;
 				}),
 				batches: [...existingBatches, bundleResult.batch],
-				updatedAt: new Date().toISOString(),
+				updatedAt: bundleResult.batch.createdAt,
 			};
 
 			// Write updated manifest back to local store

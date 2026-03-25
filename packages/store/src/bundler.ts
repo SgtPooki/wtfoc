@@ -37,10 +37,14 @@ export async function validateIpniIndexing(
  * Compute bare (raw content) CIDs for a set of segments.
  * These CIDs match the actual blocks inside directory CARs.
  */
-export async function computeSegmentCids(segments: BundleSegment[]): Promise<Map<string, string>> {
+export async function computeSegmentCids(
+	segments: BundleSegment[],
+	signal?: AbortSignal,
+): Promise<Map<string, string>> {
 	const fp = await import("filecoin-pin");
 	const cids = new Map<string, string>();
 	for (const seg of segments) {
+		signal?.throwIfAborted();
 		const file = new File([Buffer.from(seg.data)], `${seg.id}.json`, {
 			type: "application/json",
 		});
@@ -81,7 +85,7 @@ export interface BundleUploadResult {
 	segmentCids: Map<string, string>;
 	/** CID of the manifest within the CAR (if buildManifest was provided) */
 	manifestCid?: string;
-	/** All child block CIDs in the final CAR (for IPNI validation) */
+	/** Segment + manifest CIDs that should be validated on IPNI */
 	childBlockCids: string[];
 }
 
@@ -124,7 +128,7 @@ export async function bundleAndUpload(
 	// Bare mode produces the same CID as the raw content block inside the
 	// directory CAR. Non-bare (wrapped) mode adds a directory wrapper node
 	// whose CID does NOT appear in the directory CAR — that's the bug (#139).
-	const segmentCids = await computeSegmentCids(segments);
+	const segmentCids = await computeSegmentCids(segments, signal);
 
 	signal?.throwIfAborted();
 
@@ -206,12 +210,9 @@ export async function bundleAndUpload(
 	// Step 6: Pre-upload validation — walk the final CAR and verify all
 	// segment CIDs (and manifest CID) exist as blocks
 	const blockCidsInCar = new Set<string>();
-	const childBlockCids: string[] = [];
 	const iterator = await CarBlockIterator.fromBytes(finalCar.carBytes);
 	for await (const block of iterator) {
-		const cidStr = block.cid.toString();
-		blockCidsInCar.add(cidStr);
-		childBlockCids.push(cidStr);
+		blockCidsInCar.add(block.cid.toString());
 	}
 
 	const missingCids: string[] = [];
@@ -229,6 +230,12 @@ export async function bundleAndUpload(
 			"BUNDLE_CID_MISMATCH",
 		);
 	}
+
+	// Only pass segment + manifest CIDs for IPNI validation, not all
+	// internal UnixFS/directory blocks (which can be huge and aren't
+	// user-relevant for retrieval)
+	const childBlockCids: string[] = [...segmentCids.values()];
+	if (manifestCid) childBlockCids.push(manifestCid);
 
 	const finalCarRootCid = finalCar.rootCid.toString();
 

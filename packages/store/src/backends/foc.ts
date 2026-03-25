@@ -92,18 +92,23 @@ export class FocStorageBackend implements StorageBackend {
 
 			// Pass child block CIDs so IPNI waits for all of them, not just the root
 			if (metadata?.childBlockCids) {
-				const childCidStrings: string[] = JSON.parse(metadata.childBlockCids);
-				if (childCidStrings.length > 0) {
-					uploadOptions.ipniValidation = {
-						enabled: true,
-						childBlocks: childCidStrings.map((c) => CID.parse(c)),
-					};
+				try {
+					const parsed = JSON.parse(metadata.childBlockCids);
+					if (Array.isArray(parsed) && parsed.length > 0) {
+						uploadOptions.ipniValidation = {
+							enabled: true,
+							childBlocks: parsed.map((c: string) => CID.parse(c)),
+						};
+					}
+				} catch {
+					// Invalid JSON — skip child block validation rather than failing the upload
 				}
 			}
 
 			// Support configurable copy count (default 2 for redundancy)
-			const copies = metadata?.copies ? Number(metadata.copies) : 2;
-			uploadOptions.copies = copies;
+			const parsedCopies = metadata?.copies ? Number(metadata.copies) : 2;
+			uploadOptions.copies =
+				Number.isFinite(parsedCopies) && parsedCopies > 0 ? Math.floor(parsedCopies) : 2;
 
 			const result = await fp.executeUpload(synapse, carBytes, rootCidObj, uploadOptions);
 
