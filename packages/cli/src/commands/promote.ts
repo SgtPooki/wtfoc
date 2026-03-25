@@ -40,7 +40,9 @@ export function registerPromoteCommand(program: Command): void {
 				if (!privateKey) {
 					if (format !== "quiet") {
 						console.error(`✅ Collection "${collectionName}" is already fully promoted to FOC.`);
-						console.error("   Set WTFOC_PRIVATE_KEY to re-upload the manifest and get a shareable CID.");
+						console.error(
+							"   Set WTFOC_PRIVATE_KEY to re-upload the manifest and get a shareable CID.",
+						);
 					}
 					return;
 				}
@@ -56,14 +58,16 @@ export function registerPromoteCommand(program: Command): void {
 				const manifestCid = manifestResult.ipfsCid ?? manifestResult.id;
 
 				if (format === "json") {
-					console.log(JSON.stringify({
-						collection: collectionName,
-						manifestCid,
-						pieceCid: existingBatches[existingBatches.length - 1]?.pieceCid,
-						carRootCid: existingBatches[existingBatches.length - 1]?.carRootCid,
-						segments: 0,
-						chunks: head.manifest.totalChunks,
-					}));
+					console.log(
+						JSON.stringify({
+							collection: collectionName,
+							manifestCid,
+							pieceCid: existingBatches[existingBatches.length - 1]?.pieceCid,
+							carRootCid: existingBatches[existingBatches.length - 1]?.carRootCid,
+							segments: 0,
+							chunks: head.manifest.totalChunks,
+						}),
+					);
 				} else if (format !== "quiet") {
 					console.error(`   Manifest CID: ${manifestCid}`);
 					if (existingBatches.length > 0) {

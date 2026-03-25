@@ -1,10 +1,7 @@
 import type { StorageBackend, StorageResult } from "@wtfoc/common";
 import { StorageNotFoundError, StorageUnreachableError, WtfocError } from "@wtfoc/common";
 
-const IPFS_GATEWAYS = [
-	"https://dweb.link/ipfs/",
-	"https://trustless-gateway.link/ipfs/",
-];
+const IPFS_GATEWAYS = ["https://dweb.link/ipfs/", "https://trustless-gateway.link/ipfs/"];
 
 /**
  * Read-only storage backend that fetches artifacts by CID via IPFS gateways.
@@ -82,7 +79,9 @@ export class CidReadableStorage implements StorageBackend {
 
 		throw new StorageUnreachableError(
 			"ipfs",
-			new Error(`All IPFS gateways failed for CID ${cid}: ${errors.map((e) => e.message).join(", ")}`),
+			new Error(
+				`All IPFS gateways failed for CID ${cid}: ${errors.map((e) => e.message).join(", ")}`,
+			),
 		);
 	}
 
