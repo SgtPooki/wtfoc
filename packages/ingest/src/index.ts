@@ -15,6 +15,7 @@ export {
 	rechunkOversized,
 } from "./chunker.js";
 export { CompositeEdgeExtractor } from "./edges/composite.js";
+export { extractPackageJsonDeps, extractRequirementsTxtDeps } from "./edges/dependency-parser.js";
 export type { ChangedFile } from "./edges/extractor.js";
 export {
 	buildBatchRepoAffinity,
@@ -24,6 +25,7 @@ export {
 } from "./edges/extractor.js";
 export { HeuristicEdgeExtractor } from "./edges/heuristic.js";
 export { edgeKey, mergeEdges } from "./edges/merge.js";
+export { TreeSitterEdgeExtractor } from "./edges/tree-sitter.js";
 export { HeuristicChunkScorer } from "./scoring.js";
 export {
 	buildSegment,
