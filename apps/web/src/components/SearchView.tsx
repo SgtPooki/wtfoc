@@ -48,11 +48,11 @@ export function SearchView() {
 			<div class="results-header">{data.results.length} results</div>
 			{data.results.map((r, i) => (
 				<HopCard
-					key={`${r.entry.id}-${i}`}
-					sourceType={r.entry.metadata.sourceType}
-					source={r.entry.metadata.source}
-					sourceUrl={r.entry.metadata.sourceUrl}
-					content={r.entry.metadata.content}
+					key={`${r.storageId}-${i}`}
+					sourceType={r.sourceType}
+					source={r.source}
+					sourceUrl={r.sourceUrl ?? ""}
+					content={r.content}
 					connection={{ method: "semantic", confidence: r.score }}
 					score={r.score}
 				/>

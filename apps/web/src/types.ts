@@ -36,20 +36,14 @@ export interface TraceResponse {
 	groups: Record<string, TraceHop[]>;
 }
 
-export interface QueryResultEntry {
-	id: string;
-	storageId: string;
-	metadata: {
-		sourceType: string;
-		source: string;
-		sourceUrl: string;
-		content: string;
-	};
-}
-
 export interface QueryResult {
+	content: string;
+	sourceType: string;
+	source: string;
+	sourceUrl?: string;
+	storageId: string;
 	score: number;
-	entry: QueryResultEntry;
+	signalScores?: Record<string, number>;
 }
 
 export interface QueryResponse {
