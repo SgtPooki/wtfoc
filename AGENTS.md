@@ -37,7 +37,9 @@ Do not run `pnpm lint` by itself after edits. Run `pnpm lint:fix`, then fix any 
 - `packages/store`: storage backends, manifest handling, artifact bundling
 - `packages/ingest`: source adapters, chunking, edge extraction, segment building
 - `packages/search`: embedders, vector index, query, trace
+- `packages/mcp-server`: MCP protocol server, tool definitions, shared `createMcpServer` factory
 - `packages/cli`: CLI wiring, output formatting, exit behavior
+- `apps/web`: Preact SPA frontend + HTTP/MCP backend server
 - `.specify/specs`: ratified feature specs, plans, and tasks
 - `scripts`: issue dispatch, agent loop, repo maintenance helpers
 - `.github`: CI and GitHub-specific agent instructions
@@ -101,6 +103,11 @@ Prefer self-documenting code over explanatory comments.
 - Use doc comments on exported APIs when the contract is not obvious from the type signature.
 - Remove or update stale comments when touching nearby code.
 - Do not leave TODOs without a linked spec, issue, or clear follow-up.
+
+## Validation Libraries
+
+- **valibot** is the project standard for schema validation (used in `@wtfoc/store`).
+- **zod** is used only in `@wtfoc/mcp-server` because `@modelcontextprotocol/sdk` requires zod schemas for tool parameter definitions (peer dependency). Do not spread zod to other packages.
 
 ## Style Rules Worth Repeating
 
