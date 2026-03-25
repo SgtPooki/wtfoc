@@ -10,13 +10,17 @@ The demo line:
 
 > "Here are the key topics your engineering conversation is actually about — automatically, no LLM, pure math."
 
+## Prerequisites
+
+Run the [Quick Start](../quick-start/) demo first to create the `wtfoc-quick-start` collection.
+
 ## Run It
 
 ```bash
 ./docs/demos/theme-discovery/run.sh
 ```
 
-Or against an existing collection:
+Or against a different collection:
 
 ```bash
 ./docs/demos/theme-discovery/run.sh --collection foc-upload-flow
@@ -24,29 +28,22 @@ Or against an existing collection:
 
 ## What Happens
 
-### Ingest source data
+The script runs clustering on an existing collection (default: `wtfoc-quick-start`).
 
-The script ingests this repo to build a collection quickly (~2 min). For richer themes across multiple repos and source types, use `--collection foc-upload-flow`.
-
-> **Note:** This demo is contrived for speed. In practice, theme discovery is most interesting with multi-repo collections spanning code, issues, docs, and community discussions.
+> **Note:** This demo is contrived for speed — it runs in seconds on a single-repo collection. In practice, theme discovery is most interesting with multi-repo collections spanning code, issues, docs, and community discussions. Use `--collection foc-upload-flow` for richer results.
 
 ### Broad themes (default threshold: 0.85)
 
 ```bash
-./wtfoc themes -c theme-discovery-demo --limit 10 --exemplars 3
+./wtfoc themes -c wtfoc-quick-start --limit 10 --exemplars 3
 ```
 
-Returns the top clusters with exemplar chunks showing what each theme is about. Expect themes like:
-- Upload pipeline and storage contexts
-- PDP proof verification
-- SDK type definitions
-- DX friction and API ergonomics
-- Documentation and onboarding
+Returns the top clusters with exemplar chunks showing what each theme is about.
 
 ### Fine-grained themes (threshold: 0.80)
 
 ```bash
-./wtfoc themes -c theme-discovery-demo --threshold 0.80 --limit 10
+./wtfoc themes -c wtfoc-quick-start --threshold 0.80 --limit 10
 ```
 
 Lower threshold = more specific clusters. Useful for finding niche conversations buried in the data.
@@ -68,11 +65,8 @@ Theme discovery answers "what are we even talking about?" across repos, issues, 
 ## Reproduction
 
 ```bash
-# Full demo
+# Default (uses wtfoc-quick-start collection)
 ./docs/demos/theme-discovery/run.sh
-
-# Themes only on existing collection
-./docs/demos/theme-discovery/run.sh --skip-ingest
 
 # Against the upload-flow collection (recommended — more data)
 ./docs/demos/theme-discovery/run.sh --collection foc-upload-flow

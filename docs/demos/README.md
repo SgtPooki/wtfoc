@@ -38,6 +38,11 @@ All analysis demos (gap-analysis, theme-discovery, drift-analysis) support:
 
 ```bash
 --collection <name>              # Run against a specific collection (default: wtfoc-quick-start)
+```
+
+Demos that perform ingestion (quick-start, upload-flow-trace, incremental-ingest, local-to-foc) also support:
+
+```bash
 --embedder-url lmstudio          # Use LM Studio as embedder
 --embedder-url <url>             # Use any OpenAI-compatible embedder
 --embedder-model <model>         # Specify embedder model

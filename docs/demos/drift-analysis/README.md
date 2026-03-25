@@ -12,22 +12,32 @@ Docs drift from code. Features ship without docs. Drift analysis finds both.
 
 No LLM is needed for the data layer — `wtfoc trace` and `query` do the heavy lifting. The skill orchestrates the queries and synthesizes the report.
 
+## Prerequisites
+
+Run the [Quick Start](../quick-start/) demo first to create the `wtfoc-quick-start` collection.
+
 ## Run It
 
-### Automated setup + manual queries
+### Manual queries (what this script does)
 
 ```bash
 ./docs/demos/drift-analysis/run.sh
 ```
 
-This builds a collection with both docs and GitHub sources, then runs the same queries that `/drift-check` uses under the hood — so you can see how the pieces fit together.
+This runs the same queries that `/drift-check` uses under the hood against an existing collection (default: `wtfoc-quick-start`) — so you can see how the pieces fit together.
+
+Or against a different collection:
+
+```bash
+./docs/demos/drift-analysis/run.sh --collection foc-upload-flow
+```
 
 ### Full automated drift report
 
 In Claude Code, after the collection exists:
 
 ```
-/drift-check -c drift-analysis-demo
+/drift-check -c wtfoc-quick-start
 ```
 
 Or against the upload-flow-trace collection:
@@ -38,16 +48,7 @@ Or against the upload-flow-trace collection:
 
 ## What Happens
 
-### Collection setup
-
-The quick demo ingests this repo (which has both code and markdown docs):
-
-```bash
-./wtfoc init drift-analysis-demo --local
-./wtfoc ingest repo SgtPooki/wtfoc -c drift-analysis-demo
-```
-
-> **Note:** This demo is contrived for speed (~2 min). For real-world drift analysis comparing docs sites against GitHub activity across multiple repos, use `--collection foc-upload-flow` with a pre-built collection that has both documentation and GitHub sources.
+> **Note:** This demo is contrived for speed — it runs queries in seconds on a single-repo collection. For real-world drift analysis comparing docs sites against GitHub activity across multiple repos, use `--collection foc-upload-flow` with a pre-built collection that has both documentation and GitHub sources.
 
 ### How drift-check works
 
@@ -86,13 +87,10 @@ They complement each other: gap analysis tells you what to ingest, drift analysi
 ## Reproduction
 
 ```bash
-# Full setup + manual queries
+# Default (uses wtfoc-quick-start collection)
 ./docs/demos/drift-analysis/run.sh
 
-# Manual queries only (collection must exist)
-./docs/demos/drift-analysis/run.sh --skip-ingest
-
-# Against upload-flow-trace collection
+# Against upload-flow-trace collection (richer results)
 ./docs/demos/drift-analysis/run.sh --collection foc-upload-flow
 
 # Full automated report (in Claude Code)

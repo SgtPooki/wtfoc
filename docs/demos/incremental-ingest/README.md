@@ -8,6 +8,10 @@ The #1 question from eng-leads: **"Is this one-shot or incremental?"**
 
 Answer: **Incremental.** You can add sources to a collection over days, weeks, or months. Each `ingest` appends new data. Duplicate content is automatically skipped via content-hash deduplication. Traces get richer as more sources connect.
 
+## Prerequisites
+
+Run the [Quick Start](../quick-start/) demo first to create the `wtfoc-quick-start` collection.
+
 ## Run It
 
 ```bash
@@ -16,31 +20,26 @@ Answer: **Incremental.** You can add sources to a collection over days, weeks, o
 
 ## What Happens
 
-The script runs 3 rounds of ingestion against the **same collection**, showing the chunk count grow and traces improve:
+The script builds on the existing `wtfoc-quick-start` collection (created by quick-start), adding new sources and demonstrating dedup:
 
-> **Note:** This demo is contrived for speed (~3 min) using a single repo. In practice, incremental ingestion shines with multiple repos and source types added over days or weeks.
+> **Note:** This demo is contrived for speed (~2 min) using a single repo. In practice, incremental ingestion shines with multiple repos and source types added over days or weeks.
 
-### Round 1: Start with source code
+### Baseline: existing collection
 
-```bash
-./wtfoc init incremental-demo --local
-./wtfoc ingest repo SgtPooki/wtfoc -c incremental-demo
-```
+Shows the current state of the `wtfoc-quick-start` collection and runs a trace to establish baseline results.
 
-Trace "how does ingest work?" returns only code and markdown results.
-
-### Round 2: Add GitHub activity
+### Round 1: Add GitHub activity
 
 ```bash
-./wtfoc ingest github SgtPooki/wtfoc -c incremental-demo --since 90d
+./wtfoc ingest github SgtPooki/wtfoc -c wtfoc-quick-start --since 90d
 ```
 
 Same trace now returns code + issues + PRs. The collection grew; nothing was replaced.
 
-### Round 3: Re-ingest — dedup in action
+### Round 2: Re-ingest — dedup in action
 
 ```bash
-./wtfoc ingest repo SgtPooki/wtfoc -c incremental-demo
+./wtfoc ingest repo SgtPooki/wtfoc -c wtfoc-quick-start
 ```
 
 Output shows chunks **skipped as duplicates**. Chunk count barely changes. Content-hash dedup means re-ingesting is safe and cheap.
@@ -112,7 +111,7 @@ The architecture supports all of this — segments are immutable, manifest chain
 ## Reproduction
 
 ```bash
-# Full 3-round demo
+# Full demo (requires wtfoc-quick-start collection from quick-start demo)
 ./docs/demos/incremental-ingest/run.sh
 
 # With LM Studio embedder

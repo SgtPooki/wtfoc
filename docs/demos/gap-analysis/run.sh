@@ -21,14 +21,10 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 cd "$REPO_ROOT"
 
 COLLECTION="wtfoc-quick-start"
-EMBEDDER_ARGS=""
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 		--collection|-c) COLLECTION="$2"; shift 2 ;;
-		lmstudio) EMBEDDER_ARGS="--embedder-url lmstudio --embedder-model mxbai-embed-large-v1"; shift ;;
-		--embedder-url|--embedder-model|--embedder-key|--embedder)
-			EMBEDDER_ARGS="$EMBEDDER_ARGS $1 $2"; shift 2 ;;
 		*) shift ;;
 	esac
 done
