@@ -7,7 +7,6 @@ import type {
 	CollectionHead,
 	Embedder,
 	Segment,
-	VectorEntry,
 	VectorIndex,
 } from "@wtfoc/common";
 import { createMcpServer } from "@wtfoc/mcp-server/server";
@@ -15,12 +14,12 @@ import {
 	analyzeEdgeResolution,
 	buildSourceIndex,
 	createVectorIndex,
+	mountCollection,
 	query,
 	trace,
 } from "@wtfoc/search";
 import type { VectorBackend } from "@wtfoc/search";
 import { createStore, resolveCollectionByCid } from "@wtfoc/store";
-import { mountCollection } from "@wtfoc/search";
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -69,6 +68,7 @@ interface LoadedCollection {
 	manifest: CollectionHead;
 	segments: Segment[];
 	vectorIndex: VectorIndex;
+	headId: string;
 	loadedAt: number;
 	lastAccessedAt: number;
 }
@@ -121,12 +121,16 @@ function getStore() {
 // ─── Collection Cache (lazy-loading) ────────────────────────────────────────
 
 const collectionCache = new Map<string, LoadedCollection>();
+const collectionInflight = new Map<string, Promise<LoadedCollection>>();
+/** Skip manifest re-read if the cached entry was validated within this window. */
+const FRESHNESS_TTL_MS = 5_000;
 let store: ReturnType<typeof createStore>;
 let embedder: Embedder;
 
 async function getCollection(name: string): Promise<LoadedCollection | null> {
+	// Fast path: skip manifest IO if the cache was recently validated
 	const cached = collectionCache.get(name);
-	if (cached) {
+	if (cached && Date.now() - cached.lastAccessedAt < FRESHNESS_TTL_MS) {
 		cached.lastAccessedAt = Date.now();
 		return cached;
 	}
@@ -134,51 +138,57 @@ async function getCollection(name: string): Promise<LoadedCollection | null> {
 	const head = await store.manifests.getHead(name);
 	if (!head) return null;
 
-	console.error(`⏳ Loading collection "${name}" (${VECTOR_BACKEND} backend)...`);
-	const dimensions = head.manifest.embeddingDimensions ?? 384;
-	const vectorIndex = await createVectorIndex({
-		backend: VECTOR_BACKEND,
-		collectionName: head.manifest.collectionId,
-		dimensions,
-		qdrantUrl: QDRANT_URL,
-		qdrantApiKey: QDRANT_API_KEY,
-	});
-	const segments: Segment[] = [];
-
-	for (const segSummary of head.manifest.segments) {
-		const segBytes = await store.storage.download(segSummary.id);
-		const segment = JSON.parse(new TextDecoder().decode(segBytes)) as Segment;
-		segments.push(segment);
-
-		const entries: VectorEntry[] = segment.chunks.map((c) => ({
-			id: c.id,
-			vector: new Float32Array(c.embedding),
-			storageId: c.storageId || segSummary.id,
-			metadata: {
-				sourceType: c.sourceType,
-				source: c.source,
-				sourceUrl: c.sourceUrl ?? "",
-				content: c.content,
-				...c.metadata,
-			},
-		}));
-		await vectorIndex.add(entries);
+	// Return cached collection if the manifest hasn't changed
+	if (cached && cached.headId === head.headId) {
+		cached.lastAccessedAt = Date.now();
+		return cached;
 	}
 
-	const now = Date.now();
-	const loaded: LoadedCollection = {
-		manifest: head.manifest,
-		segments,
-		vectorIndex,
-		loadedAt: now,
-		lastAccessedAt: now,
-	};
+	// Deduplicate in-flight loads for the same collection + headId
+	const inflightKey = `${name}:${head.headId}`;
+	const existing = collectionInflight.get(inflightKey);
+	if (existing) return existing;
 
-	collectionCache.set(name, loaded);
-	console.error(
-		`✅ Loaded "${name}": ${head.manifest.totalChunks} chunks, ${head.manifest.segments.length} segments (${VECTOR_BACKEND})`,
-	);
-	return loaded;
+	const promise = (async () => {
+		if (cached) {
+			console.error(`♻️  Collection "${name}" changed (headId ${head.headId.slice(0, 8)}…), reloading…`);
+		} else {
+			console.error(`⏳ Loading collection "${name}" (${VECTOR_BACKEND} backend)...`);
+		}
+
+		const dimensions = head.manifest.embeddingDimensions ?? 384;
+		const vectorIndex = await createVectorIndex({
+			backend: VECTOR_BACKEND,
+			collectionName: head.manifest.collectionId,
+			dimensions,
+			qdrantUrl: QDRANT_URL,
+			qdrantApiKey: QDRANT_API_KEY,
+		});
+		const mounted = await mountCollection(head.manifest, store.storage, vectorIndex);
+
+		const now = Date.now();
+		const loaded: LoadedCollection = {
+			manifest: head.manifest,
+			segments: mounted.segments,
+			vectorIndex: mounted.vectorIndex,
+			headId: head.headId,
+			loadedAt: now,
+			lastAccessedAt: now,
+		};
+
+		collectionCache.set(name, loaded);
+		console.error(
+			`✅ Loaded "${name}": ${head.manifest.totalChunks} chunks, ${head.manifest.segments.length} segments (${VECTOR_BACKEND})`,
+		);
+		return loaded;
+	})();
+
+	collectionInflight.set(inflightKey, promise);
+	try {
+		return await promise;
+	} finally {
+		collectionInflight.delete(inflightKey);
+	}
 }
 
 // ─── CID Collection Loading ─────────────────────────────────────────────────
@@ -220,6 +230,7 @@ async function getCollectionByCid(cid: string): Promise<LoadedCollection> {
 			manifest,
 			segments: mounted.segments,
 			vectorIndex: mounted.vectorIndex,
+			headId: cid, // CID collections are immutable — CID is the identity
 			loadedAt: now,
 			lastAccessedAt: now,
 		};

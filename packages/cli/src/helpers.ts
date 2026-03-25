@@ -1,5 +1,6 @@
-import type { CollectionHead, Embedder, Segment, VectorEntry, VectorIndex } from "@wtfoc/common";
-import { InMemoryVectorIndex, OpenAIEmbedder, TransformersEmbedder } from "@wtfoc/search";
+import type { Embedder } from "@wtfoc/common";
+import { InMemoryVectorIndex, mountCollection, OpenAIEmbedder, TransformersEmbedder } from "@wtfoc/search";
+import type { MountedCollection } from "@wtfoc/search";
 import { createStore } from "@wtfoc/store";
 import type { Command } from "commander";
 import type { OutputFormat } from "./output.js";
@@ -11,10 +12,7 @@ export interface EmbedderOpts {
 	embedderModel?: string;
 }
 
-export interface LoadedCollection {
-	vectorIndex: VectorIndex;
-	segments: Segment[];
-}
+export type LoadedCollection = MountedCollection;
 
 export function parseSinceDuration(duration: string): string {
 	const match = duration.match(/^(\d+)([dh])$/);
@@ -144,31 +142,8 @@ export function createEmbedder(opts: {
 
 export async function loadCollection(
 	store: ReturnType<typeof createStore>,
-	manifest: CollectionHead,
+	manifest: import("@wtfoc/common").CollectionHead,
 ): Promise<LoadedCollection> {
 	const vectorIndex = new InMemoryVectorIndex();
-	const segments: Segment[] = [];
-
-	for (const segSummary of manifest.segments) {
-		const segBytes = await store.storage.download(segSummary.id);
-		const segment = JSON.parse(new TextDecoder().decode(segBytes)) as Segment;
-		segments.push(segment);
-
-		// Add chunks to vector index
-		const entries: VectorEntry[] = segment.chunks.map((c) => ({
-			id: c.id,
-			vector: new Float32Array(c.embedding),
-			storageId: c.storageId || segSummary.id,
-			metadata: {
-				sourceType: c.sourceType,
-				source: c.source,
-				sourceUrl: c.sourceUrl ?? "",
-				content: c.content,
-				...c.metadata,
-			},
-		}));
-		await vectorIndex.add(entries);
-	}
-
-	return { vectorIndex, segments };
+	return mountCollection(manifest, store.storage, vectorIndex);
 }

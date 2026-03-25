@@ -77,10 +77,11 @@ export async function mountCollection(
 
 		const entries: VectorEntry[] = segment.chunks.map((chunk) => {
 			const metadata: Record<string, string> = {
-				content: chunk.content,
-				source: chunk.source,
 				sourceType: chunk.sourceType,
+				source: chunk.source,
 				sourceUrl: chunk.sourceUrl ?? "",
+				content: chunk.content,
+				...chunk.metadata,
 			};
 			if (chunk.signalScores && Object.keys(chunk.signalScores).length > 0) {
 				metadata.signalScores = JSON.stringify(chunk.signalScores);
@@ -88,7 +89,7 @@ export async function mountCollection(
 			return {
 				id: chunk.id,
 				vector: new Float32Array(chunk.embedding),
-				storageId: chunk.storageId,
+				storageId: chunk.storageId || segRef,
 				metadata,
 			};
 		});
