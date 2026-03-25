@@ -96,7 +96,7 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 		}
 	}
 
-	extractEdges(chunks: Chunk[]): Edge[] {
+	async extractEdges(chunks: Chunk[]): Promise<Edge[]> {
 		const extractor = new RegexEdgeExtractor();
 		return extractor.extract(chunks);
 	}

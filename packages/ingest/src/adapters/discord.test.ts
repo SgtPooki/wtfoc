@@ -197,7 +197,7 @@ describe("DiscordAdapter: edge extraction", () => {
 			chunks.push(chunk);
 		}
 
-		const edges = adapter.extractEdges(chunks);
+		const edges = await adapter.extractEdges(chunks);
 		const githubEdges = edges.filter((e) => e.targetId.includes("FilOzone/synapse-sdk"));
 		expect(githubEdges.length).toBeGreaterThan(0);
 		expect(githubEdges[0]?.type).toBe("references");
@@ -212,7 +212,7 @@ describe("DiscordAdapter: edge extraction", () => {
 			chunks.push(chunk);
 		}
 
-		const edges = adapter.extractEdges(chunks);
+		const edges = await adapter.extractEdges(chunks);
 		const channelEdges = edges.filter((e) => e.targetType === "discord-channel");
 		expect(channelEdges.length).toBeGreaterThan(0);
 		expect(channelEdges.some((e) => e.targetId === "#dev-chat")).toBe(true);
@@ -227,7 +227,7 @@ describe("DiscordAdapter: edge extraction", () => {
 			chunks.push(chunk);
 		}
 
-		const edges = adapter.extractEdges(chunks);
+		const edges = await adapter.extractEdges(chunks);
 		const discordMsgEdges = edges.filter((e) => e.targetType === "discord-message");
 		expect(discordMsgEdges.length).toBeGreaterThan(0);
 		expect(discordMsgEdges[0]?.targetId).toMatch(/^discord:\/\//);

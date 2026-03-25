@@ -66,7 +66,7 @@ export class WebsiteAdapter implements SourceAdapter<WebsiteAdapterConfig> {
 		}
 	}
 
-	extractEdges(chunks: Chunk[]): Edge[] {
+	async extractEdges(chunks: Chunk[]): Promise<Edge[]> {
 		const edges: Edge[] = [];
 
 		for (const chunk of chunks) {

@@ -17,4 +17,6 @@ export interface Edge {
 	evidence: string;
 	/** 1.0 for explicit (regex-extracted), <1.0 for semantic */
 	confidence: number;
+	/** Extractor names that contributed to this edge (e.g. ["regex", "heuristic"]) */
+	provenance?: string[];
 }

@@ -32,7 +32,7 @@ const chunks = chunkMarkdown(content, { source: 'docs/README.md' });
 
 // Extract cross-source edges (issue refs, PR links, URLs)
 const extractor = new RegexEdgeExtractor();
-const edges = extractor.extract(chunks);
+const edges = await extractor.extract(chunks);
 
 // Build a segment from chunks + embeddings + edges
 // embedder.embedBatch() returns Float32Array[] — convert to number[] for storage

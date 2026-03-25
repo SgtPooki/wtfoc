@@ -14,5 +14,5 @@ export interface SourceAdapter<TConfig = Record<string, unknown>> {
 	/** Parse and validate raw options into a typed config. Throws on invalid input. */
 	parseConfig(raw: Record<string, unknown>): TConfig;
 	ingest(config: TConfig, signal?: AbortSignal): AsyncIterable<Chunk>;
-	extractEdges(chunks: Chunk[]): Edge[];
+	extractEdges(chunks: Chunk[]): Promise<Edge[]>;
 }

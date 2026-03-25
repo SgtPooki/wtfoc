@@ -2,6 +2,7 @@ import type { Segment } from "@wtfoc/common";
 import { type Chunk, type CollectionHead, CURRENT_SCHEMA_VERSION } from "@wtfoc/common";
 import {
 	buildSegment,
+	CompositeEdgeExtractor,
 	DEFAULT_MAX_CHUNK_CHARS,
 	getAdapter,
 	getAvailableSourceTypes,
@@ -133,8 +134,12 @@ export function registerIngestCommand(program: Command): void {
 				batchNumber++;
 
 				// Extract edges for this batch
-				const edgeExtractor = new RegexEdgeExtractor();
-				const edges = [...adapter.extractEdges(batchChunks), ...edgeExtractor.extract(batchChunks)];
+				const compositeExtractor = new CompositeEdgeExtractor();
+				compositeExtractor.register({ name: "regex", extractor: new RegexEdgeExtractor() });
+				const edges = [
+					...(await adapter.extractEdges(batchChunks)),
+					...(await compositeExtractor.extract(batchChunks)),
+				];
 
 				// Embed this batch
 				if (format !== "quiet")

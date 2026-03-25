@@ -159,7 +159,7 @@ describe("HackerNewsAdapter", () => {
 	});
 
 	describe("extractEdges", () => {
-		it("extracts reply-to-parent edges from comments", () => {
+		it("extracts reply-to-parent edges from comments", async () => {
 			const chunks = [
 				{
 					id: "chunk-1",
@@ -172,14 +172,14 @@ describe("HackerNewsAdapter", () => {
 				},
 			];
 
-			const edges = adapter.extractEdges(chunks);
+			const edges = await adapter.extractEdges(chunks);
 			const parentEdge = edges.find((e) => e.targetId === "hn:99002");
 			expect(parentEdge).toBeDefined();
 			expect(parentEdge?.type).toBe("references");
 			expect(parentEdge?.evidence).toContain("reply to");
 		});
 
-		it("extracts GitHub URL edges from content", () => {
+		it("extracts GitHub URL edges from content", async () => {
 			const chunks = [
 				{
 					id: "chunk-2",
@@ -192,7 +192,7 @@ describe("HackerNewsAdapter", () => {
 				},
 			];
 
-			const edges = adapter.extractEdges(chunks);
+			const edges = await adapter.extractEdges(chunks);
 			const githubEdge = edges.find((e) => e.targetId === "FilOzone/synapse-sdk#142");
 			expect(githubEdge).toBeDefined();
 			expect(githubEdge?.type).toBe("references");

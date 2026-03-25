@@ -32,9 +32,9 @@ describe("RegexEdgeExtractor", () => {
 	const extractor = new RegexEdgeExtractor();
 
 	describe("references — local issue refs (#123) — GitHub chunks", () => {
-		it("repo-scopes a local issue reference using chunk source", () => {
+		it("repo-scopes a local issue reference using chunk source", async () => {
 			const chunk = makeChunk("This relates to #123");
-			const edges = extractor.extract([chunk]);
+			const edges = await extractor.extract([chunk]);
 
 			expect(edges).toHaveLength(1);
 			expect(edges[0]).toEqual({
@@ -47,9 +47,9 @@ describe("RegexEdgeExtractor", () => {
 			});
 		});
 
-		it("extracts multiple local refs from one chunk, all repo-scoped", () => {
+		it("extracts multiple local refs from one chunk, all repo-scoped", async () => {
 			const chunk = makeChunk("See #10 and #20 for context");
-			const edges = extractor.extract([chunk]);
+			const edges = await extractor.extract([chunk]);
 
 			expect(edges).toHaveLength(2);
 			expect(edges.map((e) => e.targetId)).toEqual(["owner/repo#10", "owner/repo#20"]);
@@ -57,9 +57,9 @@ describe("RegexEdgeExtractor", () => {
 	});
 
 	describe("references — local issue refs (#123) — non-GitHub chunks", () => {
-		it("keeps bare #123 for Slack chunks with no repo context anywhere", () => {
+		it("keeps bare #123 for Slack chunks with no repo context anywhere", async () => {
 			const chunk = makeSlackChunk("This relates to #123");
-			const edges = extractor.extract([chunk]);
+			const edges = await extractor.extract([chunk]);
 
 			expect(edges).toHaveLength(1);
 			expect(edges[0]).toEqual({
@@ -72,9 +72,9 @@ describe("RegexEdgeExtractor", () => {
 			});
 		});
 
-		it("extracts multiple bare local refs from a Slack chunk with no context", () => {
+		it("extracts multiple bare local refs from a Slack chunk with no context", async () => {
 			const chunk = makeSlackChunk("See #10 and #20 for context");
-			const edges = extractor.extract([chunk]);
+			const edges = await extractor.extract([chunk]);
 
 			expect(edges).toHaveLength(2);
 			expect(edges.map((e) => e.targetId)).toEqual(["#10", "#20"]);
@@ -82,11 +82,11 @@ describe("RegexEdgeExtractor", () => {
 	});
 
 	describe("context-aware bare #N resolution — same-chunk inference", () => {
-		it("infers repo from GitHub URL in same Slack message", () => {
+		it("infers repo from GitHub URL in same Slack message", async () => {
 			const chunk = makeSlackChunk(
 				"See https://github.com/FILCAT/pdp/pull/38 — also related to #42",
 			);
-			const edges = extractor.extract([chunk]);
+			const edges = await extractor.extract([chunk]);
 
 			const urlEdge = edges.find((e) => e.evidence.startsWith("https://"));
 			const bareEdge = edges.find((e) => e.evidence === "#42");
@@ -98,11 +98,11 @@ describe("RegexEdgeExtractor", () => {
 			expect(bareEdge?.confidence).toBe(0.5);
 		});
 
-		it("infers repo from cross-repo ref in same Slack message", () => {
+		it("infers repo from cross-repo ref in same Slack message", async () => {
 			const chunk = makeSlackChunk(
 				"FilOzone/synapse-sdk#100 is the main issue, see also #101 and #102",
 			);
-			const edges = extractor.extract([chunk]);
+			const edges = await extractor.extract([chunk]);
 
 			const explicit = edges.find((e) => e.evidence === "FilOzone/synapse-sdk#100");
 			const inferred = edges.filter((e) => e.confidence === 0.5);
@@ -115,11 +115,11 @@ describe("RegexEdgeExtractor", () => {
 			]);
 		});
 
-		it("picks the most frequently referenced repo when multiple are present", () => {
+		it("picks the most frequently referenced repo when multiple are present", async () => {
 			const chunk = makeSlackChunk(
 				"FILCAT/pdp#1 FILCAT/pdp#2 FilOzone/synapse-sdk#3 — see also #99",
 			);
-			const edges = extractor.extract([chunk]);
+			const edges = await extractor.extract([chunk]);
 
 			const bareEdge = edges.find((e) => e.evidence === "#99");
 			// FILCAT/pdp appears twice, synapse-sdk once — pdp wins
@@ -129,20 +129,20 @@ describe("RegexEdgeExtractor", () => {
 	});
 
 	describe("context-aware bare #N resolution — batch-level affinity", () => {
-		it("uses batch affinity when single chunk has no context", () => {
+		it("uses batch affinity when single chunk has no context", async () => {
 			const contextChunk = makeSlackChunk("See https://github.com/FILCAT/pdp/issues/10", {
 				id: "ctx",
 			});
 			const bareChunk = makeSlackChunk("this is about #42", { id: "bare" });
 
-			const edges = extractor.extract([contextChunk, bareChunk]);
+			const edges = await extractor.extract([contextChunk, bareChunk]);
 
 			const bareEdge = edges.find((e) => e.sourceId === "bare" && e.evidence === "#42");
 			expect(bareEdge?.targetId).toBe("FILCAT/pdp#42");
 			expect(bareEdge?.confidence).toBe(0.5);
 		});
 
-		it("prefers same-chunk context over batch affinity", () => {
+		it("prefers same-chunk context over batch affinity", async () => {
 			// Batch has lots of FILCAT/pdp refs
 			const batchChunk1 = makeSlackChunk("FILCAT/pdp#1 FILCAT/pdp#2", { id: "b1" });
 			// This chunk mentions a different repo directly
@@ -150,18 +150,18 @@ describe("RegexEdgeExtractor", () => {
 				id: "target",
 			});
 
-			const edges = extractor.extract([batchChunk1, targetChunk]);
+			const edges = await extractor.extract([batchChunk1, targetChunk]);
 
 			const bareEdge = edges.find((e) => e.sourceId === "target" && e.evidence === "#51");
 			// Same-chunk context (synapse-sdk) should win over batch affinity (pdp)
 			expect(bareEdge?.targetId).toBe("FilOzone/synapse-sdk#51");
 		});
 
-		it("uses GitHub chunk sources for batch affinity", () => {
+		it("uses GitHub chunk sources for batch affinity", async () => {
 			const ghChunk = makeChunk("Some PR content", { id: "gh" });
 			const slackChunk = makeSlackChunk("related to #42", { id: "slack" });
 
-			const edges = extractor.extract([ghChunk, slackChunk]);
+			const edges = await extractor.extract([ghChunk, slackChunk]);
 
 			const bareEdge = edges.find((e) => e.sourceId === "slack" && e.evidence === "#42");
 			expect(bareEdge?.targetId).toBe("owner/repo#42");
@@ -170,18 +170,18 @@ describe("RegexEdgeExtractor", () => {
 	});
 
 	describe("context-aware bare #N — closes edges", () => {
-		it("infers repo for Fixes #N in Slack chunk with context", () => {
+		it("infers repo for Fixes #N in Slack chunk with context", async () => {
 			const chunk = makeSlackChunk("Fixes #42 — see https://github.com/FILCAT/pdp/pull/38");
-			const edges = extractor.extract([chunk]);
+			const edges = await extractor.extract([chunk]);
 
 			const closesEdge = edges.find((e) => e.type === "closes");
 			expect(closesEdge?.targetId).toBe("FILCAT/pdp#42");
 			expect(closesEdge?.confidence).toBe(0.5);
 		});
 
-		it("keeps bare #N for closes when no context exists", () => {
+		it("keeps bare #N for closes when no context exists", async () => {
 			const chunk = makeSlackChunk("Fixes #42");
-			const edges = extractor.extract([chunk]);
+			const edges = await extractor.extract([chunk]);
 
 			expect(edges).toHaveLength(1);
 			expect(edges[0]?.type).toBe("closes");
@@ -191,9 +191,9 @@ describe("RegexEdgeExtractor", () => {
 	});
 
 	describe("references — cross-repo refs (owner/repo#456)", () => {
-		it("extracts a cross-repo reference", () => {
+		it("extracts a cross-repo reference", async () => {
 			const chunk = makeChunk("Related to FilOzone/synapse-sdk#142");
-			const edges = extractor.extract([chunk]);
+			const edges = await extractor.extract([chunk]);
 
 			expect(edges).toHaveLength(1);
 			expect(edges[0]).toEqual({
@@ -206,18 +206,18 @@ describe("RegexEdgeExtractor", () => {
 			});
 		});
 
-		it("does not double-count the number part as a local ref", () => {
+		it("does not double-count the number part as a local ref", async () => {
 			const chunk = makeChunk("See FilOzone/synapse-sdk#142");
-			const edges = extractor.extract([chunk]);
+			const edges = await extractor.extract([chunk]);
 
 			// Should get exactly 1 edge (the cross-repo ref), not 2
 			expect(edges).toHaveLength(1);
 			expect(edges[0]?.targetId).toBe("FilOzone/synapse-sdk#142");
 		});
 
-		it("extracts cross-repo refs from Slack chunks too", () => {
+		it("extracts cross-repo refs from Slack chunks too", async () => {
 			const chunk = makeSlackChunk("See FilOzone/synapse-sdk#142");
-			const edges = extractor.extract([chunk]);
+			const edges = await extractor.extract([chunk]);
 
 			expect(edges).toHaveLength(1);
 			expect(edges[0]?.targetId).toBe("FilOzone/synapse-sdk#142");
@@ -225,9 +225,9 @@ describe("RegexEdgeExtractor", () => {
 	});
 
 	describe("references — GitHub URLs", () => {
-		it("extracts a GitHub issue URL", () => {
+		it("extracts a GitHub issue URL", async () => {
 			const chunk = makeChunk("See https://github.com/owner/repo/issues/42 for details");
-			const edges = extractor.extract([chunk]);
+			const edges = await extractor.extract([chunk]);
 
 			expect(edges).toHaveLength(1);
 			expect(edges[0]).toEqual({
@@ -240,9 +240,9 @@ describe("RegexEdgeExtractor", () => {
 			});
 		});
 
-		it("extracts a GitHub PR URL", () => {
+		it("extracts a GitHub PR URL", async () => {
 			const chunk = makeChunk("Check https://github.com/owner/repo/pull/99");
-			const edges = extractor.extract([chunk]);
+			const edges = await extractor.extract([chunk]);
 
 			expect(edges).toHaveLength(1);
 			expect(edges[0]?.targetId).toBe("owner/repo#99");
@@ -261,9 +261,9 @@ describe("RegexEdgeExtractor", () => {
 			"Resolves",
 			"resolved",
 		]) {
-			it(`extracts repo-scoped 'closes' edge for keyword "${keyword}" (GitHub chunk)`, () => {
+			it(`extracts repo-scoped 'closes' edge for keyword "${keyword}" (GitHub chunk)`, async () => {
 				const chunk = makeChunk(`${keyword} #42`);
-				const edges = extractor.extract([chunk]);
+				const edges = await extractor.extract([chunk]);
 
 				expect(edges).toHaveLength(1);
 				expect(edges[0]?.type).toBe("closes");
@@ -272,18 +272,18 @@ describe("RegexEdgeExtractor", () => {
 			});
 		}
 
-		it("keeps bare #42 for non-GitHub closes with no context", () => {
+		it("keeps bare #42 for non-GitHub closes with no context", async () => {
 			const chunk = makeSlackChunk("Fixes #42");
-			const edges = extractor.extract([chunk]);
+			const edges = await extractor.extract([chunk]);
 
 			expect(edges).toHaveLength(1);
 			expect(edges[0]?.type).toBe("closes");
 			expect(edges[0]?.targetId).toBe("#42");
 		});
 
-		it("extracts cross-repo closes", () => {
+		it("extracts cross-repo closes", async () => {
 			const chunk = makeChunk("Fixes owner/repo#99");
-			const edges = extractor.extract([chunk]);
+			const edges = await extractor.extract([chunk]);
 
 			expect(edges).toHaveLength(1);
 			expect(edges[0]).toEqual({
@@ -296,9 +296,9 @@ describe("RegexEdgeExtractor", () => {
 			});
 		});
 
-		it("does not also emit a 'references' edge for the same target", () => {
+		it("does not also emit a 'references' edge for the same target", async () => {
 			const chunk = makeChunk("Closes #42, also see #99");
-			const edges = extractor.extract([chunk]);
+			const edges = await extractor.extract([chunk]);
 
 			const closes = edges.filter((e) => e.type === "closes");
 			const refs = edges.filter((e) => e.type === "references");
@@ -311,11 +311,11 @@ describe("RegexEdgeExtractor", () => {
 	});
 
 	describe("mixed content", () => {
-		it("extracts all edge types from a PR body (GitHub chunk)", () => {
+		it("extracts all edge types from a PR body (GitHub chunk)", async () => {
 			const chunk = makeChunk(
 				"Fixes #9\n\nRelated to SgtPooki/wtfoc#1 and see https://github.com/other/repo/issues/5",
 			);
-			const edges = extractor.extract([chunk]);
+			const edges = await extractor.extract([chunk]);
 
 			expect(edges).toHaveLength(3);
 
@@ -329,11 +329,11 @@ describe("RegexEdgeExtractor", () => {
 			expect(refs.map((e) => e.targetId).sort()).toEqual(["SgtPooki/wtfoc#1", "other/repo#5"]);
 		});
 
-		it("extracts mixed edges from Slack chunk — infers repo from context", () => {
+		it("extracts mixed edges from Slack chunk — infers repo from context", async () => {
 			const chunk = makeSlackChunk(
 				"Fixes #9\n\nRelated to SgtPooki/wtfoc#1 and see https://github.com/other/repo/issues/5",
 			);
-			const edges = extractor.extract([chunk]);
+			const edges = await extractor.extract([chunk]);
 
 			expect(edges).toHaveLength(3);
 
@@ -351,22 +351,22 @@ describe("RegexEdgeExtractor", () => {
 	});
 
 	describe("no edges", () => {
-		it("returns empty array for content with no references", () => {
+		it("returns empty array for content with no references", async () => {
 			const chunk = makeChunk("Just a regular message with no issue refs");
-			const edges = extractor.extract([chunk]);
+			const edges = await extractor.extract([chunk]);
 			expect(edges).toHaveLength(0);
 		});
 
-		it("returns empty array for empty chunks array", () => {
-			const edges = extractor.extract([]);
+		it("returns empty array for empty chunks array", async () => {
+			const edges = await extractor.extract([]);
 			expect(edges).toHaveLength(0);
 		});
 	});
 
 	describe("multiple chunks", () => {
-		it("extracts edges from all provided chunks", () => {
+		it("extracts edges from all provided chunks", async () => {
 			const chunks = [makeChunk("See #1", { id: "c1" }), makeChunk("See #2", { id: "c2" })];
-			const edges = extractor.extract(chunks);
+			const edges = await extractor.extract(chunks);
 
 			expect(edges).toHaveLength(2);
 			expect(edges[0]?.sourceId).toBe("c1");

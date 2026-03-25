@@ -6,5 +6,5 @@ import type { Edge } from "../schemas/edge.js";
  * connections (issue references, PR closing keywords, changed files, etc.).
  */
 export interface EdgeExtractor {
-	extract(chunks: Chunk[]): Edge[];
+	extract(chunks: Chunk[], signal?: AbortSignal): Promise<Edge[]>;
 }

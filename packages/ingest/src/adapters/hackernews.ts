@@ -108,9 +108,9 @@ export class HackerNewsAdapter implements SourceAdapter<HackerNewsAdapterConfig>
 		}
 	}
 
-	extractEdges(chunks: Chunk[]): Edge[] {
+	async extractEdges(chunks: Chunk[]): Promise<Edge[]> {
 		const extractor = new RegexEdgeExtractor();
-		const edges = extractor.extract(chunks);
+		const edges = await extractor.extract(chunks);
 
 		// Add reply-to-parent edges for comments
 		for (const chunk of chunks) {

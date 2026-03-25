@@ -88,7 +88,10 @@ export async function handleIngest(
 		batchNumber++;
 
 		const edgeExtractor = new RegexEdgeExtractor();
-		const edges = [...adapter.extractEdges(batchChunks), ...edgeExtractor.extract(batchChunks)];
+		const edges = [
+			...(await adapter.extractEdges(batchChunks)),
+			...(await edgeExtractor.extract(batchChunks)),
+		];
 
 		const embeddings = await embedder.embedBatch(batchChunks.map((c) => c.content));
 
