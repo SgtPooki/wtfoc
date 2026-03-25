@@ -35,7 +35,7 @@ jobs:
         run: pnpm test
 
       - name: Test (e2e API)
-        run: vitest run --config tests/e2e/vitest.config.ts
+        run: pnpm exec vitest run --config tests/e2e/vitest.config.ts
 
   e2e-ui:
     runs-on: ubuntu-latest
