@@ -6,7 +6,7 @@
 	"scripts": {
 		"test": "vitest run",
 		"test:api": "vitest run --project api",
-		"test:ui": "playwright test || test $? -eq 134"
+		"test:ui": "./scripts/run-playwright.sh"
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.52.0",
