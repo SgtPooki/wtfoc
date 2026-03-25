@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import type { StorageBackend, StorageResult } from "@wtfoc/common";
-import { StorageNotFoundError } from "@wtfoc/common";
+import { StorageNotFoundError, WtfocError } from "@wtfoc/common";
 
 /**
  * Local filesystem storage backend. No wallet, no network.
@@ -27,7 +27,7 @@ export class LocalStorageBackend implements StorageBackend {
 
 	async download(id: string, signal?: AbortSignal): Promise<Uint8Array> {
 		signal?.throwIfAborted();
-		const filePath = join(this.dataDir, id);
+		const filePath = this.safePath(id);
 		try {
 			return await readFile(filePath);
 		} catch (_cause) {
@@ -38,10 +38,20 @@ export class LocalStorageBackend implements StorageBackend {
 	async verify(id: string, signal?: AbortSignal): Promise<{ exists: boolean; size: number }> {
 		signal?.throwIfAborted();
 		try {
-			const info = await stat(join(this.dataDir, id));
+			const info = await stat(this.safePath(id));
 			return { exists: true, size: info.size };
 		} catch {
 			return { exists: false, size: 0 };
 		}
+	}
+
+	private safePath(id: string): string {
+		const base = resolve(this.dataDir);
+		const resolved = resolve(base, id);
+		const rel = relative(base, resolved);
+		if (rel.startsWith("..") || isAbsolute(rel)) {
+			throw new WtfocError("Invalid storage ID", "STORAGE_INVALID_ID", { id });
+		}
+		return resolved;
 	}
 }

@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { dirname, extname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type {
 	CollectionHead,
 	Embedder,
@@ -9,6 +10,7 @@ import type {
 	VectorEntry,
 	VectorIndex,
 } from "@wtfoc/common";
+import { createMcpServer } from "@wtfoc/mcp-server/server";
 import {
 	analyzeEdgeResolution,
 	buildSourceIndex,
@@ -135,6 +137,7 @@ async function getCollection(name: string): Promise<LoadedCollection | null> {
 // ─── CID Collection Loading ─────────────────────────────────────────────────
 
 const cidInflight = new Map<string, Promise<LoadedCollection>>();
+const CID_MAX_CONCURRENT = 5;
 
 async function getCollectionByCid(cid: string): Promise<LoadedCollection> {
 	const cached = collectionCache.get(`cid:${cid}`);
@@ -143,6 +146,10 @@ async function getCollectionByCid(cid: string): Promise<LoadedCollection> {
 	// Deduplicate in-flight requests for the same CID
 	const existing = cidInflight.get(cid);
 	if (existing) return existing;
+
+	if (cidInflight.size >= CID_MAX_CONCURRENT) {
+		throw Object.assign(new Error("Too many concurrent CID fetches"), { code: "CID_BUSY" });
+	}
 
 	const promise = (async () => {
 		console.error(`⏳ Fetching collection from CID ${cid.slice(0, 16)}...`);
@@ -241,6 +248,132 @@ async function main() {
 		console.error(`⚠️  No web app found at ${WEB_DIR} — API-only mode`);
 	}
 
+	// ─── MCP over HTTP (Streamable HTTP transport, stateless) ────────────
+	// Each request gets a fresh McpServer + transport. Read-only: no ingest.
+	const embedderModel = embedder.model ?? "unknown";
+	const MCP_MAX_BODY = 1 * 1024 * 1024; // 1 MB
+	const MCP_MAX_CONCURRENT = 20;
+	let mcpInflight = 0;
+
+	async function handleMcp(req: IncomingMessage, res: ServerResponse): Promise<void> {
+		// CORS headers for MCP
+		res.setHeader("Access-Control-Allow-Origin", "*");
+		res.setHeader("Access-Control-Expose-Headers", "mcp-session-id");
+
+		if (req.method === "GET") {
+			res.writeHead(405, { "Content-Type": "text/plain" });
+			res.end("SSE not supported in stateless mode. Use POST to send MCP requests.");
+			return;
+		}
+
+		if (req.method === "DELETE") {
+			res.writeHead(200);
+			res.end();
+			return;
+		}
+
+		if (req.method !== "POST") {
+			res.writeHead(405, { "Content-Type": "text/plain" });
+			res.end("Method not allowed");
+			return;
+		}
+
+		// Concurrency guard
+		if (mcpInflight >= MCP_MAX_CONCURRENT) {
+			res.writeHead(503, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: "Too many concurrent MCP requests" }));
+			return;
+		}
+
+		mcpInflight++;
+		try {
+			// Parse JSON body with size limit and abort handling
+			const body = await new Promise<string>((resolve, reject) => {
+				const chunks: Buffer[] = [];
+				let total = 0;
+				let settled = false;
+
+				const onData = (chunk: Buffer): void => {
+					total += chunk.byteLength;
+					if (total > MCP_MAX_BODY) {
+						req.destroy();
+						cleanup();
+						settled = true;
+						reject(new Error("body too large"));
+						return;
+					}
+					chunks.push(chunk);
+				};
+				const onEnd = (): void => {
+					cleanup();
+					settled = true;
+					resolve(Buffer.concat(chunks).toString("utf-8"));
+				};
+				const onError = (err: Error): void => {
+					if (settled) return;
+					cleanup();
+					settled = true;
+					reject(err);
+				};
+				const onAbort = (): void => {
+					if (settled) return;
+					cleanup();
+					settled = true;
+					reject(new Error("request aborted"));
+				};
+
+				function cleanup(): void {
+					req.removeListener("data", onData);
+					req.removeListener("end", onEnd);
+					req.removeListener("error", onError);
+					req.removeListener("aborted", onAbort);
+					req.removeListener("close", onAbort);
+				}
+
+				req.on("data", onData);
+				req.on("end", onEnd);
+				req.on("error", onError);
+				req.on("aborted", onAbort);
+				req.on("close", onAbort);
+			});
+
+			let parsedBody: unknown;
+			try {
+				parsedBody = JSON.parse(body);
+			} catch {
+				res.writeHead(400, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ error: "Invalid JSON" }));
+				return;
+			}
+
+			// Create a fresh server + transport per request (stateless)
+			const mcpServer = createMcpServer(store, embedder, embedderModel, { readOnly: true });
+			const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+
+			const cleanup = () => {
+				transport.close().catch(() => {});
+				mcpServer.close().catch(() => {});
+			};
+			res.once("finish", cleanup);
+			res.once("close", cleanup);
+
+			await mcpServer.connect(transport);
+			await transport.handleRequest(req, res, parsedBody);
+		} catch (err) {
+			if (!res.headersSent) {
+				const msg = err instanceof Error && err.message === "body too large"
+					? "Request body too large"
+					: "Internal error";
+				res.writeHead(msg === "Request body too large" ? 413 : 500, {
+					"Content-Type": "application/json",
+				});
+				res.end(JSON.stringify({ error: msg }));
+			}
+		} finally {
+			mcpInflight--;
+		}
+	}
+
 	const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
 		const url = req.url ?? "/";
 		const params = parseQuery(url);
@@ -250,14 +383,19 @@ async function main() {
 		if (req.method === "OPTIONS") {
 			res.writeHead(204, {
 				"Access-Control-Allow-Origin": "*",
-				"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-				"Access-Control-Allow-Headers": "Content-Type",
+				"Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+				"Access-Control-Allow-Headers": "Content-Type, mcp-session-id",
+				"Access-Control-Expose-Headers": "mcp-session-id",
 			});
 			res.end();
 			return;
 		}
 
 		try {
+			// ─── MCP endpoint ───
+			if (path === "/mcp") {
+				return handleMcp(req, res);
+			}
 			// ─── Shared endpoint handler ───
 			async function handleEndpoint(
 				col: LoadedCollection,
@@ -293,7 +431,8 @@ async function main() {
 				if (endpoint === "query") {
 					const q = params.get("q");
 					if (!q) return jsonResponse(res, { error: "Missing ?q= parameter" }, 400);
-					const topK = Number(params.get("k") ?? "10");
+					if (q.length > 2000) return jsonResponse(res, { error: "Query too long" }, 400);
+					const topK = Math.min(Math.max(1, Number(params.get("k") ?? "10") || 10), 100);
 					const result = await query(q, embedder, col.vectorIndex, { topK });
 					return jsonResponse(res, result);
 				}
@@ -301,6 +440,7 @@ async function main() {
 				if (endpoint === "trace") {
 					const q = params.get("q");
 					if (!q) return jsonResponse(res, { error: "Missing ?q= parameter" }, 400);
+					if (q.length > 2000) return jsonResponse(res, { error: "Query too long" }, 400);
 					const result = await trace(q, embedder, col.vectorIndex, col.segments);
 					return jsonResponse(res, {
 						query: result.query,
@@ -370,6 +510,7 @@ async function main() {
 					const code = err instanceof Error && "code" in err ? (err as { code: string }).code : "";
 					if (code === "CID_INVALID") return jsonResponse(res, { error: "Invalid CID format", code }, 400);
 					if (code === "CID_NOT_MANIFEST") return jsonResponse(res, { error: "CID does not point to a wtfoc collection", code }, 422);
+					if (code === "CID_BUSY") return jsonResponse(res, { error: "Too many concurrent CID requests, try again later" }, 503);
 					throw err;
 				}
 			}
@@ -439,13 +580,14 @@ async function main() {
 			res.end("Not found");
 		} catch (err) {
 			console.error("API error:", err);
-			jsonResponse(res, { error: err instanceof Error ? err.message : "Internal error" }, 500);
+			jsonResponse(res, { error: "Internal error" }, 500);
 		}
 	});
 
 	server.listen(PORT, () => {
 		console.error(`\n🌐 wtfoc web running at http://localhost:${PORT}`);
 		console.error(`   API: http://localhost:${PORT}/api/collections`);
+		console.error(`   MCP: http://localhost:${PORT}/mcp`);
 		console.error(`   UI:  http://localhost:${PORT}/`);
 	});
 }

@@ -81,6 +81,33 @@ describe("LocalStorageBackend", () => {
 		});
 	});
 
+	describe("path traversal protection", () => {
+		it("rejects download with traversal id", async () => {
+			await expect(backend.download("../../etc/passwd")).rejects.toMatchObject({
+				code: "STORAGE_INVALID_ID",
+			});
+		});
+
+		it("rejects verify with traversal id", async () => {
+			const result = await backend.verify("../../etc/passwd");
+			// safePath throws before stat, so verify catches and returns not-found
+			expect(result.exists).toBe(false);
+		});
+
+		it("rejects download with absolute path id", async () => {
+			await expect(backend.download("/etc/passwd")).rejects.toMatchObject({
+				code: "STORAGE_INVALID_ID",
+			});
+		});
+
+		it("allows valid hex id", async () => {
+			// Should not throw STORAGE_INVALID_ID — just STORAGE_NOT_FOUND
+			await expect(backend.download("abcdef1234567890")).rejects.toMatchObject({
+				code: "STORAGE_NOT_FOUND",
+			});
+		});
+	});
+
 	describe("AbortSignal", () => {
 		it("rejects immediately when signal is already aborted", async () => {
 			const controller = new AbortController();

@@ -19,7 +19,15 @@
 		"wtfoc-mcp": "./dist/index.js"
 	},
 	"exports": {
-		".": "./dist/index.js"
+		".": "./dist/index.js",
+		"./server": "./dist/server.js"
+	},
+	"typesVersions": {
+		"*": {
+			"server": [
+				"./dist/server.d.ts"
+			]
+		}
 	},
 	"types": "./dist/index.d.ts",
 	"files": [

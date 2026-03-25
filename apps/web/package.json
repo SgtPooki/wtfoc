@@ -8,12 +8,15 @@
 		"build": "vite build",
 		"build:server": "tsc -p server/tsconfig.json",
 		"build:all": "pnpm build && pnpm build:server",
+		"dev:server": "tsx --watch server/index.ts",
 		"preview": "vite preview",
 		"start": "node server/dist/index.js"
 	},
 	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.12.1",
 		"@preact/signals": "^2.0.0",
 		"@wtfoc/common": "workspace:*",
+		"@wtfoc/mcp-server": "workspace:*",
 		"@wtfoc/search": "workspace:*",
 		"@wtfoc/store": "workspace:*",
 		"d3-force": "^3.0.0",
