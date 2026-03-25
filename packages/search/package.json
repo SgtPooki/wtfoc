@@ -30,7 +30,8 @@
 		"@wtfoc/common": "workspace:*"
 	},
 	"optionalDependencies": {
-		"@huggingface/transformers": "^3.8.1"
+		"@huggingface/transformers": "^3.8.1",
+		"@qdrant/js-client-rest": "^1.17.0"
 	},
 	"peerDependencies": {
 		"@wtfoc/store": "workspace:^"

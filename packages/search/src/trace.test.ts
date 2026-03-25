@@ -27,10 +27,12 @@ function createMockIndex(entries: VectorEntry[]): VectorIndex {
 				score: 1.0 - i * 0.1,
 			}));
 		},
-		async serialize(): Promise<Uint8Array> {
-			return new Uint8Array(0);
+		async delete(ids: string[]): Promise<void> {
+			for (const id of ids) {
+				const idx = entries.findIndex((e) => e.id === id);
+				if (idx !== -1) entries.splice(idx, 1);
+			}
 		},
-		async deserialize(): Promise<void> {},
 	};
 }
 
