@@ -7,8 +7,10 @@ import type {
 	CollectionHead,
 	Embedder,
 	Segment,
+	StorageBackend,
 	VectorIndex,
 } from "@wtfoc/common";
+import { StorageNotFoundError } from "@wtfoc/common";
 import { createMcpServer } from "@wtfoc/mcp-server/server";
 import {
 	analyzeEdgeResolution,
@@ -20,7 +22,7 @@ import {
 	trace,
 } from "@wtfoc/search";
 import type { VectorBackend } from "@wtfoc/search";
-import { createStore, resolveCollectionByCid } from "@wtfoc/store";
+import { CidReadableStorage, createStore, resolveCollectionByCid } from "@wtfoc/store";
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -150,6 +152,66 @@ function getStore() {
 	});
 }
 
+// ─── Hydrating Storage ──────────────────────────────────────────────────────
+// Wraps LocalStorageBackend with IPFS fallback for segments that have CIDs.
+// On cache miss: fetches from IPFS → persists locally → returns data.
+
+function createHydratingStorage(
+	local: StorageBackend,
+	manifest: CollectionHead,
+): StorageBackend {
+	// Build segment ID → IPFS CID lookup from the manifest
+	const cidBySegmentId = new Map<string, string>();
+	for (const seg of manifest.segments) {
+		if (seg.ipfsCid) {
+			cidBySegmentId.set(seg.id, seg.ipfsCid);
+		}
+	}
+
+	// No IPFS CIDs in manifest — just use local storage as-is
+	if (cidBySegmentId.size === 0) return local;
+
+	let ipfsReader: CidReadableStorage | null = null;
+
+	return {
+		async download(id: string, signal?: AbortSignal): Promise<Uint8Array> {
+			// Try local first
+			try {
+				return await local.download(id, signal);
+			} catch (err) {
+				// Only fall back to IPFS for missing segments, not IO/permission errors
+				if (!(err instanceof StorageNotFoundError)) throw err;
+
+				const ipfsCid = cidBySegmentId.get(id);
+				if (!ipfsCid) throw err; // no CID fallback available — rethrow
+
+				// Fetch from IPFS
+				console.error(`📥 Hydrating segment ${id.slice(0, 12)}… from IPFS (${ipfsCid.slice(0, 16)}…)`);
+				if (!ipfsReader) ipfsReader = new CidReadableStorage();
+				const data = await ipfsReader.download(ipfsCid, signal);
+
+				// Persist locally so future loads don't need IPFS.
+				// LocalStorageBackend uses content SHA-256 as the ID, which must
+				// match the segment ID in the manifest (both are SHA-256 of the blob).
+				try {
+					const result = await local.upload(data, undefined, signal);
+					if (result.id !== id) {
+						console.error(
+							`⚠️  Hydrated segment hash mismatch: expected ${id.slice(0, 12)}…, got ${result.id.slice(0, 12)}… — content may have changed on IPFS`,
+						);
+					}
+				} catch (persistErr) {
+					console.error(`⚠️  Failed to persist segment locally: ${persistErr instanceof Error ? persistErr.message : persistErr}`);
+				}
+
+				return data;
+			}
+		},
+		upload: local.upload.bind(local),
+		verify: local.verify?.bind(local),
+	};
+}
+
 // ─── Collection Cache (lazy-loading) ────────────────────────────────────────
 
 const collectionCache = new Map<string, LoadedCollection>();
@@ -197,7 +259,8 @@ async function getCollection(name: string): Promise<LoadedCollection | null> {
 			qdrantUrl: QDRANT_URL,
 			qdrantApiKey: QDRANT_API_KEY,
 		});
-		const mounted = await mountCollection(head.manifest, store.storage, vectorIndex);
+		const storage = createHydratingStorage(store.storage, head.manifest);
+		const mounted = await mountCollection(head.manifest, storage, vectorIndex);
 
 		const now = Date.now();
 		const loaded: LoadedCollection = {
