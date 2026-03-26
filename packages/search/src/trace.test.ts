@@ -1,6 +1,7 @@
-import type { Embedder, Segment, VectorEntry, VectorIndex } from "@wtfoc/common";
+import type { Edge, Embedder, Segment, VectorEntry, VectorIndex } from "@wtfoc/common";
 import { describe, expect, it } from "vitest";
 import { trace } from "./trace/index.js";
+import { buildEdgeIndex } from "./trace/indexing.js";
 
 // ─── Mock embedder ───────────────────────────────────────────────────────────
 const mockEmbedder: Embedder = {
@@ -353,5 +354,81 @@ describe("trace", () => {
 				signal: controller.signal,
 			}),
 		).rejects.toThrow();
+	});
+
+	it("uses overlay edges to discover hops not in segment edges", async () => {
+		// Create a segment with NO edges — only chunks
+		const segmentNoEdges: Segment = {
+			...testSegment,
+			edges: [],
+		};
+
+		// But provide overlay edges that link slack → issue
+		const overlayEdges: Edge[] = [
+			{
+				type: "implements",
+				sourceId: "slack-msg-1",
+				targetType: "issue",
+				targetId: "FilOzone/synapse-sdk#142",
+				evidence: "LLM-extracted: slack discusses issue",
+				confidence: 0.7,
+				provenance: ["llm"],
+			},
+		];
+
+		const index = createMockIndex([slackChunk]);
+		const result = await trace("upload failures", mockEmbedder, index, [segmentNoEdges], {
+			overlayEdges,
+		});
+
+		// Should find the issue via the overlay edge
+		const edgeHops = result.hops.filter((h) => h.connection.method === "edge");
+		expect(edgeHops.length).toBeGreaterThan(0);
+
+		const issueHop = result.hops.find((h) => h.sourceType === "github-issue");
+		expect(issueHop).toBeDefined();
+		expect(issueHop?.connection.method).toBe("edge");
+		expect(issueHop?.connection.edgeType).toBe("implements");
+	});
+});
+
+describe("buildEdgeIndex", () => {
+	it("indexes overlay edges alongside segment edges", () => {
+		const overlayEdges: Edge[] = [
+			{
+				type: "implements",
+				sourceId: "chunk-a",
+				targetType: "concept",
+				targetId: "design-doc",
+				evidence: "LLM: chunk references design doc",
+				confidence: 0.6,
+			},
+		];
+
+		const index = buildEdgeIndex([testSegment], overlayEdges);
+
+		// Segment edges should be indexed
+		const slackEdges = index.get("slack-msg-1") ?? [];
+		expect(slackEdges.some((e) => e.type === "references")).toBe(true);
+
+		// Overlay edges should also be indexed (forward)
+		const overlayFwd = index.get("chunk-a") ?? [];
+		expect(overlayFwd.some((e) => e.type === "implements")).toBe(true);
+
+		// Overlay edges should be indexed (reverse)
+		const overlayRev = index.get("design-doc") ?? [];
+		expect(overlayRev.some((e) => e.evidence.startsWith("←"))).toBe(true);
+	});
+
+	it("works without overlay edges (backward compat)", () => {
+		const index = buildEdgeIndex([testSegment]);
+		const edges = index.get("slack-msg-1") ?? [];
+		expect(edges.some((e) => e.type === "references")).toBe(true);
+	});
+
+	it("works with empty overlay array", () => {
+		const index = buildEdgeIndex([testSegment], []);
+		const edges = index.get("slack-msg-1") ?? [];
+		expect(edges.some((e) => e.type === "references")).toBe(true);
 	});
 });

@@ -153,17 +153,31 @@ export function formatCollections(
  */
 export function formatStatus(
 	projectName: string,
-	data: { totalChunks: number; segments: number; embeddingModel: string; updatedAt: string },
+	data: {
+		totalChunks: number;
+		segments: number;
+		embeddingModel: string;
+		updatedAt: string;
+		overlayEdges?: number;
+	},
 	format: OutputFormat,
 ): string {
 	if (format === "json") return JSON.stringify({ project: projectName, ...data }, null, "\t");
 	if (format === "quiet") return "";
 
-	return [
+	const lines = [
 		`📦 Project: ${projectName}`,
 		`   Chunks: ${data.totalChunks}`,
 		`   Segments: ${data.segments}`,
 		`   Model: ${data.embeddingModel}`,
 		`   Updated: ${data.updatedAt}`,
-	].join("\n");
+	];
+
+	if (data.overlayEdges && data.overlayEdges > 0) {
+		lines.push(
+			`   Overlay edges: ${data.overlayEdges} (run materialize-edges to bake into segments)`,
+		);
+	}
+
+	return lines.join("\n");
 }
