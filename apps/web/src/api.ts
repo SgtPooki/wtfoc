@@ -150,4 +150,44 @@ export function fetchCollectionDetail(
 	return apiFetch<WalletCollectionDetail>(`/api/wallet-collections/${id}`, undefined, signal);
 }
 
+// ─── Session key + promote endpoints ─────────────────────────────────────────
+
+export function delegateSessionKey(
+	sessionKey: string,
+	expiresAt: string,
+	chainId: number,
+	signal?: AbortSignal,
+): Promise<{ sessionKeyActive: boolean; sessionKeyExpiresAt: string }> {
+	return apiFetch("/api/auth/session-key", undefined, signal, {
+		method: "POST",
+		body: JSON.stringify({ sessionKey, expiresAt, chainId }),
+	});
+}
+
+export function revokeSessionKey(signal?: AbortSignal): Promise<{ sessionKeyActive: boolean }> {
+	return apiFetch("/api/auth/session-key", undefined, signal, { method: "DELETE" });
+}
+
+export function promoteCollection(
+	id: string,
+	signal?: AbortSignal,
+): Promise<{ id: string; status: string; promoteCheckpoint: string | null }> {
+	return apiFetch(`/api/wallet-collections/${id}/promote`, undefined, signal, {
+		method: "POST",
+	});
+}
+
+export function fetchPromoteStatus(
+	id: string,
+	signal?: AbortSignal,
+): Promise<{
+	status: string;
+	checkpoint: string | null;
+	manifestCid: string | null;
+	pieceCid: string | null;
+	carRootCid: string | null;
+}> {
+	return apiFetch(`/api/wallet-collections/${id}/promote/status`, undefined, signal);
+}
+
 export { ApiError };

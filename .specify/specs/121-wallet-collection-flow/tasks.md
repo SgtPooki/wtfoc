@@ -122,17 +122,17 @@
 
 ### Tests for User Story 4
 
-- [ ] T034a [P] [US4] Write unit tests for session key delegation, revocation, and promote worker in apps/web/server/auth/session-key.test.ts and apps/web/server/collections/promote-worker.test.ts — test key encryption/storage, revocation deletes key, expired key rejection, promote checkpoint persistence and resume from each checkpoint stage. Use in-memory repository and mock FocStorageBackend.
+- [x] T034a [P] [US4] Write unit tests for session key delegation, revocation, and promote worker in apps/web/server/auth/session-key.test.ts and apps/web/server/collections/promote-worker.test.ts — test key encryption/storage, revocation deletes key, expired key rejection, promote checkpoint persistence and resume from each checkpoint stage. Use in-memory repository and mock FocStorageBackend.
 
 ### Implementation for User Story 4
 
-- [ ] T034 [US4] Implement session key delegation and revocation routes in apps/web/server/auth/routes.ts — POST /api/auth/session-key (delegate/rotate), DELETE /api/auth/session-key (revoke) per contracts/api.md. Encrypt session key before storing in repository. Log to audit trail.
-- [ ] T035 [P] [US4] Create SessionKeyManager component in apps/web/src/components/SessionKeyManager.tsx — UI for delegating a session key (generates ephemeral keypair client-side, signs delegation, sends to server), shows active/expired status, revoke button
-- [ ] T036 [US4] Implement promote worker in apps/web/server/collections/promote-worker.ts — loads collection segments from LocalStorageBackend, calls bundleAndUpload() with FocStorageBackend configured with session key (SessionKeyConfig), persists promotion checkpoints (car_built, uploaded, on_chain_written) to repository, handles resume from last checkpoint on retry, updates collection with manifestCid/pieceCid on success
-- [ ] T037 [US4] Implement promote routes in apps/web/server/collections/routes.ts — POST /api/collections/:id/promote (start promotion, requires active session key), GET /api/collections/:id/promote/status per contracts/api.md. Deduplicate concurrent promote requests.
-- [ ] T038 [US4] Create PromoteButton component in apps/web/src/components/PromoteButton.tsx — shows "Promote to FOC" when collection is ready and session key active, shows "Delegate Session Key" if key missing/expired, shows progress during promotion, shows CID after success
-- [ ] T039 [US4] Add promote API functions to apps/web/src/api.ts — delegateSessionKey(), revokeSessionKey(), promoteCollection(), fetchPromoteStatus()
-- [ ] T040 [US4] Integrate PromoteButton and SessionKeyManager into CollectionDetail in apps/web/src/components/CollectionDetail.tsx — show promote controls when status is ready, show promotion progress when promoting, show CID when promoted
+- [x] T034 [US4] Implement session key delegation and revocation routes in apps/web/server/auth/routes.ts — POST /api/auth/session-key (delegate/rotate), DELETE /api/auth/session-key (revoke) per contracts/api.md. Encrypt session key before storing in repository. Log to audit trail.
+- [x] T035 [P] [US4] Create SessionKeyManager component in apps/web/src/components/SessionKeyManager.tsx — UI for delegating a session key (generates ephemeral keypair client-side, signs delegation, sends to server), shows active/expired status, revoke button
+- [x] T036 [US4] Implement promote worker in apps/web/server/collections/promote-worker.ts — loads collection segments from LocalStorageBackend, calls bundleAndUpload() with FocStorageBackend configured with session key (SessionKeyConfig), persists promotion checkpoints (car_built, uploaded, on_chain_written) to repository, handles resume from last checkpoint on retry, updates collection with manifestCid/pieceCid on success
+- [x] T037 [US4] Implement promote routes in apps/web/server/collections/routes.ts — POST /api/collections/:id/promote (start promotion, requires active session key), GET /api/collections/:id/promote/status per contracts/api.md. Deduplicate concurrent promote requests.
+- [x] T038 [US4] Create PromoteButton component in apps/web/src/components/PromoteButton.tsx — shows "Promote to FOC" when collection is ready and session key active, shows "Delegate Session Key" if key missing/expired, shows progress during promotion, shows CID after success
+- [x] T039 [US4] Add promote API functions to apps/web/src/api.ts — delegateSessionKey(), revokeSessionKey(), promoteCollection(), fetchPromoteStatus()
+- [x] T040 [US4] Integrate PromoteButton and SessionKeyManager into CollectionDetail in apps/web/src/components/CollectionDetail.tsx — show promote controls when status is ready, show promotion progress when promoting, show CID when promoted
 
 **Checkpoint**: User can delegate session key, promote a collection, see promotion progress, and receive a shareable CID. Promoted collection is loadable via existing CID-based search/trace UI.
 

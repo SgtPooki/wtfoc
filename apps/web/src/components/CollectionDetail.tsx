@@ -1,5 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import { fetchCollectionDetail, type WalletCollectionDetail } from "../api.js";
+import { PromoteButton } from "./PromoteButton.js";
 
 const STATUS_COLORS: Record<string, string> = {
 	pending: "#888",
@@ -89,6 +90,12 @@ export function CollectionDetail({ collectionId }: CollectionDetailProps) {
 					</li>
 				))}
 			</ul>
+
+			<PromoteButton
+				collectionId={detail.id}
+				collectionStatus={detail.status}
+				manifestCid={detail.manifestCid}
+			/>
 
 			<div class="collection-meta">
 				<span>Created: {new Date(detail.createdAt).toLocaleString()}</span>

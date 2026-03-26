@@ -5,6 +5,7 @@ import { requireAuth } from "../auth/middleware.js";
 import { walletRateLimiter } from "../security/rate-limit.js";
 import { validateCollectionName, validateSources } from "./validators.js";
 import { startIngestion } from "./ingest-worker.js";
+import { startPromotion } from "./promote-worker.js";
 
 const createRateLimit = walletRateLimiter(10, 3600); // 10 collections per hour per wallet
 
@@ -120,6 +121,72 @@ collections.get("/:id", async (c) => {
 		})),
 		createdAt: col.createdAt.toISOString(),
 		updatedAt: col.updatedAt.toISOString(),
+	});
+});
+
+/** POST /api/wallet-collections/:id/promote — Start FOC promotion */
+collections.post("/:id/promote", async (c) => {
+	const repo = c.get("repo") as Repository;
+	const walletAddress = c.get("walletAddress") as string;
+	const sessionId = c.get("sessionId") as string;
+	const id = c.req.param("id");
+
+	const col = await repo.getCollection(id);
+	if (!col || col.walletAddress !== walletAddress) {
+		return c.json({ error: "Collection not found", code: "NOT_FOUND" }, 404);
+	}
+
+	// Check status
+	if (col.status === "promoting") {
+		return c.json(
+			{ id: col.id, status: col.status, promoteCheckpoint: col.promoteCheckpoint, code: "ALREADY_PROMOTING" },
+			409,
+		);
+	}
+	if (col.status !== "ready" && col.status !== "promotion_failed") {
+		return c.json(
+			{ error: `Collection must be in "ready" or "promotion_failed" state, got "${col.status}"`, code: "INVALID_STATUS" },
+			400,
+		);
+	}
+
+	// Check session key
+	const session = await repo.getActiveSessionByWallet(walletAddress);
+	if (!session?.sessionKeyEncrypted) {
+		return c.json({ error: "Session key required for promotion. Delegate one first.", code: "SESSION_KEY_REQUIRED" }, 403);
+	}
+	if (session.sessionKeyExpiresAt && session.sessionKeyExpiresAt < new Date()) {
+		return c.json({ error: "Session key expired. Delegate a new one.", code: "SESSION_KEY_EXPIRED" }, 403);
+	}
+
+	// Decrypt session key (in-memory mode stores plaintext)
+	const sessionKeyDecrypted = new TextDecoder().decode(session.sessionKeyEncrypted);
+
+	// Start promotion in background
+	startPromotion(id, sessionKeyDecrypted, walletAddress, repo).catch((err) => {
+		console.error(`[collections] Background promotion failed for ${id}:`, err);
+	});
+
+	return c.json({ id: col.id, status: "promoting", promoteCheckpoint: null }, 202);
+});
+
+/** GET /api/wallet-collections/:id/promote/status — Check promotion progress */
+collections.get("/:id/promote/status", async (c) => {
+	const repo = c.get("repo") as Repository;
+	const walletAddress = c.get("walletAddress") as string;
+	const id = c.req.param("id");
+
+	const col = await repo.getCollection(id);
+	if (!col || col.walletAddress !== walletAddress) {
+		return c.json({ error: "Collection not found", code: "NOT_FOUND" }, 404);
+	}
+
+	return c.json({
+		status: col.status,
+		checkpoint: col.promoteCheckpoint,
+		manifestCid: col.manifestCid,
+		pieceCid: col.pieceCid,
+		carRootCid: col.carRootCid,
 	});
 });
 

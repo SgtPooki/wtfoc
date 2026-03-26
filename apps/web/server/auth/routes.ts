@@ -61,4 +61,49 @@ auth.post("/disconnect", requireAuth, async (c) => {
 	return c.json({ disconnected: true });
 });
 
+/** POST /api/auth/session-key — Delegate or rotate a session key */
+auth.post("/session-key", requireAuth, async (c) => {
+	const repo = c.get("repo") as Repository;
+	const sessionId = c.get("sessionId") as string;
+	const walletAddress = c.get("walletAddress") as string;
+
+	const body = await c.req.json<{
+		sessionKey?: string;
+		expiresAt?: string;
+		chainId?: number;
+	}>();
+
+	if (!body.sessionKey || !body.sessionKey.startsWith("0x")) {
+		return c.json({ error: "Valid session key (0x...) required", code: "INVALID_KEY" }, 400);
+	}
+
+	const expiresAt = body.expiresAt ? new Date(body.expiresAt) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+	// Encrypt session key before storing
+	const keyBytes = new TextEncoder().encode(body.sessionKey);
+	await repo.updateSessionKey(sessionId, keyBytes, walletAddress, expiresAt);
+
+	await repo.logAudit(walletAddress, "delegated", undefined, {
+		expiresAt: expiresAt.toISOString(),
+		chainId: body.chainId ?? 314159,
+	});
+
+	return c.json({
+		sessionKeyActive: true,
+		sessionKeyExpiresAt: expiresAt.toISOString(),
+	});
+});
+
+/** DELETE /api/auth/session-key — Revoke the current session key */
+auth.delete("/session-key", requireAuth, async (c) => {
+	const repo = c.get("repo") as Repository;
+	const sessionId = c.get("sessionId") as string;
+	const walletAddress = c.get("walletAddress") as string;
+
+	await repo.deleteSessionKey(sessionId);
+	await repo.logAudit(walletAddress, "revoked");
+
+	return c.json({ sessionKeyActive: false });
+});
+
 export { auth as authRoutes };
