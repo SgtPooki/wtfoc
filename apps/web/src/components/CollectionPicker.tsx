@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useCallback, useEffect, useState } from "preact/hooks";
 import { fetchCollections } from "../api";
 import { collection } from "../state";
 import type { CollectionSummary } from "../types";
@@ -65,7 +65,7 @@ export function CollectionPicker() {
 	const [error, setError] = useState<string | null>(null);
 	const [loaded, setLoaded] = useState(false);
 
-	useEffect(() => {
+	const loadCollections = useCallback(() => {
 		fetchCollections()
 			.then((cols) => {
 				setCollections(cols);
@@ -80,9 +80,13 @@ export function CollectionPicker() {
 			});
 	}, []);
 
+	useEffect(() => {
+		loadCollections();
+	}, [loadCollections]);
+
 	return (
 		<div>
-			<CidInput />
+			<CidInput onCollectionsChanged={loadCollections} />
 
 			<h2 style={{ fontSize: "1.1rem", marginBottom: "0.5rem", marginTop: "2rem" }}>Collections</h2>
 			<p class="muted" style={{ fontSize: "0.85rem", marginBottom: "1rem" }}>

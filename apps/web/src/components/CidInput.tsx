@@ -1,8 +1,8 @@
 import { useEffect, useState } from "preact/hooks";
-import { fetchStatus } from "../api";
+import { fetchCollections, fetchStatus } from "../api";
 import { collection } from "../state";
 
-export function CidInput() {
+export function CidInput({ onCollectionsChanged }: { onCollectionsChanged?: () => void }) {
 	const [cid, setCid] = useState("");
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -25,9 +25,19 @@ export function CidInput() {
 		const cidCollection = `cid:${trimmed}`;
 
 		try {
-			// Probe the status endpoint to verify the CID resolves before switching
-			await fetchStatus(cidCollection);
-			collection.value = cidCollection;
+			// Fetch status — this triggers CID resolution + server-side manifest persistence
+			const status = await fetchStatus(cidCollection);
+
+			// Refresh collection list (server persisted the manifest on resolve)
+			const cols = await fetchCollections();
+			onCollectionsChanged?.();
+
+			// Switch to the persisted collection name if we can find it,
+			// otherwise fall back to the cid: prefix (still works via CID API)
+			const persisted = cols.find(
+				(c) => c.model === status.embeddingModel && c.chunks === status.totalChunks,
+			);
+			collection.value = persisted?.name ?? cidCollection;
 		} catch (err) {
 			const message = err instanceof Error ? err.message : "Failed to load collection";
 			setError(message);

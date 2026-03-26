@@ -289,6 +289,18 @@ async function getCollectionByCid(cid: string): Promise<LoadedCollection> {
 		console.error(
 			`✅ Loaded CID ${cid.slice(0, 16)}...: ${manifest.totalChunks} chunks, ${manifest.segments.length} segments`,
 		);
+
+		// Persist the manifest locally so it appears in /api/collections
+		const persistName = manifest.name || `cid-${cid.slice(0, 16)}`;
+		try {
+			const existing = await store.manifests.getHead(persistName);
+			await store.manifests.putHead(persistName, manifest, existing?.headId ?? null);
+			console.error(`💾 Persisted CID collection as "${persistName}"`);
+		} catch (err) {
+			// Non-fatal — collection still works from cache, just won't appear in list
+			console.error(`⚠️  Could not persist CID manifest locally: ${err instanceof Error ? err.message : err}`);
+		}
+
 		return loaded;
 	})();
 
