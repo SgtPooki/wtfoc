@@ -11,12 +11,40 @@ import type { createStore } from "@wtfoc/store";
 
 export type LoadedCollection = MountedCollection;
 
+/**
+ * Resolve a collection by name, returning the mounted vector index and segments.
+ * When provided, MCP tools use this instead of loading from disk each request.
+ */
+export type CollectionLoader = (name: string) => Promise<{
+	vectorIndex: import("@wtfoc/common").VectorIndex;
+	segments: import("@wtfoc/common").Segment[];
+} | null>;
+
 export async function loadCollection(
 	store: ReturnType<typeof createStore>,
 	manifest: CollectionHead,
 ): Promise<LoadedCollection> {
 	const vectorIndex = new InMemoryVectorIndex();
 	return mountCollection(manifest, store.storage, vectorIndex);
+}
+
+/**
+ * Resolve a collection using the injected loader (cache-aware) or fall back
+ * to loading from disk. Shared by query and trace tool handlers.
+ */
+export async function resolveCollection(
+	store: ReturnType<typeof createStore>,
+	collection: string,
+	collectionLoader?: CollectionLoader,
+): Promise<LoadedCollection> {
+	if (collectionLoader) {
+		const loaded = await collectionLoader(collection);
+		if (!loaded) throw new Error(`Collection "${collection}" not found`);
+		return loaded as LoadedCollection;
+	}
+	const head = await store.manifests.getHead(collection);
+	if (!head) throw new Error(`Collection "${collection}" not found`);
+	return loadCollection(store, head.manifest);
 }
 
 /**

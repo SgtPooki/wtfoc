@@ -2,13 +2,22 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Embedder } from "@wtfoc/common";
 import type { createStore } from "@wtfoc/store";
 import { z } from "zod";
+import type { CollectionLoader } from "./helpers.js";
 import { handleQuery } from "./tools/query.js";
 import { handleStatus } from "./tools/status.js";
 import { handleTrace } from "./tools/trace.js";
 
+export type { CollectionLoader } from "./helpers.js";
+
 export interface CreateMcpServerOptions {
 	/** If true, omit write tools like ingest. Defaults to false. */
 	readOnly?: boolean;
+	/**
+	 * Optional collection loader that MCP tools call instead of loading from
+	 * disk. When the web server passes its cached `getCollection()` here, MCP
+	 * queries reuse the warm cache and freshness-checking logic.
+	 */
+	collectionLoader?: CollectionLoader;
 }
 
 /** Strip filesystem paths from error messages to avoid leaking server internals. */
@@ -39,6 +48,8 @@ export function createMcpServer(
 	modelName: string,
 	options?: CreateMcpServerOptions,
 ): McpServer {
+	const collectionLoader = options?.collectionLoader;
+
 	const server = new McpServer({
 		name: "wtfoc",
 		version: "0.0.3",
@@ -61,7 +72,12 @@ export function createMcpServer(
 		},
 		async ({ query, collection, mode }) => {
 			try {
-				const text = await handleTrace(store, embedder, { query, collection, mode });
+				const text = await handleTrace(
+					store,
+					embedder,
+					{ query, collection, mode },
+					collectionLoader,
+				);
 				return { content: [{ type: "text" as const, text }] };
 			} catch (err) {
 				const msg = sanitizeError(err);
@@ -87,7 +103,12 @@ export function createMcpServer(
 		},
 		async ({ queryText, collection, topK }) => {
 			try {
-				const text = await handleQuery(store, embedder, { queryText, collection, topK });
+				const text = await handleQuery(
+					store,
+					embedder,
+					{ queryText, collection, topK },
+					collectionLoader,
+				);
 				return { content: [{ type: "text" as const, text }] };
 			} catch (err) {
 				const msg = sanitizeError(err);
