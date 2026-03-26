@@ -266,6 +266,11 @@ export function validateManifestSchema(data: unknown): CollectionHead {
 		updatedAt: data.updatedAt,
 	});
 
+	// Themes: pass through without deep validation (optional, computed by `themes` command)
+	if ("themes" in data && data.themes !== undefined) {
+		manifest.themes = data.themes as CollectionHead["themes"];
+	}
+
 	if ("batches" in data && data.batches !== undefined) {
 		if (!Array.isArray(data.batches)) {
 			throw schemaInvalid("headManifest", "batches must be an array", "batches");

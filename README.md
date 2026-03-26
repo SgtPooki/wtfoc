@@ -92,6 +92,8 @@ The server exposes:
 
 FOC is the immutable system of record for your knowledge base. Collections are content-addressed — any collection can be verified, shared by CID, rehydrated, and re-queried by anyone without trusting a central server. Embedders and vector indices stay swappable.
 
+**Everything persists, everything is shareable.** As you iterate on a collection — ingesting sources, extracting edges, computing themes — every layer of analysis is stored in the manifest. When you share a collection CID, recipients get the full accumulated knowledge graph: chunks, embeddings, typed edges, theme clusters, noise categorizations, and extraction metadata. Any agent or human can pick up where you left off, extend the collection with new sources or better analysis, and publish a new version. The manifest chain tracks who contributed what, creating a collaborative, ever-improving knowledge base that outlives any single contributor.
+
 See [docs/foc-rag-storage.md](docs/foc-rag-storage.md) for the storage layout and CID reuse story.
 
 ## Packages
