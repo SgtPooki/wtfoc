@@ -466,8 +466,15 @@ async function main() {
 				return;
 			}
 
-			// Create a fresh server + transport per request (stateless)
-			const mcpServer = createMcpServer(store, embedder, embedderModel, { readOnly: true });
+			// Create a fresh server + transport per request (stateless),
+			// but share the collection cache so MCP queries don't re-read from disk.
+			const mcpServer = createMcpServer(store, embedder, embedderModel, {
+				readOnly: true,
+				collectionLoader: async (name) => {
+					const col = await getCollection(name);
+					return col;
+				},
+			});
 			const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
 
 			const cleanup = () => {
