@@ -1,8 +1,9 @@
-import type {
-	CollectionHead,
-	Embedder,
-	EmbedderProfile,
-	ResolvedEmbedderConfig,
+import {
+	type CollectionHead,
+	type Embedder,
+	type EmbedderProfile,
+	type ResolvedEmbedderConfig,
+	URL_SHORTCUTS,
 } from "@wtfoc/common";
 import { resolveUrlShortcut } from "@wtfoc/config";
 import type { MountedCollection } from "@wtfoc/search";
@@ -94,7 +95,7 @@ export function createEmbedder(resolvedConfig?: ResolvedEmbedderConfig): {
 	const dimensions = explicitDimensions ?? profile?.dimensions;
 	const pooling = resolvedConfig?.pooling ?? profile?.pooling;
 
-	if (type === "api" || url || model) {
+	if (type === "api" || url || type in URL_SHORTCUTS) {
 		const baseUrl = url ?? resolveUrlShortcut(type);
 
 		if (!baseUrl.startsWith("http")) {
