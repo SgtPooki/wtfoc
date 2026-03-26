@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# full-stack.sh — Build the canonical wtfoc-source collection from scratch
+# run.sh — Build the canonical wtfoc-source collection from scratch
 #
 # This script creates a reproducible collection from the wtfoc repo itself:
 #   - Source code (repo adapter)

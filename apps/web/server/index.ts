@@ -101,6 +101,8 @@ interface LoadedCollection {
 	lastValidatedAt: number;
 	/** When we last wrote the GC sentinel to Qdrant (CID collections only). */
 	lastSentinelTouchedAt: number;
+	/** Local project name after CID manifest persistence (CID collections only). */
+	persistedName?: string;
 }
 
 interface CachedFile {
@@ -290,8 +292,11 @@ async function getCollectionByCid(cid: string): Promise<LoadedCollection> {
 			`✅ Loaded CID ${cid.slice(0, 16)}...: ${manifest.totalChunks} chunks, ${manifest.segments.length} segments`,
 		);
 
-		// Persist the manifest locally so it appears in /api/collections
-		const persistName = manifest.name || `cid-${cid.slice(0, 16)}`;
+		// Persist the manifest locally so it appears in /api/collections.
+		// Sanitize the name to be filesystem-safe (no slashes, control chars).
+		const rawName = manifest.name || `cid-${cid.slice(0, 16)}`;
+		const safeName = rawName.replace(/[/\\:*?"<>|]/g, "-").replace(/\.{2,}/g, ".").slice(0, 128);
+		const persistName = safeName || `cid-${cid.slice(0, 16)}`;
 		try {
 			const existing = await store.manifests.getHead(persistName);
 			await store.manifests.putHead(persistName, manifest, existing?.headId ?? null);
@@ -300,6 +305,7 @@ async function getCollectionByCid(cid: string): Promise<LoadedCollection> {
 			// Non-fatal — collection still works from cache, just won't appear in list
 			console.error(`⚠️  Could not persist CID manifest locally: ${err instanceof Error ? err.message : err}`);
 		}
+		loaded.persistedName = persistName;
 
 		return loaded;
 	})();
@@ -553,6 +559,7 @@ async function main() {
 									warning: `Model mismatch: collection uses "${collectionModel}" but server has "${serverModel}". Search quality may be degraded.`,
 								}
 							: {}),
+						...(col.persistedName ? { persistedName: col.persistedName } : {}),
 						updatedAt: col.manifest.updatedAt,
 						sourceTypes: [
 							...new Set(col.segments.flatMap((s) => s.chunks.map((c) => c.sourceType))),

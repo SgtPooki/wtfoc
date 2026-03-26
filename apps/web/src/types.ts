@@ -5,6 +5,8 @@ export interface StatusResponse {
 	embeddingModel: string;
 	updatedAt: string;
 	sourceTypes: string[];
+	/** Local project name after CID manifest persistence (CID collections only). */
+	persistedName?: string;
 }
 
 export interface HopConnection {
