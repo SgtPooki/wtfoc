@@ -16,5 +16,12 @@ export type { MountedCollection, MountOptions } from "./mount.js";
 export { mountCollection } from "./mount.js";
 export type { QueryOptions, QueryResult } from "./query.js";
 export { query } from "./query.js";
-export type { TraceHop, TraceOptions, TraceResult } from "./trace/index.js";
-export { trace } from "./trace/index.js";
+export type {
+	InsightKind,
+	TraceHop,
+	TraceInsight,
+	TraceMode,
+	TraceOptions,
+	TraceResult,
+} from "./trace/index.js";
+export { detectInsights, trace } from "./trace/index.js";

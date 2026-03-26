@@ -153,6 +153,33 @@ describe("trace", () => {
 
 		expect(result.groups).toBeDefined();
 		expect(result.stats.sourceTypes.length).toBeGreaterThan(0);
+		// Discovery mode should not produce insights
+		expect(result.insights).toEqual([]);
+		expect(result.stats.insightCount).toBe(0);
+	});
+
+	it("produces insights in analytical mode", async () => {
+		const index = createMockIndex([slackChunk, issueChunk, prChunk, codeChunk]);
+		const result = await trace("upload failures", mockEmbedder, index, [testSegment], {
+			mode: "analytical",
+		});
+
+		expect(result.insights).toBeDefined();
+		expect(result.insights.length).toBeGreaterThan(0);
+		expect(result.stats.insightCount).toBe(result.insights.length);
+
+		// The mock data has 3+ source types and edge-connected hops, so we expect
+		// at least a convergence or evidence-chain insight
+		const kinds = result.insights.map((i) => i.kind);
+		expect(kinds.some((k) => k === "convergence" || k === "evidence-chain")).toBe(true);
+
+		// Every insight should have valid structure
+		for (const insight of result.insights) {
+			expect(insight.strength).toBeGreaterThan(0);
+			expect(insight.strength).toBeLessThanOrEqual(1);
+			expect(insight.summary.length).toBeGreaterThan(0);
+			expect(insight.hopIndices.length).toBeGreaterThan(0);
+		}
 	});
 
 	it("follows explicit edges from seed chunks", async () => {

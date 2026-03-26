@@ -1,6 +1,9 @@
 import type { Embedder, Segment, VectorIndex } from "@wtfoc/common";
 import { buildChunkIndexes, buildEdgeIndex } from "./indexing.js";
+import { detectInsights, type TraceInsight } from "./insights.js";
 import { followEdges } from "./traversal.js";
+
+export type TraceMode = "discovery" | "analytical";
 
 export interface TraceOptions {
 	/** Max results per source type (default: 3) */
@@ -11,6 +14,12 @@ export interface TraceOptions {
 	maxHops?: number;
 	/** Minimum similarity score for semantic fallback (default: 0.3) */
 	minScore?: number;
+	/**
+	 * Trace mode:
+	 * - "discovery" (default): find connected results across sources
+	 * - "analytical": also detect cross-source insights (convergence, evidence chains, temporal patterns)
+	 */
+	mode?: TraceMode;
 	signal?: AbortSignal;
 	/**
 	 * Additional edges from an overlay (e.g. LLM-extracted via extract-edges).
@@ -30,6 +39,8 @@ export interface TraceHop {
 	sourceUrl?: string;
 	/** Storage ID for verification */
 	storageId: string;
+	/** Index of the hop that led to this one (undefined for seeds) */
+	parentHopIndex?: number;
 	/** How this hop was found */
 	connection: {
 		/** 'edge' if found via explicit edge, 'semantic' if via similarity */
@@ -49,12 +60,15 @@ export interface TraceResult {
 	groups: Record<string, TraceHop[]>;
 	/** Flat list of all hops in traversal order */
 	hops: TraceHop[];
+	/** Cross-source insights (only populated in analytical mode) */
+	insights: TraceInsight[];
 	/** Summary of the trace */
 	stats: {
 		totalHops: number;
 		edgeHops: number;
 		semanticHops: number;
 		sourceTypes: string[];
+		insightCount: number;
 	};
 }
 
@@ -79,6 +93,7 @@ export async function trace(
 	const maxTotal = options?.maxTotal ?? 15;
 	const maxHops = options?.maxHops ?? 3;
 	const minScore = options?.minScore ?? 0.3;
+	const mode = options?.mode ?? "discovery";
 
 	options?.signal?.throwIfAborted();
 
@@ -108,6 +123,7 @@ export async function trace(
 
 		// Add seed as a hop
 		const chunkData = indexes.byId.get(seed.entry.id);
+		const seedIndex = hops.length;
 		hops.push({
 			content: chunkData?.content ?? "",
 			sourceType: seed.entry.metadata.sourceType ?? "unknown",
@@ -129,6 +145,7 @@ export async function trace(
 			hops,
 			0,
 			maxHops,
+			seedIndex,
 			options?.signal,
 			maxTotal,
 		);
@@ -205,15 +222,20 @@ export async function trace(
 	const sourceTypes = Object.keys(groups);
 	const edgeHops = hops.filter((h) => h.connection.method === "edge").length;
 
+	// Detect cross-source insights in analytical mode
+	const insights = mode === "analytical" ? detectInsights(hops, segments, options?.signal) : [];
+
 	return {
 		query,
 		groups,
 		hops,
+		insights,
 		stats: {
 			totalHops: hops.length,
 			edgeHops,
 			semanticHops: hops.length - edgeHops,
 			sourceTypes,
+			insightCount: insights.length,
 		},
 	};
 }

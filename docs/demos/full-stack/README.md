@@ -64,6 +64,8 @@ Watch Claude call `wtfoc_trace` — it surfaces:
 - Real GitHub URLs for issues and PRs
 - The open DX friction issue (filecoin-pin#372)
 
+**Analytical mode bonus:** Use `--mode analytical` for synthesis queries like "what to prioritize?" This adds cross-source insights — convergence (multiple source types discuss the same topic), evidence chains (Slack → Issue → PR → Code trails), and temporal clusters (recent activity spikes).
+
 ### Beat 2: Show the web UI simultaneously
 
 While Claude is responding, switch to the browser at http://localhost:3577:
@@ -100,6 +102,7 @@ Claude can explain the themes in natural language while the raw `themes` output 
 |---------|---------|
 | `./docs/demos/upload-flow-trace/run.sh` | Build the collection |
 | `./wtfoc serve -c foc-upload-flow` | Start web UI |
+| `./wtfoc trace "query" -c foc-upload-flow --mode analytical` | Trace with cross-source insights |
 | `./wtfoc themes -c foc-upload-flow` | Preview themes |
 | `./wtfoc suggest-sources -c foc-upload-flow` | Preview gap analysis |
 | `./wtfoc status -c foc-upload-flow` | Check collection stats |

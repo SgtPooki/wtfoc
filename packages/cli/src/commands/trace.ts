@@ -1,5 +1,5 @@
 import { overlayFilePath, readOverlayEdges } from "@wtfoc/ingest";
-import { trace } from "@wtfoc/search";
+import { type TraceMode, trace } from "@wtfoc/search";
 import type { Command } from "commander";
 import { getProjectConfig } from "../cli.js";
 import {
@@ -18,8 +18,22 @@ export function registerTraceCommand(program: Command): void {
 		program
 			.command("trace <query>")
 			.description("Trace evidence-backed connections across sources")
-			.requiredOption("-c, --collection <name>", "Collection name"),
-	).action(async (queryText: string, opts: { collection: string } & EmbedderOpts) => {
+			.requiredOption("-c, --collection <name>", "Collection name")
+			.option(
+				"--mode <mode>",
+				'Trace mode: "discovery" (default) or "analytical" (adds cross-source insights)',
+				"discovery",
+			),
+	).action(async (queryText: string, opts: { collection: string; mode: string } & EmbedderOpts) => {
+		const validModes: TraceMode[] = ["discovery", "analytical"];
+		if (!validModes.includes(opts.mode as TraceMode)) {
+			console.error(
+				`Error: invalid trace mode "${opts.mode}". Must be one of: ${validModes.join(", ")}`,
+			);
+			process.exit(2);
+		}
+		// Safe after validation above
+		const mode: TraceMode = opts.mode === "analytical" ? "analytical" : "discovery";
 		const store = getStore(program);
 		const format = getFormat(program.opts());
 
@@ -63,7 +77,10 @@ export function registerTraceCommand(program: Command): void {
 		}
 
 		try {
-			const result = await trace(queryText, embedder, vectorIndex, segments, { overlayEdges });
+			const result = await trace(queryText, embedder, vectorIndex, segments, {
+				mode,
+				overlayEdges,
+			});
 			console.log(formatTrace(result, format));
 		} catch (err) {
 			if (

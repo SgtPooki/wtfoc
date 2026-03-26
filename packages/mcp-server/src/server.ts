@@ -52,10 +52,16 @@ export function createMcpServer(
 		{
 			query: z.string().describe("The natural-language query to trace"),
 			collection: z.string().describe("Name of the wtfoc collection to search"),
+			mode: z
+				.enum(["discovery", "analytical"])
+				.optional()
+				.describe(
+					'Trace mode: "discovery" (default) finds connected results, "analytical" adds cross-source insights (convergence, evidence chains, temporal clusters)',
+				),
 		},
-		async ({ query, collection }) => {
+		async ({ query, collection, mode }) => {
 			try {
-				const text = await handleTrace(store, embedder, { query, collection });
+				const text = await handleTrace(store, embedder, { query, collection, mode });
 				return { content: [{ type: "text" as const, text }] };
 			} catch (err) {
 				const msg = sanitizeError(err);

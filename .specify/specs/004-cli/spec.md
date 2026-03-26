@@ -17,7 +17,7 @@
 |---------|-------------|--------|
 | `wtfoc init <name>` | Create a new project | ✅ |
 | `wtfoc ingest repo <path\|owner/repo> -c <name>` | Ingest repo source code + docs | ✅ |
-| `wtfoc trace <query> -c <name>` | Evidence-backed cross-source trace | ✅ |
+| `wtfoc trace <query> -c <name> [--mode discovery\|analytical]` | Evidence-backed cross-source trace | ✅ |
 | `wtfoc query <text> -c <name>` | Semantic search | ✅ |
 | `wtfoc status -c <name>` | Show collection info | ✅ |
 | `wtfoc verify <id>` | Verify artifact exists | ✅ |
@@ -62,7 +62,7 @@
 
 ### Output Formatting
 
-- **Trace**: Grouped by sourceType with emoji icons, score, content snippet, source URL, storage ID, edge annotations
+- **Trace**: Grouped by sourceType with emoji icons, score, content snippet, source URL, storage ID, edge annotations. In `--mode analytical`, a "Cross-Source Insights" section shows convergence, evidence chains, and temporal clusters with strength percentages.
 - **Query**: Ranked results with score, sourceType, source, URL, storage ID
 - **Status**: Project name, chunk count, segment count, embedding model, last updated
 - **All commands**: `--json` returns structured JSON, `--quiet` suppresses
@@ -77,6 +77,7 @@
 | Ingest real GitHub repo (FIL-Builders/foc-cli, 231 chunks) | ✅ |
 | Ingest 3 repos into one collection (7530 chunks) | ✅ |
 | Trace with local embedder (MiniLM 384d) | ✅ |
+| Trace --mode analytical (cross-source insights) | ✅ |
 | Trace with LM Studio (mxbai 1024d) | ✅ |
 | Trace with Ollama on k8s (nomic 768d) | ✅ |
 | Trace against FOC-stored data | ✅ |
