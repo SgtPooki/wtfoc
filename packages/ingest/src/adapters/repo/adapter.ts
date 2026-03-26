@@ -2,6 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { extname, relative } from "node:path";
 import type { Chunk, Edge, SourceAdapter } from "@wtfoc/common";
 import { WtfocError } from "@wtfoc/common";
+import { createIgnoreFilter, loadWtfocIgnore } from "@wtfoc/config";
 import { chunkMarkdown, type MarkdownChunkerOptions } from "../../chunker.js";
 import { acquireRepo, extractRepoName } from "./acquisition.js";
 import { chunkCode, DEFAULT_EXCLUDE, DEFAULT_INCLUDE, walkFiles } from "./chunking.js";
@@ -21,8 +22,10 @@ export interface RepoAdapterConfig {
 	chunkerOptions?: MarkdownChunkerOptions;
 	/** Max file size in bytes to process (default: 100KB) */
 	maxFileSize?: number;
-	/** Ignore filter from .wtfoc.json — returns true for files to INCLUDE */
-	ignoreFilter?: (path: string) => boolean;
+	/** Raw ignore pattern sources from .wtfoc.json and --ignore CLI flags */
+	ignorePatternSources?: (string[] | undefined)[];
+	/** Suppress informational messages (e.g., .wtfocignore detection) */
+	quiet?: boolean;
 }
 
 export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
@@ -50,11 +53,23 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 		const repoPath = await acquireRepo(opts.source);
 		const repo = extractRepoName(opts.source);
 
+		// Load .wtfocignore from repo root, then build a single unified filter
+		// with all pattern sources in precedence order:
+		// builtins → .wtfocignore → .wtfoc.json → --ignore CLI
+		const wtfocIgnorePatterns = loadWtfocIgnore(repoPath);
+		if (wtfocIgnorePatterns.length > 0 && !opts.quiet) {
+			console.error(`   .wtfocignore found: ${wtfocIgnorePatterns.length} pattern(s) loaded`);
+		}
+		const ignoreFilter = createIgnoreFilter(
+			wtfocIgnorePatterns.length > 0 ? wtfocIgnorePatterns : undefined,
+			...(opts.ignorePatternSources ?? []),
+		);
+
 		const includeExts = new Set(opts.include ?? [...DEFAULT_INCLUDE]);
 		const excludeDirs = opts.exclude ?? DEFAULT_EXCLUDE;
 		const maxFileSize = opts.maxFileSize ?? 100_000;
 
-		const files = await walkFiles(repoPath, includeExts, excludeDirs, opts.ignoreFilter);
+		const files = await walkFiles(repoPath, includeExts, excludeDirs, ignoreFilter);
 
 		for (const filePath of files) {
 			const fileInfo = await stat(filePath);

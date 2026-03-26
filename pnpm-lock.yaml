@@ -136,6 +136,9 @@ importers:
       '@types/turndown':
         specifier: ^5.0.6
         version: 5.0.6
+      '@wtfoc/config':
+        specifier: workspace:*
+        version: link:../config
       '@wtfoc/store':
         specifier: workspace:*
         version: link:../store

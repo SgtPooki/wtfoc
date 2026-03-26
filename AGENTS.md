@@ -150,6 +150,8 @@ GitHub-hosted agents also read:
 - Local filesystem + optional FOC; Qdrant for vectors (117-edge-extraction-pipeline)
 - TypeScript (strict, ESM-only), Node >= 24 + @wtfoc/common (interfaces), @wtfoc/ingest (adapters, chunker), @wtfoc/store (manifest, storage), @wtfoc/search (mount, vector index), commander (CLI) (118-incremental-ingest)
 - Local filesystem (JSON sidecar files alongside manifests), optional FOC/Qdrant (118-incremental-ingest)
+- TypeScript strict, ESM only, Node >=24 + `ignore` npm package (already installed in @wtfoc/config) (119-wtfocignore-support)
+- N/A (file pattern matching only) (119-wtfocignore-support)
 
 ## Recent Changes
 - 012-e2e-integration-pipeline: Added TypeScript strict mode, ESM only, Node >=24 + `@wtfoc/common`, `@wtfoc/ingest`, `@wtfoc/store`, `@wtfoc/search` (workspace packages only)

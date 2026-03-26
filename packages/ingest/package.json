@@ -36,15 +36,20 @@
 		"oxc-parser": "^0.121.0"
 	},
 	"peerDependencies": {
+		"@wtfoc/config": "workspace:^",
 		"@wtfoc/store": "workspace:^"
 	},
 	"peerDependenciesMeta": {
+		"@wtfoc/config": {
+			"optional": false
+		},
 		"@wtfoc/store": {
 			"optional": true
 		}
 	},
 	"devDependencies": {
 		"@types/turndown": "^5.0.6",
+		"@wtfoc/config": "workspace:*",
 		"@wtfoc/store": "workspace:*",
 		"typescript": "^5.8.0"
 	}
