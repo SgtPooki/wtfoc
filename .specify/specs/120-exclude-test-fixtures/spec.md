@@ -20,13 +20,13 @@ When a user runs `wtfoc ingest repo` on a project containing test files, spec fi
 
 1. **Given** a repo with `*.test.ts`, `*.spec.ts`, `__tests__/`, `__fixtures__/` files, **When** user runs `wtfoc ingest repo .`, **Then** test files and fixtures are excluded from ingestion by default.
 2. **Given** a repo where test files reference fictional repos like `owner/repo`, **When** user runs ingestion followed by `unresolved-edges`, **Then** those fictional references do not appear.
-3. **Given** a user who wants to include test files, **When** they use `.wtfocignore` with negation `!*.test.ts`, **Then** test files are re-included.
+3. **Given** a user who wants to include test files matching `*.test.ts`, **When** they use `.wtfocignore` with negation `!*.test.ts`, **Then** those test files are re-included. Note: files inside ignored directories like `__tests__/` require un-ignoring the directory as well.
 
 ---
 
 ### Edge Cases
 
-- What happens if a non-test file is named `test.ts`? It would be excluded. Users can override via `.wtfocignore` negation.
+- What happens if a non-test file is literally named `test.ts` (for example at the repo root or under `src/`)? It would **not** be excluded by these defaults, since only `test/` directories and `*.test.*` patterns are ignored. Users who want it excluded can add `test.ts` to `.wtfocignore`.
 - What happens if test fixtures contain real, useful documentation? Users can override via `.wtfocignore` negation patterns.
 
 ## Requirements *(mandatory)*

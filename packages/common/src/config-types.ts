@@ -63,7 +63,7 @@ export const BUILTIN_IGNORE_PATTERNS: readonly string[] = [
 	"*.min.js",
 	"*.min.css",
 	"*.map",
-	// Test files and fixtures — prevent phantom edges from fictional test data
+	// Common test files and fixtures ignored by default
 	"*.test.*",
 	"*.spec.*",
 	"*.stories.*",
