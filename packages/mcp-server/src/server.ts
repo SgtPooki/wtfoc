@@ -2,18 +2,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Embedder } from "@wtfoc/common";
 import type { createStore } from "@wtfoc/store";
 import { z } from "zod";
+import type { CollectionLoader } from "./helpers.js";
 import { handleQuery } from "./tools/query.js";
 import { handleStatus } from "./tools/status.js";
 import { handleTrace } from "./tools/trace.js";
 
-/**
- * Resolve a collection by name, returning the mounted vector index and segments.
- * When provided, MCP tools use this instead of loading from disk each request.
- */
-export type CollectionLoader = (name: string) => Promise<{
-	vectorIndex: import("@wtfoc/common").VectorIndex;
-	segments: import("@wtfoc/common").Segment[];
-} | null>;
+export type { CollectionLoader } from "./helpers.js";
 
 export interface CreateMcpServerOptions {
 	/** If true, omit write tools like ingest. Defaults to false. */

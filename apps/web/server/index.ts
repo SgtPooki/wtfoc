@@ -470,10 +470,7 @@ async function main() {
 			// but share the collection cache so MCP queries don't re-read from disk.
 			const mcpServer = createMcpServer(store, embedder, embedderModel, {
 				readOnly: true,
-				collectionLoader: async (name) => {
-					const col = await getCollection(name);
-					return col;
-				},
+				collectionLoader: getCollection,
 			});
 			const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
 
