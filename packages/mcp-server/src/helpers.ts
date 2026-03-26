@@ -94,7 +94,7 @@ export function createEmbedder(resolvedConfig?: ResolvedEmbedderConfig): {
 	const dimensions = explicitDimensions ?? profile?.dimensions;
 	const pooling = resolvedConfig?.pooling ?? profile?.pooling;
 
-	if (type === "api" || url || model) {
+	if (type === "api" || url) {
 		const baseUrl = url ?? resolveUrlShortcut(type);
 
 		if (!baseUrl.startsWith("http")) {

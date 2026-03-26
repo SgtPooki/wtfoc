@@ -144,7 +144,7 @@ export function createEmbedder(
 	const pooling = resolvedConfig?.pooling ?? profile?.pooling;
 
 	// API-based embedder (any OpenAI-compatible endpoint)
-	if (url || model || type === "api") {
+	if (url || type === "api") {
 		const baseUrl = url ?? resolveUrlShortcut(type);
 
 		if (!baseUrl.startsWith("http")) {
