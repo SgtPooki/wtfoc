@@ -6,11 +6,14 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type {
 	CollectionHead,
 	Embedder,
+	EmbedderProfile,
+	ResolvedEmbedderConfig,
 	Segment,
 	StorageBackend,
 	VectorIndex,
 } from "@wtfoc/common";
 import { StorageNotFoundError } from "@wtfoc/common";
+import { loadProjectConfig, resolveConfig } from "@wtfoc/config";
 import { createMcpServer } from "@wtfoc/mcp-server/server";
 import {
 	analyzeEdgeResolution,
@@ -114,32 +117,127 @@ interface CachedFile {
 
 // ─── Embedder ───────────────────────────────────────────────────────────────
 
-async function createEmbedderFromEnv(): Promise<Embedder> {
-	const url = process.env["WTFOC_EMBEDDER_URL"];
-	const model = process.env["WTFOC_EMBEDDER_MODEL"];
-	const apiKey =
-		process.env["WTFOC_EMBEDDER_KEY"] ?? process.env["WTFOC_OPENAI_API_KEY"] ?? "no-key";
+// Load .wtfoc.json + env vars for embedder config (profiles, prefix, etc.)
+let resolvedEmbedderConfig: ResolvedEmbedderConfig | undefined;
+try {
+	const fileConfig = loadProjectConfig();
+	const resolved = resolveConfig({ file: fileConfig });
+	resolvedEmbedderConfig = resolved.embedder;
+} catch (err) {
+	console.error(
+		`Warning: failed to load .wtfoc.json: ${err instanceof Error ? err.message : err}`,
+	);
+}
 
-	if (url && model) {
+// Cache embedders by model name so we don't recreate per-request
+const embedderCache = new Map<string, { embedder: Embedder; modelName: string }>();
+
+function findProfileForModel(modelName: string): EmbedderProfile | undefined {
+	const profiles = resolvedEmbedderConfig?.profiles ?? {};
+	for (const p of Object.values(profiles)) {
+		if (p.model === modelName) return p;
+	}
+	return undefined;
+}
+
+/**
+ * Get or create an embedder for a specific model.
+ * Looks up the model in .wtfoc.json profiles for prefix/pooling config,
+ * then creates an appropriately configured embedder.
+ */
+async function getEmbedderForModel(modelName: string): Promise<{ embedder: Embedder; modelName: string }> {
+	const cached = embedderCache.get(modelName);
+	if (cached) return cached;
+
+	const url = resolvedEmbedderConfig?.url ?? process.env["WTFOC_EMBEDDER_URL"];
+	const apiKey =
+		resolvedEmbedderConfig?.key ??
+		process.env["WTFOC_EMBEDDER_KEY"] ??
+		process.env["WTFOC_OPENAI_API_KEY"] ??
+		"no-key";
+
+	const profile = findProfileForModel(modelName);
+
+	let result: { embedder: Embedder; modelName: string };
+
+	// Pass explicit dimensions as requestDimensions for MRL/Matryoshka models,
+	// matching the CLI/MCP behavior (only when profile specifies dimensions)
+	const explicitDimensions = resolvedEmbedderConfig?.dimensions ?? profile?.dimensions;
+
+	if (url) {
 		const { OpenAIEmbedder } = await import("@wtfoc/search");
-		return new OpenAIEmbedder({ apiKey, baseUrl: url, model });
+		result = {
+			embedder: new OpenAIEmbedder({
+				apiKey,
+				baseUrl: url,
+				model: modelName,
+				dimensions: explicitDimensions,
+				requestDimensions: resolvedEmbedderConfig?.dimensions,
+				prefix: profile?.prefix,
+			}),
+			modelName,
+		};
+	} else {
+		// Local transformers.js fallback
+		try {
+			const { TransformersEmbedder } = await import("@wtfoc/search");
+			result = {
+				embedder: new TransformersEmbedder(modelName, {
+					dimensions: profile?.dimensions,
+					pooling: profile?.pooling,
+					prefix: profile?.prefix,
+				}),
+				modelName,
+			};
+		} catch {
+			throw new Error(`No embedder available for model "${modelName}"`);
+		}
 	}
 
-	// Try local transformers.js embedder (optional dep, may not be installed)
+	embedderCache.set(modelName, result);
+	console.error(
+		`🔧 Created embedder for "${modelName}" (${profile ? "profile matched" : "no profile"}, prefix=${profile?.prefix ? "yes" : "no"})`,
+	);
+	return result;
+}
+
+/** Get the default embedder (from env/config, used for MCP and when collection model is unknown). */
+async function getDefaultEmbedder(): Promise<{ embedder: Embedder; modelName: string }> {
+	// Resolve profile → model (same as CLI/MCP helpers)
+	const profileName = resolvedEmbedderConfig?.profile ?? process.env["WTFOC_EMBEDDER_PROFILE"];
+	const profiles = resolvedEmbedderConfig?.profiles ?? {};
+	const profileModel = profileName ? profiles[profileName]?.model : undefined;
+
+	const model =
+		resolvedEmbedderConfig?.model ??
+		process.env["WTFOC_EMBEDDER_MODEL"] ??
+		profileModel;
+
+	if (model) return getEmbedderForModel(model);
+
+	// Try local MiniLM fallback
 	try {
-		const { TransformersEmbedder } = await import("@wtfoc/search");
-		if (TransformersEmbedder) {
-			console.error("ℹ️  No WTFOC_EMBEDDER_URL set, using local MiniLM embedder");
-			return new TransformersEmbedder();
-		}
+		return await getEmbedderForModel("Xenova/all-MiniLM-L6-v2");
 	} catch {
-		// transformers.js not available
+		// fall through
 	}
 
 	console.error("Error: No embedder configured.");
 	console.error("  Set WTFOC_EMBEDDER_URL and WTFOC_EMBEDDER_MODEL environment variables.");
 	console.error("  Example: WTFOC_EMBEDDER_URL=http://ollama:11434/v1 WTFOC_EMBEDDER_MODEL=nomic-embed-text");
 	process.exit(1);
+}
+
+/**
+ * Get the right embedder for a collection based on its embeddingModel metadata.
+ * Falls back to the default embedder if the collection model is unknown.
+ */
+async function getEmbedderForCollection(manifest: CollectionHead): Promise<{ embedder: Embedder; modelName: string }> {
+	const collectionModel = manifest.embeddingModel;
+	if (collectionModel && collectionModel !== "pending") {
+		return getEmbedderForModel(collectionModel);
+	}
+	return getDefaultEmbedder();
 }
 
 // ─── Store ──────────────────────────────────────────────────────────────────
@@ -449,7 +547,8 @@ function parseQuery(url: string): URLSearchParams {
 async function main() {
 	// Initialize store and embedder
 	store = getStore();
-	embedder = await createEmbedderFromEnv();
+	const defaultEmbedder = await getDefaultEmbedder();
+	embedder = defaultEmbedder.embedder;
 
 	// Cache static files at startup
 	const staticFiles = loadStaticFiles(WEB_DIR);
@@ -649,7 +748,8 @@ async function main() {
 					if (!q) return jsonResponse(res, { error: "Missing ?q= parameter" }, 400);
 					if (q.length > 2000) return jsonResponse(res, { error: "Query too long" }, 400);
 					const topK = Math.min(Math.max(1, Number(params.get("k") ?? "10") || 10), 100);
-					const result = await query(q, embedder, col.vectorIndex, { topK });
+					const colEmbedder = (await getEmbedderForCollection(col.manifest)).embedder;
+					const result = await query(q, colEmbedder, col.vectorIndex, { topK });
 					return jsonResponse(res, result);
 				}
 
@@ -657,7 +757,8 @@ async function main() {
 					const q = params.get("q");
 					if (!q) return jsonResponse(res, { error: "Missing ?q= parameter" }, 400);
 					if (q.length > 2000) return jsonResponse(res, { error: "Query too long" }, 400);
-					const result = await trace(q, embedder, col.vectorIndex, col.segments);
+					const colEmbedder = (await getEmbedderForCollection(col.manifest)).embedder;
+					const result = await trace(q, colEmbedder, col.vectorIndex, col.segments);
 					return jsonResponse(res, {
 						query: result.query,
 						stats: result.stats,
