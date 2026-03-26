@@ -32,6 +32,12 @@ Collections are collaborative artifacts. Any agent — AI or human — can fetch
 
 Extraction metadata (which model, which contexts, what confidence) should travel with the collection so downstream consumers can make informed decisions about re-extraction. A collection promoted to FOC is not "done" — it's a starting point that others can build on.
 
+### V-c. All Computed Data Must Be Persisted
+
+**Every feature that enriches a collection must persist its results to the manifest or segments.** If a command computes something useful — themes, labels, scores, categories — that data must be stored in the collection so it travels with the CID. Ephemeral-only outputs defeat the purpose of a shareable knowledge graph.
+
+The goal: when someone receives a collection CID, they get the full accumulated knowledge — not just raw chunks and embeddings, but every layer of analysis that any contributor has added. Themes, edge extractions, noise categorizations, signal scores — all of it persists, all of it is shareable, all of it can be extended by the next contributor.
+
 ### VI. Test-First
 
 Tests written before implementation where practical. Unit tests use local/in-memory backends — no network calls. Golden fixtures for integration tests. Test interfaces, not implementations.
@@ -207,4 +213,4 @@ Human creates spec issues (dispatch.sh spec)
 - Changes to interfaces in `@wtfoc/common` require SPEC.md update
 - Features not in SPEC.md require discussion before implementation
 
-**Version**: 1.4.0 | **Ratified**: 2026-03-23 | **Last Amended**: 2026-03-26
+**Version**: 1.5.0 | **Ratified**: 2026-03-23 | **Last Amended**: 2026-03-26
