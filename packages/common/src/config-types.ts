@@ -63,4 +63,15 @@ export const BUILTIN_IGNORE_PATTERNS: readonly string[] = [
 	"*.min.js",
 	"*.min.css",
 	"*.map",
+	// Common test files and fixtures ignored by default
+	"*.test.*",
+	"*.spec.*",
+	"*.stories.*",
+	"__tests__/",
+	"__fixtures__/",
+	"__mocks__/",
+	"test/",
+	"tests/",
+	"fixtures/",
+	"spec/",
 ];

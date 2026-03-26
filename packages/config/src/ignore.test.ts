@@ -31,6 +31,32 @@ describe("createIgnoreFilter", () => {
 		expect(filter("src/index.ts")).toBe(true);
 	});
 
+	it("excludes test files and fixture directories by default", () => {
+		const filter = createIgnoreFilter();
+		expect(filter("src/utils.test.ts")).toBe(false);
+		expect(filter("src/utils.spec.ts")).toBe(false);
+		expect(filter("src/Button.stories.tsx")).toBe(false);
+		expect(filter("__tests__/helper.ts")).toBe(false);
+		expect(filter("__fixtures__/data.json")).toBe(false);
+		expect(filter("__mocks__/api.ts")).toBe(false);
+		expect(filter("test/setup.ts")).toBe(false);
+		expect(filter("tests/integration.ts")).toBe(false);
+		expect(filter("fixtures/sample.json")).toBe(false);
+		expect(filter("spec/helper.ts")).toBe(false);
+		// Source files are still included
+		expect(filter("src/utils.ts")).toBe(true);
+		expect(filter("src/components/Button.tsx")).toBe(true);
+	});
+
+	it("allows negation to override built-in test file exclusions", () => {
+		// Re-include specific test file patterns
+		const filter = createIgnoreFilter(["!*.test.ts"]);
+		expect(filter("src/utils.test.ts")).toBe(true);
+		// Other test patterns still excluded
+		expect(filter("src/utils.spec.ts")).toBe(false);
+		expect(filter("__fixtures__/data.json")).toBe(false);
+	});
+
 	it("merges single pattern source additively with defaults", () => {
 		const filter = createIgnoreFilter(["*.log"]);
 		expect(filter(".git")).toBe(false);
