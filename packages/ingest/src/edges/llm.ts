@@ -45,6 +45,9 @@ export class LlmEdgeExtractor implements EdgeExtractor {
 		// so chunk batches don't overflow the model context window.
 		const promptOverhead = estimatePromptOverhead();
 		if (promptOverhead >= maxInputTokens) {
+			console.error(
+				`[wtfoc] Warning: prompt overhead (${promptOverhead} tokens) exceeds maxInputTokens (${maxInputTokens}). Skipping LLM extraction.`,
+			);
 			return [];
 		}
 		const chunkBudget = maxInputTokens - promptOverhead;
@@ -84,8 +87,12 @@ export class LlmEdgeExtractor implements EdgeExtractor {
 		let currentBatch: Chunk[] = [];
 		let currentTokens = 0;
 
+		// Per-chunk JSON wrapper overhead: {"chunk_id":"...","source_type":"...","source":"...","text":"..."}
+		// ~60 chars ≈ 15 tokens of framing per chunk in the user message.
+		const perChunkOverhead = 15;
+
 		for (const chunk of chunks) {
-			const tokens = estimateTokens(chunk.content);
+			const tokens = estimateTokens(chunk.content) + perChunkOverhead;
 			if (currentBatch.length > 0 && currentTokens + tokens > maxTokens) {
 				batches.push(currentBatch);
 				currentBatch = [];
