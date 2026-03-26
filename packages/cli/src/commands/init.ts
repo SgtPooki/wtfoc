@@ -1,7 +1,39 @@
+import { existsSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { type CollectionHead, CURRENT_SCHEMA_VERSION } from "@wtfoc/common";
 import { generateCollectionId } from "@wtfoc/store";
 import type { Command } from "commander";
 import { getStore } from "../helpers.js";
+
+const DEFAULT_CONFIG = {
+	embedder: {
+		profiles: {
+			minilm: {
+				model: "Xenova/all-MiniLM-L6-v2",
+				dimensions: 384,
+				pooling: "mean",
+			},
+			nomic: {
+				model: "nomic-embed-text",
+				dimensions: 768,
+				pooling: "mean",
+				prefix: {
+					query: "search_query: ",
+					document: "search_document: ",
+				},
+			},
+			"qwen3-0.6b": {
+				model: "qwen3-embedding:0.6b",
+				dimensions: 1024,
+				pooling: "last_token",
+				prefix: {
+					query: "Instruct: Given a query, retrieve relevant passages\nQuery: ",
+					document: "",
+				},
+			},
+		},
+	},
+};
 
 export function registerInitCommand(program: Command): void {
 	program
@@ -27,6 +59,14 @@ export function registerInitCommand(program: Command): void {
 			};
 
 			await store.manifests.putHead(name, manifest, null);
+
+			// Write default .wtfoc.json if it doesn't exist
+			const configPath = join(process.cwd(), ".wtfoc.json");
+			if (!existsSync(configPath)) {
+				writeFileSync(configPath, `${JSON.stringify(DEFAULT_CONFIG, null, "\t")}\n`);
+				console.log(`📝 Created .wtfoc.json with default embedder profiles`);
+			}
+
 			console.log(`✅ Project "${name}" created (${program.opts().storage} storage)`);
 		});
 }

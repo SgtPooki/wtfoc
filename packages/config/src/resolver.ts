@@ -35,6 +35,7 @@ export function resolveConfig(sources: ConfigSources): ResolvedConfig {
 		process.env.WTFOC_OPENAI_API_KEY;
 
 	const embedderProfile = file?.embedder?.profile ?? process.env.WTFOC_EMBEDDER_PROFILE;
+	const embedderProfiles = file?.embedder?.profiles ?? {};
 
 	const embedderDimensionsRaw = file?.embedder?.dimensions ?? process.env.WTFOC_EMBEDDER_DIMENSIONS;
 	const embedderDimensions =
@@ -98,6 +99,7 @@ export function resolveConfig(sources: ConfigSources): ResolvedConfig {
 			model: embedderModel,
 			key: embedderKey,
 			profile: embedderProfile,
+			profiles: embedderProfiles,
 			dimensions: Number.isNaN(embedderDimensions) ? undefined : embedderDimensions,
 			pooling: embedderPooling,
 			prefix: embedderPrefix,

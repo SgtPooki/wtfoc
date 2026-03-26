@@ -4,9 +4,33 @@
  * profile resolution → prefix application → API request → response parsing.
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { EMBEDDER_PROFILES } from "@wtfoc/common";
+import type { EmbedderProfile } from "@wtfoc/common";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { OpenAIEmbedder } from "./openai.js";
+
+/** Test profiles matching what wtfoc init ships in .wtfoc.json */
+const TEST_PROFILES: Record<string, EmbedderProfile> = {
+	minilm: {
+		model: "Xenova/all-MiniLM-L6-v2",
+		dimensions: 384,
+		pooling: "mean",
+	},
+	nomic: {
+		model: "nomic-embed-text",
+		dimensions: 768,
+		pooling: "mean",
+		prefix: { query: "search_query: ", document: "search_document: " },
+	},
+	"qwen3-0.6b": {
+		model: "qwen3-embedding:0.6b",
+		dimensions: 1024,
+		pooling: "last_token",
+		prefix: {
+			query: "Instruct: Given a query, retrieve relevant passages\nQuery: ",
+			document: "",
+		},
+	},
+};
 
 /** Captured request bodies from the mock server */
 const capturedRequests: Array<{ model: string; input: string[]; dimensions?: number }> = [];
@@ -58,7 +82,7 @@ afterAll(
 
 describe("OpenAIEmbedder integration with profiles", () => {
 	it("nomic profile: applies search_query: prefix on embed()", async () => {
-		const profile = EMBEDDER_PROFILES.nomic;
+		const profile = TEST_PROFILES.nomic;
 		if (!profile) throw new Error("nomic profile not found");
 
 		capturedRequests.length = 0;
@@ -82,7 +106,7 @@ describe("OpenAIEmbedder integration with profiles", () => {
 
 	it("nomic profile: applies search_document: prefix on embedBatch()", async () => {
 		capturedRequests.length = 0;
-		const profile = EMBEDDER_PROFILES.nomic;
+		const profile = TEST_PROFILES.nomic;
 		if (!profile) throw new Error("nomic profile not found");
 
 		const embedder = new OpenAIEmbedder({
@@ -104,7 +128,7 @@ describe("OpenAIEmbedder integration with profiles", () => {
 
 	it("qwen3 profile: applies instruct prefix on embed()", async () => {
 		capturedRequests.length = 0;
-		const profile = EMBEDDER_PROFILES["qwen3-0.6b"];
+		const profile = TEST_PROFILES["qwen3-0.6b"];
 		if (!profile) throw new Error("qwen3-0.6b profile not found");
 
 		const embedder = new OpenAIEmbedder({
@@ -124,7 +148,7 @@ describe("OpenAIEmbedder integration with profiles", () => {
 
 	it("qwen3 profile: no prefix on document embedBatch()", async () => {
 		capturedRequests.length = 0;
-		const profile = EMBEDDER_PROFILES["qwen3-0.6b"];
+		const profile = TEST_PROFILES["qwen3-0.6b"];
 		if (!profile) throw new Error("qwen3-0.6b profile not found");
 
 		const embedder = new OpenAIEmbedder({
@@ -160,7 +184,7 @@ describe("OpenAIEmbedder integration with profiles", () => {
 
 	it("minilm profile: no prefix, no dimensions in request body", async () => {
 		capturedRequests.length = 0;
-		const profile = EMBEDDER_PROFILES.minilm;
+		const profile = TEST_PROFILES.minilm;
 		if (!profile) throw new Error("minilm profile not found");
 
 		const embedder = new OpenAIEmbedder({
@@ -182,7 +206,7 @@ describe("OpenAIEmbedder integration with profiles", () => {
 	});
 
 	it("all built-in profiles are well-formed", () => {
-		for (const [name, profile] of Object.entries(EMBEDDER_PROFILES)) {
+		for (const [name, profile] of Object.entries(TEST_PROFILES)) {
 			expect(profile.model, `${name}.model`).toBeTruthy();
 			expect(profile.dimensions, `${name}.dimensions`).toBeGreaterThan(0);
 			expect(profile.pooling, `${name}.pooling`).toMatch(/^(mean|cls|last_token)$/);

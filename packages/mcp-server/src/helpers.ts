@@ -4,7 +4,6 @@ import type {
 	EmbedderProfile,
 	ResolvedEmbedderConfig,
 } from "@wtfoc/common";
-import { EMBEDDER_PROFILES } from "@wtfoc/common";
 import { resolveUrlShortcut } from "@wtfoc/config";
 import type { MountedCollection } from "@wtfoc/search";
 import {
@@ -28,10 +27,14 @@ export async function loadCollection(
 function resolveProfile(resolvedConfig?: ResolvedEmbedderConfig): EmbedderProfile | undefined {
 	const profileName = resolvedConfig?.profile ?? process.env.WTFOC_EMBEDDER_PROFILE;
 	if (!profileName) return undefined;
-	const profile = EMBEDDER_PROFILES[profileName];
+	const profiles = resolvedConfig?.profiles ?? {};
+	const profile = profiles[profileName];
 	if (!profile) {
+		const available = Object.keys(profiles);
 		throw new Error(
-			`Unknown embedder profile: "${profileName}". Available: ${Object.keys(EMBEDDER_PROFILES).join(", ")}`,
+			available.length > 0
+				? `Unknown embedder profile: "${profileName}". Available: ${available.join(", ")}`
+				: `Unknown embedder profile: "${profileName}". No profiles defined in .wtfoc.json — add embedder.profiles to your config.`,
 		);
 	}
 	return profile;

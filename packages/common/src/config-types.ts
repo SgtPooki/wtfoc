@@ -20,33 +20,6 @@ export interface EmbedderProfile {
 	prefix?: PrefixFormatter;
 }
 
-/** Built-in embedder profiles for common models */
-export const EMBEDDER_PROFILES: Readonly<Record<string, EmbedderProfile>> = {
-	minilm: {
-		model: "Xenova/all-MiniLM-L6-v2",
-		dimensions: 384,
-		pooling: "mean",
-	},
-	nomic: {
-		model: "nomic-embed-text",
-		dimensions: 768,
-		pooling: "mean",
-		prefix: {
-			query: "search_query: ",
-			document: "search_document: ",
-		},
-	},
-	"qwen3-0.6b": {
-		model: "onnx-community/Qwen3-Embedding-0.6B-ONNX",
-		dimensions: 1024,
-		pooling: "last_token",
-		prefix: {
-			query: "Instruct: Given a query, retrieve relevant passages\nQuery: ",
-			document: "",
-		},
-	},
-};
-
 /** Raw config from .wtfoc.json — all fields optional */
 export interface ProjectConfig {
 	embedder?: EmbedderConfig;
@@ -59,6 +32,7 @@ export interface EmbedderConfig {
 	model?: string;
 	key?: string;
 	profile?: string;
+	profiles?: Record<string, EmbedderProfile>;
 	dimensions?: number;
 	pooling?: PoolingStrategy;
 	prefix?: PrefixFormatter;
@@ -79,6 +53,7 @@ export interface ResolvedEmbedderConfig {
 	model: string | undefined;
 	key: string | undefined;
 	profile: string | undefined;
+	profiles: Record<string, EmbedderProfile>;
 	dimensions: number | undefined;
 	pooling: PoolingStrategy | undefined;
 	prefix: PrefixFormatter | undefined;

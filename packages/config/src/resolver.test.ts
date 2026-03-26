@@ -42,6 +42,7 @@ describe("resolveConfig", () => {
 		expect(result.embedder.model).toBeUndefined();
 		expect(result.embedder.key).toBeUndefined();
 		expect(result.embedder.profile).toBeUndefined();
+		expect(result.embedder.profiles).toEqual({});
 		expect(result.embedder.dimensions).toBeUndefined();
 		expect(result.embedder.pooling).toBeUndefined();
 		expect(result.embedder.prefix).toBeUndefined();
@@ -149,6 +150,21 @@ describe("resolveConfig", () => {
 		process.env.WTFOC_EMBEDDER_PROFILE = "minilm";
 		const result = resolveConfig({});
 		expect(result.embedder.profile).toBe("minilm");
+	});
+
+	it("resolves embedder profiles from file config", () => {
+		const profiles = {
+			nomic: { model: "nomic-embed-text", dimensions: 768, pooling: "mean" as const },
+		};
+		const result = resolveConfig({
+			file: { embedder: { profiles } },
+		});
+		expect(result.embedder.profiles).toEqual(profiles);
+	});
+
+	it("defaults profiles to empty object when not provided", () => {
+		const result = resolveConfig({});
+		expect(result.embedder.profiles).toEqual({});
 	});
 
 	it("resolves embedder dimensions from file config", () => {
