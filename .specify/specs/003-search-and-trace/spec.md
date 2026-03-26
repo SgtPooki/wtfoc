@@ -38,17 +38,33 @@
 
 ### Trace (Hero Feature)
 
-**trace()** (`trace.ts`):
+**trace()** (`trace/trace.ts`):
 - Embeds query → finds seed chunks via vector search
 - Builds bidirectional edge index from all segments (forward + reverse)
 - Follows explicit edges from seed chunks across source types
 - Falls back to semantic similarity for unconnected chunks
 - Groups results by sourceType
 - Annotates each hop with: method (edge/semantic), edgeType, evidence, confidence
+- `parentHopIndex` on each hop tracks the DFS tree structure for path reconstruction
 - Cycle detection (visited set prevents infinite traversal)
 - Configurable: maxPerSource, maxTotal, maxHops, minScore
+- **Trace modes** (`TraceMode`):
+  - `"discovery"` (default): find connected results across sources
+  - `"analytical"`: also runs cross-source insight detection
 - AbortSignal support
-- 9 tests with multi-source fixture (Slack → Issue → PR → Code)
+- 11 tests with multi-source fixture (Slack → Issue → PR → Code)
+
+### Cross-Source Insights (Analytical Mode)
+
+**detectInsights()** (`trace/insights.ts`):
+- Post-hoc analysis of collected trace hops, gated behind `mode: "analytical"`
+- Three insight kinds:
+  - **Convergence**: 3+ source types appear in results → topic is discussed across silos
+  - **Evidence chain**: True root-to-leaf paths via `parentHopIndex` crossing 3+ source types (e.g., Slack → Issue → PR → Code). Deduped by type sequence, capped at 3.
+  - **Temporal cluster**: >50% of timestamped results are from the last 30 days → active topic
+- Each insight has: `kind`, `summary` (human-readable), `hopIndices`, `strength` (0-1)
+- `TraceResult.insights` is always present (empty array in discovery mode)
+- 11 tests covering all insight types, DFS branching, and edge cases
 
 ### Query
 
@@ -89,4 +105,4 @@
 
 ## Tests
 
-35 tests total across embedders (13), vector index (6), trace (9), query (7).
+47 tests total across embedders (13), vector index (6), trace (11), insights (11), query (7).

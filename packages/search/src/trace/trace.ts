@@ -218,7 +218,7 @@ export async function trace(
 	const edgeHops = hops.filter((h) => h.connection.method === "edge").length;
 
 	// Detect cross-source insights in analytical mode
-	const insights = mode === "analytical" ? detectInsights(hops, segments) : [];
+	const insights = mode === "analytical" ? detectInsights(hops, segments, options?.signal) : [];
 
 	return {
 		query,

@@ -25,12 +25,17 @@ export interface TraceInsight {
  * 2. Evidence chains — connected paths across 3+ source types via edges
  * 3. Temporal clusters — recent activity concentration on the traced topic
  */
-export function detectInsights(hops: TraceHop[], segments: Segment[]): TraceInsight[] {
+export function detectInsights(
+	hops: TraceHop[],
+	segments: Segment[],
+	signal?: AbortSignal,
+): TraceInsight[] {
 	const insights: TraceInsight[] = [];
 
 	insights.push(...detectConvergence(hops));
 	insights.push(...detectEvidenceChains(hops));
-	insights.push(...detectTemporalClusters(hops, segments));
+	signal?.throwIfAborted();
+	insights.push(...detectTemporalClusters(hops, segments, signal));
 
 	// Sort by strength descending
 	insights.sort((a, b) => b.strength - a.strength);
@@ -132,10 +137,16 @@ function detectEvidenceChains(hops: TraceHop[]): TraceInsight[] {
 	paths.sort((a, b) => b.types.size - a.types.size || b.indices.length - a.indices.length);
 
 	// 2. Drop paths that are subpaths of an already-kept path
+	const isPrefix = (prefix: number[], full: number[]): boolean => {
+		if (prefix.length > full.length) return false;
+		for (let i = 0; i < prefix.length; i++) {
+			if (prefix[i] !== full[i]) return false;
+		}
+		return true;
+	};
 	const kept: typeof paths = [];
 	for (const path of paths) {
-		const key = path.indices.join(",");
-		const isSubpath = kept.some((k) => k.indices.join(",").startsWith(key));
+		const isSubpath = kept.some((k) => isPrefix(path.indices, k.indices));
 		if (!isSubpath) kept.push(path);
 	}
 
@@ -179,7 +190,11 @@ const MS_PER_DAY = 86_400_000;
  * Temporal cluster: When a disproportionate share of trace results have
  * recent timestamps, it signals active/trending discussion.
  */
-function detectTemporalClusters(hops: TraceHop[], segments: Segment[]): TraceInsight[] {
+function detectTemporalClusters(
+	hops: TraceHop[],
+	segments: Segment[],
+	signal?: AbortSignal,
+): TraceInsight[] {
 	// Collect the storageIds we actually need timestamps for
 	const neededIds = new Set<string>();
 	for (const hop of hops) {
@@ -190,6 +205,7 @@ function detectTemporalClusters(hops: TraceHop[], segments: Segment[]): TraceIns
 	const timestamps = new Map<string, string>();
 	for (const seg of segments) {
 		if (timestamps.size >= neededIds.size) break;
+		signal?.throwIfAborted();
 		for (const chunk of seg.chunks) {
 			if (chunk.timestamp && neededIds.has(chunk.storageId)) {
 				timestamps.set(chunk.storageId, chunk.timestamp);

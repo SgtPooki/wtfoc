@@ -23,14 +23,15 @@ export function registerTraceCommand(program: Command): void {
 				"discovery",
 			),
 	).action(async (queryText: string, opts: { collection: string; mode: string } & EmbedderOpts) => {
-		const validModes = ["discovery", "analytical"];
-		if (!validModes.includes(opts.mode)) {
+		const validModes: TraceMode[] = ["discovery", "analytical"];
+		if (!validModes.includes(opts.mode as TraceMode)) {
 			console.error(
 				`Error: invalid trace mode "${opts.mode}". Must be one of: ${validModes.join(", ")}`,
 			);
 			process.exit(2);
 		}
-		const mode = opts.mode as TraceMode;
+		// Safe after validation above
+		const mode: TraceMode = opts.mode === "analytical" ? "analytical" : "discovery";
 		const store = getStore(program);
 		const format = getFormat(program.opts());
 
