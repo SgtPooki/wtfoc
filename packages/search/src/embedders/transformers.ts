@@ -104,6 +104,10 @@ export class TransformersEmbedder implements Embedder {
 			if (!this.#dimensionsDetected) {
 				this.#dimensions = data.length;
 				this.#dimensionsDetected = true;
+			} else if (data.length !== this.#dimensions) {
+				throw new Error(
+					`Dimension mismatch: expected ${this.#dimensions}, got ${data.length} from pipeline`,
+				);
 			}
 			return data;
 		} catch (err) {
@@ -127,14 +131,19 @@ export class TransformersEmbedder implements Embedder {
 				throw new Error(`Expected Float32Array from pipeline, got ${typeof output.data}`);
 			}
 			const data = output.data;
-			if (!this.#dimensionsDetected && data.length > 0) {
+			if (!this.#dimensionsDetected && data.length > 0 && texts.length > 0) {
+				if (data.length % texts.length !== 0) {
+					throw new Error(
+						`Pipeline output length ${data.length} is not divisible by batch size ${texts.length}`,
+					);
+				}
 				this.#dimensions = data.length / texts.length;
 				this.#dimensionsDetected = true;
 			}
 			const dims = this.#dimensions;
 			const results: Float32Array[] = [];
 			for (let i = 0; i < texts.length; i++) {
-				results.push(new Float32Array(data.buffer, i * dims * 4, dims));
+				results.push(data.subarray(i * dims, (i + 1) * dims));
 			}
 			return results;
 		} catch (err) {

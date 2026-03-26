@@ -12,7 +12,12 @@ export type {
 	ResolvedEmbedderConfig,
 	ResolvedExtractorConfig,
 } from "./config-types.js";
-export { BUILTIN_IGNORE_PATTERNS, EMBEDDER_PROFILES, URL_SHORTCUTS } from "./config-types.js";
+export {
+	BUILTIN_IGNORE_PATTERNS,
+	EMBEDDER_PROFILES,
+	URL_SHORTCUTS,
+	VALID_POOLING_STRATEGIES,
+} from "./config-types.js";
 export {
 	CollectionHeadConflictError,
 	ConfigParseError,

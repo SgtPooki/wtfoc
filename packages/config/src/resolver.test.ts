@@ -190,4 +190,10 @@ describe("resolveConfig", () => {
 			document: "search_document: ",
 		});
 	});
+
+	it("ignores invalid pooling strategy from env", () => {
+		process.env.WTFOC_EMBEDDER_POOLING = "bogus";
+		const result = resolveConfig({});
+		expect(result.embedder.pooling).toBeUndefined();
+	});
 });

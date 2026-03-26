@@ -1,4 +1,5 @@
 import type { PoolingStrategy, ProjectConfig, ResolvedConfig } from "@wtfoc/common";
+import { VALID_POOLING_STRATEGIES } from "@wtfoc/common";
 import { resolveUrlShortcut } from "./shortcuts.js";
 
 export interface ConfigSources {
@@ -43,9 +44,11 @@ export function resolveConfig(sources: ConfigSources): ResolvedConfig {
 				? Number.parseInt(embedderDimensionsRaw, 10)
 				: undefined;
 
-	const embedderPooling = (file?.embedder?.pooling ?? process.env.WTFOC_EMBEDDER_POOLING) as
-		| PoolingStrategy
-		| undefined;
+	const rawPooling = file?.embedder?.pooling ?? process.env.WTFOC_EMBEDDER_POOLING;
+	const embedderPooling =
+		rawPooling && VALID_POOLING_STRATEGIES.includes(rawPooling as PoolingStrategy)
+			? (rawPooling as PoolingStrategy)
+			: undefined;
 
 	const embedderPrefix = file?.embedder?.prefix;
 

@@ -156,4 +156,29 @@ describe("TransformersEmbedder", () => {
 		// After first call, dimensions auto-detected from output
 		expect(embedder.dimensions).toBe(768);
 	});
+
+	it("throws on dimension mismatch when dimensions are configured", async () => {
+		const embedding1 = new Float32Array(768).fill(0.1);
+		const embedding2 = new Float32Array(512).fill(0.2);
+		mockExtractor.mockResolvedValueOnce(fakeTensor([1, 768], embedding1));
+		mockExtractor.mockResolvedValueOnce(fakeTensor([1, 512], embedding2));
+
+		const embedder = new TransformersEmbedder("custom-model", { dimensions: 768 });
+		await embedder.embed("first"); // succeeds, 768 matches
+
+		await expect(embedder.embed("second")).rejects.toThrow("Embedding failed");
+	});
+
+	it("embedBatch uses subarray for correct byteOffset handling", async () => {
+		const batch = new Float32Array(384 * 2);
+		batch.fill(0.1, 0, 384);
+		batch.fill(0.9, 384, 768);
+		mockExtractor.mockResolvedValueOnce(fakeTensor([2, 384], batch));
+
+		const embedder = new TransformersEmbedder();
+		const results = await embedder.embedBatch(["a", "b"]);
+
+		expect(results[0]?.[0]).toBeCloseTo(0.1);
+		expect(results[1]?.[0]).toBeCloseTo(0.9);
+	});
 });

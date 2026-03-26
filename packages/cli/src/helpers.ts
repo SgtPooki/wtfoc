@@ -130,7 +130,10 @@ export function createEmbedder(
 		resolvedConfig?.key ?? opts.embedderKey ?? process.env.WTFOC_OPENAI_API_KEY ?? "no-key";
 	const type = opts.embedder ?? "local";
 	const prefix = resolvedConfig?.prefix ?? profile?.prefix;
-	const dimensions = resolvedConfig?.dimensions ?? profile?.dimensions;
+	// requestDimensions: only send in API body when user explicitly configured it
+	// (profile dimensions are informational, not an API parameter)
+	const explicitDimensions = resolvedConfig?.dimensions;
+	const dimensions = explicitDimensions ?? profile?.dimensions;
 	const pooling = resolvedConfig?.pooling ?? profile?.pooling;
 
 	// API-based embedder (any OpenAI-compatible endpoint)
@@ -156,7 +159,7 @@ export function createEmbedder(
 			baseUrl,
 			model,
 			dimensions,
-			requestDimensions: dimensions,
+			requestDimensions: explicitDimensions,
 			prefix,
 		});
 		return { embedder, modelName: model };

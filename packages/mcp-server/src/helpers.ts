@@ -59,7 +59,8 @@ export function createEmbedder(resolvedConfig?: ResolvedEmbedderConfig): {
 		resolvedConfig?.key ?? process.env.WTFOC_EMBEDDER_KEY ?? process.env.WTFOC_OPENAI_API_KEY;
 	const type = process.env.WTFOC_EMBEDDER ?? "local";
 	const prefix = resolvedConfig?.prefix ?? profile?.prefix;
-	const dimensions = resolvedConfig?.dimensions ?? profile?.dimensions;
+	const explicitDimensions = resolvedConfig?.dimensions;
+	const dimensions = explicitDimensions ?? profile?.dimensions;
 	const pooling = resolvedConfig?.pooling ?? profile?.pooling;
 
 	if (type === "api" || url || model) {
@@ -84,7 +85,7 @@ export function createEmbedder(resolvedConfig?: ResolvedEmbedderConfig): {
 			baseUrl,
 			model,
 			dimensions,
-			requestDimensions: dimensions,
+			requestDimensions: explicitDimensions,
 			prefix,
 		});
 		return { embedder, modelName: model };

@@ -1,6 +1,8 @@
 /** Pooling strategy for local transformer models */
 export type PoolingStrategy = "mean" | "cls" | "last_token";
 
+export const VALID_POOLING_STRATEGIES: readonly PoolingStrategy[] = ["mean", "cls", "last_token"];
+
 /** Optional prefix formatter for query/document embedding asymmetry */
 export interface PrefixFormatter {
 	query: string;
