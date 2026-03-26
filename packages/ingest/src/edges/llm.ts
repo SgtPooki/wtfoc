@@ -1,6 +1,6 @@
 import type { Chunk, Edge, EdgeExtractor } from "@wtfoc/common";
 import { chatCompletion, type LlmClientOptions, parseJsonResponse } from "./llm-client.js";
-import { buildExtractionMessages, estimateTokens } from "./llm-prompt.js";
+import { buildExtractionMessages, estimatePromptOverhead, estimateTokens } from "./llm-prompt.js";
 
 export interface LlmEdgeExtractorOptions extends LlmClientOptions {
 	maxConcurrency?: number;
@@ -41,8 +41,19 @@ export class LlmEdgeExtractor implements EdgeExtractor {
 		const maxConcurrency = this.#options.maxConcurrency ?? 4;
 		const maxInputTokens = this.#options.maxInputTokens ?? 4000;
 
+		// Subtract prompt overhead (system + few-shot) from the available token budget
+		// so chunk batches don't overflow the model context window.
+		const promptOverhead = estimatePromptOverhead();
+		if (promptOverhead >= maxInputTokens) {
+			console.warn(
+				`[wtfoc] Warning: prompt overhead (${promptOverhead} tokens) exceeds maxInputTokens (${maxInputTokens}). Skipping LLM extraction.`,
+			);
+			return [];
+		}
+		const chunkBudget = maxInputTokens - promptOverhead;
+
 		// Group chunks into batches respecting token budget
-		const batches = this.#batchChunks(chunks, maxInputTokens);
+		const batches = this.#batchChunks(chunks, chunkBudget);
 
 		// Process batches with concurrency limiter
 		const allEdges: Edge[] = [];
@@ -76,12 +87,21 @@ export class LlmEdgeExtractor implements EdgeExtractor {
 		let currentBatch: Chunk[] = [];
 		let currentTokens = 0;
 
+		// Per-chunk JSON wrapper overhead: {"chunk_id":"...","source_type":"...","source":"...","text":"..."}
+		// ~60 chars ≈ 15 tokens of framing per chunk in the user message.
+		const perChunkOverhead = 15;
+
 		for (const chunk of chunks) {
-			const tokens = estimateTokens(chunk.content);
+			const tokens = estimateTokens(chunk.content) + perChunkOverhead;
 			if (currentBatch.length > 0 && currentTokens + tokens > maxTokens) {
 				batches.push(currentBatch);
 				currentBatch = [];
 				currentTokens = 0;
+			}
+			if (tokens > maxTokens) {
+				console.warn(
+					`[wtfoc] Warning: chunk ${chunk.id} (${tokens} tokens) exceeds budget (${maxTokens}). Sending as oversized batch; LLM may truncate.`,
+				);
 			}
 			currentBatch.push(chunk);
 			currentTokens += tokens;

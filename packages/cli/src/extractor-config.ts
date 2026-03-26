@@ -32,6 +32,7 @@ export interface ExtractorCliOpts {
 	extractorJsonMode?: string;
 	extractorTimeout?: string;
 	extractorConcurrency?: string;
+	extractorMaxInputTokens?: string;
 }
 
 /**
@@ -41,6 +42,17 @@ const URL_SHORTCUTS: Record<string, string> = {
 	lmstudio: "http://localhost:1234/v1",
 	ollama: "http://localhost:11434/v1",
 };
+
+/**
+ * Parse maxInputTokens: 0 means unlimited (Infinity), absent/NaN falls back to 4000.
+ */
+function parseMaxInputTokens(raw: string | undefined): number {
+	if (raw == null) return 4000;
+	const parsed = Number.parseInt(raw, 10);
+	if (Number.isNaN(parsed)) return 4000;
+	if (parsed === 0) return Number.POSITIVE_INFINITY;
+	return parsed;
+}
 
 /**
  * Resolve LLM extractor config from CLI flags and environment variables.
@@ -104,6 +116,8 @@ export function resolveExtractorConfig(opts: ExtractorCliOpts): LlmExtractorConf
 		jsonMode,
 		timeoutMs: Number.isNaN(timeoutMs) ? 60000 : timeoutMs,
 		maxConcurrency: Number.isNaN(maxConcurrency) ? 4 : maxConcurrency,
-		maxInputTokens: 4000,
+		maxInputTokens: parseMaxInputTokens(
+			opts.extractorMaxInputTokens ?? process.env.WTFOC_EXTRACTOR_MAX_INPUT_TOKENS,
+		),
 	};
 }

@@ -60,7 +60,11 @@ export function withExtractorOptions<T extends Command>(cmd: T): T {
 		.option("--extractor-key <key>", "LLM API key")
 		.option("--extractor-json-mode <mode>", "JSON response mode: auto (default), on, off")
 		.option("--extractor-timeout <ms>", "LLM request timeout in ms (default: 60000)")
-		.option("--extractor-concurrency <n>", "Max parallel LLM requests (default: 4)") as T;
+		.option("--extractor-concurrency <n>", "Max parallel LLM requests (default: 4)")
+		.option(
+			"--extractor-max-input-tokens <n>",
+			"Max input tokens per LLM request (default: 4000)",
+		) as T;
 }
 
 export function getStore(program: Command) {

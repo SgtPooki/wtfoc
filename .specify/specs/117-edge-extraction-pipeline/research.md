@@ -65,7 +65,7 @@
 
 **Rationale**: LLM extraction is slow, can fail mid-run, and runs after ingest. Status must track extraction contexts (PR+comments, Slack threads) not individual chunks, because FR-012 batches by artifact context. A changed comment in a PR thread invalidates the whole context, not just one chunk. LLM edges go to an overlay file because segments are immutable.
 
-**Status file format** (`~/.wtfoc/projects/<collection>/.extraction-status.json`):
+**Status file format** (`~/.wtfoc/projects/<collection>.extraction-status.json`):
 ```json
 {
   "extractorModel": "Qwen2.5-Coder-32B-Instruct",
@@ -88,7 +88,7 @@
 }
 ```
 
-**Overlay edge file** (`~/.wtfoc/projects/<collection>/edges-overlay.json`):
+**Overlay edge file** (`~/.wtfoc/projects/<collection>.edges-overlay.json`):
 - Contains edges produced by post-ingest LLM extraction
 - Merged with segment edges at mount time
 - Cleared on next full ingest (edges folded into new segments)

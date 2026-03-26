@@ -1,6 +1,7 @@
 import type { Chunk } from "@wtfoc/common";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { LlmEdgeExtractor } from "./llm.js";
+import { estimatePromptOverhead } from "./llm-prompt.js";
 
 function makeChunk(content: string, id = "chunk-1"): Chunk {
 	return {
@@ -194,5 +195,51 @@ describe("LlmEdgeExtractor", () => {
 		const result = await extractor.extract([makeChunk("discussed auth system")]);
 		expect(result).toHaveLength(1);
 		expect(result[0]?.targetId).toBe("auth");
+	});
+
+	it("subtracts prompt overhead from token budget when batching (#146)", async () => {
+		const maxInputTokens = 4000;
+		// With maxInputTokens = 4000 and prompt overhead ~2500+, the effective
+		// chunk budget should be much smaller, producing more batches.
+		const overhead = estimatePromptOverhead();
+		expect(overhead).toBeGreaterThan(500);
+
+		// Mirror the production budget calculation (including the guard)
+		// so the test stays stable as prompts evolve.
+		const chunkBudget = maxInputTokens - overhead;
+		// Each chunk is ~75% of the adjusted budget so two chunks must go in separate batches
+		const chunkSize = Math.ceil(chunkBudget * 0.75);
+		const bigContent = "x".repeat(chunkSize * 4); // 4 chars ≈ 1 token
+
+		const extractor = new LlmEdgeExtractor({ ...options, maxInputTokens });
+
+		// Mock two LLM calls (one per batch)
+		mockLlmResponse([]);
+		mockLlmResponse([]);
+
+		await extractor.extract([makeChunk(bigContent, "c1"), makeChunk(bigContent, "c2")]);
+
+		// Without the fix, both chunks would fit in one batch (< 4000 raw tokens).
+		// With the fix, prompt overhead is subtracted so each chunk gets its own batch.
+		expect(mockFetch).toHaveBeenCalledTimes(2);
+	});
+
+	it("returns empty when prompt overhead exceeds maxInputTokens (#146)", async () => {
+		// If the prompt alone overflows the declared budget, bail out entirely.
+		const extractor = new LlmEdgeExtractor({ ...options, maxInputTokens: 100 });
+
+		const edges = await extractor.extract([makeChunk("some text")]);
+		expect(edges).toEqual([]);
+		expect(mockFetch).not.toHaveBeenCalled();
+	});
+});
+
+describe("estimatePromptOverhead", () => {
+	it("returns a positive number reflecting system + few-shot tokens", () => {
+		const overhead = estimatePromptOverhead();
+		// The system prompt + 4 few-shot pairs should be at least 800 tokens
+		expect(overhead).toBeGreaterThan(800);
+		// Sanity: shouldn't be absurdly large
+		expect(overhead).toBeLessThan(5000);
 	});
 });

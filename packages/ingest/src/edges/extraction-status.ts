@@ -50,9 +50,10 @@ export async function writeExtractionStatus(
 
 /**
  * Get the extraction status file path for a collection.
+ * Uses flat layout: {manifestDir}/{collection}.extraction-status.json
  */
-export function statusFilePath(projectDir: string, collectionName: string): string {
-	return join(projectDir, collectionName, ".extraction-status.json");
+export function statusFilePath(manifestDir: string, collectionName: string): string {
+	return join(manifestDir, `${collectionName}.extraction-status.json`);
 }
 
 /**
