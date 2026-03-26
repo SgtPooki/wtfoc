@@ -104,6 +104,10 @@ export interface ThemeSnapshot {
 	filteredConfigChunks: number;
 	/** Whether LLM was used for labeling */
 	llmLabeled: boolean;
+	/** LLM model used for labeling (undefined if heuristic-only) */
+	llmModel?: string;
+	/** LLM endpoint base URL used (undefined if heuristic-only) */
+	llmBaseUrl?: string;
 	/** When this snapshot was computed */
 	computedAt: string;
 }

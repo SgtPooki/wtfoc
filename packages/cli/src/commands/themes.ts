@@ -5,6 +5,7 @@ import type { ExtractorCliOpts, LlmExtractorEnabled } from "../extractor-config.
 import { resolveExtractorConfig } from "../extractor-config.js";
 import { getFormat, getStore, loadCollection, withExtractorOptions } from "../helpers.js";
 import { labelClusters, summarizeNoise } from "../llm-labels.js";
+import type { OutputFormat } from "../output.js";
 
 const DEFAULT_DISPLAY_LIMIT = 20;
 const DEFAULT_MIN_DISPLAY_SIZE = 3;
@@ -28,6 +29,61 @@ function isConfigChunk(source: string, sourceType: string): boolean {
 	return CONFIG_SOURCE_PATTERNS.some((p) => p.test(source));
 }
 
+/** Check if a stored snapshot is still fresh for the current chunk set. */
+function isSnapshotFresh(
+	snapshot: ThemeSnapshot,
+	totalChunks: number,
+	filteredCount: number,
+	threshold: number,
+): boolean {
+	return (
+		snapshot.totalProcessed === totalChunks &&
+		snapshot.filteredConfigChunks === filteredCount &&
+		snapshot.threshold === threshold
+	);
+}
+
+/** Display a theme snapshot in human-readable format. */
+function displaySnapshot(
+	snapshot: ThemeSnapshot,
+	idToContent: Map<string, string>,
+	opts: { minSize: number; limit: number; all?: boolean },
+): void {
+	const sorted = [...snapshot.clusters].sort((a, b) => b.size - a.size);
+	const displayClusters = sorted.filter((c) => c.size >= opts.minSize);
+	const displayLimit = opts.all ? displayClusters.length : opts.limit;
+	const shown = displayClusters.slice(0, displayLimit);
+
+	console.log(
+		`Themes: ${snapshot.clusters.length} clusters (showing top ${shown.length} with ${opts.minSize}+ members), ${snapshot.noise.length} noise, ${snapshot.totalProcessed} total\n`,
+	);
+
+	for (const cluster of shown) {
+		console.log(`--- ${cluster.id}: ${cluster.label} (${cluster.size} chunks) ---`);
+		for (const exId of cluster.exemplarIds) {
+			const content = idToContent.get(exId) ?? "";
+			const snippet = content.slice(0, 120).replace(/\n/g, " ");
+			console.log(`  [exemplar] ${snippet}${content.length > 120 ? "..." : ""}`);
+		}
+		console.log("");
+	}
+
+	if (displayClusters.length > shown.length) {
+		console.log(
+			`(${displayClusters.length - shown.length} more clusters not shown — use --all or -n to see more)`,
+		);
+	}
+
+	if (snapshot.noiseCategories.length > 0) {
+		console.log(`\nNoise breakdown (${snapshot.noise.length} unclustered chunks):`);
+		for (const cat of snapshot.noiseCategories) {
+			console.log(`  ~${cat.count} ${cat.name}: ${cat.description}`);
+		}
+	} else {
+		console.log(`Noise: ${snapshot.noise.length} unclustered chunks`);
+	}
+}
+
 export function registerThemesCommand(program: Command): void {
 	const cmd = program
 		.command("themes")
@@ -43,7 +99,9 @@ export function registerThemesCommand(program: Command): void {
 		.option("--all", "Show all clusters (not just top 20)")
 		.option("-n, --limit <number>", "Max clusters to display", String(DEFAULT_DISPLAY_LIMIT))
 		.option("--include-config", "Include config/boilerplate chunks in clustering")
-		.option("--dry-run", "Compute themes without persisting to the collection manifest");
+		.option("--dry-run", "Compute themes without persisting to the collection manifest")
+		.option("--show", "Display persisted themes without re-clustering")
+		.option("--force", "Re-compute themes even if a fresh snapshot exists");
 
 	withExtractorOptions(cmd).action(
 		async (
@@ -56,15 +114,57 @@ export function registerThemesCommand(program: Command): void {
 				limit: string;
 				includeConfig?: boolean;
 				dryRun?: boolean;
+				show?: boolean;
+				force?: boolean;
 			} & ExtractorCliOpts,
 		) => {
 			const store = getStore(program);
-			const format = getFormat(program.opts());
+			const format = getFormat(program.opts()) as OutputFormat;
 
 			const head = await store.manifests.getHead(opts.collection);
 			if (!head) {
 				console.error(`Error: collection "${opts.collection}" not found`);
 				process.exit(1);
+			}
+
+			const minDisplaySize = Number.parseInt(opts.minSize, 10);
+			const displayOpts = {
+				minSize: minDisplaySize,
+				limit: Number.parseInt(opts.limit, 10),
+				all: opts.all,
+			};
+
+			// --show: display persisted snapshot without loading chunks or re-clustering
+			if (opts.show) {
+				const stored = head.manifest.themes;
+				if (!stored) {
+					console.error("No persisted themes found. Run without --show to compute them.");
+					process.exit(1);
+				}
+				if (format === "json") {
+					console.log(JSON.stringify(stored, null, "\t"));
+					return;
+				}
+				if (format === "quiet") return;
+
+				if (stored.llmModel) {
+					console.error(`Themes computed at ${stored.computedAt} (LLM: ${stored.llmModel})`);
+				} else {
+					console.error(`Themes computed at ${stored.computedAt} (heuristic labels)`);
+				}
+
+				// Load chunks only for exemplar display
+				const { segments } = await loadCollection(store, head.manifest);
+				const idToContent = new Map<string, string>();
+				for (const segment of segments) {
+					for (const chunk of segment.chunks) {
+						if (!idToContent.has(chunk.id)) {
+							idToContent.set(chunk.id, chunk.content);
+						}
+					}
+				}
+				displaySnapshot(stored, idToContent, displayOpts);
+				return;
 			}
 
 			if (format !== "quiet") console.error("Loading collection...");
@@ -80,7 +180,6 @@ export function registerThemesCommand(program: Command): void {
 				for (const chunk of segment.chunks) {
 					if (idToContent.has(chunk.id)) continue;
 
-					// Filter config/boilerplate unless --include-config
 					if (!opts.includeConfig && isConfigChunk(chunk.source, chunk.sourceType)) {
 						filteredCount++;
 						continue;
@@ -94,7 +193,19 @@ export function registerThemesCommand(program: Command): void {
 			}
 
 			const threshold = Number.parseFloat(opts.threshold);
-			const minDisplaySize = Number.parseInt(opts.minSize, 10);
+
+			// Check if stored snapshot is still fresh (skip expensive recompute)
+			const stored = head.manifest.themes;
+			if (stored && !opts.force && isSnapshotFresh(stored, ids.length, filteredCount, threshold)) {
+				if (format !== "quiet") console.error("Themes are up to date (use --force to recompute).");
+				if (format === "json") {
+					console.log(JSON.stringify(stored, null, "\t"));
+					return;
+				}
+				if (format === "quiet") return;
+				displaySnapshot(stored, idToContent, displayOpts);
+				return;
+			}
 
 			if (format !== "quiet") {
 				const filterMsg = filteredCount > 0 ? `, ${filteredCount} config chunks filtered` : "";
@@ -138,7 +249,6 @@ export function registerThemesCommand(program: Command): void {
 					if (llmLabel) cluster.label = llmLabel;
 				}
 
-				// Noise summarization
 				if (result.noise.length > 0) {
 					if (format !== "quiet") console.error("Summarizing noise...");
 					const noiseContents = result.noise
@@ -150,6 +260,7 @@ export function registerThemesCommand(program: Command): void {
 			}
 
 			// Build theme snapshot for persistence
+			const llmEnabled = llmConfig.enabled ? (llmConfig as LlmExtractorEnabled) : undefined;
 			const snapshot: ThemeSnapshot = {
 				threshold,
 				clusters: result.clusters.map((c) => ({
@@ -164,6 +275,8 @@ export function registerThemesCommand(program: Command): void {
 				totalProcessed: result.totalProcessed,
 				filteredConfigChunks: filteredCount,
 				llmLabeled,
+				llmModel: llmEnabled?.model,
+				llmBaseUrl: llmEnabled?.baseUrl,
 				computedAt: new Date().toISOString(),
 			};
 
@@ -178,49 +291,13 @@ export function registerThemesCommand(program: Command): void {
 				if (format !== "quiet") console.error("Themes persisted to collection manifest.");
 			}
 
-			// JSON always returns the full result
 			if (format === "json") {
 				console.log(JSON.stringify(snapshot, null, "\t"));
 				return;
 			}
-
-			// Human output: sort by size, filter by min-size, limit display count
-			const sorted = [...result.clusters].sort((a, b) => b.size - a.size);
-			const displayClusters = sorted.filter((c) => c.size >= minDisplaySize);
-			const displayLimit = opts.all ? displayClusters.length : Number.parseInt(opts.limit, 10);
-			const shown = displayClusters.slice(0, displayLimit);
-
 			if (format === "quiet") return;
 
-			console.log(
-				`Themes: ${result.clusters.length} clusters (showing top ${shown.length} with ${minDisplaySize}+ members), ${result.noise.length} noise, ${result.totalProcessed} total\n`,
-			);
-
-			for (const cluster of shown) {
-				console.log(`--- ${cluster.id}: ${cluster.label} (${cluster.size} chunks) ---`);
-				for (const exId of cluster.exemplarIds) {
-					const content = idToContent.get(exId) ?? "";
-					const snippet = content.slice(0, 120).replace(/\n/g, " ");
-					console.log(`  [exemplar] ${snippet}${content.length > 120 ? "..." : ""}`);
-				}
-				console.log("");
-			}
-
-			if (displayClusters.length > shown.length) {
-				console.log(
-					`(${displayClusters.length - shown.length} more clusters not shown — use --all or -n to see more)`,
-				);
-			}
-
-			// Noise summary output
-			if (noiseCategories.length > 0) {
-				console.log(`\nNoise breakdown (${result.noise.length} unclustered chunks):`);
-				for (const cat of noiseCategories) {
-					console.log(`  ~${cat.count} ${cat.name}: ${cat.description}`);
-				}
-			} else {
-				console.log(`Noise: ${result.noise.length} unclustered chunks`);
-			}
+			displaySnapshot(snapshot, idToContent, displayOpts);
 		},
 	);
 }
