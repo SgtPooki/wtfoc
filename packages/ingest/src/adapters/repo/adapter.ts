@@ -1,7 +1,9 @@
+import { readFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
-import { extname, relative } from "node:path";
+import { extname, join, relative } from "node:path";
 import type { Chunk, Edge, SourceAdapter } from "@wtfoc/common";
-import { WtfocError } from "@wtfoc/common";
+import { BUILTIN_IGNORE_PATTERNS, WtfocError } from "@wtfoc/common";
+import ignore from "ignore";
 import { chunkMarkdown, type MarkdownChunkerOptions } from "../../chunker.js";
 import { acquireRepo, extractRepoName } from "./acquisition.js";
 import { chunkCode, DEFAULT_EXCLUDE, DEFAULT_INCLUDE, walkFiles } from "./chunking.js";
@@ -21,7 +23,7 @@ export interface RepoAdapterConfig {
 	chunkerOptions?: MarkdownChunkerOptions;
 	/** Max file size in bytes to process (default: 100KB) */
 	maxFileSize?: number;
-	/** Ignore filter from .wtfoc.json — returns true for files to INCLUDE */
+	/** Ignore filter from CLI/config — returns true for files to INCLUDE */
 	ignoreFilter?: (path: string) => boolean;
 }
 
@@ -50,11 +52,29 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 		const repoPath = await acquireRepo(opts.source);
 		const repo = extractRepoName(opts.source);
 
+		// Load .wtfocignore from repo root and compose with existing filter
+		const wtfocIgnorePatterns = loadRepoWtfocIgnore(repoPath);
+		let ignoreFilter = opts.ignoreFilter;
+		if (wtfocIgnorePatterns.length > 0) {
+			console.error(`   .wtfocignore found: ${wtfocIgnorePatterns.length} pattern(s) loaded`);
+			const ig = ignore();
+			ig.add([...BUILTIN_IGNORE_PATTERNS]);
+			ig.add(wtfocIgnorePatterns);
+			const wtfocIgnoreFilter = (path: string): boolean => {
+				const normalized = path.replace(/\\/g, "/").replace(/^\.\//, "");
+				return !ig.ignores(normalized);
+			};
+			const baseFilter = ignoreFilter;
+			ignoreFilter = baseFilter
+				? (path: string) => baseFilter(path) && wtfocIgnoreFilter(path)
+				: wtfocIgnoreFilter;
+		}
+
 		const includeExts = new Set(opts.include ?? [...DEFAULT_INCLUDE]);
 		const excludeDirs = opts.exclude ?? DEFAULT_EXCLUDE;
 		const maxFileSize = opts.maxFileSize ?? 100_000;
 
-		const files = await walkFiles(repoPath, includeExts, excludeDirs, opts.ignoreFilter);
+		const files = await walkFiles(repoPath, includeExts, excludeDirs, ignoreFilter);
 
 		for (const filePath of files) {
 			const fileInfo = await stat(filePath);
@@ -180,4 +200,21 @@ function resolveImportPath(importPath: string, currentFile: string, repo: string
 		return `${repo}/${dir}/${importPath}`.replace(/\/\.\//g, "/");
 	}
 	return importPath;
+}
+
+function loadRepoWtfocIgnore(repoRoot: string): string[] {
+	const filePath = join(repoRoot, ".wtfocignore");
+	let content: string;
+	try {
+		content = readFileSync(filePath, "utf-8");
+	} catch (err: unknown) {
+		if (err instanceof Error && "code" in err && err.code === "ENOENT") {
+			return [];
+		}
+		throw err;
+	}
+	return content
+		.split("\n")
+		.map((line) => line.trim())
+		.filter((line) => line.length > 0 && !line.startsWith("#"));
 }

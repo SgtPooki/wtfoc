@@ -47,4 +47,20 @@ export const URL_SHORTCUTS: Readonly<Record<string, string>> = {
 	ollama: "http://localhost:11434/v1",
 };
 
-export const BUILTIN_IGNORE_PATTERNS: readonly string[] = [".git", "node_modules"];
+export const BUILTIN_IGNORE_PATTERNS: readonly string[] = [
+	".git",
+	"node_modules",
+	"dist/",
+	"build/",
+	"out/",
+	"coverage/",
+	".next/",
+	".turbo/",
+	"__pycache__/",
+	"*.lock",
+	"package-lock.json",
+	"pnpm-lock.yaml",
+	"*.min.js",
+	"*.min.css",
+	"*.map",
+];

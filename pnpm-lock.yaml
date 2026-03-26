@@ -129,6 +129,9 @@ importers:
       discord.js:
         specifier: ^14.25.1
         version: 14.25.1
+      ignore:
+        specifier: ^7.0.0
+        version: 7.0.5
       turndown:
         specifier: ^7.2.2
         version: 7.2.2

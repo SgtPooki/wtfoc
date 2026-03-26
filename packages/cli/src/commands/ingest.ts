@@ -52,6 +52,10 @@ export function registerIngestCommand(program: Command): void {
 				.option(
 					"--max-chunk-chars <number>",
 					`Max characters per chunk — oversized chunks are split (default: ${DEFAULT_MAX_CHUNK_CHARS})`,
+				)
+				.option(
+					"--ignore <pattern...>",
+					"Exclude files matching gitignore-style pattern (repeatable)",
 				),
 		),
 	).action(
@@ -63,6 +67,7 @@ export function registerIngestCommand(program: Command): void {
 				since?: string;
 				batchSize: string;
 				maxChunkChars?: string;
+				ignore?: string[];
 			} & EmbedderOpts &
 				ExtractorCliOpts,
 		) => {
@@ -133,10 +138,10 @@ export function registerIngestCommand(program: Command): void {
 			if (format !== "quiet") console.error(`⏳ Ingesting ${sourceType}: ${sourceArg}...`);
 
 			const config = adapter.parseConfig(rawConfig);
-			// Apply .wtfoc.json ignore patterns to repo adapter
-			const projectCfg = getProjectConfig();
-			if (sourceType === "repo" && projectCfg) {
-				const ignoreFilter = createIgnoreFilter(projectCfg.ignore);
+			// Always apply ignore filter for repo adapter (builtins + .wtfoc.json + --ignore)
+			if (sourceType === "repo") {
+				const projectCfg = getProjectConfig();
+				const ignoreFilter = createIgnoreFilter(projectCfg?.ignore, opts.ignore);
 				(config as Record<string, unknown>).ignoreFilter = ignoreFilter;
 			}
 			const maxBatch = Number.parseInt(opts.batchSize, 10) || 500;
