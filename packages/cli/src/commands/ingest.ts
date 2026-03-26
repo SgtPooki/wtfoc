@@ -56,6 +56,15 @@ export function registerIngestCommand(program: Command): void {
 				.option(
 					"--ignore <pattern...>",
 					"Exclude files matching gitignore-style pattern (repeatable)",
+				)
+				.option(
+					"--max-pages <number>",
+					"[website] Limit number of pages to crawl (default: 100, -1 = unlimited)",
+				)
+				.option("--depth <number>", "[website] Limit link-following depth from start URL")
+				.option(
+					"--url-pattern <glob>",
+					"[website] Glob pattern to restrict which URLs are crawled (default: same origin)",
 				),
 		),
 	).action(
@@ -68,6 +77,9 @@ export function registerIngestCommand(program: Command): void {
 				batchSize: string;
 				maxChunkChars?: string;
 				ignore?: string[];
+				maxPages?: string;
+				depth?: string;
+				urlPattern?: string;
 			} & EmbedderOpts &
 				ExtractorCliOpts,
 		) => {
@@ -116,6 +128,30 @@ export function registerIngestCommand(program: Command): void {
 			}
 
 			const rawConfig: Record<string, unknown> = { source: sourceArg };
+
+			// Pass website-specific options (scoped to website adapter only)
+			if (sourceType === "website") {
+				if (opts.maxPages != null) {
+					const maxPages = Number(opts.maxPages);
+					if (!Number.isInteger(maxPages) || maxPages < -1) {
+						console.error(
+							`Error: --max-pages must be a positive integer or -1 for unlimited, got "${opts.maxPages}".`,
+						);
+						process.exit(2);
+					}
+					rawConfig.maxPages = maxPages;
+				}
+				if (opts.depth != null) {
+					const depth = Number(opts.depth);
+					if (!Number.isInteger(depth) || depth < 0) {
+						console.error(`Error: --depth must be a non-negative integer, got "${opts.depth}".`);
+						process.exit(2);
+					}
+					rawConfig.depth = depth;
+				}
+				if (opts.urlPattern) rawConfig.urlPattern = opts.urlPattern;
+				if (format === "quiet") rawConfig.quiet = true;
+			}
 
 			// Cursor-based incremental ingest: read stored cursor, use as since if no explicit --since
 			const sourceKey = buildSourceKey(sourceType, sourceArg);

@@ -11,8 +11,20 @@ export interface WebsiteAdapterConfig {
 	source: string;
 	/** Max pages to crawl (default: 100) */
 	maxPages?: number;
+	/** Max link-following depth from the start URL (default: unlimited) */
+	depth?: number;
 	/** Glob pattern to stay within (e.g., "https://docs.filecoin.io/**") */
 	urlPattern?: string;
+	/** Suppress progress logging (default: false) */
+	quiet?: boolean;
+}
+
+function isFiniteInt(v: unknown): v is number {
+	return typeof v === "number" && Number.isFinite(v) && Number.isInteger(v);
+}
+
+function isNonNegativeInt(v: unknown): v is number {
+	return isFiniteInt(v) && v >= 0;
 }
 
 interface CrawledPage {
@@ -37,8 +49,10 @@ export class WebsiteAdapter implements SourceAdapter<WebsiteAdapterConfig> {
 		}
 		return {
 			source,
-			maxPages: typeof raw.maxPages === "number" ? raw.maxPages : 100,
+			maxPages: isFiniteInt(raw.maxPages) ? raw.maxPages : 100,
+			depth: isNonNegativeInt(raw.depth) ? raw.depth : undefined,
 			urlPattern: typeof raw.urlPattern === "string" ? raw.urlPattern : undefined,
+			quiet: raw.quiet === true,
 		};
 	}
 
@@ -112,6 +126,11 @@ export class WebsiteAdapter implements SourceAdapter<WebsiteAdapterConfig> {
 			codeBlockStyle: "fenced",
 		});
 
+		// maxPages < 0 means unlimited (crawl everything within the url pattern)
+		const maxPages = config.maxPages ?? 100;
+		const unlimited = maxPages < 0;
+		const crawleeMaxRequests = unlimited ? undefined : maxPages;
+
 		// Use a temp directory for crawlee storage and clean up after
 		const storageDir = await mkdtemp(join(tmpdir(), "wtfoc-crawl-"));
 
@@ -128,7 +147,7 @@ export class WebsiteAdapter implements SourceAdapter<WebsiteAdapterConfig> {
 
 			const crawler = new CheerioCrawler(
 				{
-					maxRequestsPerCrawl: config.maxPages ?? 100,
+					maxRequestsPerCrawl: crawleeMaxRequests,
 					async requestHandler({ request, $, enqueueLinks }) {
 						signal?.throwIfAborted();
 
@@ -145,16 +164,38 @@ export class WebsiteAdapter implements SourceAdapter<WebsiteAdapterConfig> {
 						const markdown = turndown.turndown(content);
 						pages.push({ url: request.url, title, markdown });
 
-						// Enqueue links within the same domain
-						await enqueueLinks({
-							globs: [config.urlPattern ?? defaultGlob],
-						});
+						// Progress reporting
+						if (!config.quiet && (pages.length % 10 === 0 || pages.length === 1)) {
+							const depthInfo =
+								config.depth != null ? ` (depth ${request.crawlDepth}/${config.depth})` : "";
+							const limitInfo = unlimited ? "" : `/${maxPages}`;
+							console.error(`   Crawled ${pages.length}${limitInfo} pages${depthInfo}...`);
+						}
+
+						// Only follow links if we haven't exceeded the depth limit
+						if (config.depth == null || request.crawlDepth < config.depth) {
+							await enqueueLinks({
+								globs: [config.urlPattern ?? defaultGlob],
+							});
+						}
 					},
 				},
 				crawleeConfig,
 			);
 
 			await crawler.run([config.source]);
+
+			// Summary message
+			if (!config.quiet) {
+				const hitLimit = !unlimited && pages.length >= maxPages;
+				if (hitLimit) {
+					console.error(
+						`   ⚠️  Stopped at --max-pages limit (${maxPages}). Increase with --max-pages or use --max-pages -1 for unlimited.`,
+					);
+				} else {
+					console.error(`   Crawled ${pages.length} pages total.`);
+				}
+			}
 		} finally {
 			// Clean up temp storage
 			await rm(storageDir, { recursive: true, force: true }).catch(() => {});
