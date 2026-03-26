@@ -36,6 +36,9 @@ importers:
       '@wtfoc/common':
         specifier: workspace:*
         version: link:../../packages/common
+      '@wtfoc/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@wtfoc/mcp-server':
         specifier: workspace:*
         version: link:../../packages/mcp-server
