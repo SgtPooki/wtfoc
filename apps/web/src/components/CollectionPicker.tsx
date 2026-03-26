@@ -62,7 +62,7 @@ function SkeletonGrid() {
 
 export function CollectionPicker() {
 	const [collections, setCollections] = useState<CollectionSummary[]>([]);
-	const [error, setError] = useState<string | null>(null);
+	const [error] = useState<string | null>(null);
 	const [loaded, setLoaded] = useState(false);
 
 	const loadCollections = useCallback(() => {
@@ -74,8 +74,8 @@ export function CollectionPicker() {
 					collection.value = cols[0].name;
 				}
 			})
-			.catch((err) => {
-				setError(err instanceof Error ? err.message : "Failed to load collections");
+			.catch(() => {
+				setCollections([]);
 				setLoaded(true);
 			});
 	}, []);

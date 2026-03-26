@@ -551,3 +551,520 @@ header h1 {
 	border-color: var(--accent);
 	text-decoration: none;
 }
+
+/* ─── Wallet ─────────────────────────────────────────────────────────────── */
+
+.wallet-connect {
+	margin-left: auto;
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+.wallet-connect-btn {
+	padding: 0.4rem 0.9rem;
+	background: var(--accent);
+	color: white;
+	border: none;
+	border-radius: 6px;
+	font-size: 0.8rem;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background 150ms;
+	white-space: nowrap;
+}
+.wallet-connect-btn:hover {
+	background: var(--accent-dim);
+}
+.wallet-connect-btn:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+.wallet-error {
+	font-size: 0.75rem;
+	color: #f87171;
+	max-width: 300px;
+}
+.wallet-connected {
+	margin-left: auto;
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+}
+.wallet-address {
+	font-size: 0.8rem;
+	color: var(--accent);
+	font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+	background: var(--accent-glow);
+	padding: 0.25rem 0.6rem;
+	border-radius: 4px;
+}
+.wallet-disconnect-btn {
+	padding: 0.3rem 0.6rem;
+	background: none;
+	color: var(--muted);
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	font-size: 0.75rem;
+	cursor: pointer;
+	transition: all 150ms;
+}
+.wallet-disconnect-btn:hover {
+	border-color: #f87171;
+	color: #f87171;
+}
+
+/* ─── Wallet actions bar ─────────────────────────────────────────────────── */
+
+.wallet-actions {
+	display: flex;
+	gap: 0.5rem;
+	margin-bottom: 1rem;
+}
+.my-collections-btn,
+.create-collection-btn {
+	padding: 0.5rem 1rem;
+	border-radius: 6px;
+	font-size: 0.85rem;
+	font-weight: 500;
+	cursor: pointer;
+	transition: all 150ms;
+}
+.my-collections-btn {
+	background: var(--surface);
+	color: var(--text);
+	border: 1px solid var(--border);
+}
+.my-collections-btn:hover {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+.create-collection-btn {
+	background: var(--accent);
+	color: white;
+	border: none;
+}
+.create-collection-btn:hover {
+	background: var(--accent-dim);
+}
+
+/* ─── Create Collection form ─────────────────────────────────────────────── */
+
+.create-collection {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 1.25rem;
+	margin-bottom: 1.5rem;
+	animation: cardEnter 150ms ease-out;
+}
+.create-collection h3 {
+	font-size: 1rem;
+	margin-bottom: 1rem;
+}
+.create-collection label {
+	display: block;
+	font-size: 0.8rem;
+	color: var(--muted);
+	margin-bottom: 1rem;
+}
+.create-collection label input {
+	display: block;
+	width: 100%;
+	margin-top: 0.3rem;
+	padding: 0.5rem 0.75rem;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	color: var(--text);
+	font-size: 0.9rem;
+	outline: none;
+	transition: border-color 150ms;
+}
+.create-collection label input:focus {
+	border-color: var(--accent);
+	box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.create-collection fieldset {
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	padding: 0.75rem;
+	margin-bottom: 1rem;
+}
+.create-collection fieldset legend {
+	font-size: 0.8rem;
+	color: var(--muted);
+	padding: 0 0.3rem;
+}
+.source-row {
+	display: flex;
+	gap: 0.5rem;
+	margin-bottom: 0.5rem;
+	align-items: center;
+}
+.source-row select {
+	padding: 0.45rem 0.5rem;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	color: var(--text);
+	font-size: 0.8rem;
+	outline: none;
+	min-width: 160px;
+}
+.source-row select:focus {
+	border-color: var(--accent);
+}
+.source-row input {
+	flex: 1;
+	padding: 0.45rem 0.75rem;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	color: var(--text);
+	font-size: 0.85rem;
+	outline: none;
+	transition: border-color 150ms;
+}
+.source-row input:focus {
+	border-color: var(--accent);
+	box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.source-row button {
+	padding: 0.3rem 0.5rem;
+	background: none;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	color: var(--muted);
+	cursor: pointer;
+	font-size: 0.75rem;
+	transition: all 150ms;
+}
+.source-row button:hover {
+	border-color: #f87171;
+	color: #f87171;
+}
+.create-collection fieldset > button {
+	margin-top: 0.25rem;
+	padding: 0.3rem 0.7rem;
+	background: none;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	color: var(--accent);
+	cursor: pointer;
+	font-size: 0.8rem;
+	transition: border-color 150ms;
+}
+.create-collection fieldset > button:hover {
+	border-color: var(--accent);
+}
+.create-collection > button[type="submit"] {
+	padding: 0.55rem 1.2rem;
+	background: var(--accent);
+	color: white;
+	border: none;
+	border-radius: 6px;
+	font-size: 0.9rem;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background 150ms;
+}
+.create-collection > button[type="submit"]:hover {
+	background: var(--accent-dim);
+}
+.create-collection > button[type="submit"]:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+.form-error {
+	background: #2a1a1a;
+	border: 1px solid #5a2a2a;
+	color: #f87171;
+	border-radius: 6px;
+	padding: 0.5rem 0.75rem;
+	font-size: 0.8rem;
+	margin-bottom: 0.75rem;
+}
+.create-collection-success {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 1.25rem;
+	margin-bottom: 1.5rem;
+	text-align: center;
+}
+.create-collection-success h3 {
+	font-size: 1rem;
+	margin-bottom: 0.5rem;
+	color: #4ade80;
+}
+.create-collection-success button {
+	margin-top: 0.75rem;
+	padding: 0.5rem 1rem;
+	background: var(--accent);
+	color: white;
+	border: none;
+	border-radius: 6px;
+	font-size: 0.85rem;
+	cursor: pointer;
+}
+
+/* ─── Collection List (My Collections) ───────────────────────────────────── */
+
+.collection-list {
+	margin-bottom: 1.5rem;
+	animation: cardEnter 150ms ease-out;
+}
+.collection-list h3 {
+	font-size: 1rem;
+	margin-bottom: 0.75rem;
+}
+.collection-list table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.85rem;
+}
+.collection-list th {
+	text-align: left;
+	padding: 0.5rem 0.75rem;
+	color: var(--muted);
+	font-size: 0.75rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	border-bottom: 1px solid var(--border);
+}
+.collection-list td {
+	padding: 0.6rem 0.75rem;
+	border-bottom: 1px solid var(--border);
+}
+.collection-row:hover td {
+	background: var(--surface-hover);
+}
+.collection-list-empty,
+.collection-list-loading,
+.collection-list-error {
+	text-align: center;
+	color: var(--muted);
+	padding: 2rem;
+	font-size: 0.9rem;
+}
+
+/* ─── Collection Detail ──────────────────────────────────────────────────── */
+
+.collection-detail {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 1.25rem;
+	margin-bottom: 1.5rem;
+	animation: cardEnter 150ms ease-out;
+}
+.collection-detail h3 {
+	font-size: 1.1rem;
+	margin-bottom: 0.5rem;
+}
+.collection-detail h4 {
+	font-size: 0.85rem;
+	color: var(--muted);
+	margin: 1rem 0 0.5rem;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+.collection-status {
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+	margin-bottom: 0.5rem;
+}
+.status-badge {
+	font-size: 0.8rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+}
+.collection-cid {
+	font-size: 0.75rem;
+	color: var(--muted);
+	font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+	background: var(--bg);
+	padding: 0.2rem 0.5rem;
+	border-radius: 4px;
+	border: 1px solid var(--border);
+}
+.source-list {
+	list-style: none;
+	padding: 0;
+}
+.source-item {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	padding: 0.5rem 0;
+	border-bottom: 1px solid var(--border);
+	font-size: 0.85rem;
+}
+.source-item:last-child {
+	border-bottom: none;
+}
+.source-type {
+	font-size: 0.7rem;
+	padding: 0.15rem 0.5rem;
+	border-radius: 3px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+	background: #1a2a3a;
+	color: #60a5fa;
+	white-space: nowrap;
+}
+.source-id {
+	font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+	font-size: 0.8rem;
+	color: var(--text);
+}
+.source-status {
+	margin-left: auto;
+	font-size: 0.8rem;
+	font-weight: 500;
+	white-space: nowrap;
+}
+.source-error {
+	font-size: 0.75rem;
+	color: #f87171;
+	display: block;
+	width: 100%;
+	margin-top: 0.25rem;
+}
+.collection-detail > .collection-meta {
+	margin-top: 1rem;
+	padding-top: 0.75rem;
+	border-top: 1px solid var(--border);
+	font-size: 0.75rem;
+	color: var(--dim);
+	display: flex;
+	gap: 1.5rem;
+}
+.collection-detail-loading,
+.collection-detail-error {
+	text-align: center;
+	color: var(--muted);
+	padding: 2rem;
+	font-size: 0.9rem;
+}
+
+/* ─── Promote / Session Key ──────────────────────────────────────────────── */
+
+.session-key-manager {
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	padding: 0.75rem 1rem;
+	margin: 0.75rem 0;
+	font-size: 0.85rem;
+}
+.session-key-manager p {
+	color: var(--muted);
+	font-size: 0.8rem;
+	margin: 0.3rem 0 0.5rem;
+}
+.session-key-status {
+	font-weight: 600;
+	font-size: 0.8rem;
+}
+.session-key-status.active {
+	color: #4ade80;
+}
+.session-key-status.inactive {
+	color: var(--muted);
+}
+.session-key-expires {
+	font-size: 0.75rem;
+	color: var(--dim);
+	margin-left: 0.75rem;
+}
+.session-key-manager button {
+	padding: 0.4rem 0.8rem;
+	border-radius: 6px;
+	font-size: 0.8rem;
+	font-weight: 500;
+	cursor: pointer;
+	transition: all 150ms;
+	margin-left: 0.5rem;
+	background: var(--accent);
+	color: white;
+	border: none;
+}
+.session-key-manager button:hover {
+	background: var(--accent-dim);
+}
+.session-key-manager button:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+.session-key-error {
+	display: block;
+	color: #f87171;
+	font-size: 0.75rem;
+	margin-top: 0.3rem;
+}
+.promote-action {
+	margin: 0.75rem 0;
+}
+.promote-action button {
+	padding: 0.55rem 1.2rem;
+	background: var(--accent);
+	color: white;
+	border: none;
+	border-radius: 6px;
+	font-size: 0.9rem;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background 150ms;
+}
+.promote-action button:hover {
+	background: var(--accent-dim);
+}
+.promote-action button:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+.promote-error {
+	display: block;
+	color: #f87171;
+	font-size: 0.8rem;
+	margin-top: 0.3rem;
+}
+.promote-progress {
+	margin: 0.75rem 0;
+	color: var(--accent);
+	font-size: 0.85rem;
+	font-weight: 500;
+}
+.promote-result {
+	margin: 0.75rem 0;
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+}
+.promote-success {
+	color: #4ade80;
+	font-weight: 600;
+	font-size: 0.85rem;
+}
+.promote-cid {
+	font-size: 0.75rem;
+	color: var(--text);
+	font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+	background: var(--bg);
+	padding: 0.2rem 0.5rem;
+	border-radius: 4px;
+	border: 1px solid var(--border);
+}
+.promote-needs-key {
+	margin: 0.75rem 0;
+}
+.promote-needs-key p {
+	color: var(--muted);
+	font-size: 0.85rem;
+	margin-bottom: 0.5rem;
+}
