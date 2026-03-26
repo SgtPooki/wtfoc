@@ -292,18 +292,28 @@ async function getCollectionByCid(cid: string): Promise<LoadedCollection> {
 			`✅ Loaded CID ${cid.slice(0, 16)}...: ${manifest.totalChunks} chunks, ${manifest.segments.length} segments`,
 		);
 
-		// Persist the manifest locally so it appears in /api/collections.
-		// Sanitize the name to be filesystem-safe (no slashes, control chars).
+		// Persist the collection locally: download all segment data from IPFS to
+		// local storage so the collection works natively via the name-based path.
 		const rawName = manifest.name || `cid-${cid.slice(0, 16)}`;
 		const safeName = rawName.replace(/[/\\:*?"<>|]/g, "-").replace(/\.{2,}/g, ".").slice(0, 128);
 		const persistName = safeName || `cid-${cid.slice(0, 16)}`;
 		try {
+			// Download each segment's raw bytes from IPFS → local storage.
+			// Re-downloading ensures the content hash matches the manifest ID.
+			for (const segSummary of manifest.segments) {
+				const exists = await store.storage.verify?.(segSummary.id);
+				if (exists?.exists) continue; // already cached locally
+				const segBytes = await storage.download(segSummary.id);
+				await store.storage.upload(segBytes);
+			}
+			console.error(`💾 Downloaded ${manifest.segments.length} segments to local storage`);
+
 			const existing = await store.manifests.getHead(persistName);
 			await store.manifests.putHead(persistName, manifest, existing?.headId ?? null);
 			console.error(`💾 Persisted CID collection as "${persistName}"`);
 		} catch (err) {
-			// Non-fatal — collection still works from cache, just won't appear in list
-			console.error(`⚠️  Could not persist CID manifest locally: ${err instanceof Error ? err.message : err}`);
+			// Non-fatal — collection still works from cache
+			console.error(`⚠️  Could not persist CID collection locally: ${err instanceof Error ? err.message : err}`);
 		}
 		loaded.persistedName = persistName;
 
