@@ -44,6 +44,17 @@ const URL_SHORTCUTS: Record<string, string> = {
 };
 
 /**
+ * Parse maxInputTokens: 0 means unlimited (Infinity), absent/NaN falls back to 4000.
+ */
+function parseMaxInputTokens(raw: string | undefined): number {
+	if (raw == null) return 4000;
+	const parsed = Number.parseInt(raw, 10);
+	if (Number.isNaN(parsed)) return 4000;
+	if (parsed === 0) return Number.POSITIVE_INFINITY;
+	return parsed;
+}
+
+/**
  * Resolve LLM extractor config from CLI flags and environment variables.
  * Returns disabled config by default.
  */
@@ -105,10 +116,8 @@ export function resolveExtractorConfig(opts: ExtractorCliOpts): LlmExtractorConf
 		jsonMode,
 		timeoutMs: Number.isNaN(timeoutMs) ? 60000 : timeoutMs,
 		maxConcurrency: Number.isNaN(maxConcurrency) ? 4 : maxConcurrency,
-		maxInputTokens:
-			Number.parseInt(
-				opts.extractorMaxInputTokens ?? process.env.WTFOC_EXTRACTOR_MAX_INPUT_TOKENS ?? "4000",
-				10,
-			) || 4000,
+		maxInputTokens: parseMaxInputTokens(
+			opts.extractorMaxInputTokens ?? process.env.WTFOC_EXTRACTOR_MAX_INPUT_TOKENS,
+		),
 	};
 }
