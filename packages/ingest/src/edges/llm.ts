@@ -45,7 +45,7 @@ export class LlmEdgeExtractor implements EdgeExtractor {
 		// so chunk batches don't overflow the model context window.
 		const promptOverhead = estimatePromptOverhead();
 		if (promptOverhead >= maxInputTokens) {
-			console.error(
+			console.warn(
 				`[wtfoc] Warning: prompt overhead (${promptOverhead} tokens) exceeds maxInputTokens (${maxInputTokens}). Skipping LLM extraction.`,
 			);
 			return [];
@@ -97,6 +97,11 @@ export class LlmEdgeExtractor implements EdgeExtractor {
 				batches.push(currentBatch);
 				currentBatch = [];
 				currentTokens = 0;
+			}
+			if (tokens > maxTokens) {
+				console.warn(
+					`[wtfoc] Warning: chunk ${chunk.id} (${tokens} tokens) exceeds budget (${maxTokens}). Sending as oversized batch; LLM may truncate.`,
+				);
 			}
 			currentBatch.push(chunk);
 			currentTokens += tokens;
