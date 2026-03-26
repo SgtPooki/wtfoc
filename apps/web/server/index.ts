@@ -132,12 +132,20 @@ try {
 // Cache embedders by model name so we don't recreate per-request
 const embedderCache = new Map<string, { embedder: Embedder; modelName: string }>();
 
+function findProfileForModel(modelName: string): EmbedderProfile | undefined {
+	const profiles = resolvedEmbedderConfig?.profiles ?? {};
+	for (const p of Object.values(profiles)) {
+		if (p.model === modelName) return p;
+	}
+	return undefined;
+}
+
 /**
  * Get or create an embedder for a specific model.
  * Looks up the model in .wtfoc.json profiles for prefix/pooling config,
  * then creates an appropriately configured embedder.
  */
-function getEmbedderForModel(modelName: string): { embedder: Embedder; modelName: string } {
+async function getEmbedderForModel(modelName: string): Promise<{ embedder: Embedder; modelName: string }> {
 	const cached = embedderCache.get(modelName);
 	if (cached) return cached;
 
@@ -148,21 +156,12 @@ function getEmbedderForModel(modelName: string): { embedder: Embedder; modelName
 		process.env["WTFOC_OPENAI_API_KEY"] ??
 		"no-key";
 
-	// Find a matching profile for this model (by model name match)
-	const profiles = resolvedEmbedderConfig?.profiles ?? {};
-	let profile: EmbedderProfile | undefined;
-	for (const p of Object.values(profiles)) {
-		if (p.model === modelName) {
-			profile = p;
-			break;
-		}
-	}
-
-	const { OpenAIEmbedder, TransformersEmbedder } = require("@wtfoc/search") as typeof import("@wtfoc/search");
+	const profile = findProfileForModel(modelName);
 
 	let result: { embedder: Embedder; modelName: string };
 
 	if (url) {
+		const { OpenAIEmbedder } = await import("@wtfoc/search");
 		result = {
 			embedder: new OpenAIEmbedder({
 				apiKey,
@@ -176,6 +175,7 @@ function getEmbedderForModel(modelName: string): { embedder: Embedder; modelName
 	} else {
 		// Local transformers.js fallback
 		try {
+			const { TransformersEmbedder } = await import("@wtfoc/search");
 			result = {
 				embedder: new TransformersEmbedder(modelName, {
 					dimensions: profile?.dimensions,
@@ -185,7 +185,6 @@ function getEmbedderForModel(modelName: string): { embedder: Embedder; modelName
 				modelName,
 			};
 		} catch {
-			console.error(`⚠️  Cannot create embedder for model "${modelName}"`);
 			throw new Error(`No embedder available for model "${modelName}"`);
 		}
 	}
@@ -198,7 +197,7 @@ function getEmbedderForModel(modelName: string): { embedder: Embedder; modelName
 }
 
 /** Get the default embedder (from env/config, used for MCP and when collection model is unknown). */
-function getDefaultEmbedder(): { embedder: Embedder; modelName: string } {
+async function getDefaultEmbedder(): Promise<{ embedder: Embedder; modelName: string }> {
 	const model =
 		resolvedEmbedderConfig?.model ??
 		process.env["WTFOC_EMBEDDER_MODEL"];
@@ -207,7 +206,7 @@ function getDefaultEmbedder(): { embedder: Embedder; modelName: string } {
 
 	// Try local MiniLM fallback
 	try {
-		return getEmbedderForModel("Xenova/all-MiniLM-L6-v2");
+		return await getEmbedderForModel("Xenova/all-MiniLM-L6-v2");
 	} catch {
 		// fall through
 	}
@@ -222,7 +221,7 @@ function getDefaultEmbedder(): { embedder: Embedder; modelName: string } {
  * Get the right embedder for a collection based on its embeddingModel metadata.
  * Falls back to the default embedder if the collection model is unknown.
  */
-function getEmbedderForCollection(manifest: CollectionHead): { embedder: Embedder; modelName: string } {
+async function getEmbedderForCollection(manifest: CollectionHead): Promise<{ embedder: Embedder; modelName: string }> {
 	const collectionModel = manifest.embeddingModel;
 	if (collectionModel && collectionModel !== "pending") {
 		return getEmbedderForModel(collectionModel);
@@ -537,7 +536,7 @@ function parseQuery(url: string): URLSearchParams {
 async function main() {
 	// Initialize store and embedder
 	store = getStore();
-	const defaultEmbedder = getDefaultEmbedder();
+	const defaultEmbedder = await getDefaultEmbedder();
 	embedder = defaultEmbedder.embedder;
 
 	// Cache static files at startup
@@ -738,7 +737,7 @@ async function main() {
 					if (!q) return jsonResponse(res, { error: "Missing ?q= parameter" }, 400);
 					if (q.length > 2000) return jsonResponse(res, { error: "Query too long" }, 400);
 					const topK = Math.min(Math.max(1, Number(params.get("k") ?? "10") || 10), 100);
-					const colEmbedder = getEmbedderForCollection(col.manifest).embedder;
+					const colEmbedder = (await getEmbedderForCollection(col.manifest)).embedder;
 					const result = await query(q, colEmbedder, col.vectorIndex, { topK });
 					return jsonResponse(res, result);
 				}
@@ -747,7 +746,7 @@ async function main() {
 					const q = params.get("q");
 					if (!q) return jsonResponse(res, { error: "Missing ?q= parameter" }, 400);
 					if (q.length > 2000) return jsonResponse(res, { error: "Query too long" }, 400);
-					const colEmbedder = getEmbedderForCollection(col.manifest).embedder;
+					const colEmbedder = (await getEmbedderForCollection(col.manifest)).embedder;
 					const result = await trace(q, colEmbedder, col.vectorIndex, col.segments);
 					return jsonResponse(res, {
 						query: result.query,
