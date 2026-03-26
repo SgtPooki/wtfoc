@@ -1,6 +1,5 @@
 import type { Segment } from "@wtfoc/common";
 import { type Chunk, type CollectionHead, CURRENT_SCHEMA_VERSION } from "@wtfoc/common";
-import { createIgnoreFilter } from "@wtfoc/config";
 import {
 	buildSegment,
 	buildSourceKey,
@@ -138,11 +137,13 @@ export function registerIngestCommand(program: Command): void {
 			if (format !== "quiet") console.error(`⏳ Ingesting ${sourceType}: ${sourceArg}...`);
 
 			const config = adapter.parseConfig(rawConfig);
-			// Always apply ignore filter for repo adapter (builtins + .wtfoc.json + --ignore)
+			// Pass raw ignore pattern sources to repo adapter for unified filter construction
+			// (adapter loads .wtfocignore after acquireRepo, then merges all sources in order)
 			if (sourceType === "repo") {
 				const projectCfg = getProjectConfig();
-				const ignoreFilter = createIgnoreFilter(projectCfg?.ignore, opts.ignore);
-				(config as Record<string, unknown>).ignoreFilter = ignoreFilter;
+				const adapterConfig = config as Record<string, unknown>;
+				adapterConfig.ignorePatternSources = [projectCfg?.ignore, opts.ignore];
+				adapterConfig.quiet = format === "quiet";
 			}
 			const maxBatch = Number.parseInt(opts.batchSize, 10) || 500;
 			const maxChunkChars = opts.maxChunkChars

@@ -1,9 +1,8 @@
-import { readFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
-import { extname, join, relative } from "node:path";
+import { extname, relative } from "node:path";
 import type { Chunk, Edge, SourceAdapter } from "@wtfoc/common";
-import { BUILTIN_IGNORE_PATTERNS, WtfocError } from "@wtfoc/common";
-import ignore from "ignore";
+import { WtfocError } from "@wtfoc/common";
+import { createIgnoreFilter, loadWtfocIgnore } from "@wtfoc/config";
 import { chunkMarkdown, type MarkdownChunkerOptions } from "../../chunker.js";
 import { acquireRepo, extractRepoName } from "./acquisition.js";
 import { chunkCode, DEFAULT_EXCLUDE, DEFAULT_INCLUDE, walkFiles } from "./chunking.js";
@@ -23,8 +22,10 @@ export interface RepoAdapterConfig {
 	chunkerOptions?: MarkdownChunkerOptions;
 	/** Max file size in bytes to process (default: 100KB) */
 	maxFileSize?: number;
-	/** Ignore filter from CLI/config — returns true for files to INCLUDE */
-	ignoreFilter?: (path: string) => boolean;
+	/** Raw ignore pattern sources from .wtfoc.json and --ignore CLI flags */
+	ignorePatternSources?: (string[] | undefined)[];
+	/** Suppress informational messages (e.g., .wtfocignore detection) */
+	quiet?: boolean;
 }
 
 export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
@@ -52,23 +53,17 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 		const repoPath = await acquireRepo(opts.source);
 		const repo = extractRepoName(opts.source);
 
-		// Load .wtfocignore from repo root and compose with existing filter
-		const wtfocIgnorePatterns = loadRepoWtfocIgnore(repoPath);
-		let ignoreFilter = opts.ignoreFilter;
-		if (wtfocIgnorePatterns.length > 0) {
+		// Load .wtfocignore from repo root, then build a single unified filter
+		// with all pattern sources in precedence order:
+		// builtins → .wtfocignore → .wtfoc.json → --ignore CLI
+		const wtfocIgnorePatterns = loadWtfocIgnore(repoPath);
+		if (wtfocIgnorePatterns.length > 0 && !opts.quiet) {
 			console.error(`   .wtfocignore found: ${wtfocIgnorePatterns.length} pattern(s) loaded`);
-			const ig = ignore();
-			ig.add([...BUILTIN_IGNORE_PATTERNS]);
-			ig.add(wtfocIgnorePatterns);
-			const wtfocIgnoreFilter = (path: string): boolean => {
-				const normalized = path.replace(/\\/g, "/").replace(/^\.\//, "");
-				return !ig.ignores(normalized);
-			};
-			const baseFilter = ignoreFilter;
-			ignoreFilter = baseFilter
-				? (path: string) => baseFilter(path) && wtfocIgnoreFilter(path)
-				: wtfocIgnoreFilter;
 		}
+		const ignoreFilter = createIgnoreFilter(
+			wtfocIgnorePatterns.length > 0 ? wtfocIgnorePatterns : undefined,
+			...(opts.ignorePatternSources ?? []),
+		);
 
 		const includeExts = new Set(opts.include ?? [...DEFAULT_INCLUDE]);
 		const excludeDirs = opts.exclude ?? DEFAULT_EXCLUDE;
@@ -200,21 +195,4 @@ function resolveImportPath(importPath: string, currentFile: string, repo: string
 		return `${repo}/${dir}/${importPath}`.replace(/\/\.\//g, "/");
 	}
 	return importPath;
-}
-
-function loadRepoWtfocIgnore(repoRoot: string): string[] {
-	const filePath = join(repoRoot, ".wtfocignore");
-	let content: string;
-	try {
-		content = readFileSync(filePath, "utf-8");
-	} catch (err: unknown) {
-		if (err instanceof Error && "code" in err && err.code === "ENOENT") {
-			return [];
-		}
-		throw err;
-	}
-	return content
-		.split("\n")
-		.map((line) => line.trim())
-		.filter((line) => line.length > 0 && !line.startsWith("#"));
 }

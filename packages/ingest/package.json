@@ -30,22 +30,26 @@
 		"@wtfoc/common": "workspace:*",
 		"crawlee": "^3.16.0",
 		"discord.js": "^14.25.1",
-		"ignore": "^7.0.0",
 		"turndown": "^7.2.2"
 	},
 	"optionalDependencies": {
 		"oxc-parser": "^0.121.0"
 	},
 	"peerDependencies": {
+		"@wtfoc/config": "workspace:^",
 		"@wtfoc/store": "workspace:^"
 	},
 	"peerDependenciesMeta": {
+		"@wtfoc/config": {
+			"optional": false
+		},
 		"@wtfoc/store": {
 			"optional": true
 		}
 	},
 	"devDependencies": {
 		"@types/turndown": "^5.0.6",
+		"@wtfoc/config": "workspace:*",
 		"@wtfoc/store": "workspace:*",
 		"typescript": "^5.8.0"
 	}
