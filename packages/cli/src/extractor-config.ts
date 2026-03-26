@@ -32,6 +32,7 @@ export interface ExtractorCliOpts {
 	extractorJsonMode?: string;
 	extractorTimeout?: string;
 	extractorConcurrency?: string;
+	extractorMaxInputTokens?: string;
 }
 
 /**
@@ -104,6 +105,10 @@ export function resolveExtractorConfig(opts: ExtractorCliOpts): LlmExtractorConf
 		jsonMode,
 		timeoutMs: Number.isNaN(timeoutMs) ? 60000 : timeoutMs,
 		maxConcurrency: Number.isNaN(maxConcurrency) ? 4 : maxConcurrency,
-		maxInputTokens: 4000,
+		maxInputTokens:
+			Number.parseInt(
+				opts.extractorMaxInputTokens ?? process.env.WTFOC_EXTRACTOR_MAX_INPUT_TOKENS ?? "4000",
+				10,
+			) || 4000,
 	};
 }
