@@ -23,6 +23,7 @@ async function apiFetch<T>(
 	path: string,
 	params?: Record<string, string>,
 	signal?: AbortSignal,
+	init?: RequestInit,
 ): Promise<T> {
 	const url = new URL(`${API_BASE}${path}`, window.location.origin);
 	if (params) {
@@ -31,7 +32,15 @@ async function apiFetch<T>(
 		}
 	}
 
-	const res = await fetch(url.toString(), { signal });
+	const headers: Record<string, string> = {};
+	if (init?.body) headers["Content-Type"] = "application/json";
+
+	const res = await fetch(url.toString(), {
+		signal,
+		credentials: "same-origin",
+		...init,
+		headers: { ...headers, ...(init?.headers as Record<string, string>) },
+	});
 
 	if (!res.ok) {
 		const body = await res.json().catch(() => ({ error: res.statusText }));

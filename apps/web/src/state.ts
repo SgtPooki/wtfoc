@@ -19,6 +19,26 @@ export const collection = signal(getParam("collection"));
 /** Whether a search/trace request is in-flight */
 export const loading = signal(false);
 
+// ─── Wallet state ────────────────────────────────────────────────────────────
+
+/** Connected wallet address (null if not connected) */
+export const walletAddress = signal<string | null>(null);
+
+/** Whether the wallet is connected and authenticated with the server */
+export const isConnected = signal(false);
+
+/** Current chain ID from the wallet */
+export const chainId = signal<number>(0);
+
+/** Whether the user has an active session key for FOC operations */
+export const sessionKeyActive = signal(false);
+
+/** Expiration time of the session key */
+export const sessionKeyExpiresAt = signal<string | null>(null);
+
+/** Current view in the wallet flow */
+export const walletView = signal<"none" | "collections" | "create" | "detail">("none");
+
 /** Current AbortController for cancelling in-flight requests */
 let currentAbort: AbortController | null = null;
 

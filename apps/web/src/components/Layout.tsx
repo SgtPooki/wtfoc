@@ -4,6 +4,7 @@ import { fetchStatus } from "../api";
 import { collection } from "../state";
 import type { StatusResponse } from "../types";
 import { SearchBar } from "./SearchBar";
+import { WalletConnect } from "./WalletConnect";
 
 interface LayoutProps {
 	children: ComponentChildren;
@@ -30,6 +31,7 @@ export function Layout({ children }: LayoutProps) {
 				<h1>
 					wt<span class="accent">FOC</span>
 				</h1>
+				<WalletConnect />
 				{status && (
 					<div class="stats-bar">
 						<span>

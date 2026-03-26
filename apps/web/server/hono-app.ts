@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { csrf } from "hono/csrf";
 import type { Repository } from "./db/index.js";
+import { authRoutes } from "./auth/routes.js";
 
 export type AppEnv = {
 	Variables: {
@@ -44,6 +45,9 @@ export function createHonoApp(repo: Repository): Hono<AppEnv> {
 		c.set("repo", repo);
 		await next();
 	});
+
+	// Mount auth routes
+	app.route("/api/auth", authRoutes);
 
 	// Global error handler
 	app.onError((err, c) => {

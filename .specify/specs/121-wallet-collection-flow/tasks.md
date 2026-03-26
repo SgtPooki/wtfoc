@@ -54,19 +54,19 @@
 
 ### Tests for User Story 1
 
-- [ ] T014a [P] [US1] Write unit tests for SIWE challenge/verify and session cookie lifecycle in apps/web/server/auth/siwe.test.ts and apps/web/server/auth/session.test.ts — test nonce generation, signature verification (valid/invalid), cookie issuance, cookie invalidation on disconnect. Use in-memory repository.
+- [x] T014a [P] [US1] Write unit tests for SIWE challenge/verify and session cookie lifecycle in apps/web/server/auth/siwe.test.ts and apps/web/server/auth/session.test.ts — test nonce generation, signature verification (valid/invalid), cookie issuance, cookie invalidation on disconnect. Use in-memory repository.
 
 ### Implementation for User Story 1
 
-- [ ] T014 [P] [US1] Implement SIWE challenge generation and signature verification in apps/web/server/auth/siwe.ts — generate nonce, build SIWE message, verify signature with viem.verifySiweMessage()
-- [ ] T015 [P] [US1] Implement session cookie management in apps/web/server/auth/session.ts — issue HttpOnly/Secure/SameSite=Strict cookie on successful SIWE verify, validate cookie on requests, invalidate on disconnect
-- [ ] T016 [US1] Implement auth middleware in apps/web/server/auth/middleware.ts — Hono middleware that reads session cookie, looks up WalletSession in repository, attaches wallet_address to request context, returns 401 if invalid/missing
-- [ ] T017 [US1] Implement auth routes in apps/web/server/auth/routes.ts — POST /api/auth/challenge, POST /api/auth/verify, POST /api/auth/disconnect per contracts/api.md
-- [ ] T018 [P] [US1] Create wagmi config with MetaMask + WalletConnect connectors in apps/web/src/wallet.ts — configure chains (Calibration testnet), WalletConnect project ID from env, SIWE helper functions (requestChallenge, signAndVerify)
-- [ ] T019 [P] [US1] Add wallet state signals (walletAddress, isConnected, chainId, sessionKeyActive) to apps/web/src/state.ts
-- [ ] T020 [US1] Create WalletConnect component in apps/web/src/components/WalletConnect.tsx — Connect/Disconnect button, shows truncated address when connected, handles MetaMask and WalletConnect providers, triggers SIWE flow on connect
-- [ ] T021 [US1] Integrate WalletConnect into app layout in apps/web/src/app.tsx — add wallet button to header, conditionally show authenticated vs unauthenticated UI
-- [ ] T022 [US1] Add chain mismatch detection in apps/web/src/components/WalletConnect.tsx — detect wrong chain ID, prompt user to switch to Calibration testnet
+- [x] T014 [P] [US1] Implement SIWE challenge generation and signature verification in apps/web/server/auth/siwe.ts — generate nonce, build SIWE message, verify signature with viem.verifySiweMessage()
+- [x] T015 [P] [US1] Implement session cookie management in apps/web/server/auth/session.ts — issue HttpOnly/Secure/SameSite=Strict cookie on successful SIWE verify, validate cookie on requests, invalidate on disconnect
+- [x] T016 [US1] Implement auth middleware in apps/web/server/auth/middleware.ts — Hono middleware that reads session cookie, looks up WalletSession in repository, attaches wallet_address to request context, returns 401 if invalid/missing
+- [x] T017 [US1] Implement auth routes in apps/web/server/auth/routes.ts — POST /api/auth/challenge, POST /api/auth/verify, POST /api/auth/disconnect per contracts/api.md
+- [x] T018 [P] [US1] Create wagmi config with MetaMask + WalletConnect connectors in apps/web/src/wallet.ts — configure chains (Calibration testnet), WalletConnect project ID from env, SIWE helper functions (requestChallenge, signAndVerify)
+- [x] T019 [P] [US1] Add wallet state signals (walletAddress, isConnected, chainId, sessionKeyActive) to apps/web/src/state.ts
+- [x] T020 [US1] Create WalletConnect component in apps/web/src/components/WalletConnect.tsx — Connect/Disconnect button, shows truncated address when connected, handles MetaMask and WalletConnect providers, triggers SIWE flow on connect
+- [x] T021 [US1] Integrate WalletConnect into app layout in apps/web/src/app.tsx — add wallet button to header, conditionally show authenticated vs unauthenticated UI
+- [x] T022 [US1] Add chain mismatch detection in apps/web/src/components/WalletConnect.tsx — detect wrong chain ID, prompt user to switch to Calibration testnet
 
 **Checkpoint**: User can connect wallet, sign SIWE, see their address, refresh without losing session, and disconnect. Server correctly identifies the user on API calls.
 
