@@ -1,8 +1,9 @@
-import type {
-	CollectionHead,
-	Embedder,
-	EmbedderProfile,
-	ResolvedEmbedderConfig,
+import {
+	type CollectionHead,
+	type Embedder,
+	type EmbedderProfile,
+	type ResolvedEmbedderConfig,
+	URL_SHORTCUTS,
 } from "@wtfoc/common";
 import { resolveUrlShortcut } from "@wtfoc/config";
 import type { MountedCollection } from "@wtfoc/search";
@@ -144,7 +145,7 @@ export function createEmbedder(
 	const pooling = resolvedConfig?.pooling ?? profile?.pooling;
 
 	// API-based embedder (any OpenAI-compatible endpoint)
-	if (url || type === "api") {
+	if (url || type === "api" || type in URL_SHORTCUTS) {
 		const baseUrl = url ?? resolveUrlShortcut(type);
 
 		if (!baseUrl.startsWith("http")) {
