@@ -19,7 +19,7 @@ class ApiError extends Error {
 	}
 }
 
-async function apiFetch<T>(
+export async function apiFetch<T>(
 	path: string,
 	params?: Record<string, string>,
 	signal?: AbortSignal,
