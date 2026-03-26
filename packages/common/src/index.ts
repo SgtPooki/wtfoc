@@ -66,8 +66,10 @@ export type {
 	CollectionRevision,
 	DatasetRoutingMetadata,
 	HeadManifest,
+	NoiseCategory,
 	ProvenanceRecord,
 	Segment,
 	SegmentSummary,
+	ThemeSnapshot,
 } from "./schemas/manifest.js";
 export { CURRENT_SCHEMA_VERSION, MAX_SUPPORTED_SCHEMA_VERSION } from "./version.js";

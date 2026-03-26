@@ -1,3 +1,4 @@
+import type { ThemeSnapshot } from "@wtfoc/common";
 import { GreedyClusterer } from "@wtfoc/search";
 import type { Command } from "commander";
 import type { ExtractorCliOpts, LlmExtractorEnabled } from "../extractor-config.js";
@@ -41,7 +42,8 @@ export function registerThemesCommand(program: Command): void {
 		)
 		.option("--all", "Show all clusters (not just top 20)")
 		.option("-n, --limit <number>", "Max clusters to display", String(DEFAULT_DISPLAY_LIMIT))
-		.option("--include-config", "Include config/boilerplate chunks in clustering");
+		.option("--include-config", "Include config/boilerplate chunks in clustering")
+		.option("--dry-run", "Compute themes without persisting to the collection manifest");
 
 	withExtractorOptions(cmd).action(
 		async (
@@ -53,6 +55,7 @@ export function registerThemesCommand(program: Command): void {
 				all?: boolean;
 				limit: string;
 				includeConfig?: boolean;
+				dryRun?: boolean;
 			} & ExtractorCliOpts,
 		) => {
 			const store = getStore(program);
@@ -114,6 +117,7 @@ export function registerThemesCommand(program: Command): void {
 					opts.extractorEnabled ?? !!(opts.extractorUrl ?? process.env.WTFOC_EXTRACTOR_URL),
 			};
 			const llmConfig = resolveExtractorConfig(extractorOpts);
+			const llmLabeled = llmConfig.enabled;
 
 			// LLM post-processing: relabel clusters + summarize noise
 			let noiseCategories: Array<{ name: string; count: number; description: string }> = [];
@@ -135,7 +139,7 @@ export function registerThemesCommand(program: Command): void {
 				}
 
 				// Noise summarization
-				if (result.noise.length > 0 && format !== "json") {
+				if (result.noise.length > 0) {
 					if (format !== "quiet") console.error("Summarizing noise...");
 					const noiseContents = result.noise
 						.map((id) => idToContent.get(id))
@@ -145,10 +149,38 @@ export function registerThemesCommand(program: Command): void {
 				}
 			}
 
-			// JSON always returns the full, unfiltered result
+			// Build theme snapshot for persistence
+			const snapshot: ThemeSnapshot = {
+				threshold,
+				clusters: result.clusters.map((c) => ({
+					id: c.id,
+					label: c.label,
+					exemplarIds: c.exemplarIds,
+					memberIds: c.memberIds,
+					size: c.size,
+				})),
+				noise: result.noise,
+				noiseCategories,
+				totalProcessed: result.totalProcessed,
+				filteredConfigChunks: filteredCount,
+				llmLabeled,
+				computedAt: new Date().toISOString(),
+			};
+
+			// Persist to manifest unless --dry-run
+			if (!opts.dryRun) {
+				const updatedManifest = {
+					...head.manifest,
+					themes: snapshot,
+					updatedAt: new Date().toISOString(),
+				};
+				await store.manifests.putHead(opts.collection, updatedManifest, head.headId);
+				if (format !== "quiet") console.error("Themes persisted to collection manifest.");
+			}
+
+			// JSON always returns the full result
 			if (format === "json") {
-				const jsonResult = noiseCategories.length > 0 ? { ...result, noiseCategories } : result;
-				console.log(JSON.stringify(jsonResult, null, "\t"));
+				console.log(JSON.stringify(snapshot, null, "\t"));
 				return;
 			}
 
