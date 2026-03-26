@@ -99,12 +99,13 @@ describe("detectInsights", () => {
 	});
 
 	describe("evidence-chain", () => {
-		it("detects a chain crossing 3+ source types via edges", () => {
+		it("detects a linear chain crossing 3+ source types via parentHopIndex", () => {
+			// Seed(0) → Issue(1) → PR(2) → Code(3)
 			const hops: TraceHop[] = [
-				makeHop("slack-message", "#support", "semantic"), // seed
-				makeHop("github-issue", "org/repo#1", "edge"), // edge from seed
-				makeHop("github-pr", "org/repo#2", "edge"), // edge from issue
-				makeHop("code", "org/repo", "edge"), // edge from PR
+				makeHop("slack-message", "#support", "semantic"),
+				makeHop("github-issue", "org/repo#1", "edge", { parentHopIndex: 0 }),
+				makeHop("github-pr", "org/repo#2", "edge", { parentHopIndex: 1 }),
+				makeHop("code", "org/repo", "edge", { parentHopIndex: 2 }),
 			];
 
 			const insights = detectInsights(hops, []);
@@ -112,14 +113,15 @@ describe("detectInsights", () => {
 			const chain = insights.find((i) => i.kind === "evidence-chain");
 			expect(chain).toBeDefined();
 			expect(chain?.summary).toContain("→");
-			expect(chain?.hopIndices.length).toBeGreaterThanOrEqual(3);
+			// Should be the full path: [0, 1, 2, 3]
+			expect(chain?.hopIndices).toEqual([0, 1, 2, 3]);
 		});
 
 		it("does not detect a chain with fewer than 3 source types", () => {
 			const hops: TraceHop[] = [
 				makeHop("slack-message", "#support", "semantic"),
-				makeHop("github-issue", "org/repo#1", "edge"),
-				makeHop("github-issue", "org/repo#2", "edge"), // same type
+				makeHop("github-issue", "org/repo#1", "edge", { parentHopIndex: 0 }),
+				makeHop("github-issue", "org/repo#2", "edge", { parentHopIndex: 1 }),
 			];
 
 			const insights = detectInsights(hops, []);
@@ -128,17 +130,42 @@ describe("detectInsights", () => {
 			expect(chain).toBeUndefined();
 		});
 
-		it("breaks chains on semantic hops", () => {
+		it("reports separate paths for sibling branches from DFS", () => {
+			// Seed(0) branches into two paths:
+			//   0 → 1(issue) → 2(PR) → 3(code)   ← 4 types
+			//   0 → 4(issue) → 5(docs)             ← only 3 types (slack, issue, docs)
 			const hops: TraceHop[] = [
-				makeHop("slack-message", "#support", "semantic"),
-				makeHop("github-issue", "org/repo#1", "edge"),
-				makeHop("code", "org/repo", "semantic"), // breaks chain
-				makeHop("github-pr", "org/repo#2", "edge"),
+				makeHop("slack-message", "#support", "semantic"), // 0: seed
+				makeHop("github-issue", "org/repo#1", "edge", { parentHopIndex: 0 }), // 1
+				makeHop("github-pr", "org/repo#2", "edge", { parentHopIndex: 1 }), // 2
+				makeHop("code", "org/repo", "edge", { parentHopIndex: 2 }), // 3
+				makeHop("github-issue", "org/repo#3", "edge", { parentHopIndex: 0 }), // 4: sibling
+				makeHop("markdown", "docs.md", "edge", { parentHopIndex: 4 }), // 5
 			];
 
 			const insights = detectInsights(hops, []);
 
-			// No chain should have 3+ types since semantic hop breaks it
+			const chains = insights.filter((i) => i.kind === "evidence-chain");
+			// Should find 2 chains: [0,1,2,3] and [0,4,5]
+			expect(chains.length).toBe(2);
+
+			// The longer chain should be first (longer = higher strength due to more types)
+			expect(chains[0]?.hopIndices).toEqual([0, 1, 2, 3]);
+			expect(chains[1]?.hopIndices).toEqual([0, 4, 5]);
+		});
+
+		it("does not detect chains without parentHopIndex", () => {
+			// Edge hops with no parentHopIndex — old-style data
+			const hops: TraceHop[] = [
+				makeHop("slack-message", "#support", "semantic"),
+				makeHop("github-issue", "org/repo#1", "edge"),
+				makeHop("github-pr", "org/repo#2", "edge"),
+				makeHop("code", "org/repo", "edge"),
+			];
+
+			const insights = detectInsights(hops, []);
+
+			// Without parentHopIndex, no tree structure → no chains
 			const chain = insights.find((i) => i.kind === "evidence-chain");
 			expect(chain).toBeUndefined();
 		});
@@ -221,9 +248,9 @@ describe("detectInsights", () => {
 
 			const hops: TraceHop[] = [
 				makeHop("slack-message", "#support", "semantic", { storageId: "s1" }),
-				makeHop("github-issue", "org/repo#1", "edge", { storageId: "s2" }),
-				makeHop("github-pr", "org/repo#2", "edge", { storageId: "s3" }),
-				makeHop("code", "org/repo", "edge", { storageId: "s4" }),
+				makeHop("github-issue", "org/repo#1", "edge", { storageId: "s2", parentHopIndex: 0 }),
+				makeHop("github-pr", "org/repo#2", "edge", { storageId: "s3", parentHopIndex: 1 }),
+				makeHop("code", "org/repo", "edge", { storageId: "s4", parentHopIndex: 2 }),
 			];
 
 			const segment = makeSegment([

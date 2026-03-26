@@ -78,80 +78,96 @@ function detectConvergence(hops: TraceHop[]): TraceInsight[] {
 // ─── Evidence Chains ────────────────────────────────────────────────────────
 
 /**
- * Evidence chain: A sequence of edge-connected hops that cross 3+ source
- * types. These show the "story" of how information flows across systems.
+ * Evidence chain: A true path through the DFS tree that crosses 3+ source
+ * types via explicit edges. Uses `parentHopIndex` to reconstruct actual
+ * root-to-leaf paths (not just consecutive hops in array order).
  *
  * E.g., Slack message → GitHub issue → PR → Code change
- *
- * Note: Since trace uses DFS, consecutive edge hops may include sibling
- * branches (not strictly linear paths). The chain represents "connected
- * subgraph crossing N source types" rather than a single linear path.
- * This is intentional — the insight value is in source-type diversity
- * of the connected component, not path linearity.
  */
 function detectEvidenceChains(hops: TraceHop[]): TraceInsight[] {
-	// Walk hops in order; edge hops that follow a previous hop form a chain
-	const chains: Array<{ indices: number[]; types: Set<string> }> = [];
-	let currentChain: { indices: number[]; types: Set<string> } | null = null;
+	// Find leaf hops (edge hops that no other hop points to as parent)
+	const hasChild = new Set<number>();
+	for (let i = 0; i < hops.length; i++) {
+		const hop = hops[i];
+		if (hop?.parentHopIndex != null) {
+			hasChild.add(hop.parentHopIndex);
+		}
+	}
+
+	// For each leaf, walk parentHopIndex back to root to get a true path
+	const paths: Array<{ indices: number[]; types: Set<string> }> = [];
 
 	for (let i = 0; i < hops.length; i++) {
 		const hop = hops[i];
 		if (!hop) continue;
+		// Only start from edge-connected leaves
+		if (hop.connection.method !== "edge") continue;
+		if (hasChild.has(i)) continue;
 
-		if (hop.connection.method === "edge") {
-			if (!currentChain) {
-				// Start a new chain — include the previous hop as the chain root
-				// (the seed that the edge came from)
-				const rootIdx = findChainRoot(hops, i);
-				const rootHop = rootIdx >= 0 ? hops[rootIdx] : undefined;
-				currentChain = {
-					indices: rootIdx >= 0 ? [rootIdx, i] : [i],
-					types: new Set<string>(),
-				};
-				if (rootHop) currentChain.types.add(rootHop.sourceType);
-			} else {
-				currentChain.indices.push(i);
-			}
-			currentChain.types.add(hop.sourceType);
-		} else {
-			// Semantic hop breaks the chain
-			if (currentChain && currentChain.types.size >= 3) {
-				chains.push(currentChain);
-			}
-			currentChain = null;
+		// Walk back to root
+		const path: number[] = [];
+		let current: number | undefined = i;
+		while (current != null) {
+			path.push(current);
+			current = hops[current]?.parentHopIndex;
+		}
+		path.reverse();
+
+		// Collect unique source types along the path
+		const types = new Set<string>();
+		for (const idx of path) {
+			const h = hops[idx];
+			if (h) types.add(h.sourceType);
+		}
+
+		if (types.size >= 3) {
+			paths.push({ indices: path, types });
 		}
 	}
 
-	// Don't forget the last chain
-	if (currentChain && currentChain.types.size >= 3) {
-		chains.push(currentChain);
+	if (paths.length === 0) return [];
+
+	// Deduplicate and rank:
+	// 1. Sort by source-type diversity (most types first), then by length
+	paths.sort((a, b) => b.types.size - a.types.size || b.indices.length - a.indices.length);
+
+	// 2. Drop paths that are subpaths of an already-kept path
+	const kept: typeof paths = [];
+	for (const path of paths) {
+		const key = path.indices.join(",");
+		const isSubpath = kept.some((k) => k.indices.join(",").startsWith(key));
+		if (!isSubpath) kept.push(path);
 	}
 
-	return chains.map((chain) => {
-		const typeSequence = chain.indices
+	// 3. Deduplicate chains with identical type sequences (keep the one with more types)
+	const seenSummaries = new Set<string>();
+	const unique: typeof kept = [];
+	for (const path of kept) {
+		const typeSequence = path.indices
 			.map((i) => formatSourceType(hops[i]?.sourceType ?? "unknown"))
-			.filter((v, idx, arr) => idx === 0 || v !== arr[idx - 1]); // dedupe consecutive
+			.filter((v, idx, arr) => idx === 0 || v !== arr[idx - 1]);
+		const key = typeSequence.join(" → ");
+		if (!seenSummaries.has(key)) {
+			seenSummaries.add(key);
+			unique.push(path);
+		}
+	}
 
-		const strength = Math.min(0.5 + chain.types.size * 0.15, 1.0);
+	// 4. Cap at 3 chains to avoid noisy output
+	return unique.slice(0, 3).map((path) => {
+		const typeSequence = path.indices
+			.map((i) => formatSourceType(hops[i]?.sourceType ?? "unknown"))
+			.filter((v, idx, arr) => idx === 0 || v !== arr[idx - 1]);
+
+		const strength = Math.min(0.5 + path.types.size * 0.15, 1.0);
 
 		return {
 			kind: "evidence-chain" as const,
 			summary: `Cross-source evidence trail: ${typeSequence.join(" → ")}`,
-			hopIndices: chain.indices,
+			hopIndices: path.indices,
 			strength,
 		};
 	});
-}
-
-/**
- * Find the most recent non-edge hop before `edgeIdx` — that's the seed
- * the edge chain grew from.
- */
-function findChainRoot(hops: TraceHop[], edgeIdx: number): number {
-	for (let i = edgeIdx - 1; i >= 0; i--) {
-		if (hops[i]?.connection.method !== "edge") return i;
-	}
-	return -1;
 }
 
 // ─── Temporal Clusters ──────────────────────────────────────────────────────

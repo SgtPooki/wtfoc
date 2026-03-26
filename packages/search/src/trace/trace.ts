@@ -34,6 +34,8 @@ export interface TraceHop {
 	sourceUrl?: string;
 	/** Storage ID for verification */
 	storageId: string;
+	/** Index of the hop that led to this one (undefined for seeds) */
+	parentHopIndex?: number;
 	/** How this hop was found */
 	connection: {
 		/** 'edge' if found via explicit edge, 'semantic' if via similarity */
@@ -116,6 +118,7 @@ export async function trace(
 
 		// Add seed as a hop
 		const chunkData = indexes.byId.get(seed.entry.id);
+		const seedIndex = hops.length;
 		hops.push({
 			content: chunkData?.content ?? "",
 			sourceType: seed.entry.metadata.sourceType ?? "unknown",
@@ -137,6 +140,7 @@ export async function trace(
 			hops,
 			0,
 			maxHops,
+			seedIndex,
 			options?.signal,
 			maxTotal,
 		);

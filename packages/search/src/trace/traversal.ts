@@ -11,6 +11,7 @@ export function followEdges(
 	hops: TraceHop[],
 	depth: number,
 	maxHops: number,
+	parentHopIndex: number,
 	signal?: AbortSignal,
 	maxTotal?: number,
 ): void {
@@ -47,12 +48,14 @@ export function followEdges(
 			if (visited.has(targetId)) continue;
 			visited.add(targetId);
 
+			const thisHopIndex = hops.length;
 			hops.push({
 				content: targetData.content,
 				sourceType: targetData.sourceType,
 				source: targetData.source,
 				sourceUrl: targetData.sourceUrl,
 				storageId: targetData.storageId,
+				parentHopIndex,
 				connection: {
 					method: "edge",
 					edgeType: edge.type,
@@ -70,6 +73,7 @@ export function followEdges(
 				hops,
 				depth + 1,
 				maxHops,
+				thisHopIndex,
 				signal,
 				maxTotal,
 			);
