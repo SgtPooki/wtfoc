@@ -158,11 +158,11 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T044 [P] Add structured error responses across all API routes in apps/web/server/ — consistent { error, code } format matching contracts/api.md
-- [ ] T045 [P] Add session key audit logging throughout promote-worker and auth routes in apps/web/server/ — log all session key operations with wallet address, operation type, timestamp per data-model.md
-- [ ] T046 [P] Wire SSRF-safe fetcher into WebsiteAdapter invocation in apps/web/server/collections/ingest-worker.ts — validate all website URLs through ssrf.ts before passing to adapter
+- [x] T044 [P] Add structured error responses across all API routes in apps/web/server/ — consistent { error, code } format matching contracts/api.md
+- [x] T045 [P] Add session key audit logging throughout promote-worker and auth routes in apps/web/server/ — log all session key operations with wallet address, operation type, timestamp per data-model.md
+- [x] T046 [P] Wire SSRF-safe fetcher into WebsiteAdapter invocation in apps/web/server/collections/ingest-worker.ts — validate all website URLs through ssrf.ts before passing to adapter
 - [ ] T047 (moved to T029a in US2)
-- [ ] T048 Run pnpm lint:fix across all modified files
+- [x] T048 Run pnpm lint:fix across all modified files
 - [ ] T049 Validate quickstart.md end-to-end — start server with DATABASE_URL, connect wallet, create collection, ingest, promote, verify CID is queryable
 
 ---

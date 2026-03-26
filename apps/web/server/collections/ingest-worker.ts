@@ -96,7 +96,13 @@ async function ingestSource(source: Source, signal?: AbortSignal): Promise<Chunk
 		}
 
 		case "website": {
-			// Import dynamically to avoid bundling crawlee when not needed
+			// SSRF validation before crawling
+			const { validateUrl } = await import("../security/ssrf.js");
+			const ssrfCheck = await validateUrl(source.identifier);
+			if (!ssrfCheck.safe) {
+				throw new Error(`URL blocked by SSRF check: ${ssrfCheck.reason}`);
+			}
+
 			const { getAdapter } = await import("@wtfoc/ingest");
 			const adapter = getAdapter("website");
 			if (!adapter) throw new Error("Website adapter not available");
