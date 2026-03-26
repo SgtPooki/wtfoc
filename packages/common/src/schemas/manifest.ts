@@ -75,6 +75,43 @@ export interface CollectionDescriptor {
 	routingMetadata: DatasetRoutingMetadata;
 }
 
+/** A noise category from LLM summarization of unclustered chunks. */
+export interface NoiseCategory {
+	name: string;
+	count: number;
+	description: string;
+}
+
+/** Persisted theme clustering results. Travels with the manifest CID. */
+export interface ThemeSnapshot {
+	/** Cosine similarity threshold used */
+	threshold: number;
+	/** Cluster data (id, label, exemplarIds, memberIds, size) */
+	clusters: Array<{
+		id: string;
+		label: string;
+		exemplarIds: string[];
+		memberIds: string[];
+		size: number;
+	}>;
+	/** Chunk IDs that didn't fit any cluster */
+	noise: string[];
+	/** LLM-generated noise breakdown (empty if no LLM was used) */
+	noiseCategories: NoiseCategory[];
+	/** Total chunks processed (after filtering) */
+	totalProcessed: number;
+	/** How many config/boilerplate chunks were filtered out */
+	filteredConfigChunks: number;
+	/** Whether LLM was used for labeling */
+	llmLabeled: boolean;
+	/** LLM model used for labeling (undefined if heuristic-only) */
+	llmModel?: string;
+	/** LLM endpoint base URL used (undefined if heuristic-only) */
+	llmBaseUrl?: string;
+	/** When this snapshot was computed */
+	computedAt: string;
+}
+
 /**
  * Collection Head — the single mutable pointer for a collection.
  * Evolved from HeadManifest. Carries both ingest summary data
@@ -95,6 +132,8 @@ export interface CollectionHead {
 	createdAt: string;
 	updatedAt: string;
 	batches?: BatchRecord[];
+	/** Persisted theme clustering results */
+	themes?: ThemeSnapshot;
 }
 
 /**

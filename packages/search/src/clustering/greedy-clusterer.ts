@@ -1,6 +1,6 @@
 /**
  * Greedy single-pass threshold-based clusterer.
- * Groups chunks by cosine similarity >= threshold (default 0.85).
+ * Groups chunks by cosine similarity >= threshold (default 0.72).
  * Exemplar selection: N closest to cluster centroid.
  * Label: first non-code exemplar's meaningful words.
  */
@@ -15,7 +15,7 @@ import type {
 import { centroid, dot, normalize } from "./cosine.js";
 import { extractLabelFromCandidates } from "./labels.js";
 
-const DEFAULT_THRESHOLD = 0.85;
+const DEFAULT_THRESHOLD = 0.72;
 const DEFAULT_MAX_EXEMPLARS = 3;
 
 export class GreedyClusterer implements Clusterer {

@@ -44,32 +44,106 @@ const SUPPORTED_EXTENSIONS: Record<string, string> = {
  *
  * Tree-sitter sidecar for full AST parsing tracked in #134.
  */
+/**
+ * Reconstruct a manifest file from one or more chunks.
+ * Sorts by chunkIndex, strips overlap between adjacent chunks, and
+ * concatenates content. Uses the first chunk's identity for edge sourceId.
+ *
+ * The repo chunker uses a fixed overlap (default 50 chars) between adjacent
+ * chunks. Naive concatenation would duplicate the overlap bytes and produce
+ * invalid content (e.g., broken JSON). We detect and strip the overlap by
+ * finding the longest suffix/prefix match between consecutive chunks.
+ */
+function reconstructManifest(chunks: Chunk[]): Chunk {
+	if (chunks.length === 1) {
+		const [single] = chunks;
+		return single as Chunk;
+	}
+
+	const sorted = [...chunks].sort((a, b) => a.chunkIndex - b.chunkIndex);
+	const [first, ...rest] = sorted;
+	const parts: string[] = [(first as Chunk).content];
+
+	let prevContent = (first as Chunk).content;
+	for (const chunk of rest) {
+		const overlap = findOverlap(prevContent, chunk.content);
+		parts.push(chunk.content.slice(overlap));
+		prevContent = chunk.content;
+	}
+
+	return {
+		...(first as Chunk),
+		content: parts.join(""),
+		totalChunks: 1,
+	};
+}
+
+/**
+ * Find the length of the longest suffix of `a` that matches a prefix of `b`.
+ * Searches up to 200 chars (well above the default 50-char overlap).
+ */
+function findOverlap(a: string, b: string): number {
+	const maxCheck = Math.min(a.length, b.length, 200);
+	for (let len = maxCheck; len > 0; len--) {
+		if (a.endsWith(b.slice(0, len))) return len;
+	}
+	return 0;
+}
+
+const MANIFEST_PARSERS: Record<string, (chunk: Chunk) => Edge[]> = {
+	"package.json": extractPackageJsonDeps,
+	"requirements.txt": extractRequirementsTxtDeps,
+};
+
 export class CodeEdgeExtractor implements EdgeExtractor {
 	async extract(chunks: Chunk[], signal?: AbortSignal): Promise<Edge[]> {
 		signal?.throwIfAborted();
 
-		const edges: Edge[] = [];
+		// Group manifest chunks by source so we can reconstruct split files
+		const manifestGroups = new Map<string, Chunk[]>();
+		const nonManifestChunks: Chunk[] = [];
+
 		for (const chunk of chunks) {
 			signal?.throwIfAborted();
 			if (chunk.sourceType !== "code" && chunk.sourceType !== "repo") continue;
-
 			const source = chunk.source || "";
-			const ext = extname(source);
 			const filename = basename(source);
 
-			// Dependency manifests
-			if (filename === "package.json") {
-				edges.push(...extractPackageJsonDeps(chunk));
-				continue;
+			if (filename === "package.json" || filename === "requirements.txt" || filename === "go.mod") {
+				const group = manifestGroups.get(source);
+				if (group) {
+					group.push(chunk);
+				} else {
+					manifestGroups.set(source, [chunk]);
+				}
+			} else {
+				nonManifestChunks.push(chunk);
 			}
-			if (filename === "requirements.txt") {
-				edges.push(...extractRequirementsTxtDeps(chunk));
-				continue;
-			}
+		}
+
+		const edges: Edge[] = [];
+
+		// Process manifest groups — reconstruct from multi-chunk if needed
+		for (const [source, group] of manifestGroups) {
+			signal?.throwIfAborted();
+			const filename = basename(source);
+			const reconstructed = reconstructManifest(group);
+
 			if (filename === "go.mod") {
-				edges.push(...this.#extractGoModDeps(chunk));
-				continue;
+				edges.push(...this.#extractGoModDeps(reconstructed));
+			} else {
+				const parser = MANIFEST_PARSERS[filename];
+				if (parser) {
+					edges.push(...parser(reconstructed));
+				}
 			}
+		}
+
+		// Process non-manifest code chunks as before
+		for (const chunk of nonManifestChunks) {
+			signal?.throwIfAborted();
+			const source = chunk.source || "";
+			const ext = extname(source);
 
 			const lang = SUPPORTED_EXTENSIONS[ext];
 			if (!lang) continue;
