@@ -4,7 +4,13 @@ import {
 	CURRENT_SCHEMA_VERSION,
 	type Segment,
 } from "@wtfoc/common";
-import { buildSegment, DEFAULT_MAX_CHUNK_CHARS, rechunkOversized, segmentId } from "@wtfoc/ingest";
+import {
+	buildSegment,
+	DEFAULT_MAX_CHUNK_CHARS,
+	extractSegmentMetadata,
+	rechunkOversized,
+	segmentId,
+} from "@wtfoc/ingest";
 import { bundleAndUpload, generateCollectionId } from "@wtfoc/store";
 import type { Command } from "commander";
 import { getProjectConfig } from "../cli.js";
@@ -250,6 +256,7 @@ export function registerReindexCommand(program: Command): void {
 							id: resultId,
 							sourceTypes: [...new Set(batchChunks.map((c) => c.sourceType))],
 							chunkCount: batchChunks.length,
+							...extractSegmentMetadata(batchChunks),
 						},
 					],
 					totalChunks: chunksProcessed,

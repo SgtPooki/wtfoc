@@ -68,6 +68,44 @@ export function segmentId(segment: Segment): string {
 }
 
 /**
+ * Extract segment-level repo and time metadata from a batch of chunks.
+ * Used to populate SegmentSummary.repoIds and SegmentSummary.timeRange.
+ */
+export function extractSegmentMetadata(chunks: Chunk[]): {
+	timeRange?: { from: string; to: string };
+	repoIds?: string[];
+} {
+	// Collect timestamps
+	const timestamps: string[] = [];
+	const repos = new Set<string>();
+
+	for (const c of chunks) {
+		const ts = c.timestamp ?? c.metadata.updatedAt ?? c.metadata.createdAt ?? "";
+		if (ts) timestamps.push(ts);
+
+		// Extract repo identity
+		if (c.metadata.repo) {
+			repos.add(c.metadata.repo);
+		} else if (
+			c.sourceType.startsWith("github-") ||
+			c.sourceType === "code" ||
+			c.sourceType === "markdown"
+		) {
+			const m = c.source.match(/^([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)/);
+			if (m?.[1]) repos.add(m[1]);
+		}
+	}
+
+	timestamps.sort();
+	const first = timestamps[0];
+	const last = timestamps[timestamps.length - 1];
+	const timeRange = first && last ? { from: first, to: last } : undefined;
+	const repoIds = repos.size > 0 ? [...repos].sort() : undefined;
+
+	return { timeRange, repoIds };
+}
+
+/**
  * Extract simple BM25-style terms from text.
  * Lowercased, split on whitespace/punctuation, deduplicated.
  */

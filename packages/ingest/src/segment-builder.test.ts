@@ -1,6 +1,11 @@
 import type { Chunk, Edge } from "@wtfoc/common";
 import { describe, expect, it } from "vitest";
-import { buildSegment, type SegmentChunk, segmentId } from "./segment-builder.js";
+import {
+	buildSegment,
+	extractSegmentMetadata,
+	type SegmentChunk,
+	segmentId,
+} from "./segment-builder.js";
 
 const defaultOptions = {
 	embeddingModel: "Xenova/all-MiniLM-L6-v2",
@@ -131,5 +136,99 @@ describe("segmentId", () => {
 		);
 
 		expect(segmentId(segment1)).not.toBe(segmentId(segment2));
+	});
+});
+
+describe("extractSegmentMetadata", () => {
+	it("returns undefined for chunks with no timestamps or repo info", () => {
+		const chunks = [makeChunk({ source: "#general", sourceType: "slack-message" })];
+		const result = extractSegmentMetadata(chunks);
+		expect(result.timeRange).toBeUndefined();
+		expect(result.repoIds).toBeUndefined();
+	});
+
+	it("extracts timeRange from chunk timestamps", () => {
+		const chunks = [
+			makeChunk({ timestamp: "2025-01-15T10:00:00Z" }),
+			makeChunk({ timestamp: "2025-01-20T12:00:00Z" }),
+			makeChunk({ timestamp: "2025-01-10T08:00:00Z" }),
+		];
+		const result = extractSegmentMetadata(chunks);
+		expect(result.timeRange).toEqual({
+			from: "2025-01-10T08:00:00Z",
+			to: "2025-01-20T12:00:00Z",
+		});
+	});
+
+	it("falls back to metadata.updatedAt and metadata.createdAt for timestamps", () => {
+		const chunks = [
+			makeChunk({ metadata: { updatedAt: "2025-02-01T00:00:00Z" } }),
+			makeChunk({ metadata: { createdAt: "2025-01-01T00:00:00Z" } }),
+		];
+		const result = extractSegmentMetadata(chunks);
+		expect(result.timeRange).toEqual({
+			from: "2025-01-01T00:00:00Z",
+			to: "2025-02-01T00:00:00Z",
+		});
+	});
+
+	it("extracts repoIds from metadata.repo", () => {
+		const chunks = [
+			makeChunk({ sourceType: "code", metadata: { repo: "FilOzone/synapse-sdk" } }),
+			makeChunk({ sourceType: "markdown", metadata: { repo: "FilOzone/synapse-sdk" } }),
+			makeChunk({ sourceType: "code", metadata: { repo: "FilOzone/pdp" } }),
+		];
+		const result = extractSegmentMetadata(chunks);
+		expect(result.repoIds).toEqual(["FilOzone/pdp", "FilOzone/synapse-sdk"]);
+	});
+
+	it("extracts repoIds from github source field", () => {
+		const chunks = [
+			makeChunk({ sourceType: "github-issue", source: "FilOzone/synapse-sdk#42" }),
+			makeChunk({ sourceType: "github-pr", source: "FilOzone/synapse-sdk#100" }),
+			makeChunk({ sourceType: "github-issue", source: "FilOzone/pdp#5" }),
+		];
+		const result = extractSegmentMetadata(chunks);
+		expect(result.repoIds).toEqual(["FilOzone/pdp", "FilOzone/synapse-sdk"]);
+	});
+
+	it("extracts repoIds from code/markdown source field when no metadata.repo", () => {
+		const chunks = [
+			makeChunk({ sourceType: "code", source: "owner/repo/src/index.ts", metadata: {} }),
+		];
+		const result = extractSegmentMetadata(chunks);
+		expect(result.repoIds).toEqual(["owner/repo"]);
+	});
+
+	it("returns sorted, deduplicated repoIds", () => {
+		const chunks = [
+			makeChunk({ sourceType: "github-issue", source: "z-org/z-repo#1" }),
+			makeChunk({ sourceType: "github-issue", source: "a-org/a-repo#2" }),
+			makeChunk({ sourceType: "github-issue", source: "z-org/z-repo#3" }),
+		];
+		const result = extractSegmentMetadata(chunks);
+		expect(result.repoIds).toEqual(["a-org/a-repo", "z-org/z-repo"]);
+	});
+
+	it("handles mixed chunks with and without metadata", () => {
+		const chunks = [
+			makeChunk({
+				sourceType: "github-issue",
+				source: "FilOzone/synapse-sdk#42",
+				timestamp: "2025-03-01T00:00:00Z",
+			}),
+			makeChunk({
+				sourceType: "slack-message",
+				source: "#general",
+				timestamp: "2025-03-15T00:00:00Z",
+			}),
+			makeChunk({ sourceType: "code", source: "test.ts", metadata: {} }),
+		];
+		const result = extractSegmentMetadata(chunks);
+		expect(result.timeRange).toEqual({
+			from: "2025-03-01T00:00:00Z",
+			to: "2025-03-15T00:00:00Z",
+		});
+		expect(result.repoIds).toEqual(["FilOzone/synapse-sdk"]);
 	});
 });
