@@ -28,12 +28,16 @@ export {
 	GitHubRateLimitError,
 	ManifestConflictError,
 	PublishFailedError,
+	RateLimitError,
 	RevisionSchemaUnknownError,
 	SchemaUnknownError,
+	SessionExpiredError,
+	SessionKeyRevokedError,
 	StorageInsufficientBalanceError,
 	StorageNotFoundError,
 	StorageUnreachableError,
 	VectorDimensionMismatchError,
+	WalletVerificationError,
 	WtfocError,
 } from "./errors.js";
 export type { ChunkScorer } from "./interfaces/chunk-scorer.js";

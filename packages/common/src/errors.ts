@@ -178,3 +178,38 @@ export class SchemaUnknownError extends WtfocError {
 		this.name = "SchemaUnknownError";
 	}
 }
+
+export class SessionExpiredError extends WtfocError {
+	constructor(walletAddress: string) {
+		super(`Session expired for wallet ${walletAddress}`, "SESSION_EXPIRED", { walletAddress });
+		this.name = "SessionExpiredError";
+	}
+}
+
+export class SessionKeyRevokedError extends WtfocError {
+	constructor(walletAddress: string) {
+		super(`Session key revoked for wallet ${walletAddress}`, "SESSION_KEY_REVOKED", { walletAddress });
+		this.name = "SessionKeyRevokedError";
+	}
+}
+
+export class WalletVerificationError extends WtfocError {
+	constructor(address: string, reason: string) {
+		super(`Wallet verification failed for ${address}: ${reason}`, "WALLET_VERIFICATION_FAILED", {
+			address,
+			reason,
+		});
+		this.name = "WalletVerificationError";
+	}
+}
+
+export class RateLimitError extends WtfocError {
+	constructor(identifier: string, limit: number, windowSeconds: number) {
+		super(
+			`Rate limit exceeded for ${identifier}: ${limit} requests per ${windowSeconds}s`,
+			"RATE_LIMIT_EXCEEDED",
+			{ identifier, limit, windowSeconds },
+		);
+		this.name = "RateLimitError";
+	}
+}

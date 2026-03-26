@@ -156,6 +156,8 @@ GitHub-hosted agents also read:
 - N/A (file pattern matching only) (119-wtfocignore-support)
 - TypeScript (ESM), Node 24 + pnpm workspaces, multi-stage Docker build (119-fix-docker-image)
 - N/A (Dockerfile change only) (119-fix-docker-image)
+- TypeScript strict mode, ESM only, Node >= 24 + Preact 10.x + @preact/signals (frontend), Hono (server routing), wagmi + viem (wallet connection), pg (Postgres), @filoz/synapse-sdk + filecoin-pin (FOC), siwe (wallet auth) (121-wallet-collection-flow)
+- PostgreSQL (production) with in-memory fallback (local dev). Existing LocalStorageBackend + FocStorageBackend for segment/CAR storage. (121-wallet-collection-flow)
 
 ## Recent Changes
 - 012-e2e-integration-pipeline: Added TypeScript strict mode, ESM only, Node >=24 + `@wtfoc/common`, `@wtfoc/ingest`, `@wtfoc/store`, `@wtfoc/search` (workspace packages only)
