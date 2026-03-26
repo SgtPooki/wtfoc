@@ -75,13 +75,27 @@ export function extractSegmentMetadata(chunks: Chunk[]): {
 	timeRange?: { from: string; to: string };
 	repoIds?: string[];
 } {
-	// Collect timestamps
-	const timestamps: string[] = [];
+	let minMs = Number.POSITIVE_INFINITY;
+	let maxMs = Number.NEGATIVE_INFINITY;
+	let minIso = "";
+	let maxIso = "";
 	const repos = new Set<string>();
 
 	for (const c of chunks) {
 		const ts = c.timestamp ?? c.metadata.updatedAt ?? c.metadata.createdAt ?? "";
-		if (ts) timestamps.push(ts);
+		if (ts) {
+			const ms = Date.parse(ts);
+			if (!Number.isNaN(ms)) {
+				if (ms < minMs) {
+					minMs = ms;
+					minIso = ts;
+				}
+				if (ms > maxMs) {
+					maxMs = ms;
+					maxIso = ts;
+				}
+			}
+		}
 
 		// Extract repo identity
 		if (c.metadata.repo) {
@@ -96,10 +110,7 @@ export function extractSegmentMetadata(chunks: Chunk[]): {
 		}
 	}
 
-	timestamps.sort();
-	const first = timestamps[0];
-	const last = timestamps[timestamps.length - 1];
-	const timeRange = first && last ? { from: first, to: last } : undefined;
+	const timeRange = minIso && maxIso ? { from: minIso, to: maxIso } : undefined;
 	const repoIds = repos.size > 0 ? [...repos].sort() : undefined;
 
 	return { timeRange, repoIds };

@@ -160,6 +160,19 @@ describe("extractSegmentMetadata", () => {
 		});
 	});
 
+	it("skips invalid timestamps and still computes range from valid ones", () => {
+		const chunks = [
+			makeChunk({ timestamp: "not-a-date" }),
+			makeChunk({ timestamp: "2025-01-15T10:00:00Z" }),
+			makeChunk({ timestamp: "2025-01-20T12:00:00Z" }),
+		];
+		const result = extractSegmentMetadata(chunks);
+		expect(result.timeRange).toEqual({
+			from: "2025-01-15T10:00:00Z",
+			to: "2025-01-20T12:00:00Z",
+		});
+	});
+
 	it("falls back to metadata.updatedAt and metadata.createdAt for timestamps", () => {
 		const chunks = [
 			makeChunk({ metadata: { updatedAt: "2025-02-01T00:00:00Z" } }),
