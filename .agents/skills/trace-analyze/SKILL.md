@@ -34,13 +34,15 @@ and ask the user which collection to use.
 ### 2. Run the primary trace
 
 ```bash
-./wtfoc --json trace "<question>" -c <collection> 2>/dev/null
+./wtfoc --json trace "<question>" -c <collection> --mode analytical 2>/dev/null
 ```
 
 Also show the human-readable output:
 ```bash
-./wtfoc trace "<question>" -c <collection> 2>/dev/null
+./wtfoc trace "<question>" -c <collection> --mode analytical 2>/dev/null
 ```
+
+> **Note:** `--mode analytical` adds cross-source insights (convergence, evidence chains, temporal clusters) to the trace output. These help identify patterns across sources that pure retrieval misses.
 
 ### 3. Analyze gaps and run expansion traces
 
@@ -55,7 +57,7 @@ After the primary trace, analyze which source types and conceptual areas are mis
 For each significant gap, construct a targeted follow-up query and run it:
 
 ```bash
-./wtfoc --json trace "<targeted follow-up query>" -c <collection> 2>/dev/null
+./wtfoc --json trace "<targeted follow-up query>" -c <collection> --mode analytical 2>/dev/null
 ```
 
 **Examples of gap-filling queries:**

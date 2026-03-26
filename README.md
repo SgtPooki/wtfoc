@@ -51,6 +51,7 @@ wtfoc ingest slack ./exports/support.json -c my-collection
 wtfoc ingest website https://docs.example.com -c my-collection
 
 wtfoc trace "upload failures" -c my-collection
+wtfoc trace "what to prioritize" -c my-collection --mode analytical
 wtfoc query "session key auth" -c my-collection -k 20
 ```
 
