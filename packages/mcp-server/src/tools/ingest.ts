@@ -3,6 +3,7 @@ import {
 	type CollectionHead,
 	CURRENT_SCHEMA_VERSION,
 	type Embedder,
+	type ResolvedExtractorConfig,
 } from "@wtfoc/common";
 import {
 	buildSegment,
@@ -10,6 +11,7 @@ import {
 	CompositeEdgeExtractor,
 	getAdapter,
 	HeuristicEdgeExtractor,
+	LlmEdgeExtractor,
 	mergeEdges,
 	RegexEdgeExtractor,
 	segmentId,
@@ -35,7 +37,13 @@ export async function handleIngest(
 	store: ReturnType<typeof createStore>,
 	embedder: Embedder,
 	modelName: string,
-	params: { sourceType: string; source: string; collection: string; since?: string },
+	params: {
+		sourceType: string;
+		source: string;
+		collection: string;
+		since?: string;
+		extractorConfig?: ResolvedExtractorConfig;
+	},
 ): Promise<string> {
 	const maybeAdapter = getAdapter(params.sourceType);
 	if (!maybeAdapter) {
@@ -100,6 +108,20 @@ export async function handleIngest(
 		compositeExtractor.register({ name: "regex", extractor: new RegexEdgeExtractor() });
 		compositeExtractor.register({ name: "heuristic", extractor: new HeuristicEdgeExtractor() });
 		compositeExtractor.register({ name: "code", extractor: new CodeEdgeExtractor() });
+
+		const ext = params.extractorConfig;
+		if (ext?.enabled && ext.url && ext.model) {
+			compositeExtractor.register({
+				name: "llm",
+				extractor: new LlmEdgeExtractor({
+					baseUrl: ext.url,
+					model: ext.model,
+					apiKey: ext.apiKey,
+					timeoutMs: ext.timeout,
+					maxConcurrency: ext.concurrency,
+				}),
+			});
+		}
 		const edges = mergeEdges([
 			{ extractorName: "adapter", edges: await adapter.extractEdges(batchChunks) },
 			{ extractorName: "composite", edges: await compositeExtractor.extract(batchChunks) },

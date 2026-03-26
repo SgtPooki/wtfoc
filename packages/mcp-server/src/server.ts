@@ -1,5 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { Embedder } from "@wtfoc/common";
+import type { Embedder, ResolvedExtractorConfig } from "@wtfoc/common";
 import type { createStore } from "@wtfoc/store";
 import { z } from "zod";
 import type { CollectionLoader } from "./helpers.js";
@@ -18,6 +18,12 @@ export interface CreateMcpServerOptions {
 	 * queries reuse the warm cache and freshness-checking logic.
 	 */
 	collectionLoader?: CollectionLoader;
+	/**
+	 * Resolved LLM extractor config from .wtfoc.json / env vars.
+	 * When enabled and present with a valid URL + model, the ingest tool registers
+	 * an LlmEdgeExtractor in the CompositeEdgeExtractor pipeline.
+	 */
+	extractorConfig?: ResolvedExtractorConfig;
 }
 
 /** Strip filesystem paths from error messages to avoid leaking server internals. */
@@ -49,6 +55,7 @@ export function createMcpServer(
 	options?: CreateMcpServerOptions,
 ): McpServer {
 	const collectionLoader = options?.collectionLoader;
+	const extractorConfig = options?.extractorConfig;
 
 	const server = new McpServer({
 		name: "wtfoc",
@@ -176,6 +183,7 @@ export function createMcpServer(
 						source,
 						collection,
 						since,
+						extractorConfig,
 					});
 					return { content: [{ type: "text" as const, text }] };
 				} catch (err) {
