@@ -19,6 +19,7 @@ import {
 	readCursors,
 	rechunkOversized,
 	segmentId,
+	TreeSitterEdgeExtractor,
 	writeCursors,
 } from "@wtfoc/ingest";
 import { bundleAndUpload, generateCollectionId } from "@wtfoc/store";
@@ -32,40 +33,44 @@ import {
 	getManifestDir,
 	getStore,
 	parseSinceDuration,
+	resolveTreeSitterUrl,
 	withEmbedderOptions,
 	withExtractorOptions,
+	withTreeSitterOptions,
 } from "../helpers.js";
 
 export function registerIngestCommand(program: Command): void {
-	withExtractorOptions(
-		withEmbedderOptions(
-			program
-				.command("ingest <sourceType> [args...]")
-				.description("Ingest from a source (repo, slack, github, website)")
-				.requiredOption("-c, --collection <name>", "Collection name")
-				.option("--since <duration>", "Only fetch items newer than duration (e.g. 90d)")
-				.option(
-					"--batch-size <number>",
-					"Chunks per batch (default: 500, reduces memory for large sources)",
-					"500",
-				)
-				.option(
-					"--max-chunk-chars <number>",
-					`Max characters per chunk — oversized chunks are split (default: ${DEFAULT_MAX_CHUNK_CHARS})`,
-				)
-				.option(
-					"--ignore <pattern...>",
-					"Exclude files matching gitignore-style pattern (repeatable)",
-				)
-				.option(
-					"--max-pages <number>",
-					"[website] Limit number of pages to crawl (default: 100, -1 = unlimited)",
-				)
-				.option("--depth <number>", "[website] Limit link-following depth from start URL")
-				.option(
-					"--url-pattern <glob>",
-					"[website] Glob pattern to restrict which URLs are crawled (default: same origin)",
-				),
+	withTreeSitterOptions(
+		withExtractorOptions(
+			withEmbedderOptions(
+				program
+					.command("ingest <sourceType> [args...]")
+					.description("Ingest from a source (repo, slack, github, website)")
+					.requiredOption("-c, --collection <name>", "Collection name")
+					.option("--since <duration>", "Only fetch items newer than duration (e.g. 90d)")
+					.option(
+						"--batch-size <number>",
+						"Chunks per batch (default: 500, reduces memory for large sources)",
+						"500",
+					)
+					.option(
+						"--max-chunk-chars <number>",
+						`Max characters per chunk — oversized chunks are split (default: ${DEFAULT_MAX_CHUNK_CHARS})`,
+					)
+					.option(
+						"--ignore <pattern...>",
+						"Exclude files matching gitignore-style pattern (repeatable)",
+					)
+					.option(
+						"--max-pages <number>",
+						"[website] Limit number of pages to crawl (default: 100, -1 = unlimited)",
+					)
+					.option("--depth <number>", "[website] Limit link-following depth from start URL")
+					.option(
+						"--url-pattern <glob>",
+						"[website] Glob pattern to restrict which URLs are crawled (default: same origin)",
+					),
+			),
 		),
 	).action(
 		async (
@@ -80,6 +85,7 @@ export function registerIngestCommand(program: Command): void {
 				maxPages?: string;
 				depth?: string;
 				urlPattern?: string;
+				treeSitterUrl?: string;
 			} & EmbedderOpts &
 				ExtractorCliOpts,
 		) => {
@@ -224,6 +230,14 @@ export function registerIngestCommand(program: Command): void {
 				compositeExtractor.register({ name: "regex", extractor: new RegexEdgeExtractor() });
 				compositeExtractor.register({ name: "heuristic", extractor: new HeuristicEdgeExtractor() });
 				compositeExtractor.register({ name: "code", extractor: new CodeEdgeExtractor() });
+
+				const treeSitterUrl = resolveTreeSitterUrl(opts);
+				if (treeSitterUrl) {
+					compositeExtractor.register({
+						name: "tree-sitter",
+						extractor: new TreeSitterEdgeExtractor({ baseUrl: treeSitterUrl }),
+					});
+				}
 
 				if (extractorConfig.enabled) {
 					compositeExtractor.register({

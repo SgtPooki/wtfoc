@@ -1,0 +1,24 @@
+# Docker Compose for wtfoc local development.
+#
+# Start the tree-sitter parser sidecar for AST-based code analysis:
+#   docker compose up tree-sitter-parser
+#
+# Then use the CLI with:
+#   wtfoc ingest --tree-sitter-url http://localhost:8384 ...
+#
+# Or set the env var:
+#   export WTFOC_TREE_SITTER_URL=http://localhost:8384
+
+services:
+  tree-sitter-parser:
+    build:
+      context: docker/tree-sitter-parser
+      dockerfile: Dockerfile
+    ports:
+      - "8384:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8080/health').then(r=>{if(!r.ok)throw r.status}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
