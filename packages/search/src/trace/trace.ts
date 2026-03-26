@@ -12,6 +12,11 @@ export interface TraceOptions {
 	/** Minimum similarity score for semantic fallback (default: 0.3) */
 	minScore?: number;
 	signal?: AbortSignal;
+	/**
+	 * Additional edges from an overlay (e.g. LLM-extracted via extract-edges).
+	 * Merged into the edge index alongside segment-embedded edges.
+	 */
+	overlayEdges?: import("@wtfoc/common").Edge[];
 }
 
 export interface TraceHop {
@@ -83,8 +88,8 @@ export async function trace(
 	// Step 2: Find seed chunks via vector search
 	const seeds = await vectorIndex.search(queryVector, maxTotal);
 
-	// Build edge index from all segments
-	const edgeIndex = buildEdgeIndex(segments);
+	// Build edge index from all segments + overlay edges
+	const edgeIndex = buildEdgeIndex(segments, options?.overlayEdges);
 
 	// Step 3: Follow edges from seeds + semantic fallback
 	const visited = new Set<string>();

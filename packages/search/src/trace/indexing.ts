@@ -57,27 +57,41 @@ export function buildChunkIndexes(segments: Segment[]): ChunkIndexes {
 /**
  * Build bidirectional edge index — edges can be traversed from
  * sourceId → targetId AND targetId → sourceId.
+ *
+ * When overlayEdges are provided (e.g. from extract-edges LLM overlay),
+ * they are indexed alongside segment-embedded edges.
  */
-export function buildEdgeIndex(segments: Segment[]): Map<string, Edge[]> {
+export function buildEdgeIndex(segments: Segment[], overlayEdges?: Edge[]): Map<string, Edge[]> {
 	const index = new Map<string, Edge[]>();
+
+	const addEdge = (edge: Edge) => {
+		// Forward: sourceId → target
+		const fwd = index.get(edge.sourceId) ?? [];
+		fwd.push(edge);
+		index.set(edge.sourceId, fwd);
+
+		// Reverse: targetId → source (for bidirectional traversal)
+		const rev = index.get(edge.targetId) ?? [];
+		rev.push({
+			...edge,
+			sourceId: edge.targetId,
+			targetId: edge.sourceId,
+			evidence: `← ${edge.evidence}`,
+		});
+		index.set(edge.targetId, rev);
+	};
+
 	for (const seg of segments) {
 		for (const edge of seg.edges) {
-			// Forward: sourceId → target
-			const fwd = index.get(edge.sourceId) ?? [];
-			fwd.push(edge as Edge);
-			index.set(edge.sourceId, fwd);
-
-			// Reverse: targetId → source (for bidirectional traversal)
-			const rev = index.get(edge.targetId) ?? [];
-			rev.push({
-				...edge,
-				// Swap source/target for reverse traversal
-				sourceId: edge.targetId,
-				targetId: edge.sourceId,
-				evidence: `← ${edge.evidence}`,
-			} as Edge);
-			index.set(edge.targetId, rev);
+			addEdge(edge);
 		}
 	}
+
+	if (overlayEdges) {
+		for (const edge of overlayEdges) {
+			addEdge(edge);
+		}
+	}
+
 	return index;
 }

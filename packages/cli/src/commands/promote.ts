@@ -1,7 +1,8 @@
 import type { CollectionHead } from "@wtfoc/common";
+import { overlayFilePath, readOverlayEdges } from "@wtfoc/ingest";
 import { bundleAndUpload, createStore, validateIpniIndexing } from "@wtfoc/store";
 import type { Command } from "commander";
-import { getFormat } from "../helpers.js";
+import { getFormat, getManifestDir } from "../helpers.js";
 
 const DEFAULT_COPIES = 2;
 
@@ -25,6 +26,22 @@ export function registerPromoteCommand(program: Command): void {
 			if (!head) {
 				console.error(`Error: collection "${collectionName}" not found`);
 				process.exit(1);
+			}
+
+			// Check for pending overlay edges that should be materialized before promote
+			const manifestDir = getManifestDir(localStore);
+			const overlay = await readOverlayEdges(overlayFilePath(manifestDir, collectionName));
+			if (overlay && overlay.edges.length > 0) {
+				console.error(
+					`⚠️  ${overlay.edges.length} overlay edges from extract-edges have not been materialized.`,
+				);
+				console.error(
+					"   These edges will NOT be included in the promoted data unless you materialize first:",
+				);
+				console.error(`   wtfoc materialize-edges -c ${collectionName}`);
+				console.error("");
+				console.error("   Proceeding with promote without overlay edges...");
+				console.error("");
 			}
 
 			// Check if already promoted (has batch records with PieceCIDs)

@@ -1,3 +1,4 @@
+import { overlayFilePath, readOverlayEdges } from "@wtfoc/ingest";
 import { trace } from "@wtfoc/search";
 import type { Command } from "commander";
 import { getProjectConfig } from "../cli.js";
@@ -5,6 +6,7 @@ import {
 	createEmbedder,
 	type EmbedderOpts,
 	getFormat,
+	getManifestDir,
 	getStore,
 	loadCollection,
 	withEmbedderOptions,
@@ -31,6 +33,14 @@ export function registerTraceCommand(program: Command): void {
 		const { embedder } = createEmbedder(opts, getProjectConfig()?.embedder);
 		const { vectorIndex, segments } = await loadCollection(store, head.manifest);
 
+		// Load overlay edges (from extract-edges) if available
+		const manifestDir = getManifestDir(store);
+		const overlay = await readOverlayEdges(overlayFilePath(manifestDir, opts.collection));
+		const overlayEdges = overlay?.edges ?? [];
+		if (overlayEdges.length > 0 && format !== "quiet") {
+			console.error(`🔗 Loaded ${overlayEdges.length} overlay edges from extract-edges`);
+		}
+
 		// Check dimension compatibility before querying (skip if dimensions unknown yet)
 		const collectionDims = head.manifest.embeddingDimensions;
 		let embedderDims = 0;
@@ -53,7 +63,7 @@ export function registerTraceCommand(program: Command): void {
 		}
 
 		try {
-			const result = await trace(queryText, embedder, vectorIndex, segments);
+			const result = await trace(queryText, embedder, vectorIndex, segments, { overlayEdges });
 			console.log(formatTrace(result, format));
 		} catch (err) {
 			if (

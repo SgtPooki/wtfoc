@@ -12,9 +12,10 @@ export interface OverlayEdgeData {
 
 /**
  * Get the overlay edge file path for a collection.
+ * Matches the flat layout used by extract-edges: {manifestDir}/{collection}.edges-overlay.json
  */
-export function overlayFilePath(projectDir: string, collectionName: string): string {
-	return join(projectDir, collectionName, "edges-overlay.json");
+export function overlayFilePath(manifestDir: string, collectionName: string): string {
+	return join(manifestDir, `${collectionName}.edges-overlay.json`);
 }
 
 /**

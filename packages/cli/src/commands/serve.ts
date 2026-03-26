@@ -1,6 +1,12 @@
 import type { Command } from "commander";
 import { getProjectConfig } from "../cli.js";
-import { createEmbedder, type EmbedderOpts, getStore, withEmbedderOptions } from "../helpers.js";
+import {
+	createEmbedder,
+	type EmbedderOpts,
+	getManifestDir,
+	getStore,
+	withEmbedderOptions,
+} from "../helpers.js";
 
 export function registerServeCommand(program: Command): void {
 	withEmbedderOptions(
@@ -27,6 +33,7 @@ export function registerServeCommand(program: Command): void {
 			embedder,
 			port: Number.parseInt(opts.port, 10),
 			html: uiHtml,
+			manifestDir: getManifestDir(store),
 		});
 	});
 }
