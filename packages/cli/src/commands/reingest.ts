@@ -28,14 +28,15 @@ import {
  *
  * Reads all chunks from existing segments, applies current ignore patterns,
  * optionally rechunks, re-extracts edges, re-embeds, and writes new segments.
- * No network calls — purely local reprocessing.
+ * Operates on already-stored segments — no source re-fetch from GitHub/web/etc.
+ * Note: embedding may still make network calls if using an API-based embedder.
  */
 export function registerReingestCommand(program: Command): void {
 	withEmbedderOptions(
 		program
 			.command("reingest")
 			.description(
-				"Rebuild a collection from stored segments with current ignore patterns (no network calls)",
+				"Rebuild a collection from stored segments with current ignore patterns (no source re-fetch)",
 			)
 			.requiredOption("-c, --collection <name>", "Source collection to read from")
 			.option("--target <name>", "Target collection name (default: overwrite source)")

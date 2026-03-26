@@ -12,7 +12,16 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
-const PORT = parseInt(process.argv.includes("--port") ? process.argv[process.argv.indexOf("--port") + 1] : "4523", 10);
+const PORT = (() => {
+	const idx = process.argv.indexOf("--port");
+	if (idx === -1) return 4523;
+	const val = parseInt(process.argv[idx + 1], 10);
+	if (Number.isNaN(val) || val < 1 || val > 65535) {
+		console.error(`Invalid --port value. Usage: node claude-direct-proxy.mjs --port <1-65535>`);
+		process.exit(2);
+	}
+	return val;
+})();
 const CREDENTIALS_PATH = join(homedir(), ".claude", ".credentials.json");
 const API_URL = "https://api.anthropic.com/v1/messages";
 const REQUIRED_SYSTEM = "You are Claude Code, Anthropic's official CLI for Claude.";

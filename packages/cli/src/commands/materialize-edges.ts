@@ -2,6 +2,7 @@ import type { CollectionHead, Edge, Segment } from "@wtfoc/common";
 import { CURRENT_SCHEMA_VERSION } from "@wtfoc/common";
 import {
 	buildSegment,
+	edgeKey,
 	mergeOverlayEdges,
 	overlayFilePath,
 	readOverlayEdges,
@@ -74,7 +75,7 @@ export function registerMaterializeEdgesCommand(program: Command): void {
 				const orphanEdges = overlay.edges.filter((e) => !allChunkIds.has(e.sourceId));
 				if (orphanEdges.length > 0) {
 					console.error(
-						`   ⚠️  ${orphanEdges.length} overlay edges reference chunks not in any segment (will be added to last segment)`,
+						`   ⚠️  ${orphanEdges.length} overlay edges reference chunks not in any segment (will be preserved in overlay)`,
 					);
 				}
 				console.error(`   ${affectedCount} segments would be rebuilt`);
@@ -109,7 +110,7 @@ export function registerMaterializeEdgesCommand(program: Command): void {
 					if (edges) {
 						for (const e of edges) {
 							relevantOverlay.push(e);
-							placedEdgeKeys.add(JSON.stringify([e.type, e.sourceId, e.targetType, e.targetId]));
+							placedEdgeKeys.add(edgeKey(e));
 						}
 					}
 				}
@@ -158,9 +159,7 @@ export function registerMaterializeEdgesCommand(program: Command): void {
 			}
 
 			// Handle orphan overlay edges (sourceId doesn't match any segment chunk)
-			const orphanEdges = overlay.edges.filter(
-				(e) => !placedEdgeKeys.has(JSON.stringify([e.type, e.sourceId, e.targetType, e.targetId])),
-			);
+			const orphanEdges = overlay.edges.filter((e) => !placedEdgeKeys.has(edgeKey(e)));
 			if (orphanEdges.length > 0 && format !== "quiet") {
 				console.error(
 					`   ⚠️  ${orphanEdges.length} overlay edges couldn't be placed (sourceId not in any segment)`,
@@ -178,10 +177,10 @@ export function registerMaterializeEdgesCommand(program: Command): void {
 
 			await store.manifests.putHead(opts.collection, manifest, currentHead?.headId ?? null);
 
-			// Clear the overlay file (edges are now baked in)
+			// Preserve orphan edges in overlay; clear only successfully placed edges
 			await writeOverlayEdges(overlayPath, {
 				collectionId: overlay.collectionId,
-				edges: [],
+				edges: orphanEdges,
 				createdAt: overlay.createdAt,
 				updatedAt: new Date().toISOString(),
 			});
@@ -198,7 +197,13 @@ export function registerMaterializeEdgesCommand(program: Command): void {
 			} else if (format !== "quiet") {
 				console.error(`\n✅ Materialized ${totalEdgesMerged} overlay edges into segments`);
 				console.error(`   ${newSegmentRefs.length} segments rebuilt with merged edges`);
-				console.error(`   Overlay file cleared — ready for promote`);
+				if (orphanEdges.length > 0) {
+					console.error(
+						`   ${orphanEdges.length} orphan edges preserved in overlay (sourceId not in any segment)`,
+					);
+				} else {
+					console.error("   Overlay file cleared — ready for promote");
+				}
 			}
 		});
 }
