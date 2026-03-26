@@ -12,6 +12,7 @@ import { registerMaterializeEdgesCommand } from "./commands/materialize-edges.js
 import { registerPromoteCommand } from "./commands/promote.js";
 import { registerQueryCommand } from "./commands/query.js";
 import { registerReindexCommand } from "./commands/reindex.js";
+import { registerReingestCommand } from "./commands/reingest.js";
 import { registerServeCommand } from "./commands/serve.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerSuggestSourcesCommand } from "./commands/suggest-sources.js";
@@ -69,6 +70,7 @@ registerVerifyCommand(program);
 registerUnresolvedEdgesCommand(program);
 registerSuggestSourcesCommand(program);
 registerReindexCommand(program);
+registerReingestCommand(program);
 registerPromoteCommand(program);
 registerServeCommand(program);
 registerThemesCommand(program);
