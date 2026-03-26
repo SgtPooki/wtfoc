@@ -1,4 +1,5 @@
 import { CollectionDetail } from "./components/CollectionDetail";
+import { CollectionList } from "./components/CollectionList";
 import { CollectionPicker } from "./components/CollectionPicker";
 import { CreateCollection } from "./components/CreateCollection";
 import { EdgePanel } from "./components/EdgePanel";
@@ -29,16 +30,30 @@ export function App() {
 			{connected && view === "detail" && activeCollectionId.value && (
 				<CollectionDetail collectionId={activeCollectionId.value} />
 			)}
-			{connected && view !== "create" && view !== "detail" && (
-				<button
-					type="button"
-					class="create-collection-btn"
-					onClick={() => {
-						walletView.value = "create";
-					}}
-				>
-					+ Create Collection
-				</button>
+			{connected && view === "collections" && <CollectionList />}
+			{connected && (view === "none" || view === "collections") && (
+				<div class="wallet-actions">
+					{view !== "collections" && (
+						<button
+							type="button"
+							class="my-collections-btn"
+							onClick={() => {
+								walletView.value = "collections";
+							}}
+						>
+							My Collections
+						</button>
+					)}
+					<button
+						type="button"
+						class="create-collection-btn"
+						onClick={() => {
+							walletView.value = "create";
+						}}
+					>
+						+ Create Collection
+					</button>
+				</div>
 			)}
 
 			{/* Existing search/trace views */}

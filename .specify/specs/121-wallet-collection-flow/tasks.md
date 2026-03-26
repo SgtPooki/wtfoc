@@ -146,9 +146,9 @@
 
 ### Implementation for User Story 5
 
-- [ ] T041 [US5] Create CollectionList component in apps/web/src/components/CollectionList.tsx — table/list of collections showing name, status badge, source count, segment count, CID (if promoted), created date. Links to CollectionDetail.
-- [ ] T042 [US5] Add "My Collections" navigation to apps/web/src/app.tsx — show link in header when wallet connected, default landing page for authenticated users
-- [ ] T043 [US5] Add auto-refresh to CollectionList in apps/web/src/components/CollectionList.tsx — poll GET /api/collections every 10 seconds to reflect status changes
+- [x] T041 [US5] Create CollectionList component in apps/web/src/components/CollectionList.tsx — table/list of collections showing name, status badge, source count, segment count, CID (if promoted), created date. Links to CollectionDetail.
+- [x] T042 [US5] Add "My Collections" navigation to apps/web/src/app.tsx — show link in header when wallet connected, default landing page for authenticated users
+- [x] T043 [US5] Add auto-refresh to CollectionList in apps/web/src/components/CollectionList.tsx — poll GET /api/collections every 10 seconds to reflect status changes
 
 **Checkpoint**: User sees all their collections in a dashboard view with correct statuses and can navigate to detail pages.
 
