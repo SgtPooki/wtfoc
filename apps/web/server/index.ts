@@ -160,6 +160,10 @@ async function getEmbedderForModel(modelName: string): Promise<{ embedder: Embed
 
 	let result: { embedder: Embedder; modelName: string };
 
+	// Pass explicit dimensions as requestDimensions for MRL/Matryoshka models,
+	// matching the CLI/MCP behavior (only when profile specifies dimensions)
+	const explicitDimensions = resolvedEmbedderConfig?.dimensions ?? profile?.dimensions;
+
 	if (url) {
 		const { OpenAIEmbedder } = await import("@wtfoc/search");
 		result = {
@@ -167,7 +171,8 @@ async function getEmbedderForModel(modelName: string): Promise<{ embedder: Embed
 				apiKey,
 				baseUrl: url,
 				model: modelName,
-				dimensions: profile?.dimensions,
+				dimensions: explicitDimensions,
+				requestDimensions: resolvedEmbedderConfig?.dimensions,
 				prefix: profile?.prefix,
 			}),
 			modelName,
@@ -198,9 +203,15 @@ async function getEmbedderForModel(modelName: string): Promise<{ embedder: Embed
 
 /** Get the default embedder (from env/config, used for MCP and when collection model is unknown). */
 async function getDefaultEmbedder(): Promise<{ embedder: Embedder; modelName: string }> {
+	// Resolve profile → model (same as CLI/MCP helpers)
+	const profileName = resolvedEmbedderConfig?.profile ?? process.env["WTFOC_EMBEDDER_PROFILE"];
+	const profiles = resolvedEmbedderConfig?.profiles ?? {};
+	const profileModel = profileName ? profiles[profileName]?.model : undefined;
+
 	const model =
 		resolvedEmbedderConfig?.model ??
-		process.env["WTFOC_EMBEDDER_MODEL"];
+		process.env["WTFOC_EMBEDDER_MODEL"] ??
+		profileModel;
 
 	if (model) return getEmbedderForModel(model);
 
