@@ -188,7 +188,9 @@ export class SessionExpiredError extends WtfocError {
 
 export class SessionKeyRevokedError extends WtfocError {
 	constructor(walletAddress: string) {
-		super(`Session key revoked for wallet ${walletAddress}`, "SESSION_KEY_REVOKED", { walletAddress });
+		super(`Session key revoked for wallet ${walletAddress}`, "SESSION_KEY_REVOKED", {
+			walletAddress,
+		});
 		this.name = "SessionKeyRevokedError";
 	}
 }

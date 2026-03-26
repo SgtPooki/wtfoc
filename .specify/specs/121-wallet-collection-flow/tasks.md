@@ -32,15 +32,15 @@
 
 **CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T005 Implement repository interface in apps/web/server/db/repository.ts defining Collection, Source, WalletSession, AuditLog CRUD operations
-- [ ] T006 [P] Implement Postgres repository in apps/web/server/db/postgres.ts using pg client, connection pooling, and migrations runner for schema.sql
-- [ ] T007 [P] Implement in-memory repository in apps/web/server/db/memory.ts using Map-based stores matching the same repository interface
-- [ ] T008 Create repository factory in apps/web/server/db/index.ts that selects Postgres (when DATABASE_URL set) or in-memory fallback
-- [ ] T009 Migrate apps/web/server/index.ts from raw http.createServer() to Hono — preserve all existing routes (/api/collections/:name/query, /api/collections/:name/trace, /api/collections/:name/status, /api/collections/:name/edges, /api/collections/:name/sources, /api/collections/cid/:cid/*, /mcp, static file serving). Add CSRF protection middleware (hono/csrf) on all mutating (POST/PUT/DELETE) endpoints.
-- [ ] T010 [P] Implement SSRF-safe URL validator in apps/web/server/security/ssrf.ts with HTTPS-only check, private/link-local/metadata IP blocking, DNS rebinding defense (re-resolve after redirect), content-type validation (HTML/text only)
-- [ ] T011 [P] Implement per-wallet and per-IP rate limiter in apps/web/server/security/rate-limit.ts as Hono middleware
-- [ ] T012 [P] Add SessionKeyConfig support to packages/store/src/backends/foc.ts — new constructor option accepting { walletAddress, sessionKey } that uses Synapse.create() directly instead of filecoin-pin.initializeSynapse()
-- [ ] T013 [P] Create HTTP transport in packages/ingest/src/adapters/github/http-transport.ts implementing ExecFn interface — accepts a GitHubTokenProvider (from @wtfoc/ingest, already on main). Translates gh api calls to fetch() with GitHub REST API, handles pagination via Link header, ports rate limit detection from stderr to X-RateLimit-* response headers. Server wires up GitHubAppTokenProvider when GITHUB_APP_ID is set, falls back to PatTokenProvider (GITHUB_TOKEN), or unauthenticated if neither configured.
+- [x] T005 Implement repository interface in apps/web/server/db/repository.ts defining Collection, Source, WalletSession, AuditLog CRUD operations
+- [x] T006 [P] Implement Postgres repository in apps/web/server/db/postgres.ts using pg client, connection pooling, and migrations runner for schema.sql
+- [x] T007 [P] Implement in-memory repository in apps/web/server/db/memory.ts using Map-based stores matching the same repository interface
+- [x] T008 Create repository factory in apps/web/server/db/index.ts that selects Postgres (when DATABASE_URL set) or in-memory fallback
+- [x] T009 Migrate apps/web/server/index.ts from raw http.createServer() to Hono — preserve all existing routes (/api/collections/:name/query, /api/collections/:name/trace, /api/collections/:name/status, /api/collections/:name/edges, /api/collections/:name/sources, /api/collections/cid/:cid/*, /mcp, static file serving). Add CSRF protection middleware (hono/csrf) on all mutating (POST/PUT/DELETE) endpoints.
+- [x] T010 [P] Implement SSRF-safe URL validator in apps/web/server/security/ssrf.ts with HTTPS-only check, private/link-local/metadata IP blocking, DNS rebinding defense (re-resolve after redirect), content-type validation (HTML/text only)
+- [x] T011 [P] Implement per-wallet and per-IP rate limiter in apps/web/server/security/rate-limit.ts as Hono middleware
+- [x] T012 [P] Add SessionKeyConfig support to packages/store/src/backends/foc.ts — new constructor option accepting { walletAddress, sessionKey } that uses Synapse.create() directly instead of filecoin-pin.initializeSynapse()
+- [x] T013 [P] Create HTTP transport in packages/ingest/src/adapters/github/http-transport.ts implementing ExecFn interface — accepts a GitHubTokenProvider (from @wtfoc/ingest, already on main). Translates gh api calls to fetch() with GitHub REST API, handles pagination via Link header, ports rate limit detection from stderr to X-RateLimit-* response headers. Server wires up GitHubAppTokenProvider when GITHUB_APP_ID is set, falls back to PatTokenProvider (GITHUB_TOKEN), or unauthenticated if neither configured.
 
 **Checkpoint**: Foundation ready — Hono server running with existing routes preserved, DB layer ready, security utilities available, FocStorageBackend supports session keys, GitHub adapter has HTTP transport.
 
