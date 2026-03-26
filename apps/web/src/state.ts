@@ -39,6 +39,9 @@ export const sessionKeyExpiresAt = signal<string | null>(null);
 /** Current view in the wallet flow */
 export const walletView = signal<"none" | "collections" | "create" | "detail">("none");
 
+/** Active collection ID for detail view */
+export const activeCollectionId = signal<string | null>(null);
+
 /** Current AbortController for cancelling in-flight requests */
 let currentAbort: AbortController | null = null;
 

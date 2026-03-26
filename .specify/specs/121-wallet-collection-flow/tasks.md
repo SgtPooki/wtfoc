@@ -106,9 +106,9 @@
 
 ### Implementation for User Story 3
 
-- [ ] T031 [US3] Create CollectionDetail component in apps/web/src/components/CollectionDetail.tsx — displays collection name, overall status, per-source status list (pending/ingesting/complete/failed with error messages), chunk counts, timestamps
-- [ ] T032 [US3] Add polling logic to CollectionDetail in apps/web/src/components/CollectionDetail.tsx — poll GET /api/collections/:id every 5 seconds while status is ingesting/promoting, stop polling when terminal state reached
-- [ ] T033 [US3] Add collection detail route and navigation in apps/web/src/app.tsx — clicking a collection in list or after creation navigates to detail view
+- [x] T031 [US3] Create CollectionDetail component in apps/web/src/components/CollectionDetail.tsx — displays collection name, overall status, per-source status list (pending/ingesting/complete/failed with error messages), chunk counts, timestamps
+- [x] T032 [US3] Add polling logic to CollectionDetail in apps/web/src/components/CollectionDetail.tsx — poll GET /api/collections/:id every 5 seconds while status is ingesting/promoting, stop polling when terminal state reached
+- [x] T033 [US3] Add collection detail route and navigation in apps/web/src/app.tsx — clicking a collection in list or after creation navigates to detail view
 
 **Checkpoint**: User can see live ingestion progress per-source. Failed sources show error messages. Completed collections show "Ready" status.
 
