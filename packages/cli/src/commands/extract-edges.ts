@@ -5,8 +5,10 @@ import {
 	getContextsToProcess,
 	LlmEdgeExtractor,
 	mergeOverlayEdges,
+	overlayFilePath,
 	readExtractionStatus,
 	readOverlayEdges,
+	statusFilePath,
 	writeExtractionStatus,
 	writeOverlayEdges,
 } from "@wtfoc/ingest";
@@ -184,8 +186,8 @@ export function registerExtractEdgesCommand(program: Command): void {
 
 		// Derive paths from store's manifest directory
 		const manifestDir = getManifestDir(store);
-		const statusPath = `${manifestDir}/${opts.collection}.extraction-status.json`;
-		const overlayPath = `${manifestDir}/${opts.collection}.edges-overlay.json`;
+		const statusPath = statusFilePath(manifestDir, opts.collection);
+		const overlayPath = overlayFilePath(manifestDir, opts.collection);
 
 		const existingStatus = await readExtractionStatus(statusPath);
 		const existingOverlay = await readOverlayEdges(overlayPath);
