@@ -26,6 +26,11 @@ export function registerSuggestSourcesCommand(program: Command): void {
 			const allSegments: Segment[] = [];
 
 			for (const segSummary of head.manifest.segments) {
+				// Pre-populate repos from manifest-level metadata
+				if (segSummary.repoIds) {
+					for (const repo of segSummary.repoIds) ingestedRepos.add(repo.toLowerCase());
+				}
+
 				const segBytes = await store.storage.download(segSummary.id);
 				const segment = JSON.parse(new TextDecoder().decode(segBytes)) as Segment;
 				allSegments.push(segment);

@@ -68,6 +68,55 @@ export function segmentId(segment: Segment): string {
 }
 
 /**
+ * Extract segment-level repo and time metadata from a batch of chunks.
+ * Used to populate SegmentSummary.repoIds and SegmentSummary.timeRange.
+ */
+export function extractSegmentMetadata(chunks: Chunk[]): {
+	timeRange?: { from: string; to: string };
+	repoIds?: string[];
+} {
+	let minMs = Number.POSITIVE_INFINITY;
+	let maxMs = Number.NEGATIVE_INFINITY;
+	let minIso = "";
+	let maxIso = "";
+	const repos = new Set<string>();
+
+	for (const c of chunks) {
+		const ts = c.timestamp ?? c.metadata.updatedAt ?? c.metadata.createdAt ?? "";
+		if (ts) {
+			const ms = Date.parse(ts);
+			if (!Number.isNaN(ms)) {
+				if (ms < minMs) {
+					minMs = ms;
+					minIso = ts;
+				}
+				if (ms > maxMs) {
+					maxMs = ms;
+					maxIso = ts;
+				}
+			}
+		}
+
+		// Extract repo identity
+		if (c.metadata.repo) {
+			repos.add(c.metadata.repo);
+		} else if (
+			c.sourceType.startsWith("github-") ||
+			c.sourceType === "code" ||
+			c.sourceType === "markdown"
+		) {
+			const m = c.source.match(/^([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)/);
+			if (m?.[1]) repos.add(m[1]);
+		}
+	}
+
+	const timeRange = minIso && maxIso ? { from: minIso, to: maxIso } : undefined;
+	const repoIds = repos.size > 0 ? [...repos].sort() : undefined;
+
+	return { timeRange, repoIds };
+}
+
+/**
  * Extract simple BM25-style terms from text.
  * Lowercased, split on whitespace/punctuation, deduplicated.
  */

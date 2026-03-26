@@ -58,6 +58,7 @@ export {
 export { HeuristicChunkScorer } from "./scoring.js";
 export {
 	buildSegment,
+	extractSegmentMetadata,
 	type SegmentBuilderOptions,
 	type SegmentChunk,
 	segmentId,
