@@ -3,7 +3,21 @@
 
 export { getAdapter, getAvailableSourceTypes, registerAdapter } from "./adapter-registry.js";
 export { DiscordAdapter, type DiscordAdapterConfig } from "./adapters/discord.js";
-export { type ExecFn, GitHubAdapter, type GitHubAdapterConfig } from "./adapters/github/index.js";
+export {
+	decodePrivateKey,
+	type ExecFn,
+	GitHubAdapter,
+	type GitHubAdapterConfig,
+	type GitHubAppConfig,
+	type GitHubAppJwtOptions,
+	GitHubAppTokenProvider,
+	type GitHubOAuthConfig,
+	type GitHubOAuthTokenData,
+	GitHubOAuthTokenProvider,
+	type GitHubTokenProvider,
+	PatTokenProvider,
+	signGitHubAppJwt,
+} from "./adapters/github/index.js";
 export { HackerNewsAdapter, type HackerNewsAdapterConfig } from "./adapters/hackernews.js";
 export { RepoAdapter, type RepoAdapterConfig } from "./adapters/repo/index.js";
 export { SlackAdapter, type SlackAdapterConfig } from "./adapters/slack.js";
