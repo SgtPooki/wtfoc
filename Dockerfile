@@ -8,6 +8,7 @@ FROM base AS deps
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/common/package.json packages/common/
+COPY packages/config/package.json packages/config/
 COPY packages/store/package.json packages/store/
 COPY packages/ingest/package.json packages/ingest/
 COPY packages/search/package.json packages/search/
