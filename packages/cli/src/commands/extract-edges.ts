@@ -101,8 +101,13 @@ export function registerExtractEdgesCommand(program: Command): void {
 		program
 			.command("extract-edges")
 			.description("Run LLM edge extraction on an existing collection (incremental)")
-			.requiredOption("-c, --collection <name>", "Collection name"),
-	).action(async (opts: { collection: string } & ExtractorCliOpts) => {
+			.requiredOption("-c, --collection <name>", "Collection name")
+			.option(
+				"--context-concurrency <n>",
+				"Number of contexts to process in parallel (default: 4)",
+				"4",
+			),
+	).action(async (opts: { collection: string; contextConcurrency: string } & ExtractorCliOpts) => {
 		const store = getStore(program);
 		const format = getFormat(program.opts());
 
@@ -120,11 +125,12 @@ export function registerExtractEdgesCommand(program: Command): void {
 		}
 
 		// Load collection
-		const head = await store.manifests.getHead(opts.collection);
-		if (!head) {
+		const headResult = await store.manifests.getHead(opts.collection);
+		if (!headResult) {
 			console.error(`Collection "${opts.collection}" not found.`);
 			process.exit(1);
 		}
+		const head = headResult;
 
 		if (format !== "quiet") {
 			console.error(`⏳ Loading collection "${opts.collection}"...`);
@@ -233,67 +239,102 @@ export function registerExtractEdgesCommand(program: Command): void {
 
 		let totalNewEdges = 0;
 		let processed = 0;
+		const contextConcurrency = Math.max(1, Number.parseInt(opts.contextConcurrency, 10) || 4);
 
-		for (const ctx of toProcess) {
-			// Clean abort: stop processing, don't mark remaining as failed
-			if (signal.aborted) {
-				if (format !== "quiet") {
-					console.error(`\n⚠️  Cancelled. ${processed} contexts processed before abort.`);
-				}
-				break;
+		if (format !== "quiet" && contextConcurrency > 1) {
+			console.error(`   Context concurrency: ${contextConcurrency}`);
+		}
+
+		// Mutex for shared state writes (overlayEdges, statusData, disk writes)
+		let writeLock: Promise<void> = Promise.resolve();
+		async function withWriteLock(fn: () => Promise<void>): Promise<void> {
+			const prev = writeLock;
+			let resolve: (() => void) | undefined;
+			writeLock = new Promise<void>((r) => {
+				resolve = r;
+			});
+			await prev;
+			try {
+				await fn();
+			} finally {
+				resolve?.();
 			}
+		}
+
+		async function processContext(ctx: (typeof toProcess)[number]): Promise<void> {
+			if (signal.aborted) return;
 
 			const chunksForContext = chunksByContextId.get(ctx.contextId);
-			if (!chunksForContext || chunksForContext.length === 0) continue;
+			if (!chunksForContext || chunksForContext.length === 0) return;
 
-			processed++;
+			const idx = ++processed;
 			if (format !== "quiet") {
 				console.error(
-					`  [${processed}/${toProcess.length}] Extracting: ${ctx.contextId} (${chunksForContext.length} chunks)...`,
+					`  [${idx}/${toProcess.length}] Extracting: ${ctx.contextId} (${chunksForContext.length} chunks)...`,
 				);
 			}
 
 			try {
 				const edges = await extractor.extract(chunksForContext, signal);
 
-				overlayEdges = mergeOverlayEdges(overlayEdges, edges);
-				totalNewEdges += edges.length;
+				await withWriteLock(async () => {
+					overlayEdges = mergeOverlayEdges(overlayEdges, edges);
+					totalNewEdges += edges.length;
 
-				statusData.contexts[ctx.contextId] = {
-					contextId: ctx.contextId,
-					contextHash: ctx.contextHash,
-					chunkIds: ctx.chunkIds,
-					status: "completed",
-					edgeCount: edges.length,
-					timestamp: new Date().toISOString(),
-				};
+					statusData.contexts[ctx.contextId] = {
+						contextId: ctx.contextId,
+						contextHash: ctx.contextHash,
+						chunkIds: ctx.chunkIds,
+						status: "completed",
+						edgeCount: edges.length,
+						timestamp: new Date().toISOString(),
+					};
+
+					await writeExtractionStatus(statusPath, statusData);
+					await writeOverlayEdges(overlayPath, {
+						collectionId: head.manifest.collectionId,
+						edges: overlayEdges,
+						createdAt: existingOverlayCreatedAt ?? new Date().toISOString(),
+						updatedAt: new Date().toISOString(),
+					});
+				});
 			} catch (err) {
-				// On abort, break cleanly without marking as failed
-				if (signal.aborted) {
-					if (format !== "quiet") {
-						console.error(`\n⚠️  Cancelled during extraction of ${ctx.contextId}.`);
-					}
-					break;
-				}
+				if (signal.aborted) return;
 
-				statusData.contexts[ctx.contextId] = {
-					contextId: ctx.contextId,
-					contextHash: ctx.contextHash,
-					chunkIds: ctx.chunkIds,
-					status: "failed",
-					error: err instanceof Error ? err.message : String(err),
-					timestamp: new Date().toISOString(),
-				};
+				await withWriteLock(async () => {
+					statusData.contexts[ctx.contextId] = {
+						contextId: ctx.contextId,
+						contextHash: ctx.contextHash,
+						chunkIds: ctx.chunkIds,
+						status: "failed",
+						error: err instanceof Error ? err.message : String(err),
+						timestamp: new Date().toISOString(),
+					};
+
+					await writeExtractionStatus(statusPath, statusData);
+				});
 			}
+		}
 
-			// Write both after each context for crash safety
-			await writeExtractionStatus(statusPath, statusData);
-			await writeOverlayEdges(overlayPath, {
-				collectionId: head.manifest.collectionId,
-				edges: overlayEdges,
-				createdAt: existingOverlayCreatedAt ?? new Date().toISOString(),
-				updatedAt: new Date().toISOString(),
+		// Process contexts with bounded concurrency
+		const active: Promise<void>[] = [];
+		for (const ctx of toProcess) {
+			if (signal.aborted) break;
+
+			const p = processContext(ctx).then(() => {
+				active.splice(active.indexOf(p), 1);
 			});
+			active.push(p);
+
+			if (active.length >= contextConcurrency) {
+				await Promise.race(active);
+			}
+		}
+		// Wait for remaining
+		await Promise.all(active);
+
+		if (signal.aborted && format !== "quiet") {
+			console.error(`\n⚠️  Cancelled. ${processed} contexts processed before abort.`);
 		}
 
 		// Summary
