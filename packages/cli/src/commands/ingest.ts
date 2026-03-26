@@ -56,6 +56,12 @@ export function registerIngestCommand(program: Command): void {
 				.option(
 					"--ignore <pattern...>",
 					"Exclude files matching gitignore-style pattern (repeatable)",
+				)
+				.option("--max-pages <number>", "[website] Max pages to crawl (default: 100)")
+				.option("--depth <number>", "[website] Max link-following depth from start URL")
+				.option(
+					"--url-pattern <glob>",
+					"[website] Glob pattern to restrict crawled URLs (default: same origin)",
 				),
 		),
 	).action(
@@ -68,6 +74,9 @@ export function registerIngestCommand(program: Command): void {
 				batchSize: string;
 				maxChunkChars?: string;
 				ignore?: string[];
+				maxPages?: string;
+				depth?: string;
+				urlPattern?: string;
 			} & EmbedderOpts &
 				ExtractorCliOpts,
 		) => {
@@ -116,6 +125,11 @@ export function registerIngestCommand(program: Command): void {
 			}
 
 			const rawConfig: Record<string, unknown> = { source: sourceArg };
+
+			// Pass website-specific options
+			if (opts.maxPages) rawConfig.maxPages = Number.parseInt(opts.maxPages, 10);
+			if (opts.depth) rawConfig.depth = Number.parseInt(opts.depth, 10);
+			if (opts.urlPattern) rawConfig.urlPattern = opts.urlPattern;
 
 			// Cursor-based incremental ingest: read stored cursor, use as since if no explicit --since
 			const sourceKey = buildSourceKey(sourceType, sourceArg);

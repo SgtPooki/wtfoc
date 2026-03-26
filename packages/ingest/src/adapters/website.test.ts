@@ -17,21 +17,32 @@ describe("WebsiteAdapter", () => {
 			expect(config).toEqual({
 				source: "https://docs.filecoin.io",
 				maxPages: 100,
+				depth: undefined,
 				urlPattern: undefined,
 			});
 		});
 
-		it("parses optional maxPages and urlPattern", () => {
+		it("parses optional maxPages, depth, and urlPattern", () => {
 			const config = adapter.parseConfig({
 				source: "https://docs.filecoin.io",
 				maxPages: 50,
+				depth: 3,
 				urlPattern: "https://docs.filecoin.io/basics/**",
 			});
 			expect(config).toEqual({
 				source: "https://docs.filecoin.io",
 				maxPages: 50,
+				depth: 3,
 				urlPattern: "https://docs.filecoin.io/basics/**",
 			});
+		});
+
+		it("ignores non-number depth", () => {
+			const config = adapter.parseConfig({
+				source: "https://example.com",
+				depth: "not-a-number",
+			});
+			expect(config.depth).toBeUndefined();
 		});
 
 		it("throws on missing source", () => {
