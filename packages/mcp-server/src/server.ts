@@ -20,7 +20,7 @@ export interface CreateMcpServerOptions {
 	collectionLoader?: CollectionLoader;
 	/**
 	 * Resolved LLM extractor config from .wtfoc.json / env vars.
-	 * When present with a valid URL + model, the ingest tool registers
+	 * When enabled and present with a valid URL + model, the ingest tool registers
 	 * an LlmEdgeExtractor in the CompositeEdgeExtractor pipeline.
 	 */
 	extractorConfig?: ResolvedExtractorConfig;
