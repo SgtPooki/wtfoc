@@ -17,9 +17,10 @@ interface ClusterLabelResult {
 	label: string;
 }
 
+const BATCH_SIZE = 30;
+
 /**
- * Generate LLM-powered labels for a batch of clusters.
- * Sends all clusters in a single prompt to minimize LLM calls.
+ * Generate LLM-powered labels for clusters in batches.
  */
 export async function labelClusters(
 	clusters: ClusterLabelRequest[],
@@ -28,10 +29,27 @@ export async function labelClusters(
 	const labels = new Map<string, string>();
 	if (clusters.length === 0) return labels;
 
-	// Build a prompt with all clusters' exemplars
+	// Process in batches to stay within token limits
+	for (let i = 0; i < clusters.length; i += BATCH_SIZE) {
+		const batch = clusters.slice(i, i + BATCH_SIZE);
+		const batchLabels = await labelBatch(batch, config);
+		for (const [id, label] of batchLabels) {
+			labels.set(id, label);
+		}
+	}
+
+	return labels;
+}
+
+async function labelBatch(
+	clusters: ClusterLabelRequest[],
+	config: LlmExtractorEnabled,
+): Promise<Map<string, string>> {
+	const labels = new Map<string, string>();
+
 	const clusterDescriptions = clusters.map((c) => {
 		const snippets = c.exemplarContents
-			.map((content, i) => `  Snippet ${i + 1}: ${content.slice(0, 300)}`)
+			.map((content, i) => `  Snippet ${i + 1}: ${content.slice(0, 200)}`)
 			.join("\n");
 		return `Cluster ${c.clusterId}:\n${snippets}`;
 	});
@@ -62,7 +80,7 @@ Return ONLY the JSON array, no other text.`;
 			}
 		}
 	} catch (err) {
-		console.error(`Warning: LLM labeling failed, using heuristic labels: ${err}`);
+		console.error(`Warning: LLM labeling failed for batch, using heuristic labels: ${err}`);
 	}
 
 	return labels;

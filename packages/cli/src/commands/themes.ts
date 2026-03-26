@@ -116,6 +116,7 @@ export function registerThemesCommand(program: Command): void {
 			const llmConfig = resolveExtractorConfig(extractorOpts);
 
 			// LLM post-processing: relabel clusters + summarize noise
+			let noiseCategories: Array<{ name: string; count: number; description: string }> = [];
 			if (llmConfig.enabled) {
 				const enabledConfig = llmConfig as LlmExtractorEnabled;
 				if (format !== "quiet") console.error("Generating LLM labels...");
@@ -140,16 +141,14 @@ export function registerThemesCommand(program: Command): void {
 						.map((id) => idToContent.get(id))
 						.filter((s): s is string => s !== undefined);
 
-					const categories = await summarizeNoise(noiseContents, enabledConfig);
-					if (categories.length > 0) {
-						(result as Record<string, unknown>).noiseCategories = categories;
-					}
+					noiseCategories = await summarizeNoise(noiseContents, enabledConfig);
 				}
 			}
 
 			// JSON always returns the full, unfiltered result
 			if (format === "json") {
-				console.log(JSON.stringify(result, null, "\t"));
+				const jsonResult = noiseCategories.length > 0 ? { ...result, noiseCategories } : result;
+				console.log(JSON.stringify(jsonResult, null, "\t"));
 				return;
 			}
 
@@ -182,10 +181,7 @@ export function registerThemesCommand(program: Command): void {
 			}
 
 			// Noise summary output
-			const noiseCategories = (result as Record<string, unknown>).noiseCategories as
-				| Array<{ name: string; count: number; description: string }>
-				| undefined;
-			if (noiseCategories && noiseCategories.length > 0) {
+			if (noiseCategories.length > 0) {
 				console.log(`\nNoise breakdown (${result.noise.length} unclustered chunks):`);
 				for (const cat of noiseCategories) {
 					console.log(`  ~${cat.count} ${cat.name}: ${cat.description}`);
