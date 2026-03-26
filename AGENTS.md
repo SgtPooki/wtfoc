@@ -152,6 +152,8 @@ GitHub-hosted agents also read:
 - Local filesystem (JSON sidecar files alongside manifests), optional FOC/Qdrant (118-incremental-ingest)
 - TypeScript strict, ESM only, Node >=24 + `ignore` npm package (already installed in @wtfoc/config) (119-wtfocignore-support)
 - N/A (file pattern matching only) (119-wtfocignore-support)
+- TypeScript (ESM), Node 24 + pnpm workspaces, multi-stage Docker build (119-fix-docker-image)
+- N/A (Dockerfile change only) (119-fix-docker-image)
 
 ## Recent Changes
 - 012-e2e-integration-pipeline: Added TypeScript strict mode, ESM only, Node >=24 + `@wtfoc/common`, `@wtfoc/ingest`, `@wtfoc/store`, `@wtfoc/search` (workspace packages only)
