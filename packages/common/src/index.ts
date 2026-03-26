@@ -3,13 +3,20 @@
 
 export type {
 	EmbedderConfig,
+	EmbedderProfile,
 	ExtractorConfig,
+	PoolingStrategy,
+	PrefixFormatter,
 	ProjectConfig,
 	ResolvedConfig,
 	ResolvedEmbedderConfig,
 	ResolvedExtractorConfig,
 } from "./config-types.js";
-export { BUILTIN_IGNORE_PATTERNS, URL_SHORTCUTS } from "./config-types.js";
+export {
+	BUILTIN_IGNORE_PATTERNS,
+	URL_SHORTCUTS,
+	VALID_POOLING_STRATEGIES,
+} from "./config-types.js";
 export {
 	CollectionHeadConflictError,
 	ConfigParseError,

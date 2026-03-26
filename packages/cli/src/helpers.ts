@@ -1,4 +1,9 @@
-import type { CollectionHead, Embedder, ResolvedEmbedderConfig } from "@wtfoc/common";
+import type {
+	CollectionHead,
+	Embedder,
+	EmbedderProfile,
+	ResolvedEmbedderConfig,
+} from "@wtfoc/common";
 import { resolveUrlShortcut } from "@wtfoc/config";
 import type { MountedCollection } from "@wtfoc/search";
 import {
@@ -93,6 +98,23 @@ export function getFirstMatchGroup(
  *
  * URL shortcuts (lmstudio, ollama) are resolved via @wtfoc/config.
  */
+function resolveProfile(resolvedConfig?: ResolvedEmbedderConfig): EmbedderProfile | undefined {
+	const profileName = resolvedConfig?.profile;
+	if (!profileName) return undefined;
+	const profiles = resolvedConfig?.profiles ?? {};
+	const profile = profiles[profileName];
+	if (!profile) {
+		const available = Object.keys(profiles);
+		console.error(
+			available.length > 0
+				? `Unknown embedder profile: "${profileName}". Available: ${available.join(", ")}`
+				: `Unknown embedder profile: "${profileName}". No profiles defined in .wtfoc.json — add embedder.profiles to your config.`,
+		);
+		process.exit(2);
+	}
+	return profile;
+}
+
 export function createEmbedder(
 	opts: {
 		embedder?: string;
@@ -102,12 +124,20 @@ export function createEmbedder(
 	},
 	resolvedConfig?: ResolvedEmbedderConfig,
 ): { embedder: Embedder; modelName: string } {
+	const profile = resolveProfile(resolvedConfig);
+
 	const url =
 		resolvedConfig?.url ?? (opts.embedderUrl ? resolveUrlShortcut(opts.embedderUrl) : undefined);
-	const model = resolvedConfig?.model ?? opts.embedderModel;
+	const model = resolvedConfig?.model ?? opts.embedderModel ?? profile?.model;
 	const key =
 		resolvedConfig?.key ?? opts.embedderKey ?? process.env.WTFOC_OPENAI_API_KEY ?? "no-key";
 	const type = opts.embedder ?? "local";
+	const prefix = resolvedConfig?.prefix ?? profile?.prefix;
+	// requestDimensions: only send in API body when user explicitly configured it
+	// (profile dimensions are informational, not an API parameter)
+	const explicitDimensions = resolvedConfig?.dimensions;
+	const dimensions = explicitDimensions ?? profile?.dimensions;
+	const pooling = resolvedConfig?.pooling ?? profile?.pooling;
 
 	// API-based embedder (any OpenAI-compatible endpoint)
 	if (url || model || type === "api") {
@@ -127,28 +157,41 @@ export function createEmbedder(
 			process.exit(2);
 		}
 
-		const embedder = new OpenAIEmbedder({ apiKey: key, baseUrl, model });
+		const embedder = new OpenAIEmbedder({
+			apiKey: key,
+			baseUrl,
+			model,
+			dimensions,
+			requestDimensions: explicitDimensions,
+			prefix,
+		});
 		return { embedder, modelName: model };
 	}
 
 	// Default: local transformers.js (works everywhere, lower quality)
 	if (type === "local" || type === "transformers") {
+		const localModel = model ?? "Xenova/all-MiniLM-L6-v2";
 		try {
 			console.error(
-				"ℹ️  Using local MiniLM embedder (384d). For better results, use --embedder-url lmstudio --embedder-model <model>",
+				`ℹ️  Using local embedder: ${localModel} (${dimensions ?? "auto"}d). For better results, use --embedder-url lmstudio --embedder-model <model>`,
 			);
-			const embedder = new TransformersEmbedder();
-			return { embedder, modelName: "Xenova/all-MiniLM-L6-v2" };
+			const embedder = new TransformersEmbedder(localModel, {
+				dimensions,
+				pooling,
+				prefix,
+			});
+			return { embedder, modelName: localModel };
 		} catch {
+			const fallbackDims = dimensions ?? 384;
 			console.error("⚠️  TransformersEmbedder unavailable, using zero-vector fallback");
 			return {
 				embedder: {
-					dimensions: 384,
+					dimensions: fallbackDims,
 					async embed(): Promise<Float32Array> {
-						return new Float32Array(384);
+						return new Float32Array(fallbackDims);
 					},
 					async embedBatch(texts: string[]): Promise<Float32Array[]> {
-						return texts.map(() => new Float32Array(384));
+						return texts.map(() => new Float32Array(fallbackDims));
 					},
 				},
 				modelName: "zero-vector-fallback",

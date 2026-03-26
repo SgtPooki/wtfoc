@@ -1,3 +1,25 @@
+/** Pooling strategy for local transformer models */
+export type PoolingStrategy = "mean" | "cls" | "last_token";
+
+export const VALID_POOLING_STRATEGIES: readonly PoolingStrategy[] = ["mean", "cls", "last_token"];
+
+/** Optional prefix formatter for query/document embedding asymmetry */
+export interface PrefixFormatter {
+	query: string;
+	document: string;
+}
+
+/**
+ * Named embedder profile that bundles model + pooling + prefix + dimensions.
+ * Can be referenced by name in config or selected via env var.
+ */
+export interface EmbedderProfile {
+	model: string;
+	dimensions?: number;
+	pooling?: PoolingStrategy;
+	prefix?: PrefixFormatter;
+}
+
 /** Raw config from .wtfoc.json — all fields optional */
 export interface ProjectConfig {
 	embedder?: EmbedderConfig;
@@ -9,6 +31,11 @@ export interface EmbedderConfig {
 	url?: string;
 	model?: string;
 	key?: string;
+	profile?: string;
+	profiles?: Record<string, EmbedderProfile>;
+	dimensions?: number;
+	pooling?: PoolingStrategy;
+	prefix?: PrefixFormatter;
 }
 
 export interface ExtractorConfig {
@@ -25,6 +52,11 @@ export interface ResolvedEmbedderConfig {
 	url: string | undefined;
 	model: string | undefined;
 	key: string | undefined;
+	profile: string | undefined;
+	profiles: Record<string, EmbedderProfile>;
+	dimensions: number | undefined;
+	pooling: PoolingStrategy | undefined;
+	prefix: PrefixFormatter | undefined;
 }
 
 export interface ResolvedExtractorConfig {

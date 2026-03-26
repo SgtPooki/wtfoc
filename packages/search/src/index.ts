@@ -6,6 +6,7 @@ export type { EdgeResolutionStats, SourceIndex } from "./edge-resolution.js";
 export { analyzeEdgeResolution, buildSourceIndex, resolves } from "./edge-resolution.js";
 export type { OpenAIEmbedderOptions } from "./embedders/openai.js";
 export { OpenAIEmbedder } from "./embedders/openai.js";
+export type { TransformersEmbedderOptions } from "./embedders/transformers.js";
 export { TransformersEmbedder } from "./embedders/transformers.js";
 export type { VectorBackend, VectorIndexConfig } from "./index/factory.js";
 export { createVectorIndex } from "./index/factory.js";

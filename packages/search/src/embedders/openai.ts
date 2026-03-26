@@ -1,4 +1,4 @@
-import type { Embedder } from "@wtfoc/common";
+import type { Embedder, PrefixFormatter } from "@wtfoc/common";
 import { EmbedFailedError } from "@wtfoc/common";
 
 const DEFAULT_MODEL = "text-embedding-3-small";
@@ -9,9 +9,13 @@ export interface OpenAIEmbedderOptions {
 	model?: string;
 	/** If not provided, auto-detected from first API response */
 	dimensions?: number;
+	/** Send dimensions in the request body (for MRL/Matryoshka models that support dimensional reduction) */
+	requestDimensions?: number;
 	baseUrl?: string;
 	/** Max characters per input text (truncated if exceeded). Default: 4000 (~1.5K tokens, safe for 2048-token models) */
 	maxInputChars?: number;
+	/** Optional prefix formatter for asymmetric query/document embedding */
+	prefix?: PrefixFormatter;
 }
 
 /**
@@ -19,14 +23,18 @@ export interface OpenAIEmbedderOptions {
  * or any server that implements the /v1/embeddings endpoint.
  *
  * Dimensions are auto-detected from the first response if not specified.
+ * Set requestDimensions to send a `dimensions` parameter in the API request
+ * (supported by MRL/Matryoshka models like text-embedding-3-small/large).
  */
 export class OpenAIEmbedder implements Embedder {
 	#dimensions: number | null;
 	readonly #apiKey: string;
 	readonly #baseUrl: string;
+	readonly #requestDimensions: number | undefined;
 
 	readonly model: string;
 	readonly maxInputChars: number;
+	readonly prefix?: PrefixFormatter;
 
 	get dimensions(): number {
 		if (this.#dimensions === null) {
@@ -45,14 +53,22 @@ export class OpenAIEmbedder implements Embedder {
 		this.#apiKey = options.apiKey;
 		this.model = options.model ?? DEFAULT_MODEL;
 		this.#dimensions = options.dimensions ?? null;
+		this.#requestDimensions = options.requestDimensions;
 		this.maxInputChars = options.maxInputChars ?? 4000;
+		this.prefix = options.prefix;
 
 		const base = options.baseUrl ?? API_URL;
 		this.#baseUrl = base.endsWith("/embeddings") ? base : `${base.replace(/\/$/, "")}/embeddings`;
 	}
 
+	#applyPrefix(text: string, kind: "query" | "document"): string {
+		if (!this.prefix) return text;
+		const pfx = kind === "query" ? this.prefix.query : this.prefix.document;
+		return pfx ? `${pfx}${text}` : text;
+	}
+
 	async embed(text: string, signal?: AbortSignal): Promise<Float32Array> {
-		const results = await this.#request([text], signal);
+		const results = await this.#request([this.#applyPrefix(text, "query")], signal);
 		const result = results[0];
 		if (!result) {
 			throw new EmbedFailedError(this.model, "Empty embedding response");
@@ -61,7 +77,8 @@ export class OpenAIEmbedder implements Embedder {
 	}
 
 	async embedBatch(texts: string[], signal?: AbortSignal): Promise<Float32Array[]> {
-		return this.#request(texts, signal);
+		const prefixed = texts.map((t) => this.#applyPrefix(t, "document"));
+		return this.#request(prefixed, signal);
 	}
 
 	async #request(input: string[], signal?: AbortSignal): Promise<Float32Array[]> {
@@ -82,6 +99,14 @@ export class OpenAIEmbedder implements Embedder {
 			);
 		}
 
+		const body: Record<string, unknown> = {
+			model: this.model,
+			input: truncated,
+		};
+		if (this.#requestDimensions != null) {
+			body.dimensions = this.#requestDimensions;
+		}
+
 		let response: Response;
 		try {
 			response = await fetch(this.#baseUrl, {
@@ -90,10 +115,7 @@ export class OpenAIEmbedder implements Embedder {
 					"Content-Type": "application/json",
 					Authorization: `Bearer ${this.#apiKey}`,
 				},
-				body: JSON.stringify({
-					model: this.model,
-					input: truncated,
-				}),
+				body: JSON.stringify(body),
 				signal,
 			});
 		} catch (err) {
@@ -102,8 +124,8 @@ export class OpenAIEmbedder implements Embedder {
 		}
 
 		if (!response.ok) {
-			const body = await response.text().catch(() => "");
-			throw new EmbedFailedError(this.model, `HTTP ${response.status}: ${body}`);
+			const respBody = await response.text().catch(() => "");
+			throw new EmbedFailedError(this.model, `HTTP ${response.status}: ${respBody}`);
 		}
 
 		const json = await response.json();
