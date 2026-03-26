@@ -1,5 +1,7 @@
 # AGENTS.md — wtfoc
 
+**Mission:** wtfoc builds shareable, improvable knowledge graphs. Any agent — AI or human — can ingest sources, extract semantic edges, and publish a collection to Filecoin. Any other agent can fetch it, improve it (better edges, new sources, re-chunking), and republish. The knowledge gets better with each contributor.
+
 Agent operating instructions for this repository.
 
 Read these first, in order:

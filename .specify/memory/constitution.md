@@ -22,7 +22,15 @@ All persisted data (manifests, segments) includes `schemaVersion`. Readers rejec
 
 ### V. Edges Are First-Class
 
-Cross-source connections are explicit typed edges, not just semantic similarity. Three built-in types (`references`, `closes`, `changes`) with string-typed `type` field for extensibility. Every edge includes `evidence` explaining why it exists.
+Cross-source connections are explicit typed edges, not just semantic similarity. Built-in types (`references`, `closes`, `changes`, `imports`) with string-typed `type` field for extensibility. LLM extractors add semantic types (`implements`, `depends-on`, `part-of`, etc.). Every edge includes `evidence` explaining why it exists.
+
+The edge pipeline is: `ingest` (regex/heuristic/code edges) → `extract-edges` (LLM semantic edges) → `materialize-edges` (bake into segments) → `promote` (upload to FOC). Edges accumulate — each stage adds, never removes.
+
+### V-b. Knowledge Graphs Are Shareable and Improvable
+
+Collections are collaborative artifacts. Any agent — AI or human — can fetch a collection, improve it (add sources, extract better edges, re-chunk), and publish a new version. The manifest chain provides an audit trail of who contributed what.
+
+Extraction metadata (which model, which contexts, what confidence) should travel with the collection so downstream consumers can make informed decisions about re-extraction. A collection promoted to FOC is not "done" — it's a starting point that others can build on.
 
 ### VI. Test-First
 
@@ -179,6 +187,12 @@ Human creates spec issues (dispatch.sh spec)
 - `scripts/dispatch.sh cleanup` — remove merged worktrees
 - `scripts/agent-loop.sh <agent>` — autonomous work loop (picks up assigned or ready issues)
 
+## What wtfoc IS
+
+- **A shareable, improvable knowledge graph.** Any agent (AI or human) can ingest sources, extract edges, and publish a collection. Any other agent can fetch it, improve it, and republish. The knowledge gets better with each contributor.
+- **Decentralized persistent storage for RAG and knowledge bases.** Collections are CID-addressed, verifiable, and stored on Filecoin. The data outlives any single service.
+- **An evidence-backed trace engine.** Every result links back to source artifacts with typed edges and confidence scores. No black-box summaries.
+
 ## What wtfoc Is NOT
 
 - **Not a vector database.** We provide pluggable seams for vector stores, not a competing implementation.
@@ -193,4 +207,4 @@ Human creates spec issues (dispatch.sh spec)
 - Changes to interfaces in `@wtfoc/common` require SPEC.md update
 - Features not in SPEC.md require discussion before implementation
 
-**Version**: 1.3.0 | **Ratified**: 2026-03-23 | **Last Amended**: 2026-03-25
+**Version**: 1.4.0 | **Ratified**: 2026-03-23 | **Last Amended**: 2026-03-26
