@@ -5,6 +5,7 @@ import {
 	buildSegment,
 	CodeEdgeExtractor,
 	CompositeEdgeExtractor,
+	TreeSitterEdgeExtractor,
 	DEFAULT_MAX_CHUNK_CHARS,
 	extractSegmentMetadata,
 	HeuristicChunkScorer,
@@ -21,6 +22,7 @@ import {
 	type EmbedderOpts,
 	getFormat,
 	getStore,
+	resolveTreeSitterUrl,
 	withEmbedderOptions,
 } from "../helpers.js";
 
@@ -47,7 +49,8 @@ export function registerReingestCommand(program: Command): void {
 				"--max-chunk-chars <number>",
 				`Max chars per chunk when rechunking (default: ${DEFAULT_MAX_CHUNK_CHARS})`,
 			)
-			.option("--ignore <pattern...>", "Additional gitignore-style patterns to exclude"),
+			.option("--ignore <pattern...>", "Additional gitignore-style patterns to exclude")
+			.option("--tree-sitter-url <url>", "Tree-sitter parser sidecar URL (env: WTFOC_TREE_SITTER_URL)"),
 	).action(
 		async (
 			opts: {
@@ -57,6 +60,7 @@ export function registerReingestCommand(program: Command): void {
 				rechunk?: boolean;
 				maxChunkChars?: string;
 				ignore?: string[];
+				treeSitterUrl?: string;
 			} & EmbedderOpts,
 		) => {
 			const store = getStore(program);
@@ -172,6 +176,14 @@ export function registerReingestCommand(program: Command): void {
 					extractor: new HeuristicEdgeExtractor(),
 				});
 				compositeExtractor.register({ name: "code", extractor: new CodeEdgeExtractor() });
+
+				const treeSitterUrl = resolveTreeSitterUrl(opts);
+				if (treeSitterUrl) {
+					compositeExtractor.register({
+						name: "tree-sitter",
+						extractor: new TreeSitterEdgeExtractor({ baseUrl: treeSitterUrl }),
+					});
+				}
 
 				const edges = mergeEdges([
 					{ extractorName: "composite", edges: await compositeExtractor.extract(batchChunks) },

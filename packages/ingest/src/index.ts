@@ -52,6 +52,14 @@ export {
 	estimateTokens,
 } from "./edges/llm-prompt.js";
 export { edgeKey, mergeEdges } from "./edges/merge.js";
+export { TreeSitterEdgeExtractor, type TreeSitterEdgeExtractorOptions } from "./edges/tree-sitter.js";
+export type {
+	TreeSitterClientOptions,
+	TreeSitterEdge,
+	TreeSitterHealthResponse,
+	TreeSitterParseResponse,
+} from "./edges/tree-sitter-client.js";
+export { treeSitterHealth, treeSitterParse } from "./edges/tree-sitter-client.js";
 export {
 	mergeOverlayEdges,
 	type OverlayEdgeData,

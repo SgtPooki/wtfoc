@@ -15,6 +15,7 @@ import {
 	mergeEdges,
 	RegexEdgeExtractor,
 	segmentId,
+	TreeSitterEdgeExtractor,
 } from "@wtfoc/ingest";
 import { type createStore, generateCollectionId } from "@wtfoc/store";
 
@@ -108,6 +109,14 @@ export async function handleIngest(
 		compositeExtractor.register({ name: "regex", extractor: new RegexEdgeExtractor() });
 		compositeExtractor.register({ name: "heuristic", extractor: new HeuristicEdgeExtractor() });
 		compositeExtractor.register({ name: "code", extractor: new CodeEdgeExtractor() });
+
+		const treeSitterUrl = process.env.WTFOC_TREE_SITTER_URL;
+		if (treeSitterUrl) {
+			compositeExtractor.register({
+				name: "tree-sitter",
+				extractor: new TreeSitterEdgeExtractor({ baseUrl: treeSitterUrl }),
+			});
+		}
 
 		const ext = params.extractorConfig;
 		if (ext?.enabled && ext.url && ext.model) {

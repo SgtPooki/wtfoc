@@ -5,6 +5,7 @@ import {
 	buildSourceKey,
 	CodeEdgeExtractor,
 	CompositeEdgeExtractor,
+	TreeSitterEdgeExtractor,
 	cursorFilePath,
 	DEFAULT_MAX_CHUNK_CHARS,
 	extractSegmentMetadata,
@@ -32,6 +33,7 @@ import {
 	getManifestDir,
 	getStore,
 	parseSinceDuration,
+	resolveTreeSitterUrl,
 	withEmbedderOptions,
 	withExtractorOptions,
 } from "../helpers.js";
@@ -224,6 +226,14 @@ export function registerIngestCommand(program: Command): void {
 				compositeExtractor.register({ name: "regex", extractor: new RegexEdgeExtractor() });
 				compositeExtractor.register({ name: "heuristic", extractor: new HeuristicEdgeExtractor() });
 				compositeExtractor.register({ name: "code", extractor: new CodeEdgeExtractor() });
+
+				const treeSitterUrl = resolveTreeSitterUrl(opts);
+				if (treeSitterUrl) {
+					compositeExtractor.register({
+						name: "tree-sitter",
+						extractor: new TreeSitterEdgeExtractor({ baseUrl: treeSitterUrl }),
+					});
+				}
 
 				if (extractorConfig.enabled) {
 					compositeExtractor.register({
