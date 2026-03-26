@@ -27,15 +27,43 @@ This creates segments with regex/heuristic edges (GitHub refs, import statements
 
 ### Step 2: Extract LLM edges
 
+Use any OpenAI-compatible endpoint. Three options:
+
+**Option A: Claude via direct proxy (recommended — fast, no API key needed)**
+
+```bash
+# Terminal 1: start the proxy (uses your Claude Code subscription)
+node scripts/claude-direct-proxy.mjs
+
+# Terminal 2: extract edges
+wtfoc extract-edges -c my-collection \
+  --extractor-url http://localhost:4523/v1 \
+  --extractor-model haiku
+```
+
+The proxy reads your Claude Code OAuth token from `~/.claude/.credentials.json` and forwards requests directly to the Anthropic API. ~0.8s per request, auto-refreshes tokens. See `scripts/claude-direct-proxy.mjs`.
+
+**Option B: Local LLM (LM Studio, Ollama, vLLM)**
+
 ```bash
 wtfoc extract-edges -c my-collection \
   --extractor-url http://localhost:8000/v1 \
   --extractor-model qwen3-32b
 ```
 
+**Option C: Any OpenAI-compatible API**
+
+```bash
+wtfoc extract-edges -c my-collection \
+  --extractor-url https://api.openai.com/v1 \
+  --extractor-model gpt-4o \
+  --extractor-key sk-...
+```
+
 This runs each source context through an LLM to discover semantic relationships like `implements`, `depends-on`, `part-of`, `mentions`, etc. Extracted edges are written to a **sidecar overlay file** — the immutable segments are not modified.
 
 Key features:
+- **Parallel**: `--context-concurrency 4` (default) processes 4 contexts simultaneously
 - **Incremental**: Re-running skips already-processed contexts
 - **Resumable**: Safe to interrupt and resume
 - **Fail-open**: LLM failures don't block the pipeline
