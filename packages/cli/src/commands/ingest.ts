@@ -59,12 +59,12 @@ export function registerIngestCommand(program: Command): void {
 				)
 				.option(
 					"--max-pages <number>",
-					"[website] Max pages to crawl (default: 100, -1 = unlimited)",
+					"[website] Limit number of pages to crawl (default: 100, -1 = unlimited)",
 				)
-				.option("--depth <number>", "[website] Max link-following depth from start URL")
+				.option("--depth <number>", "[website] Limit link-following depth from start URL")
 				.option(
 					"--url-pattern <glob>",
-					"[website] Glob pattern to restrict crawled URLs (default: same origin)",
+					"[website] Glob pattern to restrict which URLs are crawled (default: same origin)",
 				),
 		),
 	).action(
@@ -132,18 +132,18 @@ export function registerIngestCommand(program: Command): void {
 			// Pass website-specific options (scoped to website adapter only)
 			if (sourceType === "website") {
 				if (opts.maxPages != null) {
-					const maxPages = Number.parseInt(opts.maxPages, 10);
-					if (!Number.isFinite(maxPages)) {
+					const maxPages = Number(opts.maxPages);
+					if (!Number.isInteger(maxPages) || maxPages < -1) {
 						console.error(
-							`Error: --max-pages must be an integer (use -1 for unlimited), got "${opts.maxPages}".`,
+							`Error: --max-pages must be a positive integer or -1 for unlimited, got "${opts.maxPages}".`,
 						);
 						process.exit(2);
 					}
 					rawConfig.maxPages = maxPages;
 				}
 				if (opts.depth != null) {
-					const depth = Number.parseInt(opts.depth, 10);
-					if (!Number.isFinite(depth) || depth < 0) {
+					const depth = Number(opts.depth);
+					if (!Number.isInteger(depth) || depth < 0) {
 						console.error(`Error: --depth must be a non-negative integer, got "${opts.depth}".`);
 						process.exit(2);
 					}

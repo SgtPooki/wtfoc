@@ -23,7 +23,7 @@ function isFiniteInt(v: unknown): v is number {
 	return typeof v === "number" && Number.isFinite(v) && Number.isInteger(v);
 }
 
-function isPositiveInt(v: unknown): v is number {
+function isNonNegativeInt(v: unknown): v is number {
 	return isFiniteInt(v) && v >= 0;
 }
 
@@ -50,7 +50,7 @@ export class WebsiteAdapter implements SourceAdapter<WebsiteAdapterConfig> {
 		return {
 			source,
 			maxPages: isFiniteInt(raw.maxPages) ? raw.maxPages : 100,
-			depth: isPositiveInt(raw.depth) ? raw.depth : undefined,
+			depth: isNonNegativeInt(raw.depth) ? raw.depth : undefined,
 			urlPattern: typeof raw.urlPattern === "string" ? raw.urlPattern : undefined,
 			quiet: raw.quiet === true,
 		};
@@ -126,9 +126,9 @@ export class WebsiteAdapter implements SourceAdapter<WebsiteAdapterConfig> {
 			codeBlockStyle: "fenced",
 		});
 
-		// maxPages <= 0 means unlimited (crawl everything within the url pattern)
+		// maxPages < 0 means unlimited (crawl everything within the url pattern)
 		const maxPages = config.maxPages ?? 100;
-		const unlimited = maxPages <= 0;
+		const unlimited = maxPages < 0;
 		const crawleeMaxRequests = unlimited ? undefined : maxPages;
 
 		// Use a temp directory for crawlee storage and clean up after
