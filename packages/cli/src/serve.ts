@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import type { CollectionHead, Embedder, Segment, VectorIndex } from "@wtfoc/common";
+import type { CollectionHead, Edge, Embedder, Segment, VectorIndex } from "@wtfoc/common";
+import { overlayFilePath, readOverlayEdges } from "@wtfoc/ingest";
 import type { VectorBackend } from "@wtfoc/search";
 import {
 	analyzeEdgeResolution,
@@ -17,12 +18,14 @@ interface ServeOptions {
 	embedder: Embedder;
 	port: number;
 	html: string;
+	manifestDir: string;
 }
 
 interface LoadedState {
 	manifest: CollectionHead;
 	segments: Segment[];
 	vectorIndex: VectorIndex;
+	overlayEdges: Edge[];
 }
 
 function json(res: ServerResponse, data: unknown, status = 200) {
@@ -65,10 +68,19 @@ export async function startServer(options: ServeOptions): Promise<void> {
 		qdrantApiKey: process.env.WTFOC_QDRANT_API_KEY,
 	});
 	const mounted = await mountCollection(head.manifest, store.storage, vectorIndex);
+
+	// Load overlay edges from extract-edges if available
+	const overlay = await readOverlayEdges(overlayFilePath(options.manifestDir, collection));
+	const overlayEdges = overlay?.edges ?? [];
+	if (overlayEdges.length > 0) {
+		console.error(`🔗 Loaded ${overlayEdges.length} overlay edges from extract-edges`);
+	}
+
 	const state: LoadedState = {
 		manifest: head.manifest,
 		segments: mounted.segments,
 		vectorIndex: mounted.vectorIndex,
+		overlayEdges,
 	};
 	console.error(
 		`✅ Loaded "${collection}": ${head.manifest.totalChunks} chunks, ${head.manifest.segments.length} segments`,
@@ -137,7 +149,9 @@ export async function startServer(options: ServeOptions): Promise<void> {
 			if (path === "/api/trace") {
 				const q = params.get("q");
 				if (!q) return json(res, { error: "Missing ?q= parameter" }, 400);
-				const result = await trace(q, embedder, state.vectorIndex, state.segments);
+				const result = await trace(q, embedder, state.vectorIndex, state.segments, {
+					overlayEdges: state.overlayEdges,
+				});
 				return json(res, {
 					query: result.query,
 					stats: result.stats,

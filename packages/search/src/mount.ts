@@ -1,6 +1,7 @@
 import type {
 	CollectionHead,
 	CollectionRevision,
+	Edge,
 	Segment,
 	StorageBackend,
 	VectorEntry,
@@ -12,6 +13,8 @@ export interface MountedCollection {
 	revision: CollectionRevision | null;
 	segments: Segment[];
 	vectorIndex: VectorIndex;
+	/** Overlay edges loaded at mount time (e.g. from extract-edges LLM output). */
+	overlayEdges: Edge[];
 }
 
 export interface MountOptions {
@@ -45,6 +48,12 @@ export interface MountOptions {
 	 * persistent vector backend.
 	 */
 	skipSegmentIds?: ReadonlySet<string>;
+	/**
+	 * Overlay edges to include in the mounted collection (e.g. from
+	 * extract-edges LLM output). These are passed through to
+	 * MountedCollection so callers can feed them into trace/search.
+	 */
+	overlayEdges?: Edge[];
 }
 
 /**
@@ -135,7 +144,7 @@ export async function mountCollection(
 		await vectorIndex.reconcile(expectedIds, signal);
 	}
 
-	return { revision, segments, vectorIndex };
+	return { revision, segments, vectorIndex, overlayEdges: options?.overlayEdges ?? [] };
 }
 
 /**

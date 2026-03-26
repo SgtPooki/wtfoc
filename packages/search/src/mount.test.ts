@@ -1,6 +1,7 @@
 import type {
 	CollectionHead,
 	CollectionRevision,
+	Edge,
 	Segment,
 	StorageBackend,
 	StorageResult,
@@ -595,5 +596,65 @@ describe("mountCollection", () => {
 
 		// Should not throw even with reconcile: true
 		await expect(mountCollection(head, storage, index, { reconcile: true })).resolves.not.toThrow();
+	});
+
+	it("passes overlay edges through to MountedCollection", async () => {
+		const seg = makeSegment("seg-overlay");
+		const storage = makeStorage({ "seg-overlay": seg });
+		const index = makeVectorIndex();
+
+		const overlayEdges: Edge[] = [
+			{
+				type: "implements",
+				sourceId: "chunk-overlay",
+				targetType: "concept",
+				targetId: "design-doc",
+				evidence: "LLM extracted",
+				confidence: 0.7,
+			},
+		];
+
+		const head: CollectionHead = {
+			schemaVersion: 1,
+			collectionId: "overlay-test",
+			name: "overlay",
+			currentRevisionId: null,
+			prevHeadId: null,
+			segments: [{ id: "seg-overlay", sourceTypes: ["repo"], chunkCount: 1 }],
+			totalChunks: 1,
+			embeddingModel: "test-model",
+			embeddingDimensions: 3,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		};
+
+		const mounted = await mountCollection(head, storage, index, { overlayEdges });
+
+		expect(mounted.overlayEdges).toHaveLength(1);
+		expect(mounted.overlayEdges[0]?.type).toBe("implements");
+	});
+
+	it("returns empty overlayEdges when none provided", async () => {
+		const seg = makeSegment("seg-no-overlay");
+		const storage = makeStorage({ "seg-no-overlay": seg });
+		const index = makeVectorIndex();
+
+		const head: CollectionHead = {
+			schemaVersion: 1,
+			collectionId: "no-overlay-test",
+			name: "no-overlay",
+			currentRevisionId: null,
+			prevHeadId: null,
+			segments: [{ id: "seg-no-overlay", sourceTypes: ["repo"], chunkCount: 1 }],
+			totalChunks: 1,
+			embeddingModel: "test-model",
+			embeddingDimensions: 3,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		};
+
+		const mounted = await mountCollection(head, storage, index);
+
+		expect(mounted.overlayEdges).toHaveLength(0);
 	});
 });

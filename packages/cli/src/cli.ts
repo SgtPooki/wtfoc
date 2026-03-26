@@ -8,6 +8,7 @@ import { registerCollectionsCommand } from "./commands/collections.js";
 import { registerExtractEdgesCommand } from "./commands/extract-edges.js";
 import { registerIngestCommand } from "./commands/ingest.js";
 import { registerInitCommand } from "./commands/init.js";
+import { registerMaterializeEdgesCommand } from "./commands/materialize-edges.js";
 import { registerPromoteCommand } from "./commands/promote.js";
 import { registerQueryCommand } from "./commands/query.js";
 import { registerReindexCommand } from "./commands/reindex.js";
@@ -59,6 +60,7 @@ program
 registerInitCommand(program);
 registerIngestCommand(program);
 registerExtractEdgesCommand(program);
+registerMaterializeEdgesCommand(program);
 registerTraceCommand(program);
 registerQueryCommand(program);
 registerStatusCommand(program);
