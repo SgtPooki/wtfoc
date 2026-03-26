@@ -2,8 +2,14 @@ import type { Chunk } from "@wtfoc/common";
 import { describe, expect, it } from "vitest";
 import { CodeEdgeExtractor } from "./code.js";
 
-function makeCodeChunk(content: string, source: string, id = "chunk-1"): Chunk {
-	return { id, content, sourceType: "code", source, chunkIndex: 0, totalChunks: 1, metadata: {} };
+function makeCodeChunk(
+	content: string,
+	source: string,
+	id = "chunk-1",
+	chunkIndex = 0,
+	totalChunks = 1,
+): Chunk {
+	return { id, content, sourceType: "code", source, chunkIndex, totalChunks, metadata: {} };
 }
 
 describe("CodeEdgeExtractor", () => {
@@ -185,6 +191,89 @@ describe("CodeEdgeExtractor", () => {
 				targetId: "github.com/gin-gonic/gin",
 				confidence: 1.0,
 			});
+		});
+	});
+
+	describe("multi-chunk manifest reconstruction", () => {
+		it("reconstructs split package.json and extracts deps", async () => {
+			const fullJson = JSON.stringify({
+				name: "test-pkg",
+				dependencies: { express: "^4.0.0", lodash: "^4.17.0" },
+				devDependencies: { vitest: "^1.0.0" },
+			});
+			const mid1 = Math.floor(fullJson.length / 3);
+			const mid2 = Math.floor((fullJson.length * 2) / 3);
+
+			const chunks: Chunk[] = [
+				makeCodeChunk(fullJson.slice(0, mid1), "repo/package.json", "chunk-0", 0, 3),
+				makeCodeChunk(fullJson.slice(mid1, mid2), "repo/package.json", "chunk-1", 1, 3),
+				makeCodeChunk(fullJson.slice(mid2), "repo/package.json", "chunk-2", 2, 3),
+			];
+
+			const edges = await extractor.extract(chunks);
+			expect(edges).toHaveLength(3);
+			expect(edges.map((e) => e.targetId).sort()).toEqual(["express", "lodash", "vitest"]);
+		});
+
+		it("reconstructs split requirements.txt", async () => {
+			const reqs = "flask==2.0.0\nrequests>=2.28\nnumpy~=1.24\npandas>=1.5";
+			const mid = Math.floor(reqs.length / 2);
+
+			const chunks: Chunk[] = [
+				makeCodeChunk(reqs.slice(0, mid), "repo/requirements.txt", "chunk-0", 0, 2),
+				makeCodeChunk(reqs.slice(mid), "repo/requirements.txt", "chunk-1", 1, 2),
+			];
+
+			const edges = await extractor.extract(chunks);
+			expect(edges).toHaveLength(4);
+		});
+
+		it("reconstructs split go.mod", async () => {
+			const gomod =
+				"module github.com/user/app\n\ngo 1.21\n\nrequire (\n\tgithub.com/gin-gonic/gin v1.9.1\n\tgolang.org/x/text v0.14.0\n)";
+			const mid = Math.floor(gomod.length / 2);
+
+			const chunks: Chunk[] = [
+				makeCodeChunk(gomod.slice(0, mid), "repo/go.mod", "chunk-0", 0, 2),
+				makeCodeChunk(gomod.slice(mid), "repo/go.mod", "chunk-1", 1, 2),
+			];
+
+			const edges = await extractor.extract(chunks);
+			expect(edges).toHaveLength(2);
+			expect(edges.map((e) => e.targetId).sort()).toEqual([
+				"github.com/gin-gonic/gin",
+				"golang.org/x/text",
+			]);
+		});
+
+		it("handles out-of-order chunks", async () => {
+			const fullJson = JSON.stringify({
+				dependencies: { express: "^4.0.0", lodash: "^4.17.0" },
+			});
+			const mid = Math.floor(fullJson.length / 2);
+
+			// Deliver chunk-1 before chunk-0
+			const chunks: Chunk[] = [
+				makeCodeChunk(fullJson.slice(mid), "repo/package.json", "chunk-1", 1, 2),
+				makeCodeChunk(fullJson.slice(0, mid), "repo/package.json", "chunk-0", 0, 2),
+			];
+
+			const edges = await extractor.extract(chunks);
+			expect(edges).toHaveLength(2);
+		});
+
+		it("groups manifest chunks by source path", async () => {
+			const pkg1 = JSON.stringify({ dependencies: { express: "^4.0.0" } });
+			const pkg2 = JSON.stringify({ dependencies: { lodash: "^4.17.0" } });
+
+			const chunks: Chunk[] = [
+				makeCodeChunk(pkg1, "app/package.json", "chunk-a"),
+				makeCodeChunk(pkg2, "lib/package.json", "chunk-b"),
+			];
+
+			const edges = await extractor.extract(chunks);
+			expect(edges).toHaveLength(2);
+			expect(edges.map((e) => e.targetId).sort()).toEqual(["express", "lodash"]);
 		});
 	});
 
