@@ -90,11 +90,9 @@ The `--mode analytical` flag (new in v0.0.3) detects cross-source insights — c
 ### Limitations and future work
 
 - The website crawler uses Cheerio (no JavaScript rendering), so SPAs and dynamically-loaded content won't be captured.
-- Crawl depth defaults to 100 pages. You can't yet control this from the CLI.
 - There is no dedicated arXiv adapter yet — you can crawl arXiv abstract pages via the website adapter, but PDF content is not extracted.
 
 > Tracking:
-> - [#120 — Website crawler depth control](https://github.com/SgtPooki/wtfoc/issues/120)
 > - [#125 — arXiv papers source adapter](https://github.com/SgtPooki/wtfoc/issues/125)
 
 ---
