@@ -262,6 +262,36 @@ describe("CodeEdgeExtractor", () => {
 			expect(edges).toHaveLength(2);
 		});
 
+		it("reconstructs overlapped chunks (50-char overlap like real chunker)", async () => {
+			const fullJson = JSON.stringify({
+				name: "test-overlapped-pkg",
+				dependencies: Object.fromEntries(
+					Array.from({ length: 30 }, (_, i) => [`dependency-package-${i}`, `^${i}.0.0`]),
+				),
+			});
+			// Simulate the real chunker: 512-byte chunks with 50-byte overlap
+			const chunkSize = 512;
+			const overlap = 50;
+			const chunks: Chunk[] = [];
+			let offset = 0;
+			let idx = 0;
+			while (offset < fullJson.length) {
+				const end = Math.min(offset + chunkSize, fullJson.length);
+				chunks.push(
+					makeCodeChunk(fullJson.slice(offset, end), "repo/package.json", `chunk-${idx}`, idx, 0),
+				);
+				idx++;
+				offset = end - overlap;
+				if (end === fullJson.length) break;
+			}
+			for (const c of chunks) c.totalChunks = chunks.length;
+
+			expect(chunks.length).toBeGreaterThan(1);
+			const edges = await extractor.extract(chunks);
+			expect(edges).toHaveLength(30);
+			expect(edges[0]?.targetId).toBe("dependency-package-0");
+		});
+
 		it("groups manifest chunks by source path", async () => {
 			const pkg1 = JSON.stringify({ dependencies: { express: "^4.0.0" } });
 			const pkg2 = JSON.stringify({ dependencies: { lodash: "^4.17.0" } });
