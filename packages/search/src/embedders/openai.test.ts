@@ -118,4 +118,69 @@ describe("OpenAIEmbedder", () => {
 
 		await expect(embedder.embed("test", controller.signal)).rejects.toThrow();
 	});
+
+	it("sends requestDimensions in the API request body", async () => {
+		const embedding = Array.from({ length: 256 }, () => 0);
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(mockResponse([{ embedding, index: 0 }]));
+
+		const embedder = new OpenAIEmbedder({
+			apiKey: "sk-test",
+			model: "text-embedding-3-large",
+			requestDimensions: 256,
+		});
+		await embedder.embed("test");
+
+		const call = vi.mocked(globalThis.fetch).mock.calls[0];
+		const body = JSON.parse(call?.[1]?.body as string);
+		expect(body.dimensions).toBe(256);
+	});
+
+	it("does not send dimensions when requestDimensions is not set", async () => {
+		const embedding = Array.from({ length: 1536 }, () => 0);
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(mockResponse([{ embedding, index: 0 }]));
+
+		const embedder = new OpenAIEmbedder({ apiKey: "sk-test" });
+		await embedder.embed("test");
+
+		const call = vi.mocked(globalThis.fetch).mock.calls[0];
+		const body = JSON.parse(call?.[1]?.body as string);
+		expect(body.dimensions).toBeUndefined();
+	});
+
+	it("applies query prefix to embed() calls", async () => {
+		const embedding = Array.from({ length: 768 }, () => 0);
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(mockResponse([{ embedding, index: 0 }]));
+
+		const embedder = new OpenAIEmbedder({
+			apiKey: "sk-test",
+			model: "nomic-embed-text",
+			prefix: { query: "search_query: ", document: "search_document: " },
+		});
+		await embedder.embed("test query");
+
+		const call = vi.mocked(globalThis.fetch).mock.calls[0];
+		const body = JSON.parse(call?.[1]?.body as string);
+		expect(body.input).toEqual(["search_query: test query"]);
+	});
+
+	it("applies document prefix to embedBatch() calls", async () => {
+		const embedding = Array.from({ length: 768 }, () => 0);
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+			mockResponse([
+				{ embedding, index: 0 },
+				{ embedding, index: 1 },
+			]),
+		);
+
+		const embedder = new OpenAIEmbedder({
+			apiKey: "sk-test",
+			model: "nomic-embed-text",
+			prefix: { query: "search_query: ", document: "search_document: " },
+		});
+		await embedder.embedBatch(["doc a", "doc b"]);
+
+		const call = vi.mocked(globalThis.fetch).mock.calls[0];
+		const body = JSON.parse(call?.[1]?.body as string);
+		expect(body.input).toEqual(["search_document: doc a", "search_document: doc b"]);
+	});
 });

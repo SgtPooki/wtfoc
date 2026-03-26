@@ -1,3 +1,5 @@
+import type { PrefixFormatter } from "../config-types.js";
+
 /**
  * Pluggable embedder. Transforms text into vector representations.
  * Built-in: transformers.js (local), OpenAI (API key required).
@@ -10,4 +12,6 @@ export interface Embedder {
 	readonly model?: string;
 	/** Maximum input characters this embedder can handle before truncation. */
 	readonly maxInputChars?: number;
+	/** Optional prefix formatter for asymmetric query/document embedding. */
+	readonly prefix?: PrefixFormatter;
 }

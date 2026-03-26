@@ -7,6 +7,9 @@ describe("resolveConfig", () => {
 		"WTFOC_EMBEDDER_URL",
 		"WTFOC_EMBEDDER_MODEL",
 		"WTFOC_EMBEDDER_KEY",
+		"WTFOC_EMBEDDER_PROFILE",
+		"WTFOC_EMBEDDER_DIMENSIONS",
+		"WTFOC_EMBEDDER_POOLING",
 		"WTFOC_OPENAI_API_KEY",
 		"WTFOC_EXTRACTOR_URL",
 		"WTFOC_EXTRACTOR_MODEL",
@@ -38,6 +41,10 @@ describe("resolveConfig", () => {
 		expect(result.embedder.url).toBeUndefined();
 		expect(result.embedder.model).toBeUndefined();
 		expect(result.embedder.key).toBeUndefined();
+		expect(result.embedder.profile).toBeUndefined();
+		expect(result.embedder.dimensions).toBeUndefined();
+		expect(result.embedder.pooling).toBeUndefined();
+		expect(result.embedder.prefix).toBeUndefined();
 		expect(result.extractor.enabled).toBe(false);
 		expect(result.extractor.timeout).toBe(20000);
 		expect(result.extractor.concurrency).toBe(4);
@@ -129,5 +136,58 @@ describe("resolveConfig", () => {
 		process.env.WTFOC_EXTRACTOR_MAX_CONCURRENCY = "abc";
 		const result = resolveConfig({});
 		expect(result.extractor.concurrency).toBe(4);
+	});
+
+	it("resolves embedder profile from file config", () => {
+		const result = resolveConfig({
+			file: { embedder: { profile: "nomic" } },
+		});
+		expect(result.embedder.profile).toBe("nomic");
+	});
+
+	it("resolves WTFOC_EMBEDDER_PROFILE from env", () => {
+		process.env.WTFOC_EMBEDDER_PROFILE = "minilm";
+		const result = resolveConfig({});
+		expect(result.embedder.profile).toBe("minilm");
+	});
+
+	it("resolves embedder dimensions from file config", () => {
+		const result = resolveConfig({
+			file: { embedder: { dimensions: 768 } },
+		});
+		expect(result.embedder.dimensions).toBe(768);
+	});
+
+	it("resolves WTFOC_EMBEDDER_DIMENSIONS from env", () => {
+		process.env.WTFOC_EMBEDDER_DIMENSIONS = "1024";
+		const result = resolveConfig({});
+		expect(result.embedder.dimensions).toBe(1024);
+	});
+
+	it("resolves embedder pooling from file config", () => {
+		const result = resolveConfig({
+			file: { embedder: { pooling: "last_token" } },
+		});
+		expect(result.embedder.pooling).toBe("last_token");
+	});
+
+	it("resolves WTFOC_EMBEDDER_POOLING from env", () => {
+		process.env.WTFOC_EMBEDDER_POOLING = "cls";
+		const result = resolveConfig({});
+		expect(result.embedder.pooling).toBe("cls");
+	});
+
+	it("resolves embedder prefix from file config", () => {
+		const result = resolveConfig({
+			file: {
+				embedder: {
+					prefix: { query: "search_query: ", document: "search_document: " },
+				},
+			},
+		});
+		expect(result.embedder.prefix).toEqual({
+			query: "search_query: ",
+			document: "search_document: ",
+		});
 	});
 });

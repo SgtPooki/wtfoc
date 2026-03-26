@@ -93,4 +93,67 @@ describe("TransformersEmbedder", () => {
 		const embedder = new TransformersEmbedder("bad-model");
 		await expect(embedder.embed("test")).rejects.toThrow("Embedding failed");
 	});
+
+	it("supports configurable pooling strategy", async () => {
+		const embedding = new Float32Array(1024).fill(0.1);
+		mockExtractor.mockResolvedValueOnce(fakeTensor([1, 1024], embedding));
+
+		const embedder = new TransformersEmbedder("custom-model", {
+			dimensions: 1024,
+			pooling: "last_token",
+		});
+		await embedder.embed("test");
+
+		expect(mockExtractor).toHaveBeenCalledWith("test", {
+			pooling: "last_token",
+			normalize: true,
+		});
+		expect(embedder.dimensions).toBe(1024);
+		expect(embedder.pooling).toBe("last_token");
+	});
+
+	it("applies query prefix to embed() calls", async () => {
+		const embedding = new Float32Array(768).fill(0.1);
+		mockExtractor.mockResolvedValueOnce(fakeTensor([1, 768], embedding));
+
+		const embedder = new TransformersEmbedder("nomic-embed-text", {
+			dimensions: 768,
+			prefix: { query: "search_query: ", document: "search_document: " },
+		});
+		await embedder.embed("test query");
+
+		expect(mockExtractor).toHaveBeenCalledWith(
+			"search_query: test query",
+			expect.objectContaining({ pooling: "mean" }),
+		);
+	});
+
+	it("applies document prefix to embedBatch() calls", async () => {
+		const batch = new Float32Array(768 * 2).fill(0.1);
+		mockExtractor.mockResolvedValueOnce(fakeTensor([2, 768], batch));
+
+		const embedder = new TransformersEmbedder("nomic-embed-text", {
+			dimensions: 768,
+			prefix: { query: "search_query: ", document: "search_document: " },
+		});
+		await embedder.embedBatch(["doc a", "doc b"]);
+
+		expect(mockExtractor).toHaveBeenCalledWith(
+			["search_document: doc a", "search_document: doc b"],
+			expect.objectContaining({ pooling: "mean" }),
+		);
+	});
+
+	it("auto-detects dimensions from pipeline output", async () => {
+		const embedding = new Float32Array(768).fill(0.1);
+		mockExtractor.mockResolvedValueOnce(fakeTensor([1, 768], embedding));
+
+		const embedder = new TransformersEmbedder("custom-model");
+		// Before first call, dimensions defaults to 384
+		expect(embedder.dimensions).toBe(384);
+
+		await embedder.embed("test");
+		// After first call, dimensions auto-detected from output
+		expect(embedder.dimensions).toBe(768);
+	});
 });

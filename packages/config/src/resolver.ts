@@ -1,4 +1,4 @@
-import type { ProjectConfig, ResolvedConfig } from "@wtfoc/common";
+import type { PoolingStrategy, ProjectConfig, ResolvedConfig } from "@wtfoc/common";
 import { resolveUrlShortcut } from "./shortcuts.js";
 
 export interface ConfigSources {
@@ -32,6 +32,22 @@ export function resolveConfig(sources: ConfigSources): ResolvedConfig {
 		file?.embedder?.key ??
 		process.env.WTFOC_EMBEDDER_KEY ??
 		process.env.WTFOC_OPENAI_API_KEY;
+
+	const embedderProfile = file?.embedder?.profile ?? process.env.WTFOC_EMBEDDER_PROFILE;
+
+	const embedderDimensionsRaw = file?.embedder?.dimensions ?? process.env.WTFOC_EMBEDDER_DIMENSIONS;
+	const embedderDimensions =
+		typeof embedderDimensionsRaw === "number"
+			? embedderDimensionsRaw
+			: embedderDimensionsRaw
+				? Number.parseInt(embedderDimensionsRaw, 10)
+				: undefined;
+
+	const embedderPooling = (file?.embedder?.pooling ?? process.env.WTFOC_EMBEDDER_POOLING) as
+		| PoolingStrategy
+		| undefined;
+
+	const embedderPrefix = file?.embedder?.prefix;
 
 	const extractorEnabledRaw =
 		cli?.extractorEnabled ?? file?.extractor?.enabled ?? process.env.WTFOC_EXTRACTOR_ENABLED;
@@ -78,6 +94,10 @@ export function resolveConfig(sources: ConfigSources): ResolvedConfig {
 			url: embedderUrl,
 			model: embedderModel,
 			key: embedderKey,
+			profile: embedderProfile,
+			dimensions: Number.isNaN(embedderDimensions) ? undefined : embedderDimensions,
+			pooling: embedderPooling,
+			prefix: embedderPrefix,
 		},
 		extractor: {
 			enabled: extractorEnabled,

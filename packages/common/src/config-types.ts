@@ -1,3 +1,50 @@
+/** Pooling strategy for local transformer models */
+export type PoolingStrategy = "mean" | "cls" | "last_token";
+
+/** Optional prefix formatter for query/document embedding asymmetry */
+export interface PrefixFormatter {
+	query: string;
+	document: string;
+}
+
+/**
+ * Named embedder profile that bundles model + pooling + prefix + dimensions.
+ * Can be referenced by name in config or selected via env var.
+ */
+export interface EmbedderProfile {
+	model: string;
+	dimensions?: number;
+	pooling?: PoolingStrategy;
+	prefix?: PrefixFormatter;
+}
+
+/** Built-in embedder profiles for common models */
+export const EMBEDDER_PROFILES: Readonly<Record<string, EmbedderProfile>> = {
+	minilm: {
+		model: "Xenova/all-MiniLM-L6-v2",
+		dimensions: 384,
+		pooling: "mean",
+	},
+	nomic: {
+		model: "nomic-embed-text",
+		dimensions: 768,
+		pooling: "mean",
+		prefix: {
+			query: "search_query: ",
+			document: "search_document: ",
+		},
+	},
+	"qwen3-0.6b": {
+		model: "onnx-community/Qwen3-Embedding-0.6B-ONNX",
+		dimensions: 1024,
+		pooling: "last_token",
+		prefix: {
+			query: "Instruct: Given a query, retrieve relevant passages\nQuery: ",
+			document: "",
+		},
+	},
+};
+
 /** Raw config from .wtfoc.json — all fields optional */
 export interface ProjectConfig {
 	embedder?: EmbedderConfig;
@@ -9,6 +56,10 @@ export interface EmbedderConfig {
 	url?: string;
 	model?: string;
 	key?: string;
+	profile?: string;
+	dimensions?: number;
+	pooling?: PoolingStrategy;
+	prefix?: PrefixFormatter;
 }
 
 export interface ExtractorConfig {
@@ -25,6 +76,10 @@ export interface ResolvedEmbedderConfig {
 	url: string | undefined;
 	model: string | undefined;
 	key: string | undefined;
+	profile: string | undefined;
+	dimensions: number | undefined;
+	pooling: PoolingStrategy | undefined;
+	prefix: PrefixFormatter | undefined;
 }
 
 export interface ResolvedExtractorConfig {

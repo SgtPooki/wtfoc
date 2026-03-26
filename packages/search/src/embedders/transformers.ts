@@ -1,25 +1,49 @@
 import type { FeatureExtractionPipeline } from "@huggingface/transformers";
-import type { Embedder } from "@wtfoc/common";
+import type { Embedder, PoolingStrategy, PrefixFormatter } from "@wtfoc/common";
 import { EmbedFailedError } from "@wtfoc/common";
 
 const DEFAULT_MODEL = "Xenova/all-MiniLM-L6-v2";
-const DIMENSIONS = 384;
+const DEFAULT_DIMENSIONS = 384;
+
+export interface TransformersEmbedderOptions {
+	dtype?: string;
+	dimensions?: number;
+	pooling?: PoolingStrategy;
+	prefix?: PrefixFormatter;
+}
 
 /**
  * Local embedder using @huggingface/transformers with lazy model initialization.
  * Downloads and caches the model on first use.
+ *
+ * Model, dimensions, and pooling strategy are all configurable.
+ * If dimensions is not provided, it defaults to 384 (MiniLM) but will be
+ * auto-detected from the first pipeline output when possible.
  */
 export class TransformersEmbedder implements Embedder {
-	readonly dimensions = DIMENSIONS;
+	#dimensions: number;
 	readonly model: string;
+	readonly pooling: PoolingStrategy;
+	readonly prefix?: PrefixFormatter;
 	readonly #dtype: string;
 
 	#pipeline: FeatureExtractionPipeline | null = null;
 	#initPromise: Promise<void> | null = null;
+	#dimensionsDetected = false;
 
-	constructor(model: string = DEFAULT_MODEL, options?: { dtype?: string }) {
+	get dimensions(): number {
+		return this.#dimensions;
+	}
+
+	constructor(model: string = DEFAULT_MODEL, options?: TransformersEmbedderOptions) {
 		this.model = model;
 		this.#dtype = options?.dtype ?? "fp32";
+		this.#dimensions = options?.dimensions ?? DEFAULT_DIMENSIONS;
+		this.pooling = options?.pooling ?? "mean";
+		this.prefix = options?.prefix;
+		if (options?.dimensions != null) {
+			this.#dimensionsDetected = true;
+		}
 	}
 
 	async #ensureReady(signal?: AbortSignal): Promise<void> {
@@ -58,19 +82,30 @@ export class TransformersEmbedder implements Embedder {
 		return this.#pipeline;
 	}
 
+	#applyPrefix(text: string, kind: "query" | "document"): string {
+		if (!this.prefix) return text;
+		const pfx = kind === "query" ? this.prefix.query : this.prefix.document;
+		return pfx ? `${pfx}${text}` : text;
+	}
+
 	async embed(text: string, signal?: AbortSignal): Promise<Float32Array> {
 		await this.#ensureReady(signal);
 		signal?.throwIfAborted();
 		try {
 			const pipeline = this.#getPipeline();
-			const output = await pipeline(text, {
-				pooling: "mean",
+			const output = await pipeline(this.#applyPrefix(text, "query"), {
+				pooling: this.pooling,
 				normalize: true,
 			});
 			if (!(output.data instanceof Float32Array)) {
 				throw new Error(`Expected Float32Array from pipeline, got ${typeof output.data}`);
 			}
-			return new Float32Array(output.data);
+			const data = new Float32Array(output.data);
+			if (!this.#dimensionsDetected) {
+				this.#dimensions = data.length;
+				this.#dimensionsDetected = true;
+			}
+			return data;
 		} catch (err) {
 			if (err instanceof DOMException && err.name === "AbortError") throw err;
 			if (err instanceof EmbedFailedError) throw err;
@@ -83,17 +118,23 @@ export class TransformersEmbedder implements Embedder {
 		signal?.throwIfAborted();
 		try {
 			const pipeline = this.#getPipeline();
-			const output = await pipeline(texts, {
-				pooling: "mean",
+			const prefixed = texts.map((t) => this.#applyPrefix(t, "document"));
+			const output = await pipeline(prefixed, {
+				pooling: this.pooling,
 				normalize: true,
 			});
 			if (!(output.data instanceof Float32Array)) {
 				throw new Error(`Expected Float32Array from pipeline, got ${typeof output.data}`);
 			}
 			const data = output.data;
+			if (!this.#dimensionsDetected && data.length > 0) {
+				this.#dimensions = data.length / texts.length;
+				this.#dimensionsDetected = true;
+			}
+			const dims = this.#dimensions;
 			const results: Float32Array[] = [];
 			for (let i = 0; i < texts.length; i++) {
-				results.push(new Float32Array(data.buffer, i * this.dimensions * 4, this.dimensions));
+				results.push(new Float32Array(data.buffer, i * dims * 4, dims));
 			}
 			return results;
 		} catch (err) {

@@ -1,4 +1,10 @@
-import type { CollectionHead, Embedder, ResolvedEmbedderConfig } from "@wtfoc/common";
+import type {
+	CollectionHead,
+	Embedder,
+	EmbedderProfile,
+	ResolvedEmbedderConfig,
+} from "@wtfoc/common";
+import { EMBEDDER_PROFILES } from "@wtfoc/common";
 import { resolveUrlShortcut } from "@wtfoc/config";
 import type { MountedCollection } from "@wtfoc/search";
 import {
@@ -19,6 +25,18 @@ export async function loadCollection(
 	return mountCollection(manifest, store.storage, vectorIndex);
 }
 
+function resolveProfile(resolvedConfig?: ResolvedEmbedderConfig): EmbedderProfile | undefined {
+	const profileName = resolvedConfig?.profile ?? process.env.WTFOC_EMBEDDER_PROFILE;
+	if (!profileName) return undefined;
+	const profile = EMBEDDER_PROFILES[profileName];
+	if (!profile) {
+		throw new Error(
+			`Unknown embedder profile: "${profileName}". Available: ${Object.keys(EMBEDDER_PROFILES).join(", ")}`,
+		);
+	}
+	return profile;
+}
+
 /**
  * Create an embedder from resolved config or environment variables.
  *
@@ -29,15 +47,20 @@ export function createEmbedder(resolvedConfig?: ResolvedEmbedderConfig): {
 	embedder: Embedder;
 	modelName: string;
 } {
+	const profile = resolveProfile(resolvedConfig);
+
 	const url =
 		resolvedConfig?.url ??
 		(process.env.WTFOC_EMBEDDER_URL
 			? resolveUrlShortcut(process.env.WTFOC_EMBEDDER_URL)
 			: undefined);
-	const model = resolvedConfig?.model ?? process.env.WTFOC_EMBEDDER_MODEL;
+	const model = resolvedConfig?.model ?? process.env.WTFOC_EMBEDDER_MODEL ?? profile?.model;
 	const key =
 		resolvedConfig?.key ?? process.env.WTFOC_EMBEDDER_KEY ?? process.env.WTFOC_OPENAI_API_KEY;
 	const type = process.env.WTFOC_EMBEDDER ?? "local";
+	const prefix = resolvedConfig?.prefix ?? profile?.prefix;
+	const dimensions = resolvedConfig?.dimensions ?? profile?.dimensions;
+	const pooling = resolvedConfig?.pooling ?? profile?.pooling;
 
 	if (type === "api" || url || model) {
 		const baseUrl = url ?? resolveUrlShortcut(type);
@@ -56,23 +79,36 @@ export function createEmbedder(resolvedConfig?: ResolvedEmbedderConfig): {
 		}
 
 		const apiKey = key ?? "no-key";
-		const embedder = new OpenAIEmbedder({ apiKey, baseUrl, model });
+		const embedder = new OpenAIEmbedder({
+			apiKey,
+			baseUrl,
+			model,
+			dimensions,
+			requestDimensions: dimensions,
+			prefix,
+		});
 		return { embedder, modelName: model };
 	}
 
 	// Default: local transformers.js
+	const localModel = model ?? "Xenova/all-MiniLM-L6-v2";
 	try {
-		const embedder = new TransformersEmbedder();
-		return { embedder, modelName: "Xenova/all-MiniLM-L6-v2" };
+		const embedder = new TransformersEmbedder(localModel, {
+			dimensions,
+			pooling,
+			prefix,
+		});
+		return { embedder, modelName: localModel };
 	} catch {
+		const fallbackDims = dimensions ?? 384;
 		return {
 			embedder: {
-				dimensions: 384,
+				dimensions: fallbackDims,
 				async embed(): Promise<Float32Array> {
-					return new Float32Array(384);
+					return new Float32Array(fallbackDims);
 				},
 				async embedBatch(texts: string[]): Promise<Float32Array[]> {
-					return texts.map(() => new Float32Array(384));
+					return texts.map(() => new Float32Array(fallbackDims));
 				},
 			},
 			modelName: "zero-vector-fallback",
