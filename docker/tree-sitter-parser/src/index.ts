@@ -104,7 +104,7 @@ function extractJsImports(tree: Tree): ParsedEdge[] {
 				const targetId = stripQuotes(source.text);
 				if (targetId && !seen.has(targetId)) {
 					seen.add(targetId);
-					edges.push({ type: "imports", targetId, targetType: "module", confidence: 1.0, evidence: node.text.split("\n")[0]!.trim() });
+					edges.push({ type: "imports", targetId, targetType: "module", confidence: 1.0, evidence: (node.text.split("\n")[0] ?? node.text).trim() });
 				}
 			}
 		} else if (node.type === "export_statement") {
@@ -113,7 +113,7 @@ function extractJsImports(tree: Tree): ParsedEdge[] {
 				const targetId = stripQuotes(source.text);
 				if (targetId && !seen.has(targetId)) {
 					seen.add(targetId);
-					edges.push({ type: "imports", targetId, targetType: "module", confidence: 1.0, evidence: node.text.split("\n")[0]!.trim() });
+					edges.push({ type: "imports", targetId, targetType: "module", confidence: 1.0, evidence: (node.text.split("\n")[0] ?? node.text).trim() });
 				}
 			}
 		} else if (node.type === "call_expression") {
@@ -126,7 +126,7 @@ function extractJsImports(tree: Tree): ParsedEdge[] {
 						const targetId = stripQuotes(arg.text);
 						if (targetId && !seen.has(targetId)) {
 							seen.add(targetId);
-							edges.push({ type: "imports", targetId, targetType: "module", confidence: 1.0, evidence: node.text.split("\n")[0]!.trim() });
+							edges.push({ type: "imports", targetId, targetType: "module", confidence: 1.0, evidence: (node.text.split("\n")[0] ?? node.text).trim() });
 						}
 					}
 				}

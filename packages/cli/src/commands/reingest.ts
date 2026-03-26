@@ -5,7 +5,6 @@ import {
 	buildSegment,
 	CodeEdgeExtractor,
 	CompositeEdgeExtractor,
-	TreeSitterEdgeExtractor,
 	DEFAULT_MAX_CHUNK_CHARS,
 	extractSegmentMetadata,
 	HeuristicChunkScorer,
@@ -13,6 +12,7 @@ import {
 	mergeEdges,
 	RegexEdgeExtractor,
 	rechunkOversized,
+	TreeSitterEdgeExtractor,
 } from "@wtfoc/ingest";
 import { generateCollectionId } from "@wtfoc/store";
 import type { Command } from "commander";
@@ -24,6 +24,7 @@ import {
 	getStore,
 	resolveTreeSitterUrl,
 	withEmbedderOptions,
+	withTreeSitterOptions,
 } from "../helpers.js";
 
 /**
@@ -35,22 +36,23 @@ import {
  * Note: embedding may still make network calls if using an API-based embedder.
  */
 export function registerReingestCommand(program: Command): void {
-	withEmbedderOptions(
-		program
-			.command("reingest")
-			.description(
-				"Rebuild a collection from stored segments with current ignore patterns (no source re-fetch)",
-			)
-			.requiredOption("-c, --collection <name>", "Source collection to read from")
-			.option("--target <name>", "Target collection name (default: overwrite source)")
-			.option("--batch-size <number>", "Chunks per batch", "500")
-			.option("--rechunk", "Re-chunk content with current chunk size limits")
-			.option(
-				"--max-chunk-chars <number>",
-				`Max chars per chunk when rechunking (default: ${DEFAULT_MAX_CHUNK_CHARS})`,
-			)
-			.option("--ignore <pattern...>", "Additional gitignore-style patterns to exclude")
-			.option("--tree-sitter-url <url>", "Tree-sitter parser sidecar URL (env: WTFOC_TREE_SITTER_URL)"),
+	withTreeSitterOptions(
+		withEmbedderOptions(
+			program
+				.command("reingest")
+				.description(
+					"Rebuild a collection from stored segments with current ignore patterns (no source re-fetch)",
+				)
+				.requiredOption("-c, --collection <name>", "Source collection to read from")
+				.option("--target <name>", "Target collection name (default: overwrite source)")
+				.option("--batch-size <number>", "Chunks per batch", "500")
+				.option("--rechunk", "Re-chunk content with current chunk size limits")
+				.option(
+					"--max-chunk-chars <number>",
+					`Max chars per chunk when rechunking (default: ${DEFAULT_MAX_CHUNK_CHARS})`,
+				)
+				.option("--ignore <pattern...>", "Additional gitignore-style patterns to exclude"),
+		),
 	).action(
 		async (
 			opts: {

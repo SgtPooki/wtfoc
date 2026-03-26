@@ -67,9 +67,7 @@ export async function treeSitterParse(
 		});
 
 		if (!response.ok) {
-			// Non-2xx — log and return null (fail-open)
-			const text = await response.text().catch(() => "");
-			console.error(`[tree-sitter-client] Parse failed: ${response.status} ${text}`);
+			// Non-2xx — fail-open silently (CompositeEdgeExtractor reports failures)
 			return null;
 		}
 
@@ -77,12 +75,8 @@ export async function treeSitterParse(
 	} catch (err) {
 		if (err instanceof DOMException && err.name === "AbortError") {
 			if (signal?.aborted) throw signal.reason;
-			// Our own timeout — fail-open
-			console.error("[tree-sitter-client] Request timed out");
-			return null;
 		}
-		// Connection refused, network error, etc. — fail-open
-		console.error("[tree-sitter-client] Request failed:", (err as Error).message);
+		// Connection refused, timeout, network error — fail-open silently
 		return null;
 	} finally {
 		clearTimeout(timeout);

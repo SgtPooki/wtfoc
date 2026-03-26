@@ -33,7 +33,6 @@ export interface ExtractorCliOpts {
 	extractorTimeout?: string;
 	extractorConcurrency?: string;
 	extractorMaxInputTokens?: string;
-	treeSitterUrl?: string;
 }
 
 /**

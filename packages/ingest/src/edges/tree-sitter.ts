@@ -1,6 +1,6 @@
 import { extname } from "node:path";
 import type { Chunk, Edge, EdgeExtractor } from "@wtfoc/common";
-import { treeSitterParse, type TreeSitterClientOptions } from "./tree-sitter-client.js";
+import { type TreeSitterClientOptions, treeSitterParse } from "./tree-sitter-client.js";
 
 /** File extension → tree-sitter language name */
 const EXT_TO_LANGUAGE: Record<string, string> = {
@@ -77,18 +77,20 @@ export class TreeSitterEdgeExtractor implements EdgeExtractor {
 
 					if (!response) return [];
 
-					return response.edges.map((e): Edge => ({
-						type: e.type,
-						sourceId: chunk.id,
-						targetType: e.targetType,
-						targetId: e.targetId,
-						evidence: e.evidence,
-						confidence: e.confidence,
-					}));
+					return response.edges.map(
+						(e): Edge => ({
+							type: e.type,
+							sourceId: chunk.id,
+							targetType: e.targetType,
+							targetId: e.targetId,
+							evidence: e.evidence,
+							confidence: e.confidence,
+						}),
+					);
 				}),
 			);
 
-			for (const batch of results) edges.push(...batch);
+			for (const resultEdges of results) edges.push(...resultEdges);
 		}
 
 		return edges;

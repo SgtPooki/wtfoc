@@ -65,11 +65,14 @@ export function withExtractorOptions<T extends Command>(cmd: T): T {
 		.option(
 			"--extractor-max-input-tokens <n>",
 			"Max input tokens per LLM request (default: 4000)",
-		)
-		.option(
-			"--tree-sitter-url <url>",
-			"Tree-sitter parser sidecar URL (env: WTFOC_TREE_SITTER_URL)",
 		) as T;
+}
+
+export function withTreeSitterOptions<T extends Command>(cmd: T): T {
+	return cmd.option(
+		"--tree-sitter-url <url>",
+		"Tree-sitter parser sidecar URL (env: WTFOC_TREE_SITTER_URL)",
+	) as T;
 }
 
 /**
