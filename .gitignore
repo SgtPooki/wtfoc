@@ -6,6 +6,7 @@ dist/
 .DS_Store
 .gh-cache/
 .claude/worktrees/
+.claude/projects/
 tests/e2e/test-results/
 tests/e2e/playwright-report/
 blob-report/
