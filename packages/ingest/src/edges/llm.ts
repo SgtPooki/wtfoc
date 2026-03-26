@@ -1,6 +1,6 @@
 import type { Chunk, Edge, EdgeExtractor } from "@wtfoc/common";
 import { chatCompletion, type LlmClientOptions, parseJsonResponse } from "./llm-client.js";
-import { buildExtractionMessages, estimateTokens } from "./llm-prompt.js";
+import { buildExtractionMessages, estimatePromptOverhead, estimateTokens } from "./llm-prompt.js";
 
 export interface LlmEdgeExtractorOptions extends LlmClientOptions {
 	maxConcurrency?: number;
@@ -41,8 +41,13 @@ export class LlmEdgeExtractor implements EdgeExtractor {
 		const maxConcurrency = this.#options.maxConcurrency ?? 4;
 		const maxInputTokens = this.#options.maxInputTokens ?? 4000;
 
+		// Subtract prompt overhead (system + few-shot) from the available token budget
+		// so chunk batches don't overflow the model context window.
+		const promptOverhead = estimatePromptOverhead();
+		const chunkBudget = Math.max(256, maxInputTokens - promptOverhead);
+
 		// Group chunks into batches respecting token budget
-		const batches = this.#batchChunks(chunks, maxInputTokens);
+		const batches = this.#batchChunks(chunks, chunkBudget);
 
 		// Process batches with concurrency limiter
 		const allEdges: Edge[] = [];

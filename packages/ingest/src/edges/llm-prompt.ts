@@ -165,3 +165,15 @@ export function buildExtractionMessages(chunks: Chunk[]): ChatMessage[] {
 export function estimateTokens(text: string): number {
 	return Math.ceil(text.length / 4);
 }
+
+/**
+ * Estimate the token overhead of the extraction prompt (system + few-shot).
+ * This is the fixed cost per LLM call before any chunk content is added.
+ */
+export function estimatePromptOverhead(): number {
+	let total = estimateTokens(SYSTEM_PROMPT);
+	for (const msg of FEW_SHOT_EXAMPLES) {
+		total += estimateTokens(msg.content);
+	}
+	return total;
+}
