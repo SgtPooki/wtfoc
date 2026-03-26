@@ -10,6 +10,7 @@ import type {
 	StorageBackend,
 	VectorIndex,
 } from "@wtfoc/common";
+import { StorageNotFoundError } from "@wtfoc/common";
 import { createMcpServer } from "@wtfoc/mcp-server/server";
 import {
 	analyzeEdgeResolution,
@@ -178,6 +179,9 @@ function createHydratingStorage(
 			try {
 				return await local.download(id, signal);
 			} catch (err) {
+				// Only fall back to IPFS for missing segments, not IO/permission errors
+				if (!(err instanceof StorageNotFoundError)) throw err;
+
 				const ipfsCid = cidBySegmentId.get(id);
 				if (!ipfsCid) throw err; // no CID fallback available — rethrow
 
@@ -186,9 +190,16 @@ function createHydratingStorage(
 				if (!ipfsReader) ipfsReader = new CidReadableStorage();
 				const data = await ipfsReader.download(ipfsCid, signal);
 
-				// Persist locally so future loads don't need IPFS
+				// Persist locally so future loads don't need IPFS.
+				// LocalStorageBackend uses content SHA-256 as the ID, which must
+				// match the segment ID in the manifest (both are SHA-256 of the blob).
 				try {
-					await local.upload(data, undefined, signal);
+					const result = await local.upload(data, undefined, signal);
+					if (result.id !== id) {
+						console.error(
+							`⚠️  Hydrated segment hash mismatch: expected ${id.slice(0, 12)}…, got ${result.id.slice(0, 12)}… — content may have changed on IPFS`,
+						);
+					}
 				} catch (persistErr) {
 					console.error(`⚠️  Failed to persist segment locally: ${persistErr instanceof Error ? persistErr.message : persistErr}`);
 				}
