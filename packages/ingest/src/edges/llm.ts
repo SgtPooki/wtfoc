@@ -44,7 +44,10 @@ export class LlmEdgeExtractor implements EdgeExtractor {
 		// Subtract prompt overhead (system + few-shot) from the available token budget
 		// so chunk batches don't overflow the model context window.
 		const promptOverhead = estimatePromptOverhead();
-		const chunkBudget = Math.max(256, maxInputTokens - promptOverhead);
+		if (promptOverhead >= maxInputTokens) {
+			return [];
+		}
+		const chunkBudget = maxInputTokens - promptOverhead;
 
 		// Group chunks into batches respecting token budget
 		const batches = this.#batchChunks(chunks, chunkBudget);
