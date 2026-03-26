@@ -152,6 +152,20 @@ describe("trace", () => {
 
 		expect(result.groups).toBeDefined();
 		expect(result.stats.sourceTypes.length).toBeGreaterThan(0);
+		// Discovery mode should not produce insights
+		expect(result.insights).toEqual([]);
+		expect(result.stats.insightCount).toBe(0);
+	});
+
+	it("produces insights in analytical mode", async () => {
+		const index = createMockIndex([slackChunk, issueChunk, prChunk, codeChunk]);
+		const result = await trace("upload failures", mockEmbedder, index, [testSegment], {
+			mode: "analytical",
+		});
+
+		expect(result.insights).toBeDefined();
+		expect(Array.isArray(result.insights)).toBe(true);
+		expect(result.stats.insightCount).toBe(result.insights.length);
 	});
 
 	it("follows explicit edges from seed chunks", async () => {

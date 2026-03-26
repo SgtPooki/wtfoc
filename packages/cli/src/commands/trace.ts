@@ -1,4 +1,4 @@
-import { trace } from "@wtfoc/search";
+import { type TraceMode, trace } from "@wtfoc/search";
 import type { Command } from "commander";
 import { getProjectConfig } from "../cli.js";
 import {
@@ -16,8 +16,14 @@ export function registerTraceCommand(program: Command): void {
 		program
 			.command("trace <query>")
 			.description("Trace evidence-backed connections across sources")
-			.requiredOption("-c, --collection <name>", "Collection name"),
-	).action(async (queryText: string, opts: { collection: string } & EmbedderOpts) => {
+			.requiredOption("-c, --collection <name>", "Collection name")
+			.option(
+				"--mode <mode>",
+				'Trace mode: "discovery" (default) or "analytical" (adds cross-source insights)',
+				"discovery",
+			),
+	).action(async (queryText: string, opts: { collection: string; mode: string } & EmbedderOpts) => {
+		const mode = (opts.mode === "analytical" ? "analytical" : "discovery") as TraceMode;
 		const store = getStore(program);
 		const format = getFormat(program.opts());
 
@@ -53,7 +59,7 @@ export function registerTraceCommand(program: Command): void {
 		}
 
 		try {
-			const result = await trace(queryText, embedder, vectorIndex, segments);
+			const result = await trace(queryText, embedder, vectorIndex, segments, { mode });
 			console.log(formatTrace(result, format));
 		} catch (err) {
 			if (

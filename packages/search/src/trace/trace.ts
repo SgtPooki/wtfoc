@@ -1,6 +1,9 @@
 import type { Embedder, Segment, VectorIndex } from "@wtfoc/common";
 import { buildChunkIndexes, buildEdgeIndex } from "./indexing.js";
+import { detectInsights, type TraceInsight } from "./insights.js";
 import { followEdges } from "./traversal.js";
+
+export type TraceMode = "discovery" | "analytical";
 
 export interface TraceOptions {
 	/** Max results per source type (default: 3) */
@@ -11,6 +14,12 @@ export interface TraceOptions {
 	maxHops?: number;
 	/** Minimum similarity score for semantic fallback (default: 0.3) */
 	minScore?: number;
+	/**
+	 * Trace mode:
+	 * - "discovery" (default): find connected results across sources
+	 * - "analytical": also detect cross-source insights (convergence, evidence chains, temporal patterns)
+	 */
+	mode?: TraceMode;
 	signal?: AbortSignal;
 }
 
@@ -44,12 +53,15 @@ export interface TraceResult {
 	groups: Record<string, TraceHop[]>;
 	/** Flat list of all hops in traversal order */
 	hops: TraceHop[];
+	/** Cross-source insights (only populated in analytical mode) */
+	insights: TraceInsight[];
 	/** Summary of the trace */
 	stats: {
 		totalHops: number;
 		edgeHops: number;
 		semanticHops: number;
 		sourceTypes: string[];
+		insightCount: number;
 	};
 }
 
@@ -74,6 +86,7 @@ export async function trace(
 	const maxTotal = options?.maxTotal ?? 15;
 	const maxHops = options?.maxHops ?? 3;
 	const minScore = options?.minScore ?? 0.3;
+	const mode = options?.mode ?? "discovery";
 
 	options?.signal?.throwIfAborted();
 
@@ -200,15 +213,20 @@ export async function trace(
 	const sourceTypes = Object.keys(groups);
 	const edgeHops = hops.filter((h) => h.connection.method === "edge").length;
 
+	// Detect cross-source insights in analytical mode
+	const insights = mode === "analytical" ? detectInsights(hops, segments) : [];
+
 	return {
 		query,
 		groups,
 		hops,
+		insights,
 		stats: {
 			totalHops: hops.length,
 			edgeHops,
 			semanticHops: hops.length - edgeHops,
 			sourceTypes,
+			insightCount: insights.length,
 		},
 	};
 }

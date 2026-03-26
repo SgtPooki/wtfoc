@@ -47,8 +47,30 @@ export function formatTrace(result: TraceResult, format: OutputFormat): string {
 		}
 	}
 
+	// Show cross-source insights (analytical mode)
+	if (result.insights && result.insights.length > 0) {
+		lines.push("─── Cross-Source Insights ───\n");
+
+		const insightIcons: Record<string, string> = {
+			convergence: "🔄",
+			"evidence-chain": "🔗",
+			"temporal-cluster": "📅",
+		};
+
+		for (const insight of result.insights) {
+			const icon = insightIcons[insight.kind] ?? "💡";
+			const strength = (insight.strength * 100).toFixed(0);
+			lines.push(`${icon} [${strength}%] ${insight.summary}`);
+		}
+
+		lines.push("");
+	}
+
 	lines.push(
-		`📊 ${result.stats.totalHops} results (${result.stats.edgeHops} via edges, ${result.stats.semanticHops} semantic) across ${result.stats.sourceTypes.length} source types`,
+		`📊 ${result.stats.totalHops} results (${result.stats.edgeHops} via edges, ${result.stats.semanticHops} semantic) across ${result.stats.sourceTypes.length} source types` +
+			(result.stats.insightCount > 0
+				? `, ${result.stats.insightCount} insight${result.stats.insightCount === 1 ? "" : "s"}`
+				: ""),
 	);
 
 	return lines.join("\n");
