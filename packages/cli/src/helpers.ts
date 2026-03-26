@@ -110,7 +110,7 @@ export function createEmbedder(
 	const type = opts.embedder ?? "local";
 
 	// API-based embedder (any OpenAI-compatible endpoint)
-	if (url || model || type === "api") {
+	if (url || type === "api") {
 		const baseUrl = url ?? resolveUrlShortcut(type);
 
 		if (!baseUrl.startsWith("http")) {

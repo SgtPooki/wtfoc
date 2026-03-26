@@ -67,7 +67,7 @@ export function createEmbedder(resolvedConfig?: ResolvedEmbedderConfig): {
 		resolvedConfig?.key ?? process.env.WTFOC_EMBEDDER_KEY ?? process.env.WTFOC_OPENAI_API_KEY;
 	const type = process.env.WTFOC_EMBEDDER ?? "local";
 
-	if (type === "api" || url || model) {
+	if (type === "api" || url) {
 		const baseUrl = url ?? resolveUrlShortcut(type);
 
 		if (!baseUrl.startsWith("http")) {
