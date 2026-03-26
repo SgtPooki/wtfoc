@@ -19,6 +19,7 @@ describe("WebsiteAdapter", () => {
 				maxPages: 100,
 				depth: undefined,
 				urlPattern: undefined,
+				quiet: false,
 			});
 		});
 
@@ -34,6 +35,7 @@ describe("WebsiteAdapter", () => {
 				maxPages: 50,
 				depth: 3,
 				urlPattern: "https://docs.filecoin.io/basics/**",
+				quiet: false,
 			});
 		});
 
@@ -41,6 +43,30 @@ describe("WebsiteAdapter", () => {
 			const config = adapter.parseConfig({
 				source: "https://example.com",
 				depth: "not-a-number",
+			});
+			expect(config.depth).toBeUndefined();
+		});
+
+		it("defaults maxPages to 100 for NaN", () => {
+			const config = adapter.parseConfig({
+				source: "https://example.com",
+				maxPages: Number.NaN,
+			});
+			expect(config.maxPages).toBe(100);
+		});
+
+		it("ignores NaN depth", () => {
+			const config = adapter.parseConfig({
+				source: "https://example.com",
+				depth: Number.NaN,
+			});
+			expect(config.depth).toBeUndefined();
+		});
+
+		it("ignores Infinity depth", () => {
+			const config = adapter.parseConfig({
+				source: "https://example.com",
+				depth: Number.POSITIVE_INFINITY,
 			});
 			expect(config.depth).toBeUndefined();
 		});

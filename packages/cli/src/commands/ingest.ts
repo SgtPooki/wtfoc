@@ -57,7 +57,10 @@ export function registerIngestCommand(program: Command): void {
 					"--ignore <pattern...>",
 					"Exclude files matching gitignore-style pattern (repeatable)",
 				)
-				.option("--max-pages <number>", "[website] Max pages to crawl (default: 100)")
+				.option(
+					"--max-pages <number>",
+					"[website] Max pages to crawl (default: 100, -1 = unlimited)",
+				)
 				.option("--depth <number>", "[website] Max link-following depth from start URL")
 				.option(
 					"--url-pattern <glob>",
@@ -126,10 +129,29 @@ export function registerIngestCommand(program: Command): void {
 
 			const rawConfig: Record<string, unknown> = { source: sourceArg };
 
-			// Pass website-specific options
-			if (opts.maxPages) rawConfig.maxPages = Number.parseInt(opts.maxPages, 10);
-			if (opts.depth) rawConfig.depth = Number.parseInt(opts.depth, 10);
-			if (opts.urlPattern) rawConfig.urlPattern = opts.urlPattern;
+			// Pass website-specific options (scoped to website adapter only)
+			if (sourceType === "website") {
+				if (opts.maxPages != null) {
+					const maxPages = Number.parseInt(opts.maxPages, 10);
+					if (!Number.isFinite(maxPages)) {
+						console.error(
+							`Error: --max-pages must be an integer (use -1 for unlimited), got "${opts.maxPages}".`,
+						);
+						process.exit(2);
+					}
+					rawConfig.maxPages = maxPages;
+				}
+				if (opts.depth != null) {
+					const depth = Number.parseInt(opts.depth, 10);
+					if (!Number.isFinite(depth) || depth < 0) {
+						console.error(`Error: --depth must be a non-negative integer, got "${opts.depth}".`);
+						process.exit(2);
+					}
+					rawConfig.depth = depth;
+				}
+				if (opts.urlPattern) rawConfig.urlPattern = opts.urlPattern;
+				if (format === "quiet") rawConfig.quiet = true;
+			}
 
 			// Cursor-based incremental ingest: read stored cursor, use as since if no explicit --since
 			const sourceKey = buildSourceKey(sourceType, sourceArg);
