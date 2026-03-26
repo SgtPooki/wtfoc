@@ -72,11 +72,10 @@ export async function treeSitterParse(
 		}
 
 		return (await response.json()) as TreeSitterParseResponse;
-	} catch (err) {
-		if (err instanceof DOMException && err.name === "AbortError") {
-			if (signal?.aborted) throw signal.reason;
-		}
-		// Connection refused, timeout, network error — fail-open silently
+	} catch {
+		// If the caller's signal triggered the abort, propagate instead of swallowing
+		if (signal?.aborted) throw signal.reason;
+		// Connection refused, our own timeout, network error — fail-open silently
 		return null;
 	} finally {
 		clearTimeout(timeout);
