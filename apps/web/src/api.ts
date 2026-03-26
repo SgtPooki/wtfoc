@@ -97,4 +97,57 @@ export function fetchCollections(signal?: AbortSignal): Promise<CollectionSummar
 	return apiFetch<CollectionSummary[]>("/api/collections", undefined, signal);
 }
 
+// ─── Wallet collection endpoints ─────────────────────────────────────────────
+
+export interface WalletCollection {
+	id: string;
+	name: string;
+	status: string;
+	sourceCount: number;
+	segmentCount: number | null;
+	manifestCid: string | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface WalletCollectionDetail extends WalletCollection {
+	pieceCid: string | null;
+	sources: Array<{
+		id: string;
+		type: string;
+		identifier: string;
+		status: string;
+		chunkCount: number | null;
+		error: string | null;
+	}>;
+}
+
+export function createCollection(
+	name: string,
+	sources: Array<{ type: string; identifier: string }>,
+	signal?: AbortSignal,
+): Promise<WalletCollectionDetail> {
+	return apiFetch<WalletCollectionDetail>("/api/wallet-collections", undefined, signal, {
+		method: "POST",
+		body: JSON.stringify({ name, sources }),
+	});
+}
+
+export function fetchMyCollections(
+	signal?: AbortSignal,
+): Promise<{ collections: WalletCollection[] }> {
+	return apiFetch<{ collections: WalletCollection[] }>(
+		"/api/wallet-collections",
+		undefined,
+		signal,
+	);
+}
+
+export function fetchCollectionDetail(
+	id: string,
+	signal?: AbortSignal,
+): Promise<WalletCollectionDetail> {
+	return apiFetch<WalletCollectionDetail>(`/api/wallet-collections/${id}`, undefined, signal);
+}
+
 export { ApiError };

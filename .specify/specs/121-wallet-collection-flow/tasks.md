@@ -80,19 +80,19 @@
 
 ### Tests for User Story 2
 
-- [ ] T023a [P] [US2] Write unit tests for collection creation, source validation, and ingest worker in apps/web/server/collections/routes.test.ts and apps/web/server/collections/ingest-worker.test.ts — test valid/invalid source identifiers, duplicate collection name rejection, async ingestion status updates, per-source failure isolation. Use in-memory repository and mock adapters.
+- [x] T023a [P] [US2] Write unit tests for collection creation, source validation, and ingest worker in apps/web/server/collections/routes.test.ts and apps/web/server/collections/ingest-worker.test.ts — test valid/invalid source identifiers, duplicate collection name rejection, async ingestion status updates, per-source failure isolation. Use in-memory repository and mock adapters.
 
 ### Implementation for User Story 2
 
-- [ ] T023 [P] [US2] Implement collection CRUD operations in apps/web/server/collections/routes.ts — POST /api/collections (create + start ingest), GET /api/collections (list by wallet), GET /api/collections/:id (detail with sources) per contracts/api.md. All routes require auth middleware.
-- [ ] T024 [P] [US2] Implement source identifier validation in apps/web/server/collections/validators.ts — validate GitHub owner/repo format, HTTPS URL for websites (pass through SSRF checker), numeric HackerNews thread ID
-- [ ] T025 [US2] Implement async ingestion worker in apps/web/server/collections/ingest-worker.ts — accepts collection ID, iterates sources, calls appropriate adapter (GitHubAdapter with HTTP transport + GitHubTokenProvider from @wtfoc/ingest, WebsiteAdapter with SSRF-safe fetcher, HackerNewsAdapter), updates per-source status in repository, builds segments via existing pipeline, updates collection status to ready/ingestion_failed on completion. Enforce max 10 concurrent ingestion jobs via semaphore — queue excess jobs and start them as slots free up (SC-006).
-- [ ] T026 [US2] Wire ingest-worker to collection creation in apps/web/server/collections/routes.ts — on POST /api/collections success, spawn ingest-worker as background async task (not blocking request), return collection with job ID
-- [ ] T027 [US2] Add collection API functions to apps/web/src/api.ts — createCollection(), fetchMyCollections(), fetchCollectionDetail()
-- [ ] T028 [US2] Create CreateCollection form component in apps/web/src/components/CreateCollection.tsx — name input, source type selector (GitHub/Website/HackerNews), source identifier input, add/remove sources, submit button, error display
-- [ ] T029 [US2] Add collection state signals (collections, activeCollection) to apps/web/src/state.ts and wire CreateCollection to API
-- [ ] T029a [US2] Add source size limit enforcement in apps/web/server/collections/validators.ts — max sources per collection, max pages per website crawl, max file count per GitHub repo. Return limits in validation error messages per FR-014.
-- [ ] T030 [US2] Integrate CreateCollection into app navigation in apps/web/src/app.tsx — show "Create Collection" button when wallet connected, route to form
+- [x] T023 [P] [US2] Implement collection CRUD operations in apps/web/server/collections/routes.ts — POST /api/collections (create + start ingest), GET /api/collections (list by wallet), GET /api/collections/:id (detail with sources) per contracts/api.md. All routes require auth middleware.
+- [x] T024 [P] [US2] Implement source identifier validation in apps/web/server/collections/validators.ts — validate GitHub owner/repo format, HTTPS URL for websites (pass through SSRF checker), numeric HackerNews thread ID
+- [x] T025 [US2] Implement async ingestion worker in apps/web/server/collections/ingest-worker.ts — accepts collection ID, iterates sources, calls appropriate adapter (GitHubAdapter with HTTP transport + GitHubTokenProvider from @wtfoc/ingest, WebsiteAdapter with SSRF-safe fetcher, HackerNewsAdapter), updates per-source status in repository, builds segments via existing pipeline, updates collection status to ready/ingestion_failed on completion. Enforce max 10 concurrent ingestion jobs via semaphore — queue excess jobs and start them as slots free up (SC-006).
+- [x] T026 [US2] Wire ingest-worker to collection creation in apps/web/server/collections/routes.ts — on POST /api/collections success, spawn ingest-worker as background async task (not blocking request), return collection with job ID
+- [x] T027 [US2] Add collection API functions to apps/web/src/api.ts — createCollection(), fetchMyCollections(), fetchCollectionDetail()
+- [x] T028 [US2] Create CreateCollection form component in apps/web/src/components/CreateCollection.tsx — name input, source type selector (GitHub/Website/HackerNews), source identifier input, add/remove sources, submit button, error display
+- [x] T029 [US2] Add collection state signals (collections, activeCollection) to apps/web/src/state.ts and wire CreateCollection to API
+- [x] T029a [US2] Add source size limit enforcement in apps/web/server/collections/validators.ts — max sources per collection, max pages per website crawl, max file count per GitHub repo. Return limits in validation error messages per FR-014.
+- [x] T030 [US2] Integrate CreateCollection into app navigation in apps/web/src/app.tsx — show "Create Collection" button when wallet connected, route to form
 
 **Checkpoint**: User can create a collection with sources, server validates inputs, ingestion starts in background. Collection appears in API responses with correct status.
 

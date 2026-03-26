@@ -8,6 +8,7 @@ import { cors } from "hono/cors";
 import { csrf } from "hono/csrf";
 import type { Repository } from "./db/index.js";
 import { authRoutes } from "./auth/routes.js";
+import { collectionRoutes } from "./collections/routes.js";
 
 export type AppEnv = {
 	Variables: {
@@ -46,8 +47,9 @@ export function createHonoApp(repo: Repository): Hono<AppEnv> {
 		await next();
 	});
 
-	// Mount auth routes
+	// Mount routes
 	app.route("/api/auth", authRoutes);
+	app.route("/api/wallet-collections", collectionRoutes);
 
 	// Global error handler
 	app.onError((err, c) => {
