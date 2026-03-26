@@ -61,7 +61,7 @@ function detectConvergence(hops: TraceHop[]): TraceInsight[] {
 	const types = [...byType.keys()];
 	const allIndices = [...byType.values()].flat();
 
-	// Strength scales with how many source types converge (3=0.6, 4=0.7, 5+=0.8+)
+	// Strength scales with how many source types converge (3≈0.8, 4≈0.9, 5+=1.0 cap)
 	const strength = Math.min(0.5 + sourceTypeCount * 0.1, 1.0);
 
 	const typeLabels = types.map(formatSourceType);
@@ -82,6 +82,12 @@ function detectConvergence(hops: TraceHop[]): TraceInsight[] {
  * types. These show the "story" of how information flows across systems.
  *
  * E.g., Slack message → GitHub issue → PR → Code change
+ *
+ * Note: Since trace uses DFS, consecutive edge hops may include sibling
+ * branches (not strictly linear paths). The chain represents "connected
+ * subgraph crossing N source types" rather than a single linear path.
+ * This is intentional — the insight value is in source-type diversity
+ * of the connected component, not path linearity.
  */
 function detectEvidenceChains(hops: TraceHop[]): TraceInsight[] {
 	// Walk hops in order; edge hops that follow a previous hop form a chain
@@ -158,11 +164,18 @@ const MS_PER_DAY = 86_400_000;
  * recent timestamps, it signals active/trending discussion.
  */
 function detectTemporalClusters(hops: TraceHop[], segments: Segment[]): TraceInsight[] {
-	// Build a lookup: storageId → timestamp
+	// Collect the storageIds we actually need timestamps for
+	const neededIds = new Set<string>();
+	for (const hop of hops) {
+		neededIds.add(hop.storageId);
+	}
+
+	// Build a targeted lookup — only resolve timestamps for hop storageIds
 	const timestamps = new Map<string, string>();
 	for (const seg of segments) {
+		if (timestamps.size >= neededIds.size) break;
 		for (const chunk of seg.chunks) {
-			if (chunk.timestamp) {
+			if (chunk.timestamp && neededIds.has(chunk.storageId)) {
 				timestamps.set(chunk.storageId, chunk.timestamp);
 			}
 		}
