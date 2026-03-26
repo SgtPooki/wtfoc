@@ -58,6 +58,8 @@ describe("detectInsights", () => {
 			expect(convergence).toBeDefined();
 			expect(convergence?.summary).toContain("3 source types");
 			expect(convergence?.hopIndices).toHaveLength(3);
+			// hopIndices should be sorted by traversal order, not grouped by type
+			expect(convergence?.hopIndices).toEqual([0, 1, 2]);
 		});
 
 		it("does not detect convergence with fewer than 3 source types", () => {

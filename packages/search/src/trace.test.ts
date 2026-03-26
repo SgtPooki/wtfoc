@@ -164,8 +164,21 @@ describe("trace", () => {
 		});
 
 		expect(result.insights).toBeDefined();
-		expect(Array.isArray(result.insights)).toBe(true);
+		expect(result.insights.length).toBeGreaterThan(0);
 		expect(result.stats.insightCount).toBe(result.insights.length);
+
+		// The mock data has 3+ source types and edge-connected hops, so we expect
+		// at least a convergence or evidence-chain insight
+		const kinds = result.insights.map((i) => i.kind);
+		expect(kinds.some((k) => k === "convergence" || k === "evidence-chain")).toBe(true);
+
+		// Every insight should have valid structure
+		for (const insight of result.insights) {
+			expect(insight.strength).toBeGreaterThan(0);
+			expect(insight.strength).toBeLessThanOrEqual(1);
+			expect(insight.summary.length).toBeGreaterThan(0);
+			expect(insight.hopIndices.length).toBeGreaterThan(0);
+		}
 	});
 
 	it("follows explicit edges from seed chunks", async () => {

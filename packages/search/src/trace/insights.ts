@@ -68,8 +68,8 @@ function detectConvergence(hops: TraceHop[]): TraceInsight[] {
 	return [
 		{
 			kind: "convergence",
-			summary: `${sourceTypeCount} source types independently discuss this topic: ${typeLabels.join(", ")}`,
-			hopIndices: allIndices,
+			summary: `${sourceTypeCount} source types surface results for this topic: ${typeLabels.join(", ")}`,
+			hopIndices: allIndices.sort((a, b) => a - b),
 			strength,
 		},
 	];
@@ -194,8 +194,9 @@ function detectTemporalClusters(hops: TraceHop[], segments: Segment[]): TraceIns
 		const ts = timestamps.get(hop.storageId);
 		if (!ts) continue;
 
-		withTimestamp++;
 		const time = new Date(ts).getTime();
+		if (Number.isNaN(time)) continue;
+		withTimestamp++;
 		if (time >= recentCutoff) {
 			recentCount++;
 			recentIndices.push(i);
