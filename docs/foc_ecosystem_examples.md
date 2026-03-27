@@ -73,13 +73,15 @@ node packages/cli/dist/cli.js trace "curio PDP storage provider bug fix" \
 ```
 
 **What it shows:**
-- Starts at issue #888 (PDP: cache merkle tree layer for proof generation)
-- Chains through PR #997 (introduce PDP Save Cache and Proving Task)
-- Into PR #1067 (verify validity of Verify() against commp-hashhash)
-- Links to PR #996 (introduce indexstore in pdpv0)
-- Down to PR #1018 (call IndexStore.Start() after NewIndexStore)
+- Starts at issue #888 (PDP: cache merkle tree layer for proof generation to reduce RAM 100-1000x)
+- Chains through PR #997 (introduce PDP Save Cache and Proving Task) with deep code review comments
+- Into issue #1062 (testing Verify() against go-fil-commp-hashhash)
+- Links to PR #1067 (extract cached proof pipeline behind testable interfaces)
+- PR #1065 (verify validity tests)
+- Issue #1111 (pdpv0: notify_task.go uses t.db.Exec inside BeginTransaction)
+- Also surfaces FilOzone/pdp#121 (Merge pdp into Curio) and Slack temporal edges
 - **49 of 50 results found via edges** (not just semantic similarity)
-- Cross-source evidence trail: Issues -> PRs -> Issues -> PR Comments -> PRs
+- Cross-source evidence trail: Issues -> PRs -> Issues -> PR Comments -> Slack
 
 ---
 
