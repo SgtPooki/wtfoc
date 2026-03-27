@@ -77,12 +77,12 @@ export class TemporalEdgeExtractor implements EdgeExtractor {
 			let end = ghChunks.length;
 			while (start < end) {
 				const mid = (start + end) >> 1;
-				if ((ghChunks[mid] as typeof ghChunks[0]).time < lo) start = mid + 1;
+				if ((ghChunks[mid] as (typeof ghChunks)[0]).time < lo) start = mid + 1;
 				else end = mid;
 			}
 
 			for (let i = start; i < ghChunks.length; i++) {
-				const gh = ghChunks[i] as typeof ghChunks[0];
+				const gh = ghChunks[i] as (typeof ghChunks)[0];
 				if (gh.time > hi) break;
 
 				// Dedupe by source pair
@@ -93,7 +93,9 @@ export class TemporalEdgeExtractor implements EdgeExtractor {
 				const diffHours = Math.abs(chat.time - gh.time) / (60 * 60 * 1000);
 				const confidence = Math.max(0.3, 1.0 - diffHours / this.#windowHours);
 
-				const edgeType = this.#tagWindow ? `temporal-proximity-${this.#windowHours}h` : "temporal-proximity";
+				const edgeType = this.#tagWindow
+					? `temporal-proximity-${this.#windowHours}h`
+					: "temporal-proximity";
 				edges.push({
 					type: edgeType,
 					sourceId: chat.id,

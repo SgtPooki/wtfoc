@@ -7,7 +7,14 @@ import { resolveCollection } from "../helpers.js";
 export async function handleTrace(
 	store: ReturnType<typeof createStore>,
 	embedder: Embedder,
-	params: { query: string; collection: string; mode?: TraceMode; maxTotal?: number; maxPerSource?: number; maxHops?: number },
+	params: {
+		query: string;
+		collection: string;
+		mode?: TraceMode;
+		maxTotal?: number;
+		maxPerSource?: number;
+		maxHops?: number;
+	},
 	collectionLoader?: CollectionLoader,
 ): Promise<string> {
 	const { vectorIndex, segments } = await resolveCollection(

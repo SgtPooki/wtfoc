@@ -27,8 +27,12 @@ export function registerPullCommand(program: Command): void {
 			// Check if collection already exists locally
 			const existing = await store.manifests.getHead(name);
 			if (existing) {
-				console.error(`⚠️  Collection "${name}" already exists locally (${existing.manifest.totalChunks} chunks).`);
-				console.error(`   Use --name <other-name> to pull under a different name, or delete the existing collection first.`);
+				console.error(
+					`⚠️  Collection "${name}" already exists locally (${existing.manifest.totalChunks} chunks).`,
+				);
+				console.error(
+					`   Use --name <other-name> to pull under a different name, or delete the existing collection first.`,
+				);
 				process.exit(1);
 			}
 
@@ -62,7 +66,9 @@ export function registerPullCommand(program: Command): void {
 				console.error(
 					`\n✅ Pulled "${name}" — ${manifest.totalChunks} chunks in ${downloaded} segments`,
 				);
-				console.error(`   Embedding model: ${manifest.embeddingModel} (${manifest.embeddingDimensions}d)`);
+				console.error(
+					`   Embedding model: ${manifest.embeddingModel} (${manifest.embeddingDimensions}d)`,
+				);
 				console.error(`\n   Query with:`);
 				console.error(
 					`   wtfoc query "your question" -c ${name} --embedder api --embedder-url ollama --embedder-model ${manifest.embeddingModel}`,
