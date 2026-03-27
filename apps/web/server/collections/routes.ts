@@ -6,6 +6,7 @@ import { walletRateLimiter } from "../security/rate-limit.js";
 import { validateCollectionName, validateSources } from "./validators.js";
 import { startIngestion } from "./ingest-worker.js";
 import { startPromotion } from "./promote-worker.js";
+import { decryptSessionKey } from "../auth/crypto.js";
 
 const createRateLimit = walletRateLimiter(10, 3600); // 10 collections per hour per wallet
 
@@ -52,7 +53,7 @@ collections.post("/", createRateLimit.middleware(), async (c) => {
 	}
 
 	// Start ingestion in background (non-blocking)
-	startIngestion(result.id, result.sources, repo).catch((err) => {
+	startIngestion(result.id, result.name, result.sources, repo).catch((err) => {
 		console.error(`[collections] Background ingestion failed for ${result.id}:`, err);
 	});
 
@@ -159,8 +160,8 @@ collections.post("/:id/promote", async (c) => {
 		return c.json({ error: "Session key expired. Delegate a new one.", code: "SESSION_KEY_EXPIRED" }, 403);
 	}
 
-	// Decrypt session key (in-memory mode stores plaintext)
-	const sessionKeyDecrypted = new TextDecoder().decode(session.sessionKeyEncrypted);
+	// Decrypt session key (AES-256-GCM in production, plaintext in dev)
+	const sessionKeyDecrypted = decryptSessionKey(session.sessionKeyEncrypted);
 
 	// Start promotion in background
 	startPromotion(id, sessionKeyDecrypted, walletAddress, repo).catch((err) => {

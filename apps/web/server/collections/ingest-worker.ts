@@ -1,8 +1,10 @@
 /**
  * Async ingestion worker: processes sources for a collection in the background.
+ * Builds segments + persists manifest via the existing wtfoc pipeline.
  * Enforces max 10 concurrent ingestion jobs (SC-006).
  */
-import type { Chunk } from "@wtfoc/common";
+import type { Chunk, CollectionHead } from "@wtfoc/common";
+import { CURRENT_SCHEMA_VERSION } from "@wtfoc/common";
 import type { Repository, Source } from "../db/index.js";
 
 const MAX_CONCURRENT_JOBS = 10;
@@ -30,6 +32,7 @@ function releaseSlot(): void {
 
 export async function startIngestion(
 	collectionId: string,
+	collectionName: string,
 	sources: Source[],
 	repo: Repository,
 	signal?: AbortSignal,
@@ -38,7 +41,7 @@ export async function startIngestion(
 	try {
 		await repo.updateCollectionStatus(collectionId, "ingesting");
 
-		let allSucceeded = true;
+		const allChunks: Chunk[] = [];
 		let anySucceeded = false;
 
 		for (const source of sources) {
@@ -48,21 +51,22 @@ export async function startIngestion(
 				await repo.updateSourceStatus(source.id, "ingesting");
 				const chunks = await ingestSource(source, signal);
 				await repo.updateSourceStatus(source.id, "complete", { chunkCount: chunks.length });
+				allChunks.push(...chunks);
 				anySucceeded = true;
 			} catch (err) {
-				allSucceeded = false;
 				const message = err instanceof Error ? err.message : String(err);
 				await repo.updateSourceStatus(source.id, "failed", { errorMessage: message });
 			}
 		}
 
-		if (allSucceeded) {
-			await repo.updateCollectionStatus(collectionId, "ready");
-		} else if (anySucceeded) {
-			await repo.updateCollectionStatus(collectionId, "ready");
-		} else {
+		if (!anySucceeded) {
 			await repo.updateCollectionStatus(collectionId, "ingestion_failed");
+			return;
 		}
+
+		// Build segments and persist manifest using the existing pipeline
+		await buildAndPersist(collectionName, allChunks, repo, collectionId, signal);
+		await repo.updateCollectionStatus(collectionId, "ready");
 	} catch (err) {
 		console.error(`[ingest-worker] Collection ${collectionId} failed:`, err);
 		try {
@@ -73,6 +77,97 @@ export async function startIngestion(
 	} finally {
 		releaseSlot();
 	}
+}
+
+async function buildAndPersist(
+	collectionName: string,
+	chunks: Chunk[],
+	repo: Repository,
+	collectionId: string,
+	signal?: AbortSignal,
+): Promise<void> {
+	const { buildSegment, segmentId, mergeEdges, CompositeEdgeExtractor, CodeEdgeExtractor, HeuristicEdgeExtractor, HeuristicChunkScorer } =
+		await import("@wtfoc/ingest");
+	const { createStore, generateCollectionId } = await import("@wtfoc/store");
+
+	const store = createStore({ storage: "local" });
+
+	// Get embedder
+	const { getDefaultEmbedder } = await import("./embedder-helper.js");
+	const { embedder, modelName } = await getDefaultEmbedder();
+
+	// Extract edges
+	const compositeExtractor = new CompositeEdgeExtractor([
+		new CodeEdgeExtractor(),
+		new HeuristicEdgeExtractor(),
+	]);
+	const edges = mergeEdges([
+		{ extractorName: "composite", edges: await compositeExtractor.extract(chunks) },
+	]);
+
+	// Embed all chunks
+	signal?.throwIfAborted();
+	const embeddings = await embedder.embedBatch(chunks.map((c) => c.content));
+	const scorer = new HeuristicChunkScorer();
+	const signalScoresBatch = scorer.scoreBatch(
+		chunks.map((c) => ({ content: c.content, sourceType: c.sourceType })),
+	);
+
+	const segmentChunks = chunks.map((chunk, i) => {
+		const emb = embeddings[i];
+		if (!emb) throw new Error(`Missing embedding for chunk ${i}`);
+		return {
+			chunk,
+			embedding: Array.from(emb),
+			signalScores: signalScoresBatch[i],
+		};
+	});
+
+	const segment = buildSegment(segmentChunks, edges, {
+		embeddingModel: modelName,
+		embeddingDimensions: embedder.dimensions,
+	});
+
+	const segmentBytes = new TextEncoder().encode(JSON.stringify(segment));
+	const segId = segmentId(segment);
+
+	// Upload segment to local storage
+	const segmentResult = await store.storage.upload(segmentBytes);
+	const resultId = segmentResult.id;
+
+	// Build and persist manifest
+	const currentHead = await store.manifests.getHead(collectionName).catch(() => null);
+	const currentPrevHeadId = currentHead ? currentHead.headId : null;
+
+	const manifest: CollectionHead = {
+		schemaVersion: CURRENT_SCHEMA_VERSION,
+		collectionId: currentHead?.manifest.collectionId ?? generateCollectionId(collectionName),
+		name: collectionName,
+		currentRevisionId: currentHead?.manifest.currentRevisionId ?? null,
+		prevHeadId: currentPrevHeadId,
+		segments: [
+			...(currentHead?.manifest.segments ?? []),
+			{
+				id: resultId,
+				sourceTypes: [...new Set(chunks.map((c) => c.sourceType))],
+				chunkCount: chunks.length,
+			},
+		],
+		totalChunks: (currentHead?.manifest.totalChunks ?? 0) + chunks.length,
+		embeddingModel: modelName,
+		embeddingDimensions: embedder.dimensions,
+		createdAt: currentHead?.manifest.createdAt ?? new Date().toISOString(),
+		updatedAt: new Date().toISOString(),
+	};
+
+	await store.manifests.putHead(collectionName, manifest, currentPrevHeadId);
+
+	// Update collection metadata
+	await repo.updateCollectionPromotion(collectionId, {
+		segmentCount: manifest.segments.length,
+	});
+
+	console.error(`[ingest-worker] Collection "${collectionName}" persisted: ${chunks.length} chunks, ${manifest.segments.length} segment(s)`);
 }
 
 async function ingestSource(source: Source, signal?: AbortSignal): Promise<Chunk[]> {
@@ -93,7 +188,6 @@ async function ingestSource(source: Source, signal?: AbortSignal): Promise<Chunk
 		}
 
 		case "website": {
-			// SSRF validation before crawling
 			const { validateUrl } = await import("../security/ssrf.js");
 			const ssrfCheck = await validateUrl(source.identifier);
 			if (!ssrfCheck.safe) {

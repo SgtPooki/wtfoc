@@ -4,6 +4,7 @@ import type { Repository } from "../db/index.js";
 import { ipRateLimiter } from "../security/rate-limit.js";
 import { generateChallenge, verifySignature } from "./siwe.js";
 import { generateCookieToken, setSessionCookie, clearSessionCookie } from "./session.js";
+import { encryptSessionKey } from "./crypto.js";
 import { requireAuth } from "./middleware.js";
 
 const challengeRateLimit = ipRateLimiter(20, 60);
@@ -79,8 +80,8 @@ auth.post("/session-key", requireAuth, async (c) => {
 
 	const expiresAt = body.expiresAt ? new Date(body.expiresAt) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-	// Encrypt session key before storing
-	const keyBytes = new TextEncoder().encode(body.sessionKey);
+	// Encrypt session key before storing (AES-256-GCM when SESSION_KEY_ENCRYPTION_KEY is set)
+	const keyBytes = encryptSessionKey(body.sessionKey);
 	await repo.updateSessionKey(sessionId, keyBytes, walletAddress, expiresAt);
 
 	await repo.logAudit(walletAddress, "delegated", undefined, {

@@ -5,6 +5,9 @@ import { setCookie, getCookie, deleteCookie } from "hono/cookie";
 const COOKIE_NAME = "wtfoc_session";
 const COOKIE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60; // 7 days
 
+/** Secure cookies only in production (HTTPS). Local dev uses plain HTTP. */
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
 export function generateCookieToken(): string {
 	return randomBytes(32).toString("hex");
 }
@@ -12,8 +15,8 @@ export function generateCookieToken(): string {
 export function setSessionCookie(c: Context, token: string): void {
 	setCookie(c, COOKIE_NAME, token, {
 		httpOnly: true,
-		secure: true,
-		sameSite: "Strict",
+		secure: IS_PRODUCTION,
+		sameSite: IS_PRODUCTION ? "Strict" : "Lax",
 		path: "/api",
 		maxAge: COOKIE_MAX_AGE_SECONDS,
 	});
