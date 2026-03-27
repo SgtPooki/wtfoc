@@ -65,8 +65,9 @@ export function createMcpServer(
 	// ─── wtfoc_trace ──────────────────────────────────────────────────────
 	server.tool(
 		"wtfoc_trace",
-		"Trace evidence-backed connections across sources in a wtfoc collection. " +
-			"Returns grouped results with semantic and edge-based hops.",
+		"Trace evidence-backed connections across sources in a wtfoc knowledge collection. " +
+			"Returns grouped results with semantic and edge-based hops. " +
+			"Use wtfoc_list_collections first to discover available collections and what they contain.",
 		{
 			query: z.string().describe("The natural-language query to trace"),
 			collection: z.string().describe("Name of the wtfoc collection to search"),
@@ -117,7 +118,8 @@ export function createMcpServer(
 	// ─── wtfoc_query ──────────────────────────────────────────────────────
 	server.tool(
 		"wtfoc_query",
-		"Semantic search across a wtfoc collection. Returns ranked chunks by similarity.",
+		"Semantic search across a wtfoc knowledge collection. Returns ranked chunks by similarity. " +
+			"Use wtfoc_list_collections first to discover available collections and what they contain.",
 		{
 			queryText: z.string().describe("The search query text"),
 			collection: z.string().describe("Name of the wtfoc collection to search"),
@@ -148,7 +150,7 @@ export function createMcpServer(
 	// ─── wtfoc_status ─────────────────────────────────────────────────────
 	server.tool(
 		"wtfoc_status",
-		"Show collection stats: chunk count, segments, embedding model, timestamps.",
+		"Show detailed collection stats including description, chunk count, segments, embedding model, and timestamps.",
 		{
 			collection: z.string().describe("Name of the wtfoc collection"),
 		},
@@ -166,7 +168,8 @@ export function createMcpServer(
 	// ─── wtfoc_list_collections ───────────────────────────────────────────
 	server.tool(
 		"wtfoc_list_collections",
-		"List all wtfoc collections with chunk count, segment count, embedding model, and last updated.",
+		"List all available knowledge collections with their descriptions, chunk counts, and metadata. " +
+			"Call this first to discover what knowledge is available and how to query it effectively.",
 		async () => {
 			try {
 				const { handleListSources } = await import("./tools/list-sources.js");
@@ -195,8 +198,16 @@ export function createMcpServer(
 					.string()
 					.optional()
 					.describe("Only fetch items newer than duration (e.g. 90d, 24h)"),
+				description: z
+					.string()
+					.optional()
+					.describe(
+						"Description of what this collection contains — topics, source types, and what kinds of queries it can answer. " +
+							"Should help both humans and AI agents decide when to use this collection and how to phrase effective queries. " +
+							"Set on creation, preserved on subsequent ingests.",
+					),
 			},
-			async ({ sourceType, source, collection, since }) => {
+			async ({ sourceType, source, collection, since, description }) => {
 				try {
 					const { handleIngest } = await import("./tools/ingest.js");
 					const text = await handleIngest(store, embedder, modelName, {
@@ -204,6 +215,7 @@ export function createMcpServer(
 						source,
 						collection,
 						since,
+						description,
 						extractorConfig,
 					});
 					return { content: [{ type: "text" as const, text }] };

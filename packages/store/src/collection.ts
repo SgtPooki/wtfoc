@@ -68,11 +68,16 @@ export function createCollectionDescriptor(
 }
 
 /** Create an initial (empty) CollectionHead for a new collection */
-export function createCollectionHead(name: string, namespace = "default"): CollectionHead {
+export function createCollectionHead(
+	name: string,
+	namespace = "default",
+	opts?: { description?: string },
+): CollectionHead {
 	return {
 		schemaVersion: CURRENT_SCHEMA_VERSION,
 		collectionId: generateCollectionId(name, namespace),
 		name,
+		description: opts?.description,
 		currentRevisionId: null,
 		prevHeadId: null,
 		segments: [],

@@ -105,6 +105,7 @@ export function formatQuery(result: QueryResult, format: OutputFormat): string {
 export function formatCollections(
 	collections: Array<{
 		name: string;
+		description?: string;
 		chunks: number;
 		segments: number;
 		model: string;
@@ -142,6 +143,9 @@ export function formatCollections(
 				updated,
 			].join("  "),
 		);
+		if (c.description) {
+			lines.push(`  ${c.description}`);
+		}
 	}
 
 	lines.push(`\n${collections.length} collection${collections.length === 1 ? "" : "s"}`);

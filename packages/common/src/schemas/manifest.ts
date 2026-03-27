@@ -123,6 +123,8 @@ export interface CollectionHead {
 	schemaVersion: number;
 	collectionId: string;
 	name: string;
+	/** Human-readable summary of what this collection contains, surfaced to AI agents for discoverability */
+	description?: string;
 	currentRevisionId: string | null;
 	prevHeadId: string | null;
 	segments: SegmentSummary[];
