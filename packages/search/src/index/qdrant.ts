@@ -22,12 +22,30 @@ export interface QdrantVectorIndexOptions {
 
 /**
  * Sanitize payload strings to prevent Qdrant JSON parse errors.
- * Replaces truncated unicode escapes (e.g. "\u00" without full 4-digit hex)
- * that cause "unexpected end of hex escape" errors.
+ * Removes unpaired Unicode surrogates that cause "unexpected end of hex escape"
+ * errors when JSON.stringify produces \ud800-\udfff escapes that Qdrant rejects.
  */
 function sanitizeString(s: string): string {
-	// Replace broken \uXXXX escapes: \u followed by fewer than 4 hex digits at string boundary
-	return s.replace(/\\u(?![0-9a-fA-F]{4})[0-9a-fA-F]{0,3}/g, "\\\\u");
+	let result = "";
+	for (let i = 0; i < s.length; i++) {
+		const code = s.charCodeAt(i);
+		if (code >= 0xd800 && code <= 0xdbff) {
+			// High surrogate — check if paired
+			const next = s.charCodeAt(i + 1);
+			if (next >= 0xdc00 && next <= 0xdfff) {
+				result += s.charAt(i) + s.charAt(i + 1);
+				i++; // skip the low surrogate
+			} else {
+				result += "\ufffd"; // replacement character
+			}
+		} else if (code >= 0xdc00 && code <= 0xdfff) {
+			// Unpaired low surrogate
+			result += "\ufffd";
+		} else {
+			result += s.charAt(i);
+		}
+	}
+	return result;
 }
 
 function sanitizePayload(payload: Record<string, unknown>): Record<string, unknown> {
