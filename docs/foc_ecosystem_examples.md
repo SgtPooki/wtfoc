@@ -147,11 +147,12 @@ node packages/cli/dist/cli.js query "session key registry deployment migration b
 ```
 
 **What it shows:**
-- filecoin-services PR #205 (fix nonce in deploy script)
-- filecoin-services PR #384 (breaking changes policy)
-- filecoin-services PR #197 (update session-key-registry loading)
-- curio PR #832 (boost migration fix)
-- filecoin-services PR #414 (registry upgrade announcements)
+- filecoin-services PR #197 (update load session-key-registry via https)
+- filecoin-services PR #205 (fix nonce handling in deploy script)
+- filecoin-pin PR #107 (fix: use correct addresses with session key auth)
+- foc-devnet PR #61 (add sessions key registry in DevnetInfo, remove curio layers)
+- filecoin-services PR #384 (v1.1.0 FWSS upgrade scripts — matched via breaking changes discussion)
+- dealbot PR #181 (migration safety review comments about pgcrypto/pgboss)
 
 ---
 
