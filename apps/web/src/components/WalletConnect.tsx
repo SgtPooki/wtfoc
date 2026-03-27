@@ -18,6 +18,7 @@ import {
 	truncateAddress,
 	verifySignature,
 } from "../wallet.js";
+import { SessionKeyManager } from "./SessionKeyManager.js";
 
 export function WalletConnect() {
 	const [error, setError] = useState<string | null>(null);
@@ -69,7 +70,7 @@ export function WalletConnect() {
 			if (rpcErr.code === 4001 || rpcErr.message?.toLowerCase().includes("user rejected")) {
 				setError("Connection cancelled");
 			} else {
-				const msg = err instanceof Error ? err.message : rpcErr.message ?? String(err);
+				const msg = err instanceof Error ? err.message : (rpcErr.message ?? String(err));
 				setError(msg);
 			}
 		} finally {
@@ -100,6 +101,7 @@ export function WalletConnect() {
 				<button type="button" class="wallet-disconnect-btn" onClick={handleDisconnect}>
 					Disconnect
 				</button>
+				<SessionKeyManager />
 			</div>
 		);
 	}

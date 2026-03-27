@@ -197,7 +197,7 @@ async function ingestSource(source: Source, signal?: AbortSignal): Promise<Chunk
 			const adapter = getAdapter("website");
 			if (!adapter) throw new Error("Website adapter not available");
 
-			for await (const chunk of adapter.ingest({ url: source.identifier, maxPages: 50 }, signal)) {
+			for await (const chunk of adapter.ingest({ source: source.identifier, maxPages: 50 }, signal)) {
 				chunks.push(chunk);
 			}
 			break;

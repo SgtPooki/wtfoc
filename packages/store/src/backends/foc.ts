@@ -82,13 +82,29 @@ export class FocStorageBackend implements StorageBackend {
 			let synapse: Awaited<ReturnType<typeof fp.initializeSynapse>>;
 			if (this.#sessionKey && this.#walletAddress) {
 				const { Synapse } = await import("@filoz/synapse-sdk");
+				const SessionKeyMod = await import("@filoz/synapse-core/session-key");
+				const { createWalletClient, http } = await import("viem");
 				const { privateKeyToAccount } = await import("viem/accounts");
-				const { http } = await import("viem");
-				const account = privateKeyToAccount(this.#sessionKey);
-				synapse = Synapse.create({
-					account,
+
+				// Create session key object linked to root wallet
+				const sessionKey = SessionKeyMod.fromSecp256k1({
+					privateKey: this.#sessionKey,
+					root: this.#walletAddress,
+					chain,
+				});
+
+				// Root wallet client for reads/payment lookups (uses wallet address as sender)
+				const rootAccount = privateKeyToAccount(this.#sessionKey);
+				const rootClient = createWalletClient({
+					// Use wallet address for account identity but session key for signing
+					account: { ...rootAccount, address: this.#walletAddress },
 					chain,
 					transport: http(),
+				});
+
+				synapse = new Synapse({
+					client: rootClient,
+					sessionClient: sessionKey.client,
 					source: this.#source,
 				});
 			} else if (this.#privateKey) {

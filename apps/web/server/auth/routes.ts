@@ -4,7 +4,7 @@ import type { Repository } from "../db/index.js";
 import { ipRateLimiter } from "../security/rate-limit.js";
 import { generateChallenge, verifySignature } from "./siwe.js";
 import { generateCookieToken, getSessionCookie, setSessionCookie, clearSessionCookie } from "./session.js";
-import { encryptSessionKey } from "./crypto.js";
+import { decryptSessionKey, encryptSessionKey } from "./crypto.js";
 import { requireAuth } from "./middleware.js";
 import { abortPromotionsForWallet } from "../collections/promote-worker.js";
 
@@ -125,11 +125,24 @@ auth.delete("/session-key", requireAuth, async (c) => {
 	const sessionId = c.get("sessionId") as string;
 	const walletAddress = c.get("walletAddress") as string;
 
+	// Derive session key address before deleting so frontend can revoke on-chain
+	let sessionKeyAddress: string | null = null;
+	const session = await repo.getActiveSessionByWallet(walletAddress);
+	if (session?.sessionKeyEncrypted) {
+		try {
+			const { privateKeyToAccount } = await import("viem/accounts");
+			const decryptedKey = decryptSessionKey(session.sessionKeyEncrypted);
+			sessionKeyAddress = privateKeyToAccount(decryptedKey as `0x${string}`).address;
+		} catch {
+			// Best effort — still revoke server-side
+		}
+	}
+
 	await repo.deleteSessionKey(sessionId);
 	abortPromotionsForWallet(walletAddress);
 	await repo.logAudit(walletAddress, "revoked");
 
-	return c.json({ sessionKeyActive: false });
+	return c.json({ sessionKeyActive: false, sessionKeyAddress });
 });
 
 export { auth as authRoutes };

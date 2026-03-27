@@ -178,7 +178,9 @@ export function delegateSessionKey(
 	});
 }
 
-export function revokeSessionKey(signal?: AbortSignal): Promise<{ sessionKeyActive: boolean }> {
+export function revokeSessionKey(
+	signal?: AbortSignal,
+): Promise<{ sessionKeyActive: boolean; sessionKeyAddress: string | null }> {
 	return apiFetch("/api/auth/session-key", undefined, signal, { method: "DELETE" });
 }
 

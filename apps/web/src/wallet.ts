@@ -94,3 +94,21 @@ export async function switchChain(chainId: number): Promise<void> {
 		params: [{ chainId: `0x${chainId.toString(16)}` }],
 	});
 }
+
+/** Create a viem WalletClient from the injected provider for on-chain txs */
+export async function getWalletClient() {
+	const { createWalletClient, custom } = await import("viem");
+	const { calibration } = await import("@filoz/synapse-core/chains");
+	const provider = getProvider();
+	if (!provider) throw new Error("No Ethereum wallet detected");
+
+	const accounts = (await provider.request({ method: "eth_accounts" })) as `0x${string}`[];
+	const account = accounts[0];
+	if (!account) throw new Error("No connected account");
+
+	return createWalletClient({
+		account,
+		chain: calibration,
+		transport: custom(provider as Parameters<typeof custom>[0]),
+	});
+}

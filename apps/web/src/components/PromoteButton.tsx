@@ -1,7 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import { fetchPromoteStatus, promoteCollection } from "../api.js";
 import { sessionKeyActive } from "../state.js";
-import { SessionKeyManager } from "./SessionKeyManager.js";
 
 interface PromoteButtonProps {
 	collectionId: string;
@@ -79,8 +78,7 @@ export function PromoteButton({ collectionId, collectionStatus, manifestCid }: P
 	if (!sessionKeyActive.value) {
 		return (
 			<div class="promote-needs-key">
-				<p>A session key is required to promote to FOC.</p>
-				<SessionKeyManager />
+				<p>Delegate a session key (in the header) to promote to FOC.</p>
 			</div>
 		);
 	}
