@@ -46,14 +46,14 @@ function AddSourceForm({ collectionId, onAdded }: { collectionId: string; onAdde
 
 	return (
 		<form
-			class="add-source-form"
+			class="add-source-form source-row"
 			onSubmit={handleSubmit}
-			style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginTop: "0.5rem" }}
+			style={{ marginTop: "0.5rem" }}
 		>
 			<select value={type} onChange={(e) => setType((e.target as HTMLSelectElement).value)}>
-				<option value="github">GitHub</option>
-				<option value="website">Website</option>
-				<option value="hackernews">HackerNews</option>
+				<option value="github">GitHub (owner/repo)</option>
+				<option value="website">Website (HTTPS URL)</option>
+				<option value="hackernews">HackerNews (thread ID)</option>
 			</select>
 			<input
 				type="text"
@@ -62,12 +62,11 @@ function AddSourceForm({ collectionId, onAdded }: { collectionId: string; onAdde
 				placeholder={
 					type === "github" ? "owner/repo" : type === "website" ? "https://..." : "thread ID"
 				}
-				style={{ flex: 1 }}
 			/>
 			<button type="submit" disabled={submitting}>
 				{submitting ? "Adding..." : "+ Add"}
 			</button>
-			{error && <span class="source-error">{error}</span>}
+			{error && <span class="form-error">{error}</span>}
 		</form>
 	);
 }
