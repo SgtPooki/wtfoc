@@ -8,6 +8,7 @@ import type {
 	Repository,
 	Source,
 	SourceStatus,
+	SourceType,
 	WalletSession,
 } from "./repository.js";
 
