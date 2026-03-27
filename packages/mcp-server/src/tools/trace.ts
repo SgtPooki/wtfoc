@@ -7,7 +7,7 @@ import { resolveCollection } from "../helpers.js";
 export async function handleTrace(
 	store: ReturnType<typeof createStore>,
 	embedder: Embedder,
-	params: { query: string; collection: string; mode?: TraceMode },
+	params: { query: string; collection: string; mode?: TraceMode; maxTotal?: number; maxPerSource?: number; maxHops?: number },
 	collectionLoader?: CollectionLoader,
 ): Promise<string> {
 	const { vectorIndex, segments } = await resolveCollection(
@@ -16,6 +16,11 @@ export async function handleTrace(
 		collectionLoader,
 	);
 	const mode: TraceMode = params.mode ?? "discovery";
-	const result = await trace(params.query, embedder, vectorIndex, segments, { mode });
+	const result = await trace(params.query, embedder, vectorIndex, segments, {
+		mode,
+		maxTotal: params.maxTotal,
+		maxPerSource: params.maxPerSource,
+		maxHops: params.maxHops,
+	});
 	return JSON.stringify(result, null, 2);
 }

@@ -23,8 +23,13 @@ export function registerTraceCommand(program: Command): void {
 				"--mode <mode>",
 				'Trace mode: "discovery" (default) or "analytical" (adds cross-source insights)',
 				"discovery",
-			),
-	).action(async (queryText: string, opts: { collection: string; mode: string } & EmbedderOpts) => {
+			)
+			.option("--max-total <number>", "Max total results (default: 15)")
+			.option("--max-per-source <number>", "Max results per source type (default: 3)")
+			.option("--max-hops <number>", "Max edge hops to follow (default: 3)")
+			.option("--exclude <types...>", "Exclude source types (e.g. github-pr-comment)")
+			.option("--include <types...>", "Only include these source types"),
+	).action(async (queryText: string, opts: { collection: string; mode: string; maxTotal?: string; maxPerSource?: string; maxHops?: string; exclude?: string[]; include?: string[] } & EmbedderOpts) => {
 		const validModes: TraceMode[] = ["discovery", "analytical"];
 		if (!validModes.includes(opts.mode as TraceMode)) {
 			console.error(
@@ -76,10 +81,19 @@ export function registerTraceCommand(program: Command): void {
 			process.exit(1);
 		}
 
+		const maxTotal = opts.maxTotal ? Number.parseInt(opts.maxTotal, 10) : undefined;
+		const maxPerSource = opts.maxPerSource ? Number.parseInt(opts.maxPerSource, 10) : undefined;
+		const maxHops = opts.maxHops ? Number.parseInt(opts.maxHops, 10) : undefined;
+
 		try {
 			const result = await trace(queryText, embedder, vectorIndex, segments, {
 				mode,
 				overlayEdges,
+				maxTotal,
+				maxPerSource,
+				maxHops,
+				excludeSourceTypes: opts.exclude,
+				includeSourceTypes: opts.include,
 			});
 			console.log(formatTrace(result, format));
 		} catch (err) {

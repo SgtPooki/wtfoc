@@ -76,13 +76,16 @@ export function createMcpServer(
 				.describe(
 					'Trace mode: "discovery" (default) finds connected results, "analytical" adds cross-source insights (convergence, evidence chains, temporal clusters)',
 				),
+			maxTotal: z.number().int().min(1).max(200).optional().describe("Max total results (default: 15)"),
+			maxPerSource: z.number().int().min(1).max(50).optional().describe("Max results per source type (default: 3)"),
+			maxHops: z.number().int().min(1).max(10).optional().describe("Max edge hops to follow (default: 3)"),
 		},
-		async ({ query, collection, mode }) => {
+		async ({ query, collection, mode, maxTotal, maxPerSource, maxHops }) => {
 			try {
 				const text = await handleTrace(
 					store,
 					embedder,
-					{ query, collection, mode },
+					{ query, collection, mode, maxTotal, maxPerSource, maxHops },
 					collectionLoader,
 				);
 				return { content: [{ type: "text" as const, text }] };

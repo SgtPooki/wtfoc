@@ -62,6 +62,7 @@ export {
 } from "./edges/extractor.js";
 export { HeuristicEdgeExtractor } from "./edges/heuristic.js";
 export { LlmEdgeExtractor, type LlmEdgeExtractorOptions } from "./edges/llm.js";
+export { TemporalEdgeExtractor, type TemporalEdgeExtractorOptions } from "./edges/temporal.js";
 export type { LlmClientOptions } from "./edges/llm-client.js";
 export { chatCompletion, parseJsonResponse } from "./edges/llm-client.js";
 export {
