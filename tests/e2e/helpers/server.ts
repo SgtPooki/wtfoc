@@ -39,6 +39,10 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
 		WTFOC_MANIFEST_DIR: opts.manifestDir,
 		WTFOC_WEB_DIR: resolve(MONO_ROOT, "apps/web/dist"),
 		WTFOC_VECTOR_BACKEND: "inmemory",
+		// Prevent .wtfoc.json from overriding the embedder to a remote service
+		// (e.g., ollama) that isn't available in CI. E2E tests use the local
+		// TransformersEmbedder which matches what seedCollection uses.
+		WTFOC_CONFIG_DIR: opts.manifestDir,
 	};
 
 	// Inherit safe env vars from parent process
@@ -48,6 +52,12 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
 		}
 	}
 
+	// Force local TransformersEmbedder — clear any env vars that would
+	// point the server at a remote embedder (ollama, OpenAI, etc.)
+	delete env["WTFOC_EMBEDDER_URL"];
+	delete env["WTFOC_EMBEDDER_KEY"];
+	delete env["WTFOC_OPENAI_API_KEY"];
+
 	if (opts.embedderUrl) {
 		env["WTFOC_EMBEDDER_URL"] = opts.embedderUrl;
 		env["WTFOC_EMBEDDER_MODEL"] = opts.embedderModel ?? "mock";
@@ -56,18 +66,30 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
 	const child = spawn("node", [SERVER_ENTRY], {
 		env,
 		stdio: ["ignore", "pipe", "pipe"],
+		// Run from the temp manifest dir so the server doesn't pick up
+		// .wtfoc.json from the repo root (which may point at an unavailable
+		// remote embedder like ollama).
+		cwd: opts.manifestDir,
 	});
 
 	const baseUrl = `http://localhost:${opts.port}`;
 
+	// Capture stderr for debugging
+	let allStderr = "";
+
 	// Wait for the server ready line
 	await new Promise<void>((resolve, reject) => {
-		const timeout = setTimeout(() => reject(new Error("Server start timeout (15s)")), 15_000);
-		let stderr = "";
+		const timeout = setTimeout(() => {
+			console.error(`[e2e-server] Timeout waiting for server. stderr so far:\n${allStderr}`);
+			reject(new Error("Server start timeout (15s)"));
+		}, 15_000);
 
 		child.stderr?.on("data", (chunk: Buffer) => {
-			stderr += chunk.toString();
-			if (stderr.includes("wtfoc web running at")) {
+			const text = chunk.toString();
+			allStderr += text;
+			// Log server stderr in real-time for CI debugging
+			process.stderr.write(`[e2e-server] ${text}`);
+			if (allStderr.includes("wtfoc web running at")) {
 				clearTimeout(timeout);
 				resolve();
 			}
@@ -80,8 +102,13 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
 
 		child.on("exit", (code) => {
 			clearTimeout(timeout);
-			reject(new Error(`Server exited early with code ${code}.\nstderr: ${stderr}`));
+			reject(new Error(`Server exited early with code ${code}.\nstderr: ${allStderr}`));
 		});
+	});
+
+	// Continue logging server stderr after startup (catches runtime errors)
+	child.stderr?.on("data", (chunk: Buffer) => {
+		process.stderr.write(`[e2e-server] ${chunk.toString()}`);
 	});
 
 	return {

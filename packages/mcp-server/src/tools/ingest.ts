@@ -43,6 +43,7 @@ export async function handleIngest(
 		source: string;
 		collection: string;
 		since?: string;
+		description?: string;
 		extractorConfig?: ResolvedExtractorConfig;
 	},
 ): Promise<string> {
@@ -166,6 +167,7 @@ export async function handleIngest(
 			schemaVersion: CURRENT_SCHEMA_VERSION,
 			collectionId: currentHead?.manifest.collectionId ?? generateCollectionId(params.collection),
 			name: params.collection,
+			description: currentHead?.manifest.description ?? params.description,
 			currentRevisionId: currentHead?.manifest.currentRevisionId ?? null,
 			prevHeadId: currentPrevHeadId,
 			segments: [

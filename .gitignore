@@ -4,6 +4,7 @@ dist/
 .env
 .env.local
 .DS_Store
+.wtfoc.json
 .gh-cache/
 .claude/worktrees/
 .claude/projects/

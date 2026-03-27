@@ -14,6 +14,7 @@ export async function handleListSources(store: ReturnType<typeof createStore>): 
 			const m = head.manifest;
 			return {
 				name: m.name,
+				description: m.description,
 				chunks: m.totalChunks,
 				segments: m.segments.length,
 				model: m.embeddingModel,

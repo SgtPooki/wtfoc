@@ -21,6 +21,42 @@ export interface QdrantVectorIndexOptions {
 }
 
 /**
+ * Sanitize payload strings to prevent Qdrant JSON parse errors.
+ * Removes unpaired Unicode surrogates that cause "unexpected end of hex escape"
+ * errors when JSON.stringify produces \ud800-\udfff escapes that Qdrant rejects.
+ */
+function sanitizeString(s: string): string {
+	let result = "";
+	for (let i = 0; i < s.length; i++) {
+		const code = s.charCodeAt(i);
+		if (code >= 0xd800 && code <= 0xdbff) {
+			// High surrogate — check if paired
+			const next = s.charCodeAt(i + 1);
+			if (next >= 0xdc00 && next <= 0xdfff) {
+				result += s.charAt(i) + s.charAt(i + 1);
+				i++; // skip the low surrogate
+			} else {
+				result += "\ufffd"; // replacement character
+			}
+		} else if (code >= 0xdc00 && code <= 0xdfff) {
+			// Unpaired low surrogate
+			result += "\ufffd";
+		} else {
+			result += s.charAt(i);
+		}
+	}
+	return result;
+}
+
+function sanitizePayload(payload: Record<string, unknown>): Record<string, unknown> {
+	const result: Record<string, unknown> = {};
+	for (const [k, v] of Object.entries(payload)) {
+		result[k] = typeof v === "string" ? sanitizeString(v) : v;
+	}
+	return result;
+}
+
+/**
  * Convert an arbitrary string ID into a UUID-formatted string.
  * Qdrant requires point IDs to be UUIDs or unsigned integers.
  * We derive a deterministic UUID from the SHA-256 of the original ID.
@@ -72,11 +108,11 @@ export class QdrantVectorIndex implements VectorIndex {
 		const points = entries.map((entry) => ({
 			id: toQdrantId(entry.id),
 			vector: Array.from(entry.vector),
-			payload: {
+			payload: sanitizePayload({
 				...entry.metadata,
 				storageId: entry.storageId,
 				_wtfoc_id: entry.id,
-			},
+			}),
 		}));
 
 		await client.upsert(this.#options.collectionName, {
