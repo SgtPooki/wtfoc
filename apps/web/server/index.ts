@@ -704,7 +704,6 @@ async function main() {
 
 		// ─── Route /api/auth/* and /api/wallet-collections/* through Hono ───
 		if (path.startsWith("/api/auth") || path.startsWith("/api/wallet-collections")) {
-			const { getConnInfo } = await import("@hono/node-server/conninfo");
 			const honoReq = new Request(
 				new URL(url, `http://${req.headers.host ?? "localhost"}`),
 				{
