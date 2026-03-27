@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 import { createCollection } from "../api.js";
-import { walletView } from "../state.js";
+import { activeCollectionId, walletView } from "../state.js";
 
 interface SourceInput {
 	type: string;
@@ -54,6 +54,7 @@ export function CreateCollection() {
 				<button
 					type="button"
 					onClick={() => {
+						activeCollectionId.value = createdId;
 						walletView.value = "detail";
 					}}
 				>

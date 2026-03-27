@@ -1,4 +1,5 @@
 import { effect, signal } from "@preact/signals";
+import { fetchSession } from "./api.js";
 
 function getParam(key: string): string {
 	return new URLSearchParams(window.location.search).get(key) ?? "";
@@ -96,6 +97,21 @@ effect(() => {
 	collection.value;
 	pushToUrl();
 });
+
+/** Bootstrap: recover wallet session from server cookie on page load */
+fetchSession()
+	.then((s) => {
+		if (s.authenticated && s.address) {
+			walletAddress.value = s.address;
+			isConnected.value = true;
+			chainId.value = s.chainId ?? 0;
+			sessionKeyActive.value = s.sessionKeyActive ?? false;
+			sessionKeyExpiresAt.value = s.sessionKeyExpiresAt ?? null;
+		}
+	})
+	.catch(() => {
+		// No session — stay disconnected
+	});
 
 /** Handle browser back/forward */
 window.addEventListener("popstate", () => {

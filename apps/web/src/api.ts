@@ -150,6 +150,20 @@ export function fetchCollectionDetail(
 	return apiFetch<WalletCollectionDetail>(`/api/wallet-collections/${id}`, undefined, signal);
 }
 
+// ─── Auth session bootstrap ──────────────────────────────────────────────────
+
+export interface SessionState {
+	authenticated: boolean;
+	address?: string;
+	chainId?: number;
+	sessionKeyActive?: boolean;
+	sessionKeyExpiresAt?: string | null;
+}
+
+export function fetchSession(signal?: AbortSignal): Promise<SessionState> {
+	return apiFetch<SessionState>("/api/auth/session", undefined, signal);
+}
+
 // ─── Session key + promote endpoints ─────────────────────────────────────────
 
 export function delegateSessionKey(

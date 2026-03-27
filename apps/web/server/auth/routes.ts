@@ -6,6 +6,7 @@ import { generateChallenge, verifySignature } from "./siwe.js";
 import { generateCookieToken, setSessionCookie, clearSessionCookie } from "./session.js";
 import { encryptSessionKey } from "./crypto.js";
 import { requireAuth } from "./middleware.js";
+import { abortPromotionsForWallet } from "../collections/promote-worker.js";
 
 const challengeRateLimit = ipRateLimiter(20, 60);
 
@@ -46,6 +47,29 @@ auth.post("/verify", challengeRateLimit.middleware(), async (c) => {
 
 	return c.json({
 		address: session.walletAddress,
+		sessionKeyActive: session.sessionKeyEncrypted !== null,
+		sessionKeyExpiresAt: session.sessionKeyExpiresAt?.toISOString() ?? null,
+	});
+});
+
+/** GET /api/auth/session — Bootstrap: recover session state from cookie */
+auth.get("/session", async (c) => {
+	const token = getSessionCookie(c);
+	if (!token) {
+		return c.json({ authenticated: false });
+	}
+
+	const repo = c.get("repo") as Repository;
+	const session = await repo.getSessionByToken(token);
+	if (!session || session.revokedAt) {
+		clearSessionCookie(c);
+		return c.json({ authenticated: false });
+	}
+
+	return c.json({
+		authenticated: true,
+		address: session.walletAddress,
+		chainId: session.chainId ?? 314159,
 		sessionKeyActive: session.sessionKeyEncrypted !== null,
 		sessionKeyExpiresAt: session.sessionKeyExpiresAt?.toISOString() ?? null,
 	});
@@ -102,6 +126,7 @@ auth.delete("/session-key", requireAuth, async (c) => {
 	const walletAddress = c.get("walletAddress") as string;
 
 	await repo.deleteSessionKey(sessionId);
+	abortPromotionsForWallet(walletAddress);
 	await repo.logAudit(walletAddress, "revoked");
 
 	return c.json({ sessionKeyActive: false });

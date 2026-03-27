@@ -10,13 +10,36 @@
 import type { CollectionHead } from "@wtfoc/common";
 import type { Repository } from "../db/index.js";
 
+/** Track active promotions so they can be cancelled on key revocation */
+const activePromotions = new Map<string, AbortController>();
+
+/** Abort all in-flight promotions for a wallet address */
+export function abortPromotionsForWallet(walletAddress: string): void {
+	for (const [key, controller] of activePromotions) {
+		if (key.startsWith(`${walletAddress}:`)) {
+			controller.abort(new Error("Session key revoked"));
+			activePromotions.delete(key);
+		}
+	}
+}
+
 export async function startPromotion(
 	collectionId: string,
 	sessionKeyDecrypted: string,
 	walletAddress: string,
 	repo: Repository,
-	signal?: AbortSignal,
+	externalSignal?: AbortSignal,
 ): Promise<void> {
+	const promotionKey = `${walletAddress}:${collectionId}`;
+	const controller = new AbortController();
+	activePromotions.set(promotionKey, controller);
+
+	// Link external signal (if any) to our internal controller
+	if (externalSignal) {
+		externalSignal.addEventListener("abort", () => controller.abort(externalSignal.reason), { once: true });
+	}
+	const signal = controller.signal;
+
 	try {
 		const col = await repo.getCollection(collectionId);
 		if (!col) throw new Error(`Collection ${collectionId} not found`);
@@ -33,57 +56,85 @@ export async function startPromotion(
 		// Determine resume point
 		const checkpoint = col.promoteCheckpoint;
 
-		// If already past car_built, we can skip bundling
 		if (checkpoint === "on_chain_written") {
 			// Already done — just mark as promoted
 			await repo.updateCollectionPromotion(collectionId, { status: "promoted" });
 			return;
 		}
 
-		signal?.throwIfAborted();
+		signal.throwIfAborted();
 
-		// Load all segment data from local storage
-		const segments = await Promise.all(
-			head.manifest.segments.map(async (seg) => {
-				const data = await localStore.storage.download(seg.id, signal);
-				return { id: seg.id, data };
-			}),
-		);
+		let manifestCid: string;
+		let pieceCid: string;
+		let carRootCid: string;
+		let segmentCount: number;
 
-		// Create FOC backend with session key
-		const focBackend = new FocStorageBackend({
-			sessionKey: sessionKeyDecrypted,
-			walletAddress,
-		});
+		if (checkpoint === "uploaded" && col.manifestCid && col.pieceCid && col.carRootCid) {
+			// Resume: upload already completed, skip to local manifest update
+			console.error(`[promote-worker] Resuming "${col.name}" from checkpoint "uploaded"`);
+			manifestCid = col.manifestCid;
+			pieceCid = col.pieceCid;
+			carRootCid = col.carRootCid;
+			segmentCount = col.segmentCount ?? head.manifest.segments.length;
+		} else {
+			// Full flow: load segments, bundle, and upload
+			const segments = await Promise.all(
+				head.manifest.segments.map(async (seg) => {
+					const data = await localStore.storage.download(seg.id, signal);
+					return { id: seg.id, data };
+				}),
+			);
+			segmentCount = segments.length;
 
-		// Bundle and upload with buildManifest to produce a real manifest CID
-		const bundleResult = await bundleAndUpload(segments, focBackend, {
-			signal,
-			buildManifest: ({ segmentCids, pieceCid, carRootCid }) => {
-				// Update segment references with IPFS CIDs
-				const updatedManifest: CollectionHead = {
-					...head.manifest,
-					updatedAt: new Date().toISOString(),
-					segments: head.manifest.segments.map((seg) => ({
-						...seg,
-						ipfsCid: segmentCids.get(seg.id),
-					})),
-					batches: [
-						...(head.manifest.batches ?? []),
-						{
-							pieceCid,
-							carRootCid,
-							segmentIds: [...segmentCids.values()],
-							createdAt: new Date().toISOString(),
-						},
-					],
-				};
-				return updatedManifest;
-			},
-		});
+			const focBackend = new FocStorageBackend({
+				sessionKey: sessionKeyDecrypted,
+				walletAddress,
+			});
 
-		const manifestCid = bundleResult.manifestCid ?? bundleResult.batch.carRootCid;
-		const pieceCid = bundleResult.batch.pieceCid;
+			const bundleResult = await bundleAndUpload(segments, focBackend, {
+				signal,
+				buildManifest: ({ segmentCids, pieceCid: bPieceCid, carRootCid: bCarRootCid }) => {
+					const updatedManifest: CollectionHead = {
+						...head.manifest,
+						updatedAt: new Date().toISOString(),
+						segments: head.manifest.segments.map((seg) => ({
+							...seg,
+							ipfsCid: segmentCids.get(seg.id),
+						})),
+						batches: [
+							...(head.manifest.batches ?? []),
+							{
+								pieceCid: bPieceCid,
+								carRootCid: bCarRootCid,
+								segmentIds: [...segmentCids.values()],
+								createdAt: new Date().toISOString(),
+							},
+						],
+					};
+					return updatedManifest;
+				},
+			});
+
+			manifestCid = bundleResult.manifestCid ?? bundleResult.batch.carRootCid;
+			pieceCid = bundleResult.batch.pieceCid;
+			carRootCid = bundleResult.batch.carRootCid;
+
+			// Checkpoint: upload complete — retry from here skips re-bundle/re-upload
+			await repo.updateCollectionPromotion(collectionId, {
+				promoteCheckpoint: "uploaded",
+				carRootCid,
+				pieceCid,
+				manifestCid,
+			});
+
+			await repo.logAudit(walletAddress, "used_upload", collectionId, {
+				carRootCid,
+				pieceCid,
+				manifestCid,
+			});
+		}
+
+		signal.throwIfAborted();
 
 		// Update local manifest with IPFS CIDs + batch records
 		const updatedHead: CollectionHead = {
@@ -91,40 +142,43 @@ export async function startPromotion(
 			updatedAt: new Date().toISOString(),
 			segments: head.manifest.segments.map((seg) => ({
 				...seg,
-				ipfsCid: bundleResult.segmentCids.get(seg.id),
+				// On resume we may not have segmentCids; existing ipfsCid values are preserved
+				ipfsCid: seg.ipfsCid,
 			})),
 			batches: [
 				...(head.manifest.batches ?? []),
-				bundleResult.batch,
+				{
+					pieceCid,
+					carRootCid,
+					segmentIds: head.manifest.segments.map((s) => s.id),
+					createdAt: new Date().toISOString(),
+				},
 			],
 		};
 		await localStore.manifests.putHead(col.name, updatedHead, head.headId);
-
-		await repo.logAudit(walletAddress, "used_upload", collectionId, {
-			carRootCid: bundleResult.batch.carRootCid,
-			pieceCid,
-			manifestCid,
-		});
 
 		// Mark promotion complete
 		await repo.updateCollectionPromotion(collectionId, {
 			status: "promoted",
 			manifestCid,
 			pieceCid,
-			carRootCid: bundleResult.batch.carRootCid,
+			carRootCid,
 			promoteCheckpoint: "on_chain_written",
-			segmentCount: segments.length,
+			segmentCount,
 		});
 
 		await repo.logAudit(walletAddress, "used_on_chain", collectionId, { manifestCid });
 
 		console.error(`[promote-worker] Collection "${col.name}" promoted: manifestCid=${manifestCid}`);
 	} catch (err) {
-		console.error(`[promote-worker] Collection ${collectionId} failed:`, err);
+		const reason = signal.aborted ? "revoked" : "failed";
+		console.error(`[promote-worker] Collection ${collectionId} ${reason}:`, err);
 		try {
 			await repo.updateCollectionPromotion(collectionId, { status: "promotion_failed" });
 		} catch {
 			// Best effort
 		}
+	} finally {
+		activePromotions.delete(promotionKey);
 	}
 }

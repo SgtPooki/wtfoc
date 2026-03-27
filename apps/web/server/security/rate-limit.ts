@@ -59,6 +59,21 @@ export class RateLimiter {
 	}
 }
 
+/**
+ * Extract the client IP from proxy headers.
+ * Uses only the rightmost (last) entry in x-forwarded-for, which is the one
+ * set by the closest trusted proxy rather than the client-supplied value.
+ * Falls back to x-real-ip or "unknown" for direct connections.
+ */
+function extractClientIp(c: Context): string {
+	const xff = c.req.header("x-forwarded-for");
+	if (xff) {
+		const parts = xff.split(",").map((s) => s.trim());
+		return parts[parts.length - 1] || "unknown";
+	}
+	return c.req.header("x-real-ip") ?? "unknown";
+}
+
 /** Rate limiter keyed by wallet address (from auth context) */
 export function walletRateLimiter(limit: number, windowSeconds: number): RateLimiter {
 	return new RateLimiter({
@@ -66,7 +81,7 @@ export function walletRateLimiter(limit: number, windowSeconds: number): RateLim
 		windowSeconds,
 		keyFn: (c) => {
 			const wallet = c.get("walletAddress") as string | undefined;
-			return wallet ?? c.req.header("x-forwarded-for") ?? "unknown";
+			return wallet ?? extractClientIp(c);
 		},
 	});
 }
@@ -76,6 +91,6 @@ export function ipRateLimiter(limit: number, windowSeconds: number): RateLimiter
 	return new RateLimiter({
 		limit,
 		windowSeconds,
-		keyFn: (c) => c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? "unknown",
+		keyFn: (c) => extractClientIp(c),
 	});
 }
