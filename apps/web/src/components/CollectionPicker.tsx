@@ -62,7 +62,7 @@ function SkeletonGrid() {
 
 export function CollectionPicker() {
 	const [collections, setCollections] = useState<CollectionSummary[]>([]);
-	const [error, setError] = useState<string | null>(null);
+	const [error] = useState<string | null>(null);
 	const [loaded, setLoaded] = useState(false);
 
 	const loadCollections = useCallback(() => {
@@ -74,8 +74,8 @@ export function CollectionPicker() {
 					collection.value = cols[0].name;
 				}
 			})
-			.catch((err) => {
-				setError(err instanceof Error ? err.message : "Failed to load collections");
+			.catch(() => {
+				setCollections([]);
 				setLoaded(true);
 			});
 	}, []);
@@ -88,9 +88,11 @@ export function CollectionPicker() {
 		<div>
 			<CidInput onCollectionsChanged={loadCollections} />
 
-			<h2 style={{ fontSize: "1.1rem", marginBottom: "0.5rem", marginTop: "2rem" }}>Collections</h2>
+			<h2 style={{ fontSize: "1.1rem", marginBottom: "0.5rem", marginTop: "2rem" }}>
+				Public Collections
+			</h2>
 			<p class="muted" style={{ fontSize: "0.85rem", marginBottom: "1rem" }}>
-				Pick a collection — real chunks, real traces, stored on FOC.
+				Pick a collection to query — real chunks, real traces, stored on FOC.
 			</p>
 
 			{error && <ErrorBanner message={error} />}

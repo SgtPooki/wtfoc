@@ -1,4 +1,5 @@
 import { effect, signal } from "@preact/signals";
+import { fetchSession } from "./api.js";
 
 function getParam(key: string): string {
 	return new URLSearchParams(window.location.search).get(key) ?? "";
@@ -18,6 +19,29 @@ export const collection = signal(getParam("collection"));
 
 /** Whether a search/trace request is in-flight */
 export const loading = signal(false);
+
+// ─── Wallet state ────────────────────────────────────────────────────────────
+
+/** Connected wallet address (null if not connected) */
+export const walletAddress = signal<string | null>(null);
+
+/** Whether the wallet is connected and authenticated with the server */
+export const isConnected = signal(false);
+
+/** Current chain ID from the wallet */
+export const chainId = signal<number>(0);
+
+/** Whether the user has an active session key for FOC operations */
+export const sessionKeyActive = signal(false);
+
+/** Expiration time of the session key */
+export const sessionKeyExpiresAt = signal<string | null>(null);
+
+/** Current view in the wallet flow */
+export const walletView = signal<"none" | "collections" | "create" | "detail">("none");
+
+/** Active collection ID for detail view */
+export const activeCollectionId = signal<string | null>(null);
 
 /** Current AbortController for cancelling in-flight requests */
 let currentAbort: AbortController | null = null;
@@ -73,6 +97,21 @@ effect(() => {
 	collection.value;
 	pushToUrl();
 });
+
+/** Bootstrap: recover wallet session from server cookie on page load */
+fetchSession()
+	.then((s) => {
+		if (s.authenticated && s.address) {
+			walletAddress.value = s.address;
+			isConnected.value = true;
+			chainId.value = s.chainId ?? 0;
+			sessionKeyActive.value = s.sessionKeyActive ?? false;
+			sessionKeyExpiresAt.value = s.sessionKeyExpiresAt ?? null;
+		}
+	})
+	.catch(() => {
+		// No session — stay disconnected
+	});
 
 /** Handle browser back/forward */
 window.addEventListener("popstate", () => {

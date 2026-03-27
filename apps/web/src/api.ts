@@ -19,10 +19,11 @@ class ApiError extends Error {
 	}
 }
 
-async function apiFetch<T>(
+export async function apiFetch<T>(
 	path: string,
 	params?: Record<string, string>,
 	signal?: AbortSignal,
+	init?: RequestInit,
 ): Promise<T> {
 	const url = new URL(`${API_BASE}${path}`, window.location.origin);
 	if (params) {
@@ -31,7 +32,15 @@ async function apiFetch<T>(
 		}
 	}
 
-	const res = await fetch(url.toString(), { signal });
+	const headers: Record<string, string> = {};
+	if (init?.body) headers["Content-Type"] = "application/json";
+
+	const res = await fetch(url.toString(), {
+		signal,
+		credentials: "same-origin",
+		...init,
+		headers: { ...headers, ...(init?.headers as Record<string, string>) },
+	});
 
 	if (!res.ok) {
 		const body = await res.json().catch(() => ({ error: res.statusText }));
@@ -86,6 +95,126 @@ export function fetchSources(collection: string, signal?: AbortSignal): Promise<
 
 export function fetchCollections(signal?: AbortSignal): Promise<CollectionSummary[]> {
 	return apiFetch<CollectionSummary[]>("/api/collections", undefined, signal);
+}
+
+// ─── Wallet collection endpoints ─────────────────────────────────────────────
+
+export interface WalletCollection {
+	id: string;
+	name: string;
+	status: string;
+	sourceCount: number;
+	segmentCount: number | null;
+	manifestCid: string | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface WalletCollectionDetail extends WalletCollection {
+	pieceCid: string | null;
+	sources: Array<{
+		id: string;
+		type: string;
+		identifier: string;
+		status: string;
+		chunkCount: number | null;
+		error: string | null;
+	}>;
+}
+
+export function createCollection(
+	name: string,
+	sources: Array<{ type: string; identifier: string }>,
+	signal?: AbortSignal,
+): Promise<WalletCollectionDetail> {
+	return apiFetch<WalletCollectionDetail>("/api/wallet-collections", undefined, signal, {
+		method: "POST",
+		body: JSON.stringify({ name, sources }),
+	});
+}
+
+export function fetchMyCollections(
+	signal?: AbortSignal,
+): Promise<{ collections: WalletCollection[] }> {
+	return apiFetch<{ collections: WalletCollection[] }>(
+		"/api/wallet-collections",
+		undefined,
+		signal,
+	);
+}
+
+export function fetchCollectionDetail(
+	id: string,
+	signal?: AbortSignal,
+): Promise<WalletCollectionDetail> {
+	return apiFetch<WalletCollectionDetail>(`/api/wallet-collections/${id}`, undefined, signal);
+}
+
+export function addSourcesToCollection(
+	id: string,
+	sources: Array<{ type: string; identifier: string }>,
+	signal?: AbortSignal,
+): Promise<{ sources: Array<{ id: string; type: string; identifier: string; status: string }> }> {
+	return apiFetch(`/api/wallet-collections/${id}/sources`, undefined, signal, {
+		method: "POST",
+		body: JSON.stringify({ sources }),
+	});
+}
+
+// ─── Auth session bootstrap ──────────────────────────────────────────────────
+
+export interface SessionState {
+	authenticated: boolean;
+	address?: string;
+	chainId?: number;
+	sessionKeyActive?: boolean;
+	sessionKeyExpiresAt?: string | null;
+}
+
+export function fetchSession(signal?: AbortSignal): Promise<SessionState> {
+	return apiFetch<SessionState>("/api/auth/session", undefined, signal);
+}
+
+// ─── Session key + promote endpoints ─────────────────────────────────────────
+
+export function delegateSessionKey(
+	sessionKey: string,
+	expiresAt: string,
+	chainId: number,
+	signal?: AbortSignal,
+): Promise<{ sessionKeyActive: boolean; sessionKeyExpiresAt: string }> {
+	return apiFetch("/api/auth/session-key", undefined, signal, {
+		method: "POST",
+		body: JSON.stringify({ sessionKey, expiresAt, chainId }),
+	});
+}
+
+export function revokeSessionKey(
+	signal?: AbortSignal,
+): Promise<{ sessionKeyActive: boolean; sessionKeyAddress: string | null }> {
+	return apiFetch("/api/auth/session-key", undefined, signal, { method: "DELETE" });
+}
+
+export function promoteCollection(
+	id: string,
+	signal?: AbortSignal,
+): Promise<{ id: string; status: string; promoteCheckpoint: string | null }> {
+	return apiFetch(`/api/wallet-collections/${id}/promote`, undefined, signal, {
+		method: "POST",
+	});
+}
+
+export function fetchPromoteStatus(
+	id: string,
+	signal?: AbortSignal,
+): Promise<{
+	status: string;
+	checkpoint: string | null;
+	manifestCid: string | null;
+	pieceCid: string | null;
+	carRootCid: string | null;
+}> {
+	return apiFetch(`/api/wallet-collections/${id}/promote/status`, undefined, signal);
 }
 
 export { ApiError };

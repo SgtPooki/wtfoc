@@ -13,21 +13,32 @@
 		"start": "node server/dist/index.js"
 	},
 	"dependencies": {
+		"@filoz/synapse-core": "^0.3.1",
+		"@hono/node-server": "^1.19.11",
 		"@modelcontextprotocol/sdk": "^1.12.1",
 		"@preact/signals": "^2.0.0",
+		"@tanstack/query-core": "^5.95.2",
+		"@walletconnect/modal": "^2.7.0",
 		"@wtfoc/common": "workspace:*",
 		"@wtfoc/config": "workspace:*",
+		"@wtfoc/ingest": "workspace:*",
 		"@wtfoc/mcp-server": "workspace:*",
 		"@wtfoc/search": "workspace:*",
 		"@wtfoc/store": "workspace:*",
 		"d3-force": "^3.0.0",
 		"d3-selection": "^3.0.0",
-		"preact": "^10.25.0"
+		"hono": "^4.12.9",
+		"pg": "^8.20.0",
+		"preact": "^10.25.0",
+		"siwe": "^3.0.0",
+		"viem": "^2.47.6",
+		"wagmi": "^3.6.0"
 	},
 	"devDependencies": {
 		"@preact/preset-vite": "^2.9.0",
 		"@types/d3-force": "^3.0.10",
 		"@types/d3-selection": "^3.0.11",
+		"@types/pg": "^8.20.0",
 		"typescript": "^5.9.3",
 		"vite": "^6.3.0"
 	}

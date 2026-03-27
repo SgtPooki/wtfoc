@@ -2,6 +2,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { dirname, extname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRepository } from "./db/index.js";
+import { createHonoApp } from "./hono-app.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type {
 	CollectionHead,
@@ -688,10 +690,46 @@ async function main() {
 		}
 	}
 
+	// ─── Initialize wallet collection flow ──────────────────────────────
+	const repo = await createRepository();
+	const honoApp = createHonoApp(repo);
+
+	// Auth and wallet-collection routes will be mounted on honoApp in later phases.
+	// For now, we just set up the infrastructure.
+
 	const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
 		const url = req.url ?? "/";
 		const params = parseQuery(url);
 		const path = url.split("?")[0] ?? "/";
+
+		// ─── Route /api/auth/* and /api/wallet-collections/* through Hono ───
+		if (path.startsWith("/api/auth") || path.startsWith("/api/wallet-collections")) {
+			const honoReq = new Request(
+				new URL(url, `http://${req.headers.host ?? "localhost"}`),
+				{
+					method: req.method,
+					headers: Object.entries(req.headers).reduce(
+						(h, [k, v]) => {
+							if (v) h[k] = Array.isArray(v) ? v.join(", ") : v;
+							return h;
+						},
+						{} as Record<string, string>,
+					),
+					body: req.method !== "GET" && req.method !== "HEAD"
+						? await new Promise<string>((resolve) => {
+								let body = "";
+								req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+								req.on("end", () => resolve(body));
+							})
+						: undefined,
+				},
+			);
+			const honoRes = await honoApp.fetch(honoReq);
+			res.writeHead(honoRes.status, Object.fromEntries(honoRes.headers.entries()));
+			const body = await honoRes.arrayBuffer();
+			res.end(Buffer.from(body));
+			return;
+		}
 
 		// CORS preflight
 		if (req.method === "OPTIONS") {
@@ -853,17 +891,22 @@ async function main() {
 				const names = await store.manifests.listProjects();
 				const collections = await Promise.all(
 					names.map(async (name) => {
-						const head = await store.manifests.getHead(name);
-						if (!head) return null;
-						const m = head.manifest;
-						return {
-							name: m.name,
-							description: m.description,
-							chunks: m.totalChunks,
-							segments: m.segments.length,
-							model: m.embeddingModel,
-							updated: m.updatedAt,
-						};
+						try {
+							const head = await store.manifests.getHead(name);
+							if (!head) return null;
+							const m = head.manifest;
+							return {
+								name: m.name,
+								description: m.description,
+								chunks: m.totalChunks,
+								segments: m.segments.length,
+								model: m.embeddingModel,
+								updated: m.updatedAt,
+							};
+						} catch {
+							console.error(`[api] Skipping collection "${name}": invalid manifest`);
+							return null;
+						}
 					}),
 				);
 				return jsonResponse(

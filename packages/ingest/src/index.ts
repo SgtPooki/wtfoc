@@ -4,6 +4,10 @@
 export { getAdapter, getAvailableSourceTypes, registerAdapter } from "./adapter-registry.js";
 export { DiscordAdapter, type DiscordAdapterConfig } from "./adapters/discord.js";
 export {
+	createHttpExecFn,
+	type TokenProvider,
+} from "./adapters/github/http-transport.js";
+export {
 	decodePrivateKey,
 	type ExecFn,
 	GitHubAdapter,

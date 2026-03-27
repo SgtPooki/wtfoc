@@ -7,26 +7,53 @@ import {
 
 const MIN_PIECE_SIZE = 127;
 
-export interface FocStorageBackendOptions {
+export interface FocStorageBackendPrivateKeyOptions {
 	privateKey: string;
 	network?: "calibration" | "mainnet";
 	source?: string;
 }
+
+export interface FocStorageBackendSessionKeyOptions {
+	sessionKey: string;
+	walletAddress: string;
+	network?: "calibration" | "mainnet";
+	source?: string;
+}
+
+export type FocStorageBackendOptions =
+	| FocStorageBackendPrivateKeyOptions
+	| FocStorageBackendSessionKeyOptions;
 
 /**
  * FOC storage backend using filecoin-pin for CAR creation + synapse-sdk.
  * Produces BOTH PieceCID (FOC) and IPFS CID (gateway-accessible).
  */
 export class FocStorageBackend implements StorageBackend {
-	readonly #privateKey: `0x${string}`;
+	readonly #privateKey: `0x${string}` | null;
+	readonly #sessionKey: `0x${string}` | null;
+	readonly #walletAddress: `0x${string}` | null;
 	readonly #network: "calibration" | "mainnet";
 	readonly #source: string;
 
 	constructor(options: FocStorageBackendOptions) {
-		if (!options.privateKey.startsWith("0x")) {
-			throw new Error("Private key must start with 0x");
+		if ("privateKey" in options) {
+			if (!options.privateKey.startsWith("0x")) {
+				throw new Error("Private key must start with 0x");
+			}
+			this.#privateKey = options.privateKey as `0x${string}`;
+			this.#sessionKey = null;
+			this.#walletAddress = null;
+		} else {
+			if (!options.sessionKey.startsWith("0x")) {
+				throw new Error("Session key must start with 0x");
+			}
+			if (!options.walletAddress.startsWith("0x")) {
+				throw new Error("Wallet address must start with 0x");
+			}
+			this.#privateKey = null;
+			this.#sessionKey = options.sessionKey as `0x${string}`;
+			this.#walletAddress = options.walletAddress as `0x${string}`;
 		}
-		this.#privateKey = options.privateKey as `0x${string}`;
 		this.#network = options.network ?? "calibration";
 		this.#source = options.source ?? "wtfoc";
 	}
@@ -51,11 +78,43 @@ export class FocStorageBackend implements StorageBackend {
 
 			const chain = this.#network === "mainnet" ? chains.mainnet : chains.calibration;
 
-			// Initialize synapse via filecoin-pin
-			const synapse = await fp.initializeSynapse({
-				privateKey: this.#privateKey,
-				chain,
-			});
+			// Initialize synapse — use session key path (Synapse.create direct) or private key path (filecoin-pin)
+			let synapse: Awaited<ReturnType<typeof fp.initializeSynapse>>;
+			if (this.#sessionKey && this.#walletAddress) {
+				const { Synapse } = await import("@filoz/synapse-sdk");
+				const SessionKeyMod = await import("@filoz/synapse-core/session-key");
+				const { createWalletClient, http } = await import("viem");
+				const { privateKeyToAccount } = await import("viem/accounts");
+
+				// Create session key object linked to root wallet
+				const sessionKey = SessionKeyMod.fromSecp256k1({
+					privateKey: this.#sessionKey,
+					root: this.#walletAddress,
+					chain,
+				});
+
+				// Root wallet client for reads/payment lookups (uses wallet address as sender)
+				const rootAccount = privateKeyToAccount(this.#sessionKey);
+				const rootClient = createWalletClient({
+					// Use wallet address for account identity but session key for signing
+					account: { ...rootAccount, address: this.#walletAddress },
+					chain,
+					transport: http(),
+				});
+
+				synapse = new Synapse({
+					client: rootClient,
+					sessionClient: sessionKey.client,
+					source: this.#source,
+				});
+			} else if (this.#privateKey) {
+				synapse = await fp.initializeSynapse({
+					privateKey: this.#privateKey,
+					chain,
+				});
+			} else {
+				throw new Error("FocStorageBackend: no private key or session key configured");
+			}
 
 			let carBytes: Uint8Array;
 			let ipfsCid: string;
@@ -154,7 +213,9 @@ export class FocStorageBackend implements StorageBackend {
 			const chains = await import("@filoz/synapse-core/chains");
 
 			const chain = this.#network === "mainnet" ? chains.mainnet : chains.calibration;
-			const account = privateKeyToAccount(this.#privateKey);
+			const key = this.#privateKey ?? this.#sessionKey;
+			if (!key) throw new StorageNotFoundError(id, "foc");
+			const account = privateKeyToAccount(key);
 			const synapse = Synapse.create({
 				account,
 				chain,
