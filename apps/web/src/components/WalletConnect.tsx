@@ -65,10 +65,11 @@ export function WalletConnect() {
 			sessionKeyActive.value = result.sessionKeyActive;
 			sessionKeyExpiresAt.value = result.sessionKeyExpiresAt;
 		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err);
-			if (msg.includes("User rejected") || msg.includes("user rejected")) {
+			const rpcErr = err as { code?: number; message?: string };
+			if (rpcErr.code === 4001 || rpcErr.message?.toLowerCase().includes("user rejected")) {
 				setError("Connection cancelled");
 			} else {
+				const msg = err instanceof Error ? err.message : rpcErr.message ?? String(err);
 				setError(msg);
 			}
 		} finally {

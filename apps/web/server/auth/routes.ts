@@ -3,7 +3,7 @@ import type { AppEnv } from "../hono-app.js";
 import type { Repository } from "../db/index.js";
 import { ipRateLimiter } from "../security/rate-limit.js";
 import { generateChallenge, verifySignature } from "./siwe.js";
-import { generateCookieToken, setSessionCookie, clearSessionCookie } from "./session.js";
+import { generateCookieToken, getSessionCookie, setSessionCookie, clearSessionCookie } from "./session.js";
 import { encryptSessionKey } from "./crypto.js";
 import { requireAuth } from "./middleware.js";
 import { abortPromotionsForWallet } from "../collections/promote-worker.js";
