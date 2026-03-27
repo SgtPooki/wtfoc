@@ -1,4 +1,6 @@
 import { GitHubApiError, GitHubNotFoundError, GitHubRateLimitError } from "@wtfoc/common";
+import type { GitHubTokenProvider } from "./auth.js";
+import { PatTokenProvider } from "./auth.js";
 import type { ExecFn } from "./transport.js";
 import { sleep } from "./transport.js";
 
@@ -7,23 +9,10 @@ const BASE_BACKOFF_MS = 5000;
 const GITHUB_API_BASE = "https://api.github.com";
 
 /**
- * Token provider interface for GitHub API auth.
- * Compatible with GitHubTokenProvider from @wtfoc/ingest when available.
+ * Token provider interface re-exported for convenience.
+ * Use GitHubTokenProvider from auth.ts for the canonical type.
  */
-export interface TokenProvider {
-	getToken(): Promise<string | null>;
-}
-
-/** Simple PAT-based token provider using an env var or static string. */
-export class PatTokenProvider implements TokenProvider {
-	readonly #token: string | null;
-	constructor(token?: string) {
-		this.#token = token ?? process.env.GITHUB_TOKEN ?? null;
-	}
-	async getToken(): Promise<string | null> {
-		return this.#token;
-	}
-}
+export type TokenProvider = GitHubTokenProvider;
 
 function parseRetryFromHeaders(headers: Headers): number | undefined {
 	const retryAfter = headers.get("retry-after");
@@ -128,14 +117,15 @@ async function fetchAllPages(
  * Drop-in replacement for defaultExecFn — the GitHubAdapter doesn't need to change.
  */
 export function createHttpExecFn(tokenProvider?: TokenProvider): ExecFn {
-	const provider = tokenProvider ?? new PatTokenProvider();
+	const envToken = process.env.GITHUB_TOKEN;
+	const provider = tokenProvider ?? (envToken ? new PatTokenProvider(envToken) : null);
 
 	return async (cmd: string, args: string[], signal?: AbortSignal) => {
 		if (cmd !== "gh") {
 			throw new Error(`HttpTransport only handles 'gh' commands, got '${cmd}'`);
 		}
 
-		const token = await provider.getToken();
+		const token = provider ? await provider.getToken() : null;
 
 		// Parse gh CLI args to extract the API path and parameters
 		// Expected forms:

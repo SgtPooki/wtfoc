@@ -38,7 +38,7 @@ export async function getDefaultEmbedder(): Promise<{ embedder: Embedder; modelN
 	} else {
 		const { TransformersEmbedder } = await import("@wtfoc/search");
 		const modelName = model ?? "Xenova/all-MiniLM-L6-v2";
-		const embedder = new TransformersEmbedder({ model: modelName });
+		const embedder = new TransformersEmbedder(modelName);
 		cached = { embedder, modelName };
 	}
 

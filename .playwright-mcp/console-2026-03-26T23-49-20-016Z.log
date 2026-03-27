@@ -1,0 +1,5 @@
+[      73ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3577/api/collections:0
+[   73298ms] [ERROR] Failed to load resource: the server responded with a status of 409 (Conflict) @ http://localhost:3577/api/wallet-collections:0
+[   73300ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:3577/api/wallet-collections:0
+[   73301ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:3577/api/wallet-collections/b5f89456-4362-4b5e-839c-486326e43d0a/promote:0
+[   73308ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3577/api/wallet-collections:0

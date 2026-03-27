@@ -97,10 +97,9 @@ async function buildAndPersist(
 	const { embedder, modelName } = await getDefaultEmbedder();
 
 	// Extract edges
-	const compositeExtractor = new CompositeEdgeExtractor([
-		new CodeEdgeExtractor(),
-		new HeuristicEdgeExtractor(),
-	]);
+	const compositeExtractor = new CompositeEdgeExtractor();
+	compositeExtractor.register({ name: "code", extractor: new CodeEdgeExtractor() });
+	compositeExtractor.register({ name: "heuristic", extractor: new HeuristicEdgeExtractor() });
 	const edges = mergeEdges([
 		{ extractorName: "composite", edges: await compositeExtractor.extract(chunks) },
 	]);

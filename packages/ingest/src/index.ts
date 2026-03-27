@@ -5,10 +5,23 @@ export { getAdapter, getAvailableSourceTypes, registerAdapter } from "./adapter-
 export { DiscordAdapter, type DiscordAdapterConfig } from "./adapters/discord.js";
 export {
 	createHttpExecFn,
-	PatTokenProvider,
 	type TokenProvider,
 } from "./adapters/github/http-transport.js";
-export { type ExecFn, GitHubAdapter, type GitHubAdapterConfig } from "./adapters/github/index.js";
+export {
+	decodePrivateKey,
+	type ExecFn,
+	GitHubAdapter,
+	type GitHubAdapterConfig,
+	type GitHubAppConfig,
+	type GitHubAppJwtOptions,
+	GitHubAppTokenProvider,
+	type GitHubOAuthConfig,
+	type GitHubOAuthTokenData,
+	GitHubOAuthTokenProvider,
+	type GitHubTokenProvider,
+	PatTokenProvider,
+	signGitHubAppJwt,
+} from "./adapters/github/index.js";
 export { HackerNewsAdapter, type HackerNewsAdapterConfig } from "./adapters/hackernews.js";
 export { RepoAdapter, type RepoAdapterConfig } from "./adapters/repo/index.js";
 export { SlackAdapter, type SlackAdapterConfig } from "./adapters/slack.js";
@@ -64,6 +77,17 @@ export {
 	readOverlayEdges,
 	writeOverlayEdges,
 } from "./edges/overlay-store.js";
+export {
+	TreeSitterEdgeExtractor,
+	type TreeSitterEdgeExtractorOptions,
+} from "./edges/tree-sitter.js";
+export type {
+	TreeSitterClientOptions,
+	TreeSitterEdge,
+	TreeSitterHealthResponse,
+	TreeSitterParseResponse,
+} from "./edges/tree-sitter-client.js";
+export { treeSitterHealth, treeSitterParse } from "./edges/tree-sitter-client.js";
 export { HeuristicChunkScorer } from "./scoring.js";
 export {
 	buildSegment,
