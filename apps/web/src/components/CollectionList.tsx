@@ -1,6 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import { fetchMyCollections, type WalletCollection } from "../api.js";
-import { activeCollectionId, walletView } from "../state.js";
+import { activeCollectionId, collection, walletView } from "../state.js";
 
 const STATUS_COLORS: Record<string, string> = {
 	creating: "#888",
@@ -80,6 +80,7 @@ export function CollectionList() {
 						<th>Segments</th>
 						<th>CID</th>
 						<th>Created</th>
+						<th />
 					</tr>
 				</thead>
 				<tbody>
@@ -98,6 +99,21 @@ export function CollectionList() {
 							<td>{col.segmentCount ?? "-"}</td>
 							<td>{col.manifestCid ? `${col.manifestCid.slice(0, 12)}...` : "-"}</td>
 							<td>{new Date(col.createdAt).toLocaleDateString()}</td>
+							<td>
+								{col.status === "ready" || col.status === "promoted" ? (
+									<button
+										type="button"
+										class="query-collection-btn"
+										onClick={(e) => {
+											e.stopPropagation();
+											collection.value = col.name;
+											walletView.value = "none";
+										}}
+									>
+										Query
+									</button>
+								) : null}
+							</td>
 						</tr>
 					))}
 				</tbody>

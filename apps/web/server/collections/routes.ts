@@ -125,6 +125,44 @@ collections.get("/:id", async (c) => {
 	});
 });
 
+/** POST /api/wallet-collections/:id/sources — Add sources to an existing collection */
+collections.post("/:id/sources", async (c) => {
+	const repo = c.get("repo") as Repository;
+	const walletAddress = c.get("walletAddress") as string;
+	const id = c.req.param("id");
+
+	const col = await repo.getCollection(id);
+	if (!col || col.walletAddress !== walletAddress) {
+		return c.json({ error: "Collection not found", code: "NOT_FOUND" }, 404);
+	}
+
+	if (col.status === "ingesting" || col.status === "promoting") {
+		return c.json({ error: `Cannot add sources while collection is ${col.status}`, code: "INVALID_STATUS" }, 400);
+	}
+
+	const body = await c.req.json<{ sources?: Array<{ type?: string; identifier?: string }> }>();
+	const sourceResult = validateSources(body.sources ?? []);
+	if (!sourceResult.valid) {
+		return c.json({ error: sourceResult.errors.join("; "), code: "INVALID_SOURCES" }, 400);
+	}
+
+	const newSources = await repo.addSources(id, sourceResult.sources);
+
+	// Start ingestion for new sources only
+	startIngestion(id, col.name, newSources, repo).catch((err) => {
+		console.error(`[collections] Background ingestion failed for ${id}:`, err);
+	});
+
+	return c.json({
+		sources: newSources.map((s) => ({
+			id: s.id,
+			type: s.sourceType,
+			identifier: s.identifier,
+			status: s.status,
+		})),
+	});
+});
+
 /** POST /api/wallet-collections/:id/promote — Start FOC promotion */
 collections.post("/:id/promote", async (c) => {
 	const repo = c.get("repo") as Repository;

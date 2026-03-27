@@ -137,6 +137,14 @@ header {
 	padding-bottom: 1rem;
 	border-bottom: 1px solid var(--border);
 }
+.header-home {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	text-decoration: none;
+	color: inherit;
+	cursor: pointer;
+}
 .header-logo {
 	border-radius: 6px;
 }

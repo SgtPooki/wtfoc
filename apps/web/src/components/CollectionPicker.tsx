@@ -88,9 +88,11 @@ export function CollectionPicker() {
 		<div>
 			<CidInput onCollectionsChanged={loadCollections} />
 
-			<h2 style={{ fontSize: "1.1rem", marginBottom: "0.5rem", marginTop: "2rem" }}>Collections</h2>
+			<h2 style={{ fontSize: "1.1rem", marginBottom: "0.5rem", marginTop: "2rem" }}>
+				Public Collections
+			</h2>
 			<p class="muted" style={{ fontSize: "0.85rem", marginBottom: "1rem" }}>
-				Pick a collection — real chunks, real traces, stored on FOC.
+				Pick a collection to query — real chunks, real traces, stored on FOC.
 			</p>
 
 			{error && <ErrorBanner message={error} />}

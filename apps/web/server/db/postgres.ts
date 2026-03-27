@@ -172,6 +172,23 @@ export class PostgresRepository implements Repository {
 
 	// --- Sources ---
 
+	async addSources(
+		collectionId: string,
+		sources: Array<{ sourceType: SourceType; identifier: string }>,
+	): Promise<Source[]> {
+		const results: Source[] = [];
+		for (const s of sources) {
+			const { rows } = await this.#pool.query<Record<string, unknown>>(
+				`INSERT INTO sources (collection_id, source_type, identifier) VALUES ($1, $2, $3) RETURNING *`,
+				[collectionId, s.sourceType, s.identifier],
+			);
+			const row = rows[0];
+			if (row) results.push(mapSource(row));
+		}
+		await this.#pool.query(`UPDATE collections SET updated_at = now() WHERE id = $1`, [collectionId]);
+		return results;
+	}
+
 	async updateSourceStatus(
 		id: string,
 		status: SourceStatus,

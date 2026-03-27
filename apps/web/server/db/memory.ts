@@ -177,6 +177,37 @@ export class InMemoryRepository implements Repository {
 		collection.updatedAt = new Date();
 	}
 
+	async addSources(
+		collectionId: string,
+		sources: Array<{ sourceType: SourceType; identifier: string }>,
+	): Promise<Source[]> {
+		const collection = this.collections.get(collectionId);
+		if (!collection) throw new Error(`Collection ${collectionId} not found`);
+
+		const sourceIds = this.sourcesByCollection.get(collectionId) ?? new Set();
+		const newSources: Source[] = [];
+
+		for (const s of sources) {
+			const source: Source = {
+				id: randomUUID(),
+				collectionId,
+				sourceType: s.sourceType,
+				identifier: s.identifier,
+				status: "pending",
+				errorMessage: null,
+				chunkCount: null,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			};
+			this.sources.set(source.id, source);
+			sourceIds.add(source.id);
+			newSources.push(source);
+		}
+		this.sourcesByCollection.set(collectionId, sourceIds);
+		collection.updatedAt = new Date();
+		return newSources;
+	}
+
 	async updateSourceStatus(
 		id: string,
 		status: SourceStatus,

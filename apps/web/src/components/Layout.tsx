@@ -1,7 +1,14 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { fetchStatus } from "../api";
-import { collection } from "../state";
+import {
+	activeCollectionId,
+	activeQuery,
+	collection,
+	draftQuery,
+	loading,
+	walletView,
+} from "../state";
 import type { StatusResponse } from "../types";
 import { SearchBar } from "./SearchBar";
 import { WalletConnect } from "./WalletConnect";
@@ -27,10 +34,26 @@ export function Layout({ children }: LayoutProps) {
 	return (
 		<div class="app">
 			<header>
-				<img src="/logo.png" alt="wtFOC" class="header-logo" width="36" height="36" />
-				<h1>
-					wt<span class="accent">FOC</span>
-				</h1>
+				<a
+					href="/"
+					class="header-home"
+					onClick={(e) => {
+						e.preventDefault();
+						collection.value = "";
+						activeQuery.value = "";
+						draftQuery.value = "";
+						loading.value = false;
+						walletView.value = "none";
+						activeCollectionId.value = null;
+						window.history.replaceState(null, "", "/");
+					}}
+					title="Home"
+				>
+					<img src="/logo.png" alt="wtFOC" class="header-logo" width="36" height="36" />
+					<h1>
+						wt<span class="accent">FOC</span>
+					</h1>
+				</a>
 				<WalletConnect />
 				{status && (
 					<div class="stats-bar">

@@ -103,6 +103,10 @@ export interface Repository {
 	): Promise<void>;
 
 	// Sources
+	addSources(
+		collectionId: string,
+		sources: Array<{ sourceType: SourceType; identifier: string }>,
+	): Promise<Source[]>;
 	updateSourceStatus(
 		id: string,
 		status: SourceStatus,

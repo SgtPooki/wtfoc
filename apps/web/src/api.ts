@@ -150,6 +150,17 @@ export function fetchCollectionDetail(
 	return apiFetch<WalletCollectionDetail>(`/api/wallet-collections/${id}`, undefined, signal);
 }
 
+export function addSourcesToCollection(
+	id: string,
+	sources: Array<{ type: string; identifier: string }>,
+	signal?: AbortSignal,
+): Promise<{ sources: Array<{ id: string; type: string; identifier: string; status: string }> }> {
+	return apiFetch(`/api/wallet-collections/${id}/sources`, undefined, signal, {
+		method: "POST",
+		body: JSON.stringify({ sources }),
+	});
+}
+
 // ─── Auth session bootstrap ──────────────────────────────────────────────────
 
 export interface SessionState {

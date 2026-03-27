@@ -136,24 +136,30 @@ export async function startPromotion(
 
 		signal.throwIfAborted();
 
-		// Update local manifest with IPFS CIDs + batch records
+		// Update local manifest with promotion results
+		// Avoid duplicate batch: buildManifest callback already appended the batch
+		// to the uploaded manifest. Here we just record the CIDs and batch if not
+		// already present (e.g. resume from checkpoint).
+		const existingBatches = head.manifest.batches ?? [];
+		const alreadyHasBatch = existingBatches.some((b) => b.carRootCid === carRootCid);
 		const updatedHead: CollectionHead = {
 			...head.manifest,
 			updatedAt: new Date().toISOString(),
 			segments: head.manifest.segments.map((seg) => ({
 				...seg,
-				// On resume we may not have segmentCids; existing ipfsCid values are preserved
 				ipfsCid: seg.ipfsCid,
 			})),
-			batches: [
-				...(head.manifest.batches ?? []),
-				{
-					pieceCid,
-					carRootCid,
-					segmentIds: head.manifest.segments.map((s) => s.id),
-					createdAt: new Date().toISOString(),
-				},
-			],
+			batches: alreadyHasBatch
+				? existingBatches
+				: [
+						...existingBatches,
+						{
+							pieceCid,
+							carRootCid,
+							segmentIds: head.manifest.segments.map((s) => s.id),
+							createdAt: new Date().toISOString(),
+						},
+					],
 		};
 		await localStore.manifests.putHead(col.name, updatedHead, head.headId);
 

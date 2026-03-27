@@ -1,5 +1,9 @@
 import { useEffect, useState } from "preact/hooks";
-import { fetchCollectionDetail, type WalletCollectionDetail } from "../api.js";
+import {
+	addSourcesToCollection,
+	fetchCollectionDetail,
+	type WalletCollectionDetail,
+} from "../api.js";
 import { PromoteButton } from "./PromoteButton.js";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -18,9 +22,60 @@ interface CollectionDetailProps {
 	collectionId: string;
 }
 
+function AddSourceForm({ collectionId, onAdded }: { collectionId: string; onAdded: () => void }) {
+	const [type, setType] = useState("github");
+	const [identifier, setIdentifier] = useState("");
+	const [submitting, setSubmitting] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	const handleSubmit = async (e: Event) => {
+		e.preventDefault();
+		if (!identifier.trim()) return;
+		setError(null);
+		setSubmitting(true);
+		try {
+			await addSourcesToCollection(collectionId, [{ type, identifier: identifier.trim() }]);
+			setIdentifier("");
+			onAdded();
+		} catch (err) {
+			setError(err instanceof Error ? err.message : String(err));
+		} finally {
+			setSubmitting(false);
+		}
+	};
+
+	return (
+		<form
+			class="add-source-form"
+			onSubmit={handleSubmit}
+			style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginTop: "0.5rem" }}
+		>
+			<select value={type} onChange={(e) => setType((e.target as HTMLSelectElement).value)}>
+				<option value="github">GitHub</option>
+				<option value="website">Website</option>
+				<option value="hackernews">HackerNews</option>
+			</select>
+			<input
+				type="text"
+				value={identifier}
+				onInput={(e) => setIdentifier((e.target as HTMLInputElement).value)}
+				placeholder={
+					type === "github" ? "owner/repo" : type === "website" ? "https://..." : "thread ID"
+				}
+				style={{ flex: 1 }}
+			/>
+			<button type="submit" disabled={submitting}>
+				{submitting ? "Adding..." : "+ Add"}
+			</button>
+			{error && <span class="source-error">{error}</span>}
+		</form>
+	);
+}
+
 export function CollectionDetail({ collectionId }: CollectionDetailProps) {
 	const [detail, setDetail] = useState<WalletCollectionDetail | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [refreshKey, setRefreshKey] = useState(0);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -33,9 +88,17 @@ export function CollectionDetail({ collectionId }: CollectionDetailProps) {
 					setDetail(data);
 					setError(null);
 
-					// Continue polling if in a non-terminal state
+					// Continue polling if any source is still ingesting or collection is in progress
 					const status = data.status;
-					if (status === "ingesting" || status === "promoting" || status === "creating") {
+					const anyIngesting = data.sources.some(
+						(s) => s.status === "ingesting" || s.status === "pending",
+					);
+					if (
+						status === "ingesting" ||
+						status === "promoting" ||
+						status === "creating" ||
+						anyIngesting
+					) {
 						timer = setTimeout(poll, 5000);
 					}
 				}
@@ -52,7 +115,7 @@ export function CollectionDetail({ collectionId }: CollectionDetailProps) {
 			cancelled = true;
 			if (timer) clearTimeout(timer);
 		};
-	}, [collectionId]);
+	}, [collectionId, refreshKey]);
 
 	if (error) {
 		return <div class="collection-detail-error">Error: {error}</div>;
@@ -90,6 +153,10 @@ export function CollectionDetail({ collectionId }: CollectionDetailProps) {
 					</li>
 				))}
 			</ul>
+
+			{detail.status !== "promoting" && (
+				<AddSourceForm collectionId={detail.id} onAdded={() => setRefreshKey((k) => k + 1)} />
+			)}
 
 			<PromoteButton
 				collectionId={detail.id}
