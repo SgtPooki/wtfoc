@@ -96,6 +96,16 @@ describe("createCollectionHead", () => {
 		expect(head.embeddingModel).toBe("pending");
 		expect(head.embeddingDimensions).toBe(0);
 	});
+
+	it("includes description when opts.description is provided", () => {
+		const head = createCollectionHead("test", "default", { description: "Test collection" });
+		expect(head.description).toBe("Test collection");
+	});
+
+	it("omits description key when not provided", () => {
+		const head = createCollectionHead("test");
+		expect("description" in head).toBe(false);
+	});
 });
 
 describe("createCollectionRevision", () => {

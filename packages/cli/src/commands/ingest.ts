@@ -49,6 +49,10 @@ export function registerIngestCommand(program: Command): void {
 					.requiredOption("-c, --collection <name>", "Collection name")
 					.option("--since <duration>", "Only fetch items newer than duration (e.g. 90d)")
 					.option(
+						"--description <text>",
+						"Set collection description — topics, sources, and what queries it answers (applied on first ingest, use `describe` to update later)",
+					)
+					.option(
 						"--batch-size <number>",
 						"Chunks per batch (default: 500, reduces memory for large sources)",
 						"500",
@@ -79,6 +83,7 @@ export function registerIngestCommand(program: Command): void {
 			opts: {
 				collection: string;
 				since?: string;
+				description?: string;
 				batchSize: string;
 				maxChunkChars?: string;
 				ignore?: string[];
@@ -318,6 +323,7 @@ export function registerIngestCommand(program: Command): void {
 					schemaVersion: CURRENT_SCHEMA_VERSION,
 					collectionId: currentHead?.manifest.collectionId ?? generateCollectionId(opts.collection),
 					name: opts.collection,
+					description: currentHead?.manifest.description ?? opts.description,
 					currentRevisionId: currentHead?.manifest.currentRevisionId ?? null,
 					prevHeadId: currentPrevHeadId,
 					segments: [

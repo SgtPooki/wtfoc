@@ -1,5 +1,7 @@
 # FOC Ecosystem Collection: Demo Examples
 
+**Manifest CID:** `bafkreifbotswqsx6gctha2prynvkcz4dndd6ohesv4flzhmpwlr2z3x2dq`
+
 Collection: `foc-ecosystem-v2` | 28,880 chunks | 580 segments | nomic-embed-text (768d)
 
 ## Sources Ingested
@@ -73,13 +75,15 @@ node packages/cli/dist/cli.js trace "curio PDP storage provider bug fix" \
 ```
 
 **What it shows:**
-- Starts at issue #888 (PDP: cache merkle tree layer for proof generation)
-- Chains through PR #997 (introduce PDP Save Cache and Proving Task)
-- Into PR #1067 (verify validity of Verify() against commp-hashhash)
-- Links to PR #996 (introduce indexstore in pdpv0)
-- Down to PR #1018 (call IndexStore.Start() after NewIndexStore)
+- Starts at issue #888 (PDP: cache merkle tree layer for proof generation to reduce RAM 100-1000x)
+- Chains through PR #997 (introduce PDP Save Cache and Proving Task) with deep code review comments
+- Into issue #1062 (testing Verify() against go-fil-commp-hashhash)
+- Links to PR #1067 (extract cached proof pipeline behind testable interfaces)
+- PR #1065 (verify validity tests)
+- Issue #1111 (pdpv0: notify_task.go uses t.db.Exec inside BeginTransaction)
+- Also surfaces FilOzone/pdp#121 (Merge pdp into Curio) and Slack temporal edges
 - **49 of 50 results found via edges** (not just semantic similarity)
-- Cross-source evidence trail: Issues -> PRs -> Issues -> PR Comments -> PRs
+- Cross-source evidence trail: Issues -> PRs -> Issues -> PR Comments -> Slack
 
 ---
 
@@ -182,19 +186,92 @@ node packages/cli/dist/cli.js query "session key registry deployment migration b
 
 ## Prerequisites for running demos
 
-1. **Port-forward ollama** (nomic-embed-text embedder):
+1. **Run ollama with nomic-embed-text** — queries need the same embedder used during ingestion:
    ```bash
-   KUBECONFIG=../homelab2/ansible/kubeconfigs/prod-cp-01.yaml \
-     kubectl port-forward -n ai svc/ollama 11434:11434
+   # If you have ollama installed locally:
+   ollama pull nomic-embed-text
+   ollama serve
+   # Default: http://localhost:11434
    ```
 
-2. **Port-forward tree-sitter** (for re-ingestion with code edges):
+2. **Tree-sitter parser sidecar** (optional, for re-ingestion with code edges):
    ```bash
-   KUBECONFIG=../homelab2/ansible/kubeconfigs/prod-cp-01.yaml \
-     kubectl port-forward -n wtfoc pod/$(kubectl get pod -n wtfoc -o name | head -1 | cut -d/ -f2) 8080:8080
+   docker run -p 8080:8080 ghcr.io/sgtpooki/wtfoc-tree-sitter-parser:latest
    ```
 
-3. **Start claude-direct-proxy** (for LLM edge extraction):
+3. **Claude direct proxy** (optional, for LLM edge extraction):
    ```bash
    bun scripts/claude-direct-proxy.mjs
    ```
+
+---
+
+## Run it yourself
+
+This collection is stored on Filecoin via FOC. Anyone can pull it down and query it locally.
+
+### 1. Install wtfoc
+
+```bash
+npx wtfoc --version
+```
+
+### 2. Start ollama with nomic-embed-text
+
+The collection was embedded with `nomic-embed-text` (768 dimensions). You need the same model to query it.
+
+```bash
+ollama pull nomic-embed-text
+ollama serve
+```
+
+### 3. Pull the collection locally
+
+Download all segments from IPFS/FOC to your local `~/.wtfoc` storage:
+
+```bash
+npx wtfoc pull bafkreifbotswqsx6gctha2prynvkcz4dndd6ohesv4flzhmpwlr2z3x2dq
+```
+
+This fetches the manifest and all 580 segments (~28K chunks) to local storage. Once pulled, you can query without network access.
+
+### 4. Query locally via CLI
+
+```bash
+# Semantic search
+npx wtfoc query "synapse SDK upload flow" \
+  -c foc-ecosystem-v2 \
+  --embedder api --embedder-url ollama --embedder-model nomic-embed-text
+
+# Trace with edge traversal
+npx wtfoc trace "PDP verification curio" \
+  -c foc-ecosystem-v2 --mode analytical \
+  --embedder api --embedder-url ollama --embedder-model nomic-embed-text \
+  --max-total 50 --max-per-source 10 --max-hops 6
+```
+
+### 5. Browse via the web UI
+
+Visit [wtfoc.xyz](https://wtfoc.xyz) and paste the manifest CID to explore in your browser:
+
+```
+bafkreifbotswqsx6gctha2prynvkcz4dndd6ohesv4flzhmpwlr2z3x2dq
+```
+
+Or run the web UI locally after pulling:
+
+```bash
+npx wtfoc serve -c foc-ecosystem-v2 \
+  --embedder-url ollama --embedder-model nomic-embed-text
+```
+
+### Embedding model compatibility
+
+The collection **must** be queried with the same embedding model it was built with. If you use a different model, you'll get a dimension mismatch error.
+
+| Model | Dimensions | Compatible? |
+|---|---|---|
+| nomic-embed-text (ollama) | 768 | **Yes** — this is what was used |
+| nomic-embed-text (any provider) | 768 | **Yes** — same model, same vectors |
+| Xenova/all-MiniLM-L6-v2 | 384 | No — dimension mismatch |
+| text-embedding-3-small | 1536 | No — dimension mismatch |

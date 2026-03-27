@@ -11,6 +11,7 @@ export async function handleStatus(
 
 	const status = {
 		collection: params.collection,
+		description: head.manifest.description,
 		totalChunks: head.manifest.totalChunks,
 		segments: head.manifest.segments.length,
 		embeddingModel: head.manifest.embeddingModel,
