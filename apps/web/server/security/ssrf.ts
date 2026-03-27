@@ -112,7 +112,7 @@ export function validateContentType(contentType: string | null): SsrfValidationR
 	if (!contentType) {
 		return { safe: false, reason: "Missing Content-Type header" };
 	}
-	const mimeType = contentType.split(";")[0].trim().toLowerCase();
+	const mimeType = (contentType.split(";")[0] ?? "").trim().toLowerCase();
 	if (!ALLOWED_CONTENT_TYPES.has(mimeType)) {
 		return { safe: false, reason: `Content-Type "${mimeType}" is not allowed (only HTML/text)` };
 	}

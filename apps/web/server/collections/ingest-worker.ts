@@ -80,10 +80,7 @@ async function ingestSource(source: Source, signal?: AbortSignal): Promise<Chunk
 
 	switch (source.sourceType) {
 		case "github": {
-			const { GitHubAdapter } = await import("@wtfoc/ingest");
-			const { createHttpExecFn } = await import(
-				"@wtfoc/ingest/adapters/github/http-transport"
-			);
+			const { GitHubAdapter, createHttpExecFn } = await import("@wtfoc/ingest");
 			const execFn = createHttpExecFn();
 			const adapter = new GitHubAdapter(execFn);
 			const [owner, repo] = source.identifier.split("/");

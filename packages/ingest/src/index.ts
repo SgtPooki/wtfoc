@@ -3,6 +3,11 @@
 
 export { getAdapter, getAvailableSourceTypes, registerAdapter } from "./adapter-registry.js";
 export { DiscordAdapter, type DiscordAdapterConfig } from "./adapters/discord.js";
+export {
+	createHttpExecFn,
+	PatTokenProvider,
+	type TokenProvider,
+} from "./adapters/github/http-transport.js";
 export { type ExecFn, GitHubAdapter, type GitHubAdapterConfig } from "./adapters/github/index.js";
 export { HackerNewsAdapter, type HackerNewsAdapterConfig } from "./adapters/hackernews.js";
 export { RepoAdapter, type RepoAdapterConfig } from "./adapters/repo/index.js";

@@ -20,6 +20,7 @@
 		"@walletconnect/modal": "^2.7.0",
 		"@wtfoc/common": "workspace:*",
 		"@wtfoc/config": "workspace:*",
+		"@wtfoc/ingest": "workspace:*",
 		"@wtfoc/mcp-server": "workspace:*",
 		"@wtfoc/search": "workspace:*",
 		"@wtfoc/store": "workspace:*",

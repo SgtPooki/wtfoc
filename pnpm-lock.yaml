@@ -48,6 +48,9 @@ importers:
       '@wtfoc/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@wtfoc/ingest':
+        specifier: workspace:*
+        version: link:../../packages/ingest
       '@wtfoc/mcp-server':
         specifier: workspace:*
         version: link:../../packages/mcp-server

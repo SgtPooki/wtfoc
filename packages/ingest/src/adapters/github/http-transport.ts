@@ -164,10 +164,11 @@ export function createHttpExecFn(tokenProvider?: TokenProvider): ExecFn {
 		// REST API call — extract -f filters as query params
 		const params: Record<string, string> = {};
 		for (let i = 2; i < args.length; i++) {
-			if (args[i] === "-f" && args[i + 1]) {
-				const eqIdx = args[i + 1].indexOf("=");
+			const nextArg = args[i + 1];
+			if (args[i] === "-f" && nextArg) {
+				const eqIdx = nextArg.indexOf("=");
 				if (eqIdx > 0) {
-					params[args[i + 1].slice(0, eqIdx)] = args[i + 1].slice(eqIdx + 1);
+					params[nextArg.slice(0, eqIdx)] = nextArg.slice(eqIdx + 1);
 				}
 				i++;
 			}
