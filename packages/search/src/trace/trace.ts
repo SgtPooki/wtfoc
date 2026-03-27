@@ -98,8 +98,12 @@ export async function trace(
 	const maxHops = options?.maxHops ?? 3;
 	const minScore = options?.minScore ?? 0.3;
 	const mode = options?.mode ?? "discovery";
-	const excludeTypes = options?.excludeSourceTypes ? new Set(options.excludeSourceTypes) : undefined;
-	const includeTypes = options?.includeSourceTypes ? new Set(options.includeSourceTypes) : undefined;
+	const excludeTypes = options?.excludeSourceTypes
+		? new Set(options.excludeSourceTypes)
+		: undefined;
+	const includeTypes = options?.includeSourceTypes
+		? new Set(options.includeSourceTypes)
+		: undefined;
 	const isAllowedType = (t: string) => {
 		if (includeTypes) return includeTypes.has(t);
 		if (excludeTypes) return !excludeTypes.has(t);
