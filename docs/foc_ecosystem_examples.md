@@ -225,35 +225,43 @@ ollama pull nomic-embed-text
 ollama serve
 ```
 
-### 3. Browse via the web UI
+### 3. Pull the collection locally
 
-The easiest way — visit [wtfoc.xyz](https://wtfoc.xyz) and paste the manifest CID:
+Download all segments from IPFS/FOC to your local `~/.wtfoc` storage:
+
+```bash
+npx wtfoc pull bafkreifbotswqsx6gctha2prynvkcz4dndd6ohesv4flzhmpwlr2z3x2dq
+```
+
+This fetches the manifest and all 580 segments (~28K chunks) to local storage. Once pulled, you can query without network access.
+
+### 4. Query locally via CLI
+
+```bash
+# Semantic search
+npx wtfoc query "synapse SDK upload flow" \
+  -c foc-ecosystem-v2 \
+  --embedder api --embedder-url ollama --embedder-model nomic-embed-text
+
+# Trace with edge traversal
+npx wtfoc trace "PDP verification curio" \
+  -c foc-ecosystem-v2 --mode analytical \
+  --embedder api --embedder-url ollama --embedder-model nomic-embed-text \
+  --max-total 50 --max-per-source 10 --max-hops 6
+```
+
+### 5. Browse via the web UI
+
+Visit [wtfoc.xyz](https://wtfoc.xyz) and paste the manifest CID to explore in your browser:
 
 ```
 bafkreifbotswqsx6gctha2prynvkcz4dndd6ohesv4flzhmpwlr2z3x2dq
 ```
 
-### 4. Query locally via CLI
-
-You can query the collection directly from FOC storage using `--storage foc`:
+Or run the web UI locally after pulling:
 
 ```bash
-# Semantic search
-npx wtfoc query "synapse SDK upload flow" \
-  -c foc-ecosystem-v2 --storage foc \
-  --embedder api --embedder-url ollama --embedder-model nomic-embed-text
-
-# Trace with edge traversal
-npx wtfoc trace "PDP verification curio" \
-  -c foc-ecosystem-v2 --storage foc --mode analytical \
-  --embedder api --embedder-url ollama --embedder-model nomic-embed-text \
-  --max-total 50 --max-per-source 10 --max-hops 6
-```
-
-### 5. Run the web UI locally
-
-```bash
-npx wtfoc serve -c foc-ecosystem-v2 --storage foc \
+npx wtfoc serve -c foc-ecosystem-v2 \
   --embedder-url ollama --embedder-model nomic-embed-text
 ```
 

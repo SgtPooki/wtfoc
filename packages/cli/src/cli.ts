@@ -10,6 +10,7 @@ import { registerIngestCommand } from "./commands/ingest.js";
 import { registerInitCommand } from "./commands/init.js";
 import { registerMaterializeEdgesCommand } from "./commands/materialize-edges.js";
 import { registerPromoteCommand } from "./commands/promote.js";
+import { registerPullCommand } from "./commands/pull.js";
 import { registerQueryCommand } from "./commands/query.js";
 import { registerReindexCommand } from "./commands/reindex.js";
 import { registerReingestCommand } from "./commands/reingest.js";
@@ -72,6 +73,7 @@ registerSuggestSourcesCommand(program);
 registerReindexCommand(program);
 registerReingestCommand(program);
 registerPromoteCommand(program);
+registerPullCommand(program);
 registerServeCommand(program);
 registerThemesCommand(program);
 
