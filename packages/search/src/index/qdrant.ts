@@ -21,6 +21,24 @@ export interface QdrantVectorIndexOptions {
 }
 
 /**
+ * Sanitize payload strings to prevent Qdrant JSON parse errors.
+ * Replaces truncated unicode escapes (e.g. "\u00" without full 4-digit hex)
+ * that cause "unexpected end of hex escape" errors.
+ */
+function sanitizeString(s: string): string {
+	// Replace broken \uXXXX escapes: \u followed by fewer than 4 hex digits at string boundary
+	return s.replace(/\\u(?![0-9a-fA-F]{4})[0-9a-fA-F]{0,3}/g, "\\\\u");
+}
+
+function sanitizePayload(payload: Record<string, unknown>): Record<string, unknown> {
+	const result: Record<string, unknown> = {};
+	for (const [k, v] of Object.entries(payload)) {
+		result[k] = typeof v === "string" ? sanitizeString(v) : v;
+	}
+	return result;
+}
+
+/**
  * Convert an arbitrary string ID into a UUID-formatted string.
  * Qdrant requires point IDs to be UUIDs or unsigned integers.
  * We derive a deterministic UUID from the SHA-256 of the original ID.
@@ -72,11 +90,11 @@ export class QdrantVectorIndex implements VectorIndex {
 		const points = entries.map((entry) => ({
 			id: toQdrantId(entry.id),
 			vector: Array.from(entry.vector),
-			payload: {
+			payload: sanitizePayload({
 				...entry.metadata,
 				storageId: entry.storageId,
 				_wtfoc_id: entry.id,
-			},
+			}),
 		}));
 
 		await client.upsert(this.#options.collectionName, {
