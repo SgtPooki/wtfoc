@@ -175,6 +175,7 @@ const ManifestCoreSchema = v.object({
 	schemaVersion: v.pipe(v.number(), v.integer(), v.minValue(1)),
 	collectionId: v.pipe(v.string(), v.nonEmpty()),
 	name: v.pipe(v.string(), v.nonEmpty()),
+	description: v.optional(v.pipe(v.string(), v.maxLength(1024))),
 	currentRevisionId: v.nullable(v.string()),
 	prevHeadId: v.nullable(v.string()),
 	segments: v.array(SegmentSummarySchema),
@@ -251,11 +252,22 @@ export function validateManifestSchema(data: unknown): CollectionHead {
 			"currentRevisionId",
 		);
 	}
+	if (data.description !== undefined && typeof data.description !== "string") {
+		throw schemaInvalid("headManifest", "description must be a string if present", "description");
+	}
+	if (typeof data.description === "string" && data.description.length > 1024) {
+		throw schemaInvalid(
+			"headManifest",
+			"description must be 1024 characters or fewer",
+			"description",
+		);
+	}
 
 	const manifest: CollectionHead = v.parse(ManifestCoreSchema, {
 		schemaVersion,
 		collectionId: data.collectionId,
 		name: data.name,
+		...(typeof data.description === "string" ? { description: data.description } : {}),
 		currentRevisionId: data.currentRevisionId,
 		prevHeadId: data.prevHeadId,
 		segments,

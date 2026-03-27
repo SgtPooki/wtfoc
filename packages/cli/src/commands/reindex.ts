@@ -248,6 +248,7 @@ export function registerReindexCommand(program: Command): void {
 					schemaVersion: CURRENT_SCHEMA_VERSION,
 					collectionId: currentTarget?.manifest.collectionId ?? generateCollectionId(targetName),
 					name: targetName,
+					description: currentTarget?.manifest.description,
 					currentRevisionId: currentTarget?.manifest.currentRevisionId ?? null,
 					prevHeadId,
 					segments: [
