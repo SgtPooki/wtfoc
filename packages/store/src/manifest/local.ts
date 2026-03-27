@@ -37,7 +37,7 @@ export class LocalManifestStore implements ManifestStore {
 		manifest: CollectionHead,
 		prevHeadId: string | null,
 	): Promise<StoredHead> {
-		const current = await this.getHead(projectName);
+		const current = await this.getHead(projectName).catch(() => null);
 		const currentHeadId = current?.headId ?? null;
 
 		if (prevHeadId !== currentHeadId) {
