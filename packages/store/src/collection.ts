@@ -77,7 +77,7 @@ export function createCollectionHead(
 		schemaVersion: CURRENT_SCHEMA_VERSION,
 		collectionId: generateCollectionId(name, namespace),
 		name,
-		description: opts?.description,
+		...(opts?.description !== undefined ? { description: opts.description } : {}),
 		currentRevisionId: null,
 		prevHeadId: null,
 		segments: [],

@@ -158,6 +158,7 @@ export function formatCollections(
 export function formatStatus(
 	projectName: string,
 	data: {
+		description?: string;
 		totalChunks: number;
 		segments: number;
 		embeddingModel: string;
@@ -169,13 +170,16 @@ export function formatStatus(
 	if (format === "json") return JSON.stringify({ project: projectName, ...data }, null, "\t");
 	if (format === "quiet") return "";
 
-	const lines = [
-		`📦 Project: ${projectName}`,
+	const lines = [`📦 Project: ${projectName}`];
+	if (data.description) {
+		lines.push(`   ${data.description}`);
+	}
+	lines.push(
 		`   Chunks: ${data.totalChunks}`,
 		`   Segments: ${data.segments}`,
 		`   Model: ${data.embeddingModel}`,
 		`   Updated: ${data.updatedAt}`,
-	];
+	);
 
 	if (data.overlayEdges && data.overlayEdges > 0) {
 		lines.push(

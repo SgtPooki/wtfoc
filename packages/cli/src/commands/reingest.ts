@@ -233,6 +233,7 @@ export function registerReingestCommand(program: Command): void {
 					schemaVersion: CURRENT_SCHEMA_VERSION,
 					collectionId: currentHead?.manifest.collectionId ?? generateCollectionId(targetName),
 					name: targetName,
+					description: currentHead?.manifest.description,
 					currentRevisionId: currentHead?.manifest.currentRevisionId ?? null,
 					prevHeadId,
 					segments: [

@@ -27,6 +27,7 @@ export function registerStatusCommand(program: Command): void {
 				formatStatus(
 					opts.collection,
 					{
+						description: head.manifest.description,
 						totalChunks: head.manifest.totalChunks,
 						segments: head.manifest.segments.length,
 						embeddingModel: head.manifest.embeddingModel,

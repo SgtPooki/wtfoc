@@ -143,6 +143,28 @@ describe("validateManifestSchema", () => {
 		expectWtfocCode(() => validateManifestSchema(input), "SCHEMA_INVALID");
 	});
 
+	it("accepts a manifest with a description string", () => {
+		const input = minimalValidManifest({ description: "FOC ecosystem knowledge" });
+		const out = validateManifestSchema(input);
+		expect(out.description).toBe("FOC ecosystem knowledge");
+	});
+
+	it("accepts a manifest without description", () => {
+		const input = minimalValidManifest();
+		const out = validateManifestSchema(input);
+		expect(out.description).toBeUndefined();
+	});
+
+	it("throws SCHEMA_INVALID when description is not a string", () => {
+		const input = { ...minimalValidManifest(), description: 42 };
+		expectWtfocCode(() => validateManifestSchema(input), "SCHEMA_INVALID");
+	});
+
+	it("throws SCHEMA_INVALID when description exceeds 1024 characters", () => {
+		const input = { ...minimalValidManifest(), description: "x".repeat(1025) };
+		expectWtfocCode(() => validateManifestSchema(input), "SCHEMA_INVALID");
+	});
+
 	it("accepts a manifest without batches (pre-bundling / local-only)", () => {
 		const input = minimalValidManifest();
 		const out = validateManifestSchema(input);
