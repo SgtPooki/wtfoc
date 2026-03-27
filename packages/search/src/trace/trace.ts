@@ -14,6 +14,10 @@ export interface TraceOptions {
 	maxHops?: number;
 	/** Minimum similarity score for semantic fallback (default: 0.3) */
 	minScore?: number;
+	/** Source types to exclude from results (e.g. ["github-pr-comment"]) */
+	excludeSourceTypes?: string[];
+	/** Only include these source types in results */
+	includeSourceTypes?: string[];
 	/**
 	 * Trace mode:
 	 * - "discovery" (default): find connected results across sources
@@ -94,6 +98,13 @@ export async function trace(
 	const maxHops = options?.maxHops ?? 3;
 	const minScore = options?.minScore ?? 0.3;
 	const mode = options?.mode ?? "discovery";
+	const excludeTypes = options?.excludeSourceTypes ? new Set(options.excludeSourceTypes) : undefined;
+	const includeTypes = options?.includeSourceTypes ? new Set(options.includeSourceTypes) : undefined;
+	const isAllowedType = (t: string) => {
+		if (includeTypes) return includeTypes.has(t);
+		if (excludeTypes) return !excludeTypes.has(t);
+		return true;
+	};
 
 	options?.signal?.throwIfAborted();
 
@@ -116,6 +127,8 @@ export async function trace(
 	for (const seed of seeds) {
 		if (seed.score < minScore) continue;
 		if (visited.has(seed.entry.id)) continue;
+		const seedType = seed.entry.metadata.sourceType ?? "unknown";
+		if (!isAllowedType(seedType)) continue;
 
 		options?.signal?.throwIfAborted();
 
@@ -148,6 +161,7 @@ export async function trace(
 			seedIndex,
 			options?.signal,
 			maxTotal,
+			isAllowedType,
 		);
 
 		if (hops.length >= maxTotal) break;

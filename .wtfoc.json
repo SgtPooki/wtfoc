@@ -1,0 +1,32 @@
+{
+	"embedder": {
+		"url": "ollama",
+		"model": "nomic-embed-text",
+		"profile": "nomic",
+		"profiles": {
+			"minilm": {
+				"model": "Xenova/all-MiniLM-L6-v2",
+				"dimensions": 384,
+				"pooling": "mean"
+			},
+			"nomic": {
+				"model": "nomic-embed-text",
+				"dimensions": 768,
+				"pooling": "mean",
+				"prefix": {
+					"query": "search_query: ",
+					"document": "search_document: "
+				}
+			},
+			"qwen3-0.6b": {
+				"model": "qwen3-embedding:0.6b",
+				"dimensions": 1024,
+				"pooling": "last_token",
+				"prefix": {
+					"query": "Instruct: Given a query, retrieve relevant passages\nQuery: ",
+					"document": ""
+				}
+			}
+		}
+	}
+}

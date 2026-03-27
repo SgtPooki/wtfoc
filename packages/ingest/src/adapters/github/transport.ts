@@ -23,7 +23,7 @@ export async function defaultExecFn(
 	args: string[],
 	signal?: AbortSignal,
 ): Promise<{ stdout: string; stderr: string }> {
-	return execFileAsync(cmd, args, { signal, maxBuffer: 50 * 1024 * 1024 });
+	return execFileAsync(cmd, args, { signal, maxBuffer: 256 * 1024 * 1024 });
 }
 
 export function sleep(ms: number, signal?: AbortSignal): Promise<void> {

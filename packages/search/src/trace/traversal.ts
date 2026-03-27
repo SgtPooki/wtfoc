@@ -14,6 +14,7 @@ export function followEdges(
 	parentHopIndex: number,
 	signal?: AbortSignal,
 	maxTotal?: number,
+	isAllowedType?: (sourceType: string) => boolean,
 ): void {
 	if (depth >= maxHops) return;
 	if (maxTotal != null && hops.length >= maxTotal) return;
@@ -46,6 +47,7 @@ export function followEdges(
 		for (const [targetId, targetData] of targetChunks) {
 			if (maxTotal != null && hops.length >= maxTotal) return;
 			if (visited.has(targetId)) continue;
+			if (isAllowedType && !isAllowedType(targetData.sourceType)) continue;
 			visited.add(targetId);
 
 			const thisHopIndex = hops.length;
@@ -76,6 +78,7 @@ export function followEdges(
 				thisHopIndex,
 				signal,
 				maxTotal,
+				isAllowedType,
 			);
 		}
 	}

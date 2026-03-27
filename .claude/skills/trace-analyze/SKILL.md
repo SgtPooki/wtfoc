@@ -14,6 +14,9 @@ Run a `wtfoc trace` against a collection, automatically expand the search to fil
 - `<question>` — the natural-language question to trace (required)
 - `-c <collection>` — the collection to search (required)
 - `--deep` — run automatic follow-up traces to fill gaps (default behavior, use `--shallow` to skip)
+- `--max-total <n>` — max total results per trace (default: 15, increase to 50-100 for richer traces)
+- `--max-per-source <n>` — max results per source type (default: 3, increase to 10-20 for deeper coverage)
+- `--max-hops <n>` — max edge hops to follow (default: 3, increase to 5-8 for longer chains)
 
 Examples:
 - `/trace-analyze how does file upload work -c foc-ecosystem`
@@ -34,12 +37,12 @@ and ask the user which collection to use.
 ### 2. Run the primary trace
 
 ```bash
-./wtfoc --json trace "<question>" -c <collection> --mode analytical 2>/dev/null
+node packages/cli/dist/cli.js --json trace "<question>" -c <collection> --mode analytical --embedder api --embedder-url ollama --embedder-model nomic-embed-text --max-total 50 --max-per-source 10 --max-hops 6 2>/dev/null
 ```
 
 Also show the human-readable output:
 ```bash
-./wtfoc trace "<question>" -c <collection> --mode analytical 2>/dev/null
+node packages/cli/dist/cli.js trace "<question>" -c <collection> --mode analytical --embedder api --embedder-url ollama --embedder-model nomic-embed-text --max-total 50 --max-per-source 10 --max-hops 6 2>/dev/null
 ```
 
 > **Note:** `--mode analytical` adds cross-source insights (convergence, evidence chains, temporal clusters) to the trace output. These help identify patterns across sources that pure retrieval misses.
