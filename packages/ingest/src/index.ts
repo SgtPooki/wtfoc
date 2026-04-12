@@ -112,6 +112,12 @@ export {
 } from "./edges/overlay-store.js";
 export { TemporalEdgeExtractor, type TemporalEdgeExtractorOptions } from "./edges/temporal.js";
 export {
+	type TemporalEdgeType,
+	type TemporalEvent,
+	TemporalSemanticExtractor,
+	type TemporalSemanticOptions,
+} from "./edges/temporal-semantic.js";
+export {
 	TreeSitterEdgeExtractor,
 	type TreeSitterEdgeExtractorOptions,
 } from "./edges/tree-sitter.js";
