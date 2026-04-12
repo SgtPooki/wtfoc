@@ -71,3 +71,75 @@ export async function loadDerivedEdgeLayers(
 	}
 	return allEdges;
 }
+
+/**
+ * Compact multiple derived edge layers into a single canonical layer.
+ * Deduplicates edges by (type, sourceId, targetType, targetId) key,
+ * keeping the highest-confidence version. Drops edges whose sourceId
+ * is not in the provided validChunkIds set.
+ */
+export function compactDerivedLayers(
+	layers: DerivedEdgeLayer[],
+	validChunkIds: ReadonlySet<string>,
+	collectionId: string,
+): { layer: DerivedEdgeLayer; stats: CompactionStats } {
+	const edgeMap = new Map<string, Edge>();
+	let totalInput = 0;
+	let droppedOrphan = 0;
+	let droppedDuplicate = 0;
+	const models = new Set<string>();
+	let totalContexts = 0;
+
+	for (const layer of layers) {
+		models.add(layer.extractorModel);
+		totalContexts += layer.contextsProcessed;
+
+		for (const edge of layer.edges) {
+			totalInput++;
+
+			// Drop edges whose source chunk no longer exists
+			if (!validChunkIds.has(edge.sourceId)) {
+				droppedOrphan++;
+				continue;
+			}
+
+			const key = JSON.stringify([edge.type, edge.sourceId, edge.targetType, edge.targetId]);
+			const existing = edgeMap.get(key);
+			if (existing) {
+				droppedDuplicate++;
+				// Keep the higher-confidence version
+				if (edge.confidence > existing.confidence) {
+					edgeMap.set(key, edge);
+				}
+			} else {
+				edgeMap.set(key, edge);
+			}
+		}
+	}
+
+	const compacted = buildDerivedEdgeLayer(
+		collectionId,
+		[...models].join("+"),
+		[...edgeMap.values()],
+		totalContexts,
+	);
+
+	return {
+		layer: compacted,
+		stats: {
+			inputLayers: layers.length,
+			inputEdges: totalInput,
+			outputEdges: edgeMap.size,
+			droppedOrphan,
+			droppedDuplicate,
+		},
+	};
+}
+
+export interface CompactionStats {
+	inputLayers: number;
+	inputEdges: number;
+	outputEdges: number;
+	droppedOrphan: number;
+	droppedDuplicate: number;
+}

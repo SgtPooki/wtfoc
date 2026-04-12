@@ -69,6 +69,8 @@ export { CompositeEdgeExtractor } from "./edges/composite.js";
 export { extractPackageJsonDeps, extractRequirementsTxtDeps } from "./edges/dependency-parser.js";
 export {
 	buildDerivedEdgeLayer,
+	type CompactionStats,
+	compactDerivedLayers,
 	type DerivedEdgeLayer,
 	derivedLayerId,
 	loadDerivedEdgeLayers,
