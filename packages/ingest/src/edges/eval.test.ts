@@ -6,7 +6,8 @@
  *
  *   WTFOC_EXTRACTOR_URL=lmstudio WTFOC_EXTRACTOR_MODEL=<model> pnpm --filter @wtfoc/ingest test:eval
  *
- * The tests skip automatically when WTFOC_EXTRACTOR_URL is not set.
+ * The tests skip automatically unless both WTFOC_EXTRACTOR_URL and
+ * WTFOC_EXTRACTOR_MODEL are set.
  */
 
 import { describe, expect, it } from "vitest";

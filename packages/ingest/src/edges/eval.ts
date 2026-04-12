@@ -361,7 +361,9 @@ export interface EvalOptions extends LlmClientOptions {
 	maxInputTokens?: number;
 }
 
-export async function runEdgeEval(options: EvalOptions): Promise<EvalReport> {
+export async function runEdgeEval(options: EvalOptions, signal?: AbortSignal): Promise<EvalReport> {
+	signal?.throwIfAborted();
+
 	const startTime = Date.now();
 	const chunks = FIXTURE_CHUNKS;
 	const validChunkIds = new Set(chunks.map((c) => c.id));
@@ -372,7 +374,7 @@ export async function runEdgeEval(options: EvalOptions): Promise<EvalReport> {
 	// Batch chunks by token budget (same logic as LlmEdgeExtractor)
 	const promptOverhead = estimatePromptOverhead();
 	const chunkBudget = maxInputTokens - promptOverhead;
-	const batches = batchChunks(chunks, chunkBudget);
+	const batches = chunkBudget > 0 ? batchChunks(chunks, chunkBudget) : [];
 
 	// Track which chunks were successfully evaluated
 	const evaluatedChunkIds = new Set<string>();
@@ -398,13 +400,15 @@ export async function runEdgeEval(options: EvalOptions): Promise<EvalReport> {
 
 	const batchResults = await Promise.allSettled(
 		batches.map(async (batch, batchIndex) => {
+			signal?.throwIfAborted();
 			await acquire();
 			try {
+				signal?.throwIfAborted();
 				const messages = buildExtractionMessages(batch);
 				console.log(
 					`[eval] Batch ${batchIndex + 1}/${batches.length}: ${batch.length} chunks, sending to LLM...`,
 				);
-				const response = await chatCompletion(messages, options);
+				const response = await chatCompletion(messages, options, signal);
 				if (response.usage) {
 					totalPromptTokens += response.usage.prompt_tokens;
 					totalCompletionTokens += response.usage.completion_tokens;
@@ -584,19 +588,39 @@ function batchChunks(chunks: Chunk[], maxTokens: number): Chunk[][] {
 function validateEdgesWithDowngradeTracking(
 	edges: Edge[],
 ): ValidationResult & { downgraded: number } {
-	const originalTypes = new Map(
-		edges.map((e) => [`${e.sourceId}:${e.targetId}:${e.evidence}`, e.type]),
-	);
+	// Count types before validation
+	const preTypeCounts = new Map<string, number>();
+	for (const e of edges) {
+		preTypeCounts.set(e.type, (preTypeCounts.get(e.type) ?? 0) + 1);
+	}
+
 	const result = validateEdges(edges);
 
-	let downgraded = 0;
-	for (const accepted of result.accepted) {
-		const key = `${accepted.sourceId}:${accepted.targetId}:${accepted.evidence}`;
-		const original = originalTypes.get(key);
-		if (original && original !== accepted.type) {
-			downgraded++;
-		}
+	// Count types after validation (accepted edges only)
+	const postTypeCounts = new Map<string, number>();
+	for (const e of result.accepted) {
+		postTypeCounts.set(e.type, (postTypeCounts.get(e.type) ?? 0) + 1);
 	}
+
+	// Downgrades show up as strong types losing count and "references" gaining count.
+	// Since validateEdges only downgrades TO "references", we can detect this reliably:
+	// downgraded = accepted edges whose type is "references" beyond what was originally "references",
+	// capped by how many non-references were lost (to avoid counting rejections as downgrades).
+	const preReferences = preTypeCounts.get("references") ?? 0;
+	const postReferences = postTypeCounts.get("references") ?? 0;
+	const referencesGained = Math.max(0, postReferences - preReferences);
+
+	// Also count how many strong-type edges disappeared from accepted (not rejected, downgraded)
+	let strongTypesLost = 0;
+	for (const [type, preCount] of preTypeCounts) {
+		if (type === "references") continue;
+		const postCount = postTypeCounts.get(type) ?? 0;
+		const rejectedOfType = result.rejected.filter((r) => r.edge.type === type).length;
+		const downgradedsOfType = Math.max(0, preCount - postCount - rejectedOfType);
+		strongTypesLost += downgradedsOfType;
+	}
+
+	const downgraded = Math.min(referencesGained, strongTypesLost);
 
 	return { ...result, downgraded };
 }
