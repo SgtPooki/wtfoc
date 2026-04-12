@@ -23,4 +23,3 @@ export const CURRENT_SCHEMA_VERSION = 1;
  * Should always be >= CURRENT_SCHEMA_VERSION.
  */
 export const MAX_SUPPORTED_SCHEMA_VERSION = 1;
-// e2e test marker 1775981560
