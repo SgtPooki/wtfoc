@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# dispatch.sh — Orchestrate spec-kit flow across multiple agents
+# dispatch.sh — Orchestrate specweave flow across multiple agents
 #
 # Usage:
 #   ./scripts/dispatch.sh spec "Store Backend" "Implement @wtfoc/store with local + FOC backends"
@@ -58,12 +58,9 @@ ${description}
 
 ### Workflow
 
-- [ ] \`/speckit.specify\` — create specification
-- [ ] \`/speckit.clarify\` — resolve ambiguities
+- [ ] \`/sw:increment\` — create increment (spec + plan + tasks)
 - [ ] \`/peer-review\` — cross-review by different agent
 - [ ] Address review feedback
-- [ ] \`/speckit.plan\` — create implementation plan
-- [ ] \`/speckit.tasks\` — generate task breakdown
 - [ ] PR merged with ratified spec
 
 ### Agent Assignment
@@ -74,8 +71,8 @@ Branch: \`${branch_name}\`
 ### Instructions for assigned agent
 
 1. Check out branch \`${branch_name}\`
-2. Run the spec-kit flow (specify → clarify → peer-review → plan → tasks)
-3. Commit spec artifacts to \`.specify/specs/${branch_name}/\`
+2. Run the specweave increment flow
+3. Commit spec artifacts to \`.specweave/increments/\`
 4. Open a PR back to main
 5. After PR merge, implementation issues will be created from tasks
 EOF
@@ -103,7 +100,7 @@ EOF
 	echo ""
 	log "Next steps for ${agent}:"
 	echo "  cd ${worktree_dir}"
-	echo "  # Run /speckit.specify, /speckit.clarify, /peer-review, /speckit.plan, /speckit.tasks"
+	echo "  # Run /sw:increment, /peer-review, then /sw:do"
 	echo "  # Commit and push, then open PR"
 	echo ""
 	echo "Or to start the agent directly:"
@@ -147,8 +144,8 @@ Branch: \`${impl_branch}\`
 ### Instructions
 
 1. Check out the worktree: \`cd ../wtfoc-worktrees/${impl_branch}\`
-2. Read the ratified spec in \`.specify/specs/\` (linked from #${spec_issue})
-3. Follow \`/speckit.implement\` to execute the task breakdown
+2. Read the ratified spec in \`.specweave/increments/\` (linked from #${spec_issue})
+3. Follow \`/sw:do\` to execute the task breakdown
 4. Commit changes, push, open PR referencing this issue (\`Fixes #<this-issue>\`)
 
 ### Rules

@@ -1,6 +1,6 @@
-Read `AGENTS.md`, `SPEC.md`, `.specify/memory/constitution.md`, and the relevant feature spec before making non-trivial changes.
+Read `AGENTS.md`, `SPEC.md`, and `docs/principles.md` before making non-trivial changes.
 
-This repository is spec-first. Do not implement behavior changes without updating or creating the relevant spec artifacts in `.specify/specs/`.
+This repository is spec-first. Do not implement behavior changes without a specweave increment.
 
 Prefer the nearest nested `AGENTS.md` when editing package code. Package-local instructions override root-level generalities.
 

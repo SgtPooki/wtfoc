@@ -1,5 +1,5 @@
 ---
-applyTo: ".specify/**/*.md,AGENTS.md,SPEC.md"
+applyTo: ".specweave/**/*.md,AGENTS.md,SPEC.md"
 ---
 
 Keep instruction and spec documents concrete and executable.

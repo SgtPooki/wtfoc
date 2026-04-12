@@ -6,9 +6,11 @@ Agent operating instructions for this repository.
 
 Read these first, in order:
 1. [`SPEC.md`](SPEC.md) for project-wide invariants.
-2. [`.specify/memory/constitution.md`](.specify/memory/constitution.md) for governance, workflow, and coordination.
-3. The relevant feature spec in [`.specify/specs/`](.specify/specs/) before changing behavior.
+2. [`docs/principles.md`](docs/principles.md) for design principles.
+3. The relevant increment in [`.specweave/increments/`](.specweave/increments/) before changing behavior.
 4. The nearest nested `AGENTS.md` for the package or subtree you are editing.
+
+**Claude Code users**: [`CLAUDE.md`](CLAUDE.md) adds specweave-specific workflow (`/sw:*` commands, increment structure, quality gates). This file (AGENTS.md) is the baseline — CLAUDE.md extends it, never overrides it.
 
 ## Purpose
 
@@ -42,13 +44,13 @@ Do not run `pnpm lint` by itself after edits. Run `pnpm lint:fix`, then fix any 
 - `packages/mcp-server`: MCP protocol server, tool definitions, shared `createMcpServer` factory
 - `packages/cli`: CLI wiring, output formatting, exit behavior
 - `apps/web`: Preact SPA frontend + HTTP/MCP backend server
-- `.specify/specs`: ratified feature specs, plans, and tasks
+- `.specweave/increments`: feature specs, plans, and tasks
 - `scripts`: issue dispatch, agent loop, repo maintenance helpers
 - `.github`: CI and GitHub-specific agent instructions
 
 ## Non-Negotiables
 
-- Follow the spec-kit flow for every non-trivial change. Do not implement behavior first and spec it later.
+- Follow the specweave increment flow for every non-trivial change. Do not implement behavior first and spec it later.
 - Respect the six seams defined in [`SPEC.md`](SPEC.md). Do not introduce new interfaces casually.
 - Treat changes to `@wtfoc/common`, manifest shapes, segment shapes, CLI flags, and CI/workflow files as high-risk.
 - Never add I/O, SDK wrappers, or business logic to `@wtfoc/common`.

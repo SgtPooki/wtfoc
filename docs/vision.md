@@ -2,7 +2,7 @@
 
 > What the FOC happened? Trace it.
 
-This document defines where wtfoc is going — the north-star goals that guide every feature, priority, and architectural decision. For how we build, see the [constitution](../.specify/memory/constitution.md). For why wtfoc exists, see [why.md](./why.md). For the current pipeline, see [pipeline-architecture.md](./pipeline-architecture.md).
+This document defines where wtfoc is going — the north-star goals that guide every feature, priority, and architectural decision. For design principles, see [principles.md](./principles.md). For why wtfoc exists, see [why.md](./why.md). For the current pipeline, see [pipeline-architecture.md](./pipeline-architecture.md).
 
 ## What "Done" Looks Like
 
