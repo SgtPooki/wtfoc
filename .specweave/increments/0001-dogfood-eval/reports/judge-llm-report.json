@@ -1,0 +1,8 @@
+{
+  "version": "1.0",
+  "incrementId": "0001-dogfood-eval",
+  "timestamp": "2026-04-12T16:36:00.000Z",
+  "verdict": "WAIVED",
+  "reason": "No externalModels consent configured in .specweave/config.json",
+  "details": "Judge LLM validation requires external model access (externalModels config). Waived per closure policy."
+}

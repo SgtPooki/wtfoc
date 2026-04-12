@@ -1,0 +1,104 @@
+{
+  "version": "1.1",
+  "scope": "increment 0001-dogfood-eval",
+  "date": "2026-04-12",
+  "reviewers": ["logic", "security", "types", "silent-failures", "spec-compliance", "tests"],
+  "gateCheck": { "passed": true, "reason": null },
+  "summary": {
+    "total": 8,
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 2,
+    "info": 1
+  },
+  "validation": {
+    "performed": true,
+    "preValidation": { "critical": 0, "high": 2, "medium": 3 },
+    "postValidation": { "critical": 0, "high": 0, "medium": 0 },
+    "rejected": 0,
+    "fixIterations": 2,
+    "fixedFindings": ["F-001", "F-002", "F-003", "F-004", "F-005", "F-006"]
+  },
+  "findings": [
+    {
+      "id": "F-001",
+      "severity": "FIXED",
+      "originalSeverity": "HIGH",
+      "validated": true,
+      "reviewer": "logic",
+      "file": "packages/ingest/src/eval/ingest-evaluator.ts",
+      "title": "Math.min(...chunksPerSegment, 0) always returns 0 — FIXED: uses reduce-based min/max",
+      "resolution": "Replaced Math.min/max spread with reduce-based approach for both chunksPerSegment and lengths arrays"
+    },
+    {
+      "id": "F-002",
+      "severity": "FIXED",
+      "originalSeverity": "HIGH",
+      "validated": true,
+      "reviewer": "logic",
+      "file": "packages/ingest/src/eval/ingest-evaluator.ts",
+      "title": "Math.min/max(...lengths) stack overflow on large collections — FIXED: uses reduce",
+      "resolution": "Replaced with lengths.reduce((a, b) => Math.min(a, b), Infinity) pattern"
+    },
+    {
+      "id": "F-003",
+      "severity": "FIXED",
+      "originalSeverity": "MEDIUM",
+      "validated": true,
+      "reviewer": "spec-compliance",
+      "file": "packages/search/src/eval/search-evaluator.ts",
+      "title": "sourceTypeCoverage is now a ratio (AC-US7-06) — FIXED",
+      "resolution": "Added collectionSourceTypes computation from segments, divides allTraceSourceTypes.size by total"
+    },
+    {
+      "id": "F-004",
+      "severity": "FIXED",
+      "originalSeverity": "MEDIUM",
+      "validated": true,
+      "reviewer": "spec-compliance",
+      "file": "packages/store/src/eval/storage-evaluator.ts",
+      "title": "Document catalog check implemented (AC-US6-04) — FIXED",
+      "resolution": "Added catalog loading, chunk ID cross-reference, and orphan reporting"
+    },
+    {
+      "id": "F-005",
+      "severity": "FIXED",
+      "originalSeverity": "MEDIUM",
+      "validated": true,
+      "reviewer": "logic",
+      "file": "scripts/dogfood.ts",
+      "title": "--skip-llm now includes themes stage — FIXED",
+      "resolution": "Added 'themes' to the skip-llm stage check alongside edges and search"
+    },
+    {
+      "id": "F-006",
+      "severity": "FIXED",
+      "originalSeverity": "LOW",
+      "validated": true,
+      "reviewer": "logic",
+      "file": "scripts/dogfood.ts",
+      "title": "Relative import paths replaced with package exports — FIXED",
+      "resolution": "All evaluator imports now use @wtfoc/ingest, @wtfoc/search, @wtfoc/store package entry points"
+    },
+    {
+      "id": "F-007",
+      "severity": "LOW",
+      "validated": true,
+      "reviewer": "types",
+      "file": "packages/search/src/eval/themes-evaluator.ts",
+      "line": 8,
+      "title": "evaluateThemes signature missing embedder and extractorOptions params",
+      "description": "Intentional simplification for initial implementation — cohesion and LLM labeling are documented follow-ups"
+    },
+    {
+      "id": "F-008",
+      "severity": "INFO",
+      "validated": true,
+      "reviewer": "spec-compliance",
+      "file": "packages/search/src/eval/themes-evaluator.ts",
+      "title": "Intra-cluster cohesion metric not computed (AC-US8-02)",
+      "description": "Acceptable as follow-up given the missing embedder param. Documented gap."
+    }
+  ]
+}
