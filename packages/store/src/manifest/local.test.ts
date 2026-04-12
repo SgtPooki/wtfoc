@@ -1,9 +1,9 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CollectionHead } from "@wtfoc/common";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { LocalManifestStore } from "./local.js";
+import { LocalManifestStore, validateCollectionName } from "./local.js";
 
 function makeManifest(overrides?: Partial<CollectionHead>): CollectionHead {
 	return {
@@ -161,6 +161,79 @@ describe("LocalManifestStore", () => {
 			const result = await nestedStore.putHead("nested-test", manifest, null);
 
 			expect(result.headId).toBeTruthy();
+		});
+	});
+
+	describe("collection name validation", () => {
+		it("accepts valid names (letters, numbers, hyphens, underscores)", () => {
+			expect(() => validateCollectionName("my-collection")).not.toThrow();
+			expect(() => validateCollectionName("test_v2")).not.toThrow();
+			expect(() => validateCollectionName("foc-ecosystem-v2")).not.toThrow();
+			expect(() => validateCollectionName("ABC123")).not.toThrow();
+		});
+
+		it("rejects names containing dots", () => {
+			expect(() => validateCollectionName("my.collection")).toThrow("Invalid collection name");
+			expect(() => validateCollectionName("foo.bar.baz")).toThrow("Invalid collection name");
+		});
+
+		it("rejects empty names", () => {
+			expect(() => validateCollectionName("")).toThrow("Invalid collection name");
+		});
+
+		it("rejects names with spaces or special characters", () => {
+			expect(() => validateCollectionName("my collection")).toThrow("Invalid collection name");
+			expect(() => validateCollectionName("foo/bar")).toThrow("Invalid collection name");
+			expect(() => validateCollectionName("foo@bar")).toThrow("Invalid collection name");
+		});
+	});
+
+	describe("listProjects excludes sidecar files", () => {
+		it("only returns manifest files, not sidecars", async () => {
+			const store = new LocalManifestStore(manifestDir);
+
+			// Create a valid manifest
+			const manifest = makeManifest({ name: "real-collection" });
+			await store.putHead("real-collection", manifest, null);
+
+			// Create sidecar files that should be excluded
+			await writeFile(
+				join(manifestDir, "real-collection.ingest-cursors.json"),
+				JSON.stringify({ schemaVersion: 1, cursors: {} }),
+			);
+			await writeFile(
+				join(manifestDir, "real-collection.document-catalog.json"),
+				JSON.stringify({ schemaVersion: 1, documents: {} }),
+			);
+			await writeFile(
+				join(manifestDir, "real-collection.edges-overlay.json"),
+				JSON.stringify({ edges: [] }),
+			);
+
+			const projects = await store.listProjects();
+			expect(projects).toContain("real-collection");
+			expect(projects).not.toContain("real-collection.ingest-cursors");
+			expect(projects).not.toContain("real-collection.document-catalog");
+			expect(projects).not.toContain("real-collection.edges-overlay");
+		});
+	});
+
+	describe("getHead returns null for non-manifest files", () => {
+		it("returns null for sidecar JSON files", async () => {
+			await writeFile(
+				join(manifestDir, "test-sidecar.json"),
+				JSON.stringify({ cursors: {}, notAManifest: true }),
+			);
+			const store = new LocalManifestStore(manifestDir);
+			const head = await store.getHead("test-sidecar");
+			expect(head).toBeNull();
+		});
+
+		it("returns null for corrupt JSON", async () => {
+			await writeFile(join(manifestDir, "corrupt.json"), "not json at all");
+			const store = new LocalManifestStore(manifestDir);
+			const head = await store.getHead("corrupt");
+			expect(head).toBeNull();
 		});
 	});
 });

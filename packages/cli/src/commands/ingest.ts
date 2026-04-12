@@ -35,7 +35,7 @@ import {
 	writeCatalog,
 	writeCursors,
 } from "@wtfoc/ingest";
-import { bundleAndUpload, generateCollectionId } from "@wtfoc/store";
+import { bundleAndUpload, generateCollectionId, validateCollectionName } from "@wtfoc/store";
 import type { Command } from "commander";
 import { getProjectConfig } from "../cli.js";
 import { type ExtractorCliOpts, resolveExtractorConfig } from "../extractor-config.js";
@@ -124,6 +124,14 @@ export function registerIngestCommand(program: Command): void {
 		) => {
 			const store = getStore(program);
 			const format = getFormat(program.opts());
+
+			// Validate collection name early (before any work)
+			try {
+				validateCollectionName(opts.collection);
+			} catch (err) {
+				console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+				process.exit(2);
+			}
 
 			// Get or create manifest
 			const head = await store.manifests.getHead(opts.collection);
