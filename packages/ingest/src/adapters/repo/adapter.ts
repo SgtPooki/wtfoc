@@ -196,7 +196,7 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 					...opts.chunkerOptions,
 				});
 				for (const chunk of chunks) {
-					yield {
+					const yieldChunk: Chunk = {
 						...chunk,
 						sourceType,
 						sourceUrl,
@@ -207,6 +207,9 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 							repo,
 						},
 					};
+					// Carry raw content on first chunk for archive
+					if (chunk.chunkIndex === 0) yieldChunk.rawContent = content;
+					yield yieldChunk;
 				}
 			} else {
 				const chunks = chunkCode(content, relPath, repo, sourceUrl, {
@@ -214,6 +217,8 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 					documentVersionId,
 				});
 				for (const chunk of chunks) {
+					// Carry raw content on first chunk for archive
+					if (chunk.chunkIndex === 0) chunk.rawContent = content;
 					yield chunk;
 				}
 			}

@@ -2,11 +2,14 @@ import type { DocumentCatalog, Segment } from "@wtfoc/common";
 import { type Chunk, type CollectionHead, CURRENT_SCHEMA_VERSION } from "@wtfoc/common";
 import {
 	archiveDocument,
+	archiveIndexPath,
+	archiveRawSource,
 	buildSegment,
 	buildSourceKey,
 	CodeEdgeExtractor,
 	CompositeEdgeExtractor,
 	catalogFilePath,
+	createEmptyArchiveIndex,
 	createEmptyCatalog,
 	cursorFilePath,
 	DEFAULT_MAX_CHUNK_CHARS,
@@ -16,15 +19,18 @@ import {
 	getCursorSince,
 	HeuristicChunkScorer,
 	HeuristicEdgeExtractor,
+	isArchived,
 	LlmEdgeExtractor,
 	mergeEdges,
 	RegexEdgeExtractor,
+	readArchiveIndex,
 	readCatalog,
 	readCursors,
 	rechunkOversized,
 	segmentId,
 	TreeSitterEdgeExtractor,
 	updateDocument,
+	writeArchiveIndex,
 	writeCatalog,
 	writeCursors,
 } from "@wtfoc/ingest";
@@ -240,6 +246,12 @@ export function registerIngestCommand(program: Command): void {
 			const catalog: DocumentCatalog =
 				(await readCatalog(catPath)) ?? createEmptyCatalog(collectionId);
 
+			// Load or create raw source archive index
+			const arcPath = archiveIndexPath(manifestDir, opts.collection);
+			const archiveIndex =
+				(await readArchiveIndex(arcPath)) ?? createEmptyArchiveIndex(collectionId);
+			let totalArchived = 0;
+
 			// Process chunks in batches to limit memory usage
 			const scorer = new HeuristicChunkScorer();
 
@@ -386,6 +398,34 @@ export function registerIngestCommand(program: Command): void {
 				const chunkTs =
 					rawChunk.timestamp ?? rawChunk.metadata.updatedAt ?? rawChunk.metadata.createdAt ?? "";
 				if (chunkTs > maxTimestamp) maxTimestamp = chunkTs;
+
+				// Archive raw source content before chunking (P2-1)
+				if (
+					rawChunk.rawContent &&
+					rawChunk.documentId &&
+					rawChunk.documentVersionId &&
+					!isArchived(archiveIndex, rawChunk.documentId, rawChunk.documentVersionId)
+				) {
+					await archiveRawSource(
+						archiveIndex,
+						rawChunk.documentId,
+						rawChunk.documentVersionId,
+						rawChunk.rawContent,
+						{
+							sourceType: rawChunk.sourceType,
+							sourceUrl: rawChunk.sourceUrl,
+							filePath: rawChunk.metadata.filePath,
+							upload: async (data) => {
+								const result = await store.storage.upload(data);
+								return result.id;
+							},
+						},
+					);
+					totalArchived++;
+				}
+				// Strip rawContent before further processing (not persisted in segments)
+				delete rawChunk.rawContent;
+
 				const chunks = rechunkOversized([rawChunk], maxChunkChars);
 				if (chunks.length > 1) rechunkedCount += chunks.length;
 
@@ -450,8 +490,16 @@ export function registerIngestCommand(program: Command): void {
 				}
 
 				await writeCatalog(catPath, catalog);
-				if (format !== "quiet" && totalDocsSuperseded > 0) {
-					console.error(`   📋 Catalog updated: ${catalogPendingChunks.size} documents tracked`);
+				if (totalArchived > 0) {
+					await writeArchiveIndex(arcPath, archiveIndex);
+				}
+				if (format !== "quiet" && (totalDocsSuperseded > 0 || totalArchived > 0)) {
+					const parts: string[] = [];
+					if (catalogPendingChunks.size > 0)
+						parts.push(`${catalogPendingChunks.size} documents tracked`);
+					if (totalArchived > 0) parts.push(`${totalArchived} raw sources archived`);
+					if (totalDocsSuperseded > 0) parts.push(`${totalDocsSuperseded} superseded`);
+					console.error(`   📋 ${parts.join(", ")}`);
 				}
 			}
 

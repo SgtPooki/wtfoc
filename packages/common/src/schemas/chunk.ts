@@ -32,6 +32,8 @@ export interface Chunk {
 	documentVersionId?: string;
 	/** SHA-256 of content text — used for compute dedup (skip re-embedding unchanged text) */
 	contentFingerprint?: string;
+	/** Complete raw source content before chunking. Carried on chunkIndex=0 only, not persisted in segments. Used by ingest to archive raw sources. */
+	rawContent?: string;
 }
 
 /**

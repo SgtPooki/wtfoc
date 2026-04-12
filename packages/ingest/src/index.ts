@@ -104,6 +104,18 @@ export type {
 	TreeSitterParseResponse,
 } from "./edges/tree-sitter-client.js";
 export { treeSitterHealth, treeSitterParse } from "./edges/tree-sitter-client.js";
+export {
+	archiveIndexPath,
+	archiveKey,
+	archiveRawSource,
+	createEmptyArchiveIndex,
+	inferMediaType,
+	isArchived,
+	type RawSourceEntry,
+	type RawSourceIndex,
+	readArchiveIndex,
+	writeArchiveIndex,
+} from "./raw-source-archive.js";
 export { HeuristicChunkScorer } from "./scoring.js";
 export {
 	buildSegment,

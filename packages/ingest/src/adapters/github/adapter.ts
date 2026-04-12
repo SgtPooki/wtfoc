@@ -151,7 +151,9 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 			});
 
 			for (const chunk of chunks) {
-				yield { ...chunk, sourceType: "github-issue" };
+				const out: Chunk = { ...chunk, sourceType: "github-issue" };
+				if (chunk.chunkIndex === 0) out.rawContent = content;
+				yield out;
 			}
 		}
 	}
@@ -203,7 +205,9 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 			});
 
 			for (const chunk of chunks) {
-				yield { ...chunk, sourceType: "github-pr" };
+				const out: Chunk = { ...chunk, sourceType: "github-pr" };
+				if (chunk.chunkIndex === 0) out.rawContent = content;
+				yield out;
 			}
 		}
 	}
@@ -270,7 +274,9 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 			});
 
 			for (const chunk of chunks) {
-				yield { ...chunk, sourceType: "github-pr-comment" };
+				const out: Chunk = { ...chunk, sourceType: "github-pr-comment" };
+				if (chunk.chunkIndex === 0) out.rawContent = body;
+				yield out;
 			}
 		}
 	}
@@ -346,7 +352,9 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 				});
 
 				for (const chunk of chunks) {
-					yield { ...chunk, sourceType: "github-discussion" };
+					const out: Chunk = { ...chunk, sourceType: "github-discussion" };
+					if (chunk.chunkIndex === 0) out.rawContent = content;
+					yield out;
 				}
 			}
 
