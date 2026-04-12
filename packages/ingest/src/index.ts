@@ -5,6 +5,8 @@ export { getAdapter, getAvailableSourceTypes, registerAdapter } from "./adapter-
 export { DiscordAdapter, type DiscordAdapterConfig } from "./adapters/discord.js";
 export {
 	createHttpExecFn,
+	resolveGitHubExecFn,
+	type TaggedExecFn,
 	type TokenProvider,
 } from "./adapters/github/http-transport.js";
 export {
@@ -154,6 +156,7 @@ export {
 // Register built-in adapters
 import { registerAdapter as _register } from "./adapter-registry.js";
 import { DiscordAdapter as _DiscordAdapter } from "./adapters/discord.js";
+import { resolveGitHubExecFn as _resolveGitHubExecFn } from "./adapters/github/http-transport.js";
 import { GitHubAdapter as _GitHubAdapter } from "./adapters/github/index.js";
 import { HackerNewsAdapter as _HackerNewsAdapter } from "./adapters/hackernews.js";
 import { RepoAdapter as _RepoAdapter } from "./adapters/repo/index.js";
@@ -161,7 +164,7 @@ import { SlackAdapter as _SlackAdapter } from "./adapters/slack.js";
 import { WebsiteAdapter as _WebsiteAdapter } from "./adapters/website.js";
 
 _register(new _RepoAdapter());
-_register(new _GitHubAdapter());
+_register(new _GitHubAdapter(_resolveGitHubExecFn()));
 _register(new _HackerNewsAdapter());
 _register(new _WebsiteAdapter());
 _register(new _DiscordAdapter());

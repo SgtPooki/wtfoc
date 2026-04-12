@@ -174,8 +174,8 @@ async function ingestSource(source: Source, signal?: AbortSignal): Promise<Chunk
 
 	switch (source.sourceType) {
 		case "github": {
-			const { GitHubAdapter, createHttpExecFn } = await import("@wtfoc/ingest");
-			const execFn = createHttpExecFn();
+			const { GitHubAdapter, resolveGitHubExecFn } = await import("@wtfoc/ingest");
+			const execFn = resolveGitHubExecFn();
 			const adapter = new GitHubAdapter(execFn);
 			const [owner, repo] = source.identifier.split("/");
 			if (!owner || !repo) throw new Error(`Invalid GitHub identifier: ${source.identifier}`);
