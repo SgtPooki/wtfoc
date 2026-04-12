@@ -85,6 +85,18 @@ export function registerIngestCommand(program: Command): void {
 					.option(
 						"--url-pattern <glob>",
 						"[website] Glob pattern to restrict which URLs are crawled (default: same origin)",
+					)
+					.option(
+						"--document-ids <ids...>",
+						"Only re-process these document IDs (from document catalog)",
+					)
+					.option(
+						"--source-paths <paths...>",
+						"[repo] Only process files matching these paths (relative to repo root)",
+					)
+					.option(
+						"--changed-since <iso>",
+						"Only process documents updated after this ISO timestamp",
 					),
 			),
 		),
@@ -103,6 +115,9 @@ export function registerIngestCommand(program: Command): void {
 				depth?: string;
 				urlPattern?: string;
 				treeSitterUrl?: string;
+				documentIds?: string[];
+				sourcePaths?: string[];
+				changedSince?: string;
 			} & EmbedderOpts &
 				ExtractorCliOpts,
 		) => {
@@ -251,6 +266,44 @@ export function registerIngestCommand(program: Command): void {
 			const archiveIndex =
 				(await readArchiveIndex(arcPath)) ?? createEmptyArchiveIndex(collectionId);
 			let totalArchived = 0;
+
+			// Build document-level filters from CLI flags
+			const filterDocIds = opts.documentIds ? new Set(opts.documentIds) : null;
+			const filterPaths = opts.sourcePaths ?? null;
+			const filterChangedSince = opts.changedSince ? new Date(opts.changedSince).getTime() : null;
+			let totalFiltered = 0;
+
+			function shouldIncludeChunk(chunk: Chunk): boolean {
+				// --document-ids: only include chunks matching these document IDs
+				if (filterDocIds && chunk.documentId && !filterDocIds.has(chunk.documentId)) {
+					return false;
+				}
+				// --source-paths: only include chunks whose filePath metadata matches
+				if (filterPaths) {
+					const filePath = chunk.metadata.filePath;
+					if (!filePath) return false;
+					const matches = filterPaths.some((p) => filePath === p || filePath.startsWith(`${p}/`));
+					if (!matches) return false;
+				}
+				// --changed-since: only include chunks with timestamps after the threshold
+				if (filterChangedSince) {
+					const ts = chunk.timestamp ?? chunk.metadata.updatedAt ?? chunk.metadata.createdAt;
+					if (!ts) return false;
+					const chunkTime = new Date(ts).getTime();
+					if (Number.isNaN(chunkTime) || chunkTime < filterChangedSince) return false;
+				}
+				return true;
+			}
+
+			if (filterDocIds && format !== "quiet") {
+				console.error(`   Filtering to ${filterDocIds.size} document ID(s)`);
+			}
+			if (filterPaths && format !== "quiet") {
+				console.error(`   Filtering to ${filterPaths.length} source path(s)`);
+			}
+			if (filterChangedSince && format !== "quiet") {
+				console.error(`   Filtering to documents changed since ${opts.changedSince}`);
+			}
 
 			// Process chunks in batches to limit memory usage
 			const scorer = new HeuristicChunkScorer();
@@ -426,6 +479,12 @@ export function registerIngestCommand(program: Command): void {
 				// Strip rawContent before further processing (not persisted in segments)
 				delete rawChunk.rawContent;
 
+				// Apply document-level filters (--document-ids, --source-paths, --changed-since)
+				if (!shouldIncludeChunk(rawChunk)) {
+					totalFiltered++;
+					continue;
+				}
+
 				const chunks = rechunkOversized([rawChunk], maxChunkChars);
 				if (chunks.length > 1) rechunkedCount += chunks.length;
 
@@ -513,6 +572,7 @@ export function registerIngestCommand(program: Command): void {
 				if (batchNumber > 1) parts[0] += ` (${batchNumber} batches)`;
 				if (rechunkedCount > 0) parts.push(`${rechunkedCount} from oversized splits`);
 				if (totalChunksSkipped > 0) parts.push(`${totalChunksSkipped} skipped as duplicates`);
+				if (totalFiltered > 0) parts.push(`${totalFiltered} filtered out`);
 				if (totalDocsSuperseded > 0) parts.push(`${totalDocsSuperseded} documents superseded`);
 				console.error(
 					`✅ Ingested ${parts.join(", ")} from ${sourceArg} into "${opts.collection}"`,
