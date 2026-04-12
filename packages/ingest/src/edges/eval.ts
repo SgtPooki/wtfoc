@@ -224,7 +224,8 @@ function scoreEdges(
 			let matched = false;
 			for (let i = 0; i < chunkEdges.length; i++) {
 				if (matchedProduced.has(i)) continue;
-				if (edgeMatchesGold(chunkEdges[i], gold)) {
+				const candidate = chunkEdges[i];
+				if (candidate && edgeMatchesGold(candidate, gold)) {
 					matchedProduced.add(i);
 					matched = true;
 					break;
@@ -244,6 +245,7 @@ function scoreEdges(
 		for (let i = 0; i < chunkEdges.length; i++) {
 			if (!matchedProduced.has(i)) {
 				const edge = chunkEdges[i];
+				if (!edge) continue;
 				ensureType(edge.type);
 				const m = perType.get(edge.type);
 				if (m) m.fp++;
@@ -426,6 +428,7 @@ export async function runEdgeEval(options: EvalOptions, signal?: AbortSignal): P
 	for (let i = 0; i < batchResults.length; i++) {
 		const result = batchResults[i];
 		const batch = batches[i];
+		if (!result || !batch) continue;
 		if (result.status === "rejected") {
 			console.error(`[eval] Batch ${i + 1} failed: ${result.reason}`);
 			failedBatchCount++;
