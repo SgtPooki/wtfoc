@@ -12,12 +12,12 @@ export function registerPullCommand(program: Command): void {
 			const store = getStore(program);
 			const format = getFormat(program.opts());
 
-			if (format !== "quiet") console.error(`⏳ Fetching manifest from CID ${cid}...`);
+			if (format === "human") console.error(`⏳ Fetching manifest from CID ${cid}...`);
 
 			const { manifest, storage: remoteStorage } = await resolveCollectionByCid(cid);
 			const name = opts.name ?? manifest.name;
 
-			if (format !== "quiet") {
+			if (format === "human") {
 				console.error(`📦 Collection: "${manifest.name}"`);
 				console.error(
 					`   ${manifest.totalChunks} chunks, ${manifest.segments.length} segments, ${manifest.embeddingModel} (${manifest.embeddingDimensions}d)`,
@@ -54,7 +54,7 @@ export function registerPullCommand(program: Command): void {
 				}
 				downloaded++;
 
-				if (format !== "quiet" && downloaded % 50 === 0) {
+				if (format === "human" && downloaded % 50 === 0) {
 					console.error(`   ${downloaded}/${manifest.segments.length} segments downloaded...`);
 				}
 			}
@@ -62,7 +62,7 @@ export function registerPullCommand(program: Command): void {
 			// Save manifest locally
 			await store.manifests.putHead(name, manifest, null);
 
-			if (format !== "quiet") {
+			if (format === "human") {
 				console.error(
 					`\n✅ Pulled "${name}" — ${manifest.totalChunks} chunks in ${downloaded} segments`,
 				);

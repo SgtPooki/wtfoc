@@ -67,7 +67,7 @@ export function registerTraceCommand(program: Command): void {
 				process.exit(1);
 			}
 
-			if (format !== "quiet") console.error("⏳ Loading embedder + index...");
+			if (format === "human") console.error("⏳ Loading embedder + index...");
 			const { embedder } = createEmbedder(opts, getProjectConfig()?.embedder);
 
 			// Load document catalog — trace includes archived chunks for historical context
@@ -88,7 +88,7 @@ export function registerTraceCommand(program: Command): void {
 				derivedEdges = await loadDerivedEdgeLayers(derivedLayers, (id, s) =>
 					store.storage.download(id, s),
 				);
-				if (format !== "quiet") {
+				if (format === "human") {
 					console.error(
 						`🔗 Loaded ${derivedEdges.length} edges from ${derivedLayers.length} derived layer(s)`,
 					);
@@ -99,7 +99,7 @@ export function registerTraceCommand(program: Command): void {
 			if (derivedEdges.length === 0) {
 				const overlay = await readOverlayEdges(overlayFilePath(manifestDir, opts.collection));
 				derivedEdges = overlay?.edges ?? [];
-				if (derivedEdges.length > 0 && format !== "quiet") {
+				if (derivedEdges.length > 0 && format === "human") {
 					console.error(`🔗 Loaded ${derivedEdges.length} overlay edges (legacy)`);
 				}
 			}

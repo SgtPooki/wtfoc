@@ -19,7 +19,7 @@ export function registerUnresolvedEdgesCommand(program: Command): void {
 				process.exit(1);
 			}
 
-			if (format !== "quiet") console.error("⏳ Loading segments...");
+			if (format === "human") console.error("⏳ Loading segments...");
 
 			const allSegments: Segment[] = [];
 			for (const segSummary of head.manifest.segments) {

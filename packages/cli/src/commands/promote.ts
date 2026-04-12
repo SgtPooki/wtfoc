@@ -64,7 +64,7 @@ export function registerPromoteCommand(program: Command): void {
 				// All segments already on Filecoin — just upload/re-upload the manifest
 				const privateKey = process.env.WTFOC_PRIVATE_KEY;
 				if (!privateKey) {
-					if (format !== "quiet") {
+					if (format === "human") {
 						console.error(`✅ Collection "${collectionName}" is already fully promoted to FOC.`);
 						console.error(
 							"   Set WTFOC_PRIVATE_KEY to re-upload the manifest and get a shareable CID.",
@@ -73,7 +73,7 @@ export function registerPromoteCommand(program: Command): void {
 					return;
 				}
 
-				if (format !== "quiet") {
+				if (format === "human") {
 					console.error(`✅ Segments already on Filecoin. Uploading manifest...`);
 				}
 
@@ -94,7 +94,7 @@ export function registerPromoteCommand(program: Command): void {
 							chunks: head.manifest.totalChunks,
 						}),
 					);
-				} else if (format !== "quiet") {
+				} else if (format === "human") {
 					console.error(`   Manifest CID: ${manifestCid}`);
 					if (existingBatches.length > 0) {
 						const lastBatch = existingBatches[existingBatches.length - 1];
@@ -110,7 +110,7 @@ export function registerPromoteCommand(program: Command): void {
 				process.exit(0);
 			}
 
-			if (format !== "quiet") {
+			if (format === "human") {
 				console.error(`📦 Promoting "${collectionName}" to FOC`);
 				console.error(
 					`   ${segmentsToPromote.length} segments to upload (${head.manifest.totalChunks} chunks)`,
@@ -142,14 +142,14 @@ export function registerPromoteCommand(program: Command): void {
 			const bundleSegments: { id: string; data: Uint8Array }[] = [];
 
 			for (const seg of segmentsToPromote) {
-				if (format !== "quiet") {
+				if (format === "human") {
 					console.error(`   ⏳ Reading segment ${seg.id.slice(0, 16)}...`);
 				}
 				const data = await localStore.storage.download(seg.id);
 				bundleSegments.push({ id: seg.id, data });
 			}
 
-			if (format !== "quiet") {
+			if (format === "human") {
 				console.error("   ⏳ Bundling segments + manifest into CAR and uploading to FOC...");
 			}
 
@@ -204,7 +204,7 @@ export function registerPromoteCommand(program: Command): void {
 			await localStore.manifests.putHead(collectionName, finalManifest, head.headId);
 
 			// Post-upload IPNI validation
-			if (format !== "quiet") {
+			if (format === "human") {
 				console.error("   ⏳ Validating IPNI indexing...");
 			}
 
@@ -230,7 +230,7 @@ export function registerPromoteCommand(program: Command): void {
 						},
 					}),
 				);
-			} else if (format !== "quiet") {
+			} else if (format === "human") {
 				console.error(`\n✅ Promoted "${collectionName}" to FOC`);
 				if (manifestCid) {
 					console.error(`   Manifest CID: ${manifestCid}`);

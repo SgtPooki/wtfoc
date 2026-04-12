@@ -83,10 +83,10 @@ export function registerReingestCommand(program: Command): void {
 			const ignoreFilter = createIgnoreFilter(projectCfg?.ignore, opts.ignore);
 
 			// Probe embedder dimensions
-			if (format !== "quiet") console.error("⏳ Detecting embedding dimensions...");
+			if (format === "human") console.error("⏳ Detecting embedding dimensions...");
 			await embedder.embed("dimension probe");
 
-			if (format !== "quiet") {
+			if (format === "human") {
 				console.error(
 					`🔄 Reingesting "${opts.collection}"${targetName !== opts.collection ? ` → "${targetName}"` : ""}`,
 				);
@@ -126,7 +126,7 @@ export function registerReingestCommand(program: Command): void {
 				}
 			}
 
-			if (format !== "quiet") {
+			if (format === "human") {
 				console.error(
 					`   Loaded ${allChunks.length} chunks (${filteredCount} filtered by ignore patterns)`,
 				);
@@ -149,7 +149,7 @@ export function registerReingestCommand(program: Command): void {
 				const rechunked = rechunkOversized(oversized, maxChars);
 				chunksToProcess = [...withinLimit, ...rechunked];
 
-				if (format !== "quiet" && oversized.length > 0) {
+				if (format === "human" && oversized.length > 0) {
 					console.error(
 						`   Rechunked ${oversized.length} oversized → ${rechunked.length} new chunks`,
 					);
@@ -192,7 +192,7 @@ export function registerReingestCommand(program: Command): void {
 				]);
 
 				// Embed
-				if (format !== "quiet") {
+				if (format === "human") {
 					console.error(
 						`⏳ Batch ${batchNum}/${totalBatches}: embedding ${batchChunks.length} chunks...`,
 					);
@@ -255,7 +255,7 @@ export function registerReingestCommand(program: Command): void {
 
 				await store.manifests.putHead(targetName, manifest, prevHeadId);
 
-				if (format !== "quiet") {
+				if (format === "human") {
 					console.error(`   Segment stored: ${result.id.slice(0, 16)}...`);
 				}
 			}
@@ -270,7 +270,7 @@ export function registerReingestCommand(program: Command): void {
 						chunksFiltered: filteredCount,
 					}),
 				);
-			} else if (format !== "quiet") {
+			} else if (format === "human") {
 				console.error(
 					`\n✅ Reingested "${opts.collection}"${targetName !== opts.collection ? ` → "${targetName}"` : ""}`,
 				);

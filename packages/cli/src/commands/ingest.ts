@@ -132,7 +132,7 @@ export function registerIngestCommand(program: Command): void {
 			const extractorConfig = resolveExtractorConfig(opts);
 
 			// Initialize embedder
-			if (format !== "quiet") console.error("⏳ Loading embedder...");
+			if (format === "human") console.error("⏳ Loading embedder...");
 			const { embedder, modelName } = createEmbedder(opts, getProjectConfig()?.embedder);
 
 			// Detect model mismatch
@@ -204,13 +204,13 @@ export function registerIngestCommand(program: Command): void {
 				const storedSince = getCursorSince(cursorData, sourceKey);
 				if (storedSince) {
 					rawConfig.since = storedSince;
-					if (format !== "quiet") {
+					if (format === "human") {
 						console.error(`   Resuming from cursor: ${storedSince}`);
 					}
 				}
 			}
 
-			if (format !== "quiet") console.error(`⏳ Ingesting ${sourceType}: ${sourceArg}...`);
+			if (format === "human") console.error(`⏳ Ingesting ${sourceType}: ${sourceArg}...`);
 
 			const config = adapter.parseConfig(rawConfig);
 			// Pass raw ignore pattern sources to repo adapter for unified filter construction
@@ -257,7 +257,7 @@ export function registerIngestCommand(program: Command): void {
 						knownFingerprints.add(fp);
 					}
 				}
-				if (knownChunkIds.size > 0 && format !== "quiet") {
+				if (knownChunkIds.size > 0 && format === "human") {
 					console.error(
 						`   ${knownChunkIds.size} existing chunks from catalog (fast dedup, ${knownFingerprints.size} fingerprints)`,
 					);
@@ -278,7 +278,7 @@ export function registerIngestCommand(program: Command): void {
 						// Segment may not be downloadable (e.g. FOC-only), skip
 					}
 				}
-				if (knownChunkIds.size > 0 && format !== "quiet") {
+				if (knownChunkIds.size > 0 && format === "human") {
 					console.error(`   ${knownChunkIds.size} existing chunks from segments (legacy dedup)`);
 				}
 			}
@@ -317,13 +317,13 @@ export function registerIngestCommand(program: Command): void {
 				return true;
 			}
 
-			if (filterDocIds && format !== "quiet") {
+			if (filterDocIds && format === "human") {
 				console.error(`   Filtering to ${filterDocIds.size} document ID(s)`);
 			}
-			if (filterPaths && format !== "quiet") {
+			if (filterPaths && format === "human") {
 				console.error(`   Filtering to ${filterPaths.length} source path(s)`);
 			}
-			if (filterChangedSince && format !== "quiet") {
+			if (filterChangedSince && format === "human") {
 				console.error(`   Filtering to documents changed since ${opts.changedSince}`);
 			}
 
@@ -380,7 +380,7 @@ export function registerIngestCommand(program: Command): void {
 				]);
 
 				// Embed this batch
-				if (format !== "quiet")
+				if (format === "human")
 					console.error(`⏳ Embedding batch ${batchNumber} (${batchChunks.length} chunks)...`);
 				const embeddings = await embedder.embedBatch(batchChunks.map((c) => c.content));
 
@@ -413,21 +413,21 @@ export function registerIngestCommand(program: Command): void {
 				let batchForManifest: import("@wtfoc/common").BatchRecord | undefined;
 
 				if (storageType === "foc") {
-					if (format !== "quiet") console.error("⏳ Bundling into CAR...");
+					if (format === "human") console.error("⏳ Bundling into CAR...");
 					const bundleResult = await bundleAndUpload(
 						[{ id: segId, data: segmentBytes }],
 						store.storage,
 					);
 					resultId = bundleResult.segmentCids.get(segId) ?? segId;
 					batchForManifest = bundleResult.batch;
-					if (format !== "quiet")
+					if (format === "human")
 						console.error(
 							`   Segment bundled: ${resultId.slice(0, 16)}... (PieceCID: ${bundleResult.batch.pieceCid.slice(0, 16)}...)`,
 						);
 				} else {
 					const segmentResult = await store.storage.upload(segmentBytes);
 					resultId = segmentResult.id;
-					if (format !== "quiet") console.error(`   Segment stored: ${resultId.slice(0, 16)}...`);
+					if (format === "human") console.error(`   Segment stored: ${resultId.slice(0, 16)}...`);
 				}
 
 				// Re-read head for each batch to avoid manifest conflicts
@@ -532,7 +532,7 @@ export function registerIngestCommand(program: Command): void {
 					}
 					batch.push(chunk);
 					if (batch.length >= maxBatch) {
-						if (format !== "quiet")
+						if (format === "human")
 							console.error(`   ${totalChunksIngested + batch.length} chunks so far...`);
 						await flushBatch(batch);
 						batch = [];
@@ -608,7 +608,7 @@ export function registerIngestCommand(program: Command): void {
 						const oldDocId = `${repo}/${oldPath}`;
 						renameDocument(catalog, oldDocId);
 					}
-					if (format !== "quiet" && renames.length > 0) {
+					if (format === "human" && renames.length > 0) {
 						console.error(`   📋 ${renames.length} renamed file(s) archived in catalog`);
 					}
 				}
@@ -617,7 +617,7 @@ export function registerIngestCommand(program: Command): void {
 				if (totalArchived > 0) {
 					await writeArchiveIndex(arcPath, archiveIndex);
 				}
-				if (format !== "quiet" && (totalDocsSuperseded > 0 || totalArchived > 0)) {
+				if (format === "human" && (totalDocsSuperseded > 0 || totalArchived > 0)) {
 					const parts: string[] = [];
 					if (catalogPendingChunks.size > 0)
 						parts.push(`${catalogPendingChunks.size} documents tracked`);
@@ -628,11 +628,11 @@ export function registerIngestCommand(program: Command): void {
 			}
 
 			if (totalChunksIngested === 0 && totalChunksSkipped === 0) {
-				if (format !== "quiet") console.error("⚠️  No chunks produced — skipping upload");
+				if (format === "human") console.error("⚠️  No chunks produced — skipping upload");
 				return;
 			}
 
-			if (format !== "quiet") {
+			if (format === "human") {
 				const parts = [`${totalChunksIngested} chunks`];
 				if (batchNumber > 1) parts[0] += ` (${batchNumber} batches)`;
 				if (rechunkedCount > 0) parts.push(`${rechunkedCount} from oversized splits`);
@@ -647,7 +647,7 @@ export function registerIngestCommand(program: Command): void {
 			// Persist cursor after successful ingest (FR-001, FR-004: only on success)
 			// IMPORTANT: Don't advance cursor when filter flags are active — partial runs
 			// should not skip unprocessed changes on the next full ingest
-			if (isPartialRun && format !== "quiet") {
+			if (isPartialRun && format === "human") {
 				console.error("   ⚠️  Partial run (filter flags active) — cursor not advanced");
 			}
 
@@ -678,7 +678,7 @@ export function registerIngestCommand(program: Command): void {
 					chunksIngested: totalChunksIngested,
 				};
 				await writeCursors(cursorPath, updatedCursors);
-				if (format !== "quiet") {
+				if (format === "human") {
 					console.error(`   Saved cursor for next run: ${nextCursorValue}`);
 				}
 			}

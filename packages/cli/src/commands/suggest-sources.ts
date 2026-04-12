@@ -18,7 +18,7 @@ export function registerSuggestSourcesCommand(program: Command): void {
 				process.exit(1);
 			}
 
-			if (format !== "quiet") console.error("⏳ Scanning collection for external references...");
+			if (format === "human") console.error("⏳ Scanning collection for external references...");
 
 			// Track what's already ingested
 			const ingestedRepos = new Set<string>();

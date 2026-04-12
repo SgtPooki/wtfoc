@@ -36,7 +36,7 @@ export function registerMaterializeEdgesCommand(program: Command): void {
 			const overlay = await readOverlayEdges(overlayPath);
 
 			if (!overlay || overlay.edges.length === 0) {
-				if (format !== "quiet") {
+				if (format === "human") {
 					console.error(
 						`No overlay edges found for "${opts.collection}". Run extract-edges first.`,
 					);
@@ -44,7 +44,7 @@ export function registerMaterializeEdgesCommand(program: Command): void {
 				return;
 			}
 
-			if (format !== "quiet") {
+			if (format === "human") {
 				console.error(
 					`🔗 Materializing ${overlay.edges.length} overlay edges into ${head.manifest.segments.length} segments`,
 				);
@@ -151,7 +151,7 @@ export function registerMaterializeEdgesCommand(program: Command): void {
 					chunkCount: segSummary.chunkCount,
 				});
 
-				if (format !== "quiet") {
+				if (format === "human") {
 					console.error(
 						`   ✅ Segment ${segSummary.id.slice(0, 16)}... → ${result.id.slice(0, 16)}... (+${relevantOverlay.length} edges)`,
 					);
@@ -160,7 +160,7 @@ export function registerMaterializeEdgesCommand(program: Command): void {
 
 			// Handle orphan overlay edges (sourceId doesn't match any segment chunk)
 			const orphanEdges = overlay.edges.filter((e) => !placedEdgeKeys.has(edgeKey(e)));
-			if (orphanEdges.length > 0 && format !== "quiet") {
+			if (orphanEdges.length > 0 && format === "human") {
 				console.error(
 					`   ⚠️  ${orphanEdges.length} overlay edges couldn't be placed (sourceId not in any segment)`,
 				);
@@ -194,7 +194,7 @@ export function registerMaterializeEdgesCommand(program: Command): void {
 						orphanEdges: orphanEdges.length,
 					}),
 				);
-			} else if (format !== "quiet") {
+			} else if (format === "human") {
 				console.error(`\n✅ Materialized ${totalEdgesMerged} overlay edges into segments`);
 				console.error(`   ${newSegmentRefs.length} segments rebuilt with merged edges`);
 				if (orphanEdges.length > 0) {

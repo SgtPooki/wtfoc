@@ -167,7 +167,7 @@ export function registerThemesCommand(program: Command): void {
 				return;
 			}
 
-			if (format !== "quiet") console.error("Loading collection...");
+			if (format === "human") console.error("Loading collection...");
 			const { segments } = await loadCollection(store, head.manifest);
 
 			const idToContent = new Map<string, string>();
@@ -197,7 +197,7 @@ export function registerThemesCommand(program: Command): void {
 			// Check if stored snapshot is still fresh (skip expensive recompute)
 			const stored = head.manifest.themes;
 			if (stored && !opts.force && isSnapshotFresh(stored, ids.length, filteredCount, threshold)) {
-				if (format !== "quiet") console.error("Themes are up to date (use --force to recompute).");
+				if (format === "human") console.error("Themes are up to date (use --force to recompute).");
 				if (format === "json") {
 					console.log(JSON.stringify(stored, null, "\t"));
 					return;
@@ -207,7 +207,7 @@ export function registerThemesCommand(program: Command): void {
 				return;
 			}
 
-			if (format !== "quiet") {
+			if (format === "human") {
 				const filterMsg = filteredCount > 0 ? `, ${filteredCount} config chunks filtered` : "";
 				console.error(`Clustering ${ids.length} chunks (threshold=${threshold}${filterMsg})...`);
 			}
@@ -234,7 +234,7 @@ export function registerThemesCommand(program: Command): void {
 			let noiseCategories: Array<{ name: string; count: number; description: string }> = [];
 			if (llmConfig.enabled) {
 				const enabledConfig = llmConfig as LlmExtractorEnabled;
-				if (format !== "quiet") console.error("Generating LLM labels...");
+				if (format === "human") console.error("Generating LLM labels...");
 
 				const clusterRequests = result.clusters.map((c) => ({
 					clusterId: c.id,
@@ -250,7 +250,7 @@ export function registerThemesCommand(program: Command): void {
 				}
 
 				if (result.noise.length > 0) {
-					if (format !== "quiet") console.error("Summarizing noise...");
+					if (format === "human") console.error("Summarizing noise...");
 					const noiseContents = result.noise
 						.map((id) => idToContent.get(id))
 						.filter((s): s is string => s !== undefined);
@@ -288,7 +288,7 @@ export function registerThemesCommand(program: Command): void {
 					updatedAt: new Date().toISOString(),
 				};
 				await store.manifests.putHead(opts.collection, updatedManifest, head.headId);
-				if (format !== "quiet") console.error("Themes persisted to collection manifest.");
+				if (format === "human") console.error("Themes persisted to collection manifest.");
 			}
 
 			if (format === "json") {
