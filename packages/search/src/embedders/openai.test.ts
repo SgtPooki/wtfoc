@@ -87,11 +87,137 @@ describe("OpenAIEmbedder", () => {
 		await expect(embedder.embed("test")).rejects.toThrow(EmbedFailedError);
 	});
 
-	it("throws EmbedFailedError on network failure", async () => {
+	it("throws EmbedFailedError on network failure when retries disabled", async () => {
 		vi.mocked(globalThis.fetch).mockRejectedValueOnce(new Error("network down"));
 
-		const embedder = new OpenAIEmbedder({ apiKey: "test-key" });
+		const embedder = new OpenAIEmbedder({ apiKey: "test-key", maxRetries: 0 });
 		await expect(embedder.embed("test")).rejects.toThrow(EmbedFailedError);
+	});
+
+	it("retries on network error then succeeds", async () => {
+		const embedding = Array.from({ length: 8 }, () => 0.1);
+		vi.mocked(globalThis.fetch)
+			.mockRejectedValueOnce(new Error("ECONNRESET"))
+			.mockResolvedValueOnce(mockResponse([{ embedding, index: 0 }]));
+
+		const embedder = new OpenAIEmbedder({
+			apiKey: "test-key",
+			maxRetries: 2,
+			initialDelayMs: 1,
+			maxDelayMs: 2,
+		});
+		const result = await embedder.embed("test");
+		expect(result.length).toBe(8);
+		expect(vi.mocked(globalThis.fetch).mock.calls.length).toBe(2);
+	});
+
+	it("retries on HTTP 429 honoring Retry-After", async () => {
+		const embedding = Array.from({ length: 8 }, () => 0.2);
+		vi.mocked(globalThis.fetch)
+			.mockResolvedValueOnce(
+				new Response("Rate limited", {
+					status: 429,
+					headers: { "retry-after": "0" },
+				}),
+			)
+			.mockResolvedValueOnce(mockResponse([{ embedding, index: 0 }]));
+
+		const embedder = new OpenAIEmbedder({
+			apiKey: "test-key",
+			maxRetries: 2,
+			initialDelayMs: 1,
+		});
+		const result = await embedder.embed("test");
+		expect(result.length).toBe(8);
+		expect(vi.mocked(globalThis.fetch).mock.calls.length).toBe(2);
+	});
+
+	it("retries on HTTP 503 with exponential backoff", async () => {
+		const embedding = Array.from({ length: 8 }, () => 0.3);
+		vi.mocked(globalThis.fetch)
+			.mockResolvedValueOnce(new Response("", { status: 503 }))
+			.mockResolvedValueOnce(new Response("", { status: 503 }))
+			.mockResolvedValueOnce(mockResponse([{ embedding, index: 0 }]));
+
+		const embedder = new OpenAIEmbedder({
+			apiKey: "test-key",
+			maxRetries: 3,
+			initialDelayMs: 1,
+			maxDelayMs: 2,
+		});
+		const result = await embedder.embed("test");
+		expect(result.length).toBe(8);
+		expect(vi.mocked(globalThis.fetch).mock.calls.length).toBe(3);
+	});
+
+	it("retries OpenRouter-style 200-with-error provider failure", async () => {
+		const embedding = Array.from({ length: 8 }, () => 0.4);
+		vi.mocked(globalThis.fetch)
+			.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({
+						error: { message: "No successful provider responses.", code: 404 },
+					}),
+					{ status: 200, headers: { "Content-Type": "application/json" } },
+				),
+			)
+			.mockResolvedValueOnce(mockResponse([{ embedding, index: 0 }]));
+
+		const embedder = new OpenAIEmbedder({
+			apiKey: "test-key",
+			maxRetries: 2,
+			initialDelayMs: 1,
+			maxDelayMs: 2,
+			providerErrorBaseDelayMs: 1,
+		});
+		const result = await embedder.embed("test");
+		expect(result.length).toBe(8);
+		expect(vi.mocked(globalThis.fetch).mock.calls.length).toBe(2);
+	});
+
+	it("does not retry on HTTP 401", async () => {
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+			new Response("Unauthorized", { status: 401 }),
+		);
+
+		const embedder = new OpenAIEmbedder({
+			apiKey: "bad-key",
+			maxRetries: 3,
+			initialDelayMs: 1,
+		});
+		await expect(embedder.embed("test")).rejects.toThrow(EmbedFailedError);
+		expect(vi.mocked(globalThis.fetch).mock.calls.length).toBe(1);
+	});
+
+	it("enforces minRequestIntervalMs between successive requests", async () => {
+		const embedding = Array.from({ length: 4 }, () => 0.5);
+		vi.mocked(globalThis.fetch).mockImplementation(async () =>
+			mockResponse([{ embedding, index: 0 }]),
+		);
+
+		const embedder = new OpenAIEmbedder({
+			apiKey: "test-key",
+			minRequestIntervalMs: 100,
+		});
+		const t0 = Date.now();
+		await embedder.embed("a");
+		await embedder.embed("b");
+		const elapsed = Date.now() - t0;
+		// Second request must wait ~100ms after the first
+		expect(elapsed).toBeGreaterThanOrEqual(95);
+	});
+
+	it("exhausts retries and throws EmbedFailedError", async () => {
+		vi.mocked(globalThis.fetch).mockResolvedValue(new Response("", { status: 503 }));
+
+		const embedder = new OpenAIEmbedder({
+			apiKey: "test-key",
+			maxRetries: 2,
+			initialDelayMs: 1,
+			maxDelayMs: 2,
+		});
+		await expect(embedder.embed("test")).rejects.toThrow(EmbedFailedError);
+		expect(vi.mocked(globalThis.fetch).mock.calls.length).toBe(3);
 	});
 
 	it("supports custom base URL", async () => {

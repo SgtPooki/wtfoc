@@ -22,6 +22,8 @@ export interface EmbedderOpts {
 	embedderUrl?: string;
 	embedderKey?: string;
 	embedderModel?: string;
+	embedderRateLimit?: string;
+	embedderMaxRetries?: string;
 }
 
 export type LoadedCollection = MountedCollection;
@@ -50,7 +52,15 @@ export function withEmbedderOptions<T extends Command>(cmd: T): T {
 		)
 		.option("--embedder-url <url>", "Embedder API URL (or shortcut: lmstudio, ollama)")
 		.option("--embedder-key <key>", "Embedder API key")
-		.option("--embedder-model <model>", "Embedder model name") as T;
+		.option("--embedder-model <model>", "Embedder model name")
+		.option(
+			"--embedder-rate-limit <rpm>",
+			"Max requests per minute (pre-emptive pacing for rate-limited APIs)",
+		)
+		.option(
+			"--embedder-max-retries <n>",
+			"Max retries on 429/5xx/transient provider errors (default: 8)",
+		) as T;
 }
 
 export function withExtractorOptions<T extends Command>(cmd: T): T {
@@ -140,6 +150,8 @@ export function createEmbedder(
 		embedderUrl?: string;
 		embedderKey?: string;
 		embedderModel?: string;
+		embedderRateLimit?: string;
+		embedderMaxRetries?: string;
 	},
 	resolvedConfig?: ResolvedEmbedderConfig,
 ): { embedder: Embedder; modelName: string } {
@@ -176,6 +188,15 @@ export function createEmbedder(
 			process.exit(2);
 		}
 
+		const rateLimitRpm = opts.embedderRateLimit
+			? Number.parseFloat(opts.embedderRateLimit)
+			: undefined;
+		const minRequestIntervalMs =
+			rateLimitRpm && rateLimitRpm > 0 ? Math.ceil(60_000 / rateLimitRpm) : undefined;
+		const maxRetries = opts.embedderMaxRetries
+			? Number.parseInt(opts.embedderMaxRetries, 10)
+			: undefined;
+
 		const embedder = new OpenAIEmbedder({
 			apiKey: key,
 			baseUrl,
@@ -183,6 +204,8 @@ export function createEmbedder(
 			dimensions,
 			requestDimensions: explicitDimensions,
 			prefix,
+			minRequestIntervalMs,
+			maxRetries,
 		});
 		return { embedder, modelName: model };
 	}
