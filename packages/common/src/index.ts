@@ -59,7 +59,14 @@ export type {
 	VectorEntry,
 	VectorIndex,
 } from "./interfaces/vector-index.js";
-export type { Chunk } from "./schemas/chunk.js";
+export type {
+	Chunk,
+	DocumentCatalog,
+	DocumentCatalogEntry,
+	DocumentLifecycleState,
+	DocumentMutability,
+	StructuredEvidence,
+} from "./schemas/chunk.js";
 export type { Edge } from "./schemas/edge.js";
 export type {
 	ArtifactRole,

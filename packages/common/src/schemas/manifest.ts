@@ -184,6 +184,12 @@ export interface Segment {
 		timestamp?: string;
 		metadata: Record<string, string>;
 		signalScores?: Record<string, number>;
+		/** Stable logical key for the source document */
+		documentId?: string;
+		/** Version token for this version of the document */
+		documentVersionId?: string;
+		/** SHA-256 of content — for compute dedup across versions */
+		contentFingerprint?: string;
 	}>;
 	edges: Array<{
 		type: string;
@@ -192,5 +198,7 @@ export interface Segment {
 		targetId: string;
 		evidence: string;
 		confidence: number;
+		provenance?: string[];
+		structuredEvidence?: import("./chunk.js").StructuredEvidence;
 	}>;
 }

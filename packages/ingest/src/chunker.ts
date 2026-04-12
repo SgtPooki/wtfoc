@@ -17,10 +17,26 @@ export interface MarkdownChunkerOptions {
 	timestamp?: string;
 	/** Merged into each chunk's `metadata`. */
 	metadata?: Record<string, string>;
+	/** Stable logical key for the source document */
+	documentId?: string;
+	/** Version token for this specific version of the document */
+	documentVersionId?: string;
 }
 
-function sha256Hex(content: string): string {
+export function sha256Hex(content: string): string {
 	return createHash("sha256").update(content, "utf8").digest("hex");
+}
+
+/**
+ * Compute a chunk ID that encodes document provenance when available.
+ * When documentVersionId is present: hash(documentVersionId + chunkIndex + content) — true identity.
+ * Otherwise: hash(content) — backward-compatible content-based identity.
+ */
+function computeChunkId(content: string, chunkIndex: number, documentVersionId?: string): string {
+	if (documentVersionId) {
+		return sha256Hex(`${documentVersionId}:${chunkIndex}:${content}`);
+	}
+	return sha256Hex(content);
 }
 
 function clampOverlap(overlap: number, chunkSize: number): number {
@@ -132,17 +148,24 @@ export function chunkMarkdown(markdown: string, options: MarkdownChunkerOptions)
 		...(options.metadata ?? {}),
 	};
 
-	const chunks: Chunk[] = rawChunks.map((content, chunkIndex) => ({
-		id: sha256Hex(content),
-		content,
-		sourceType: "markdown",
-		source: options.source,
-		sourceUrl: options.sourceUrl,
-		timestamp: options.timestamp,
-		chunkIndex,
-		totalChunks,
-		metadata: { ...baseMeta },
-	}));
+	const chunks: Chunk[] = rawChunks.map((content, chunkIndex) => {
+		const contentFingerprint = sha256Hex(content);
+		const chunk: Chunk = {
+			id: computeChunkId(content, chunkIndex, options.documentVersionId),
+			content,
+			sourceType: "markdown",
+			source: options.source,
+			sourceUrl: options.sourceUrl,
+			timestamp: options.timestamp,
+			chunkIndex,
+			totalChunks,
+			metadata: { ...baseMeta },
+			contentFingerprint,
+		};
+		if (options.documentId) chunk.documentId = options.documentId;
+		if (options.documentVersionId) chunk.documentVersionId = options.documentVersionId;
+		return chunk;
+	});
 
 	return chunks;
 }
@@ -188,12 +211,14 @@ export function rechunkOversized(chunks: Chunk[], maxChars?: number): Chunk[] {
 
 		const totalChunks = pieces.length;
 		for (const [i, content] of pieces.entries()) {
+			const contentFingerprint = sha256Hex(content);
 			result.push({
 				...chunk,
-				id: sha256Hex(content),
+				id: computeChunkId(content, i, chunk.documentVersionId),
 				content,
 				chunkIndex: i,
 				totalChunks,
+				contentFingerprint,
 				metadata: {
 					...chunk.metadata,
 					parentChunkId: chunk.id,

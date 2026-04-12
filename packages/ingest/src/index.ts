@@ -31,6 +31,7 @@ export {
 	DEFAULT_MAX_CHUNK_CHARS,
 	type MarkdownChunkerOptions,
 	rechunkOversized,
+	sha256Hex,
 } from "./chunker.js";
 export {
 	buildSourceKey,
@@ -41,6 +42,19 @@ export {
 	type SourceCursor,
 	writeCursors,
 } from "./cursor-store.js";
+export {
+	archiveDocument,
+	catalogFilePath,
+	createEmptyCatalog,
+	getActiveChunkIds,
+	getChunkIdsByState,
+	getDocument,
+	readCatalog,
+	renameDocument,
+	type UpdateDocumentOptions,
+	updateDocument,
+	writeCatalog,
+} from "./document-catalog.js";
 export { CodeEdgeExtractor } from "./edges/code.js";
 export { CompositeEdgeExtractor } from "./edges/composite.js";
 export { extractPackageJsonDeps, extractRequirementsTxtDeps } from "./edges/dependency-parser.js";

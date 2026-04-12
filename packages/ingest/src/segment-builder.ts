@@ -45,16 +45,24 @@ export function buildSegment(
 			if (c.signalScores && Object.keys(c.signalScores).length > 0) {
 				entry.signalScores = c.signalScores;
 			}
+			if (c.chunk.documentId) entry.documentId = c.chunk.documentId;
+			if (c.chunk.documentVersionId) entry.documentVersionId = c.chunk.documentVersionId;
+			if (c.chunk.contentFingerprint) entry.contentFingerprint = c.chunk.contentFingerprint;
 			return entry;
 		}),
-		edges: edges.map((e) => ({
-			type: e.type,
-			sourceId: e.sourceId,
-			targetType: e.targetType,
-			targetId: e.targetId,
-			evidence: e.evidence,
-			confidence: e.confidence,
-		})),
+		edges: edges.map((e) => {
+			const segEdge: Segment["edges"][number] = {
+				type: e.type,
+				sourceId: e.sourceId,
+				targetType: e.targetType,
+				targetId: e.targetId,
+				evidence: e.evidence,
+				confidence: e.confidence,
+			};
+			if (e.provenance) segEdge.provenance = e.provenance;
+			if (e.structuredEvidence) segEdge.structuredEvidence = e.structuredEvidence;
+			return segEdge;
+		}),
 	};
 }
 

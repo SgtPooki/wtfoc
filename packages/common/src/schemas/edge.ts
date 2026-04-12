@@ -1,7 +1,9 @@
+import type { StructuredEvidence } from "./chunk.js";
+
 /**
  * A typed, evidence-backed connection between artifacts across sources.
  *
- * Built-in types: 'references', 'closes', 'changes'
+ * Built-in types: 'references', 'closes', 'changes', 'supersedes', 'superseded-by'
  * Custom types welcome: 'myapp:depends-on', 'myapp:blocks', etc.
  */
 export interface Edge {
@@ -19,4 +21,6 @@ export interface Edge {
 	confidence: number;
 	/** Extractor names that contributed to this edge (e.g. ["regex", "heuristic"]) */
 	provenance?: string[];
+	/** Structured evidence with PROV-lite lineage (supplements flat evidence string) */
+	structuredEvidence?: StructuredEvidence;
 }

@@ -1,8 +1,14 @@
+/** Lifecycle state for a document version within a collection */
+export type DocumentLifecycleState = "active" | "archived" | "superseded";
+
+/** How a source handles content updates */
+export type DocumentMutability = "mutable-state" | "append-only";
+
 /**
  * A chunk of content extracted from a source, with provenance metadata.
  */
 export interface Chunk {
-	/** Deterministic content hash (SHA-256 of content) — used as dedup key */
+	/** Chunk identity — hash(documentVersionId + chunkIndex + content) when document identity is available, otherwise hash(content) for backward compat */
 	id: string;
 	/** The text content of this chunk */
 	content: string;
@@ -20,4 +26,68 @@ export interface Chunk {
 	totalChunks: number;
 	/** Additional source-specific metadata */
 	metadata: Record<string, string>;
+	/** Stable logical key for the source document (e.g. "owner/repo/path/to/file.ts", "owner/repo#42", "channel:message_ts") */
+	documentId?: string;
+	/** Version token for this specific version of the document (e.g. git blob SHA, updated_at timestamp, content hash) */
+	documentVersionId?: string;
+	/** SHA-256 of content text — used for compute dedup (skip re-embedding unchanged text) */
+	contentFingerprint?: string;
+}
+
+/**
+ * An entry in the collection-level document catalog.
+ * Tracks the lifecycle of each logical document across ingest runs.
+ */
+export interface DocumentCatalogEntry {
+	/** Stable logical key matching Chunk.documentId */
+	documentId: string;
+	/** Current version token */
+	currentVersionId: string;
+	/** Previous version tokens (most recent first) for version chain navigation */
+	previousVersionIds: string[];
+	/** Chunk IDs belonging to the current version */
+	chunkIds: string[];
+	/** Current lifecycle state */
+	state: DocumentLifecycleState;
+	/** How this source handles updates */
+	mutability: DocumentMutability;
+	/** Source type of the document */
+	sourceType: string;
+	/** When this entry was last updated */
+	updatedAt: string;
+}
+
+/**
+ * Collection-level document catalog — the filter layer for lifecycle management.
+ * Stored as a sidecar file, NOT inside immutable segments.
+ */
+export interface DocumentCatalog {
+	schemaVersion: 1;
+	/** collectionId this catalog belongs to */
+	collectionId: string;
+	/** Map of documentId → catalog entry */
+	documents: Record<string, DocumentCatalogEntry>;
+}
+
+/**
+ * Structured evidence for an edge — PROV-lite lineage.
+ * Replaces flat evidence strings for richer provenance.
+ */
+export interface StructuredEvidence {
+	/** Human-readable explanation */
+	text: string;
+	/** Raw source artifact reference (documentId or URL) */
+	sourceArtifactId?: string;
+	/** Which document version this evidence comes from */
+	documentVersionId?: string;
+	/** Byte/line range within the source */
+	chunkSpan?: string;
+	/** Which extractor produced this */
+	extractor?: string;
+	/** LLM model if applicable */
+	model?: string;
+	/** When this evidence was observed */
+	observedAt?: string;
+	/** Confidence score for this specific piece of evidence */
+	confidence?: number;
 }
