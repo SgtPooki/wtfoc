@@ -59,13 +59,16 @@ export function buildConclusion(
 	const leafIndices = new Set(
 		multiHopChains.map((c) => c.hopIndices.at(-1)).filter((i): i is number => i != null),
 	);
-	const recommendedNextReads = [...leafIndices]
-		.filter((i) => hops[i] != null)
-		.map((i) => ({
-			hopIndex: i,
-			// biome-ignore lint: index is validated by filter above
-			reason: `End of evidence chain — follow up on ${hops[i]!.sourceType}: ${hops[i]!.source}`,
-		}));
+	const recommendedNextReads: Array<{ hopIndex: number; reason: string }> = [];
+	for (const i of leafIndices) {
+		const hop = hops[i];
+		if (hop) {
+			recommendedNextReads.push({
+				hopIndex: i,
+				reason: `End of evidence chain — follow up on ${hop.sourceType}: ${hop.source}`,
+			});
+		}
+	}
 
 	const primaryHop = primary.hop;
 	if (!primaryHop) return undefined;
