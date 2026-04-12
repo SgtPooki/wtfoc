@@ -61,6 +61,8 @@ tmp/
 
 # SpecWeave
 .specweave/cache/
+.specweave/state/
+.specweave/logs/
 .specweave/increments/*/logs/
 .specweave/increments/*/test-results/
 .specweave/docs-site-internal/

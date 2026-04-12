@@ -7,7 +7,8 @@ Agent operating instructions for this repository.
 Read these first, in order:
 1. [`SPEC.md`](SPEC.md) for project-wide invariants.
 2. [`docs/principles.md`](docs/principles.md) for design principles.
-3. The nearest nested `AGENTS.md` for the package or subtree you are editing.
+3. The relevant increment in [`.specweave/increments/`](.specweave/increments/) before changing behavior.
+4. The nearest nested `AGENTS.md` for the package or subtree you are editing.
 
 **Claude Code users**: [`CLAUDE.md`](CLAUDE.md) adds specweave-specific workflow (`/sw:*` commands, increment structure, quality gates). This file (AGENTS.md) is the baseline — CLAUDE.md extends it, never overrides it.
 

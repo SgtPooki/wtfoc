@@ -6,22 +6,18 @@ wtfoc supports project-level configuration via `.wtfoc.json` and file exclusion 
 
 Create a `.wtfoc.json` file in your project root to set team/project defaults. The file is optional — all commands work without it using built-in defaults.
 
-### Schema
+### Example
 
 ```json
 {
   "embedder": {
     "url": "lmstudio",
-    "model": "nomic-embed-text",
-    "key": "optional-api-key"
+    "model": "nomic-embed-text"
   },
   "extractor": {
     "enabled": true,
     "url": "http://vllm.k8s.local:8000/v1",
-    "model": "Qwen3-32B-AWQ",
-    "apiKey": "optional-api-key",
-    "timeout": 20000,
-    "concurrency": 4
+    "model": "Qwen3-32B-AWQ"
   },
   "ignore": [
     "docs/internal/",
