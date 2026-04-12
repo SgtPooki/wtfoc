@@ -34,6 +34,14 @@ export {
 	sha256Hex,
 } from "./chunker.js";
 export {
+	CodeWindowChunker,
+	getAvailableChunkers,
+	getChunker,
+	MarkdownChunker,
+	registerChunker,
+	selectChunker,
+} from "./chunkers/index.js";
+export {
 	buildSourceKey,
 	type CursorData,
 	cursorFilePath,

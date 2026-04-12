@@ -42,6 +42,12 @@ export {
 } from "./errors.js";
 export type { ChunkScorer } from "./interfaces/chunk-scorer.js";
 export type {
+	Chunker,
+	ChunkerDocument,
+	ChunkerOptions,
+	ChunkerOutput,
+} from "./interfaces/chunker.js";
+export type {
 	Clusterer,
 	ClusterOptions,
 	ClusterRequest,
