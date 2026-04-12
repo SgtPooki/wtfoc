@@ -1,0 +1,12 @@
+{
+  "id": "0020G-ast-grep-declarative-extraction-rules-for-stable-p",
+  "type": "feature",
+  "status": "imported",
+  "priority": "P3",
+  "created": "2026-04-12T20:49:39Z",
+  "updated": "2026-04-12T20:49:39Z",
+  "origin": "external",
+  "source_platform": "github",
+  "external_ref": "github#SgtPooki/wtfoc#135",
+  "github_issue": 135
+}

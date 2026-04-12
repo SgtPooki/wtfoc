@@ -1,0 +1,12 @@
+{
+  "id": "0030G-encryption-and-access-policy-for-hosted-wtfoc-ui",
+  "type": "spec",
+  "status": "imported",
+  "priority": "P3",
+  "created": "2026-04-12T20:49:39Z",
+  "updated": "2026-04-12T20:49:39Z",
+  "origin": "external",
+  "source_platform": "github",
+  "external_ref": "github#SgtPooki/wtfoc#79",
+  "github_issue": 79
+}

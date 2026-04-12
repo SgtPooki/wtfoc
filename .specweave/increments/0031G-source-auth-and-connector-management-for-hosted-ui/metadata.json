@@ -1,0 +1,12 @@
+{
+  "id": "0031G-source-auth-and-connector-management-for-hosted-ui",
+  "type": "feature",
+  "status": "imported",
+  "priority": "P3",
+  "created": "2026-04-12T20:49:39Z",
+  "updated": "2026-04-12T20:49:39Z",
+  "origin": "external",
+  "source_platform": "github",
+  "external_ref": "github#SgtPooki/wtfoc#76",
+  "github_issue": 76
+}

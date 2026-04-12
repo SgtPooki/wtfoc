@@ -1,0 +1,12 @@
+{
+  "id": "0013G-promote-include-extraction-metadata-in-car-for-pee",
+  "type": "feature",
+  "status": "imported",
+  "priority": "P2",
+  "created": "2026-04-12T20:49:39Z",
+  "updated": "2026-04-12T20:49:39Z",
+  "origin": "external",
+  "source_platform": "github",
+  "external_ref": "github#SgtPooki/wtfoc#163",
+  "github_issue": 163
+}

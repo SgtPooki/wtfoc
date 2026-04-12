@@ -1,0 +1,12 @@
+{
+  "id": "0015G-store-rpc-provider-fallback-for-http-429-rate-limi",
+  "type": "feature",
+  "status": "imported",
+  "priority": "P2",
+  "created": "2026-04-12T20:49:39Z",
+  "updated": "2026-04-12T20:49:39Z",
+  "origin": "external",
+  "source_platform": "github",
+  "external_ref": "github#SgtPooki/wtfoc#150",
+  "github_issue": 150
+}

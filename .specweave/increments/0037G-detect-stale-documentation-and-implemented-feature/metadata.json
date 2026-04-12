@@ -1,0 +1,12 @@
+{
+  "id": "0037G-detect-stale-documentation-and-implemented-feature",
+  "type": "feature",
+  "status": "imported",
+  "priority": "P2",
+  "created": "2026-04-12T20:49:39Z",
+  "updated": "2026-04-12T20:49:39Z",
+  "origin": "external",
+  "source_platform": "github",
+  "external_ref": "github#SgtPooki/wtfoc#58",
+  "github_issue": 58
+}

@@ -82,6 +82,12 @@
   "sync": {
     "enabled": true,
     "autoSync": true,
+    "preset": "bidirectional",
+    "github": {
+      "enabled": true,
+      "owner": "SgtPooki",
+      "repo": "wtfoc"
+    },
     "settings": {
       "canUpsertInternalItems": true,
       "canUpdateExternalItems": true,

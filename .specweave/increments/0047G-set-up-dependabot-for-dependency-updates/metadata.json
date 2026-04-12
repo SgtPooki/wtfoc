@@ -1,0 +1,12 @@
+{
+  "id": "0047G-set-up-dependabot-for-dependency-updates",
+  "type": "feature",
+  "status": "imported",
+  "priority": "P2",
+  "created": "2026-04-12T20:49:39Z",
+  "updated": "2026-04-12T20:49:39Z",
+  "origin": "external",
+  "source_platform": "github",
+  "external_ref": "github#SgtPooki/wtfoc#35",
+  "github_issue": 35
+}
