@@ -30,6 +30,8 @@ export function formatTrace(result: TraceResult, format: OutputFormat, view?: Tr
 			return formatTraceTimeline(result);
 		case "evidence":
 			return formatTraceEvidence(result);
+		default:
+			return formatTraceEvidence(result);
 	}
 }
 
@@ -39,7 +41,7 @@ function formatHopLine(hop: TraceHop): string[] {
 	const score = hop.connection.confidence.toFixed(2);
 	lines.push(`  [${score}] ${hop.source}`);
 	lines.push(`         ${snippet}${hop.content.length > 120 ? "..." : ""}`);
-	if (hop.connection.method === "edge") {
+	if (hop.connection.method === "edge" && hop.connection.edgeType) {
 		lines.push(`         🔗 ${hop.connection.edgeType}: ${hop.connection.evidence ?? ""}`);
 	}
 	if (hop.sourceUrl) {
