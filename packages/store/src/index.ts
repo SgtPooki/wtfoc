@@ -24,7 +24,7 @@ export {
 export { computeRevisionDiff, generateContentIdentity, type RevisionDiff } from "./diff.js";
 export type { Store, StoreConfig } from "./factory.js";
 export { createStore } from "./factory.js";
-export { LocalManifestStore } from "./manifest/local.js";
+export { LocalManifestStore, validateCollectionName } from "./manifest/local.js";
 export { deserializeRevision, serializeRevision } from "./revision.js";
 export {
 	MAX_SUPPORTED_SCHEMA_VERSION,
