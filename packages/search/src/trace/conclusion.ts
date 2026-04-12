@@ -43,8 +43,10 @@ export function buildConclusion(
 			summary: `${hop.sourceType}: ${hop.source} (${hop.connection.edgeType})`,
 		}));
 
-	// Related context: hops not in any chain
-	const hopsInChains = new Set(chains.flatMap((c) => c.hopIndices));
+	// Related context: hops not in any multi-hop chain (2+ hops).
+	// Single-hop roots are "related context", not meaningful chains.
+	const multiHopChains = chains.filter((c) => c.hopIndices.length >= 2);
+	const hopsInChains = new Set(multiHopChains.flatMap((c) => c.hopIndices));
 	const relatedContext = hops
 		.map((hop, i) => ({ hop, i }))
 		.filter(({ i }) => !hopsInChains.has(i))
@@ -53,8 +55,8 @@ export function buildConclusion(
 			summary: `${hop.sourceType}: ${hop.source}`,
 		}));
 
-	// Recommended next reads: leaf hops of chains (last hop in each chain)
-	const leafIndices = new Set(chains.map((c) => c.hopIndices[c.hopIndices.length - 1]));
+	// Recommended next reads: leaf hops of multi-hop chains
+	const leafIndices = new Set(multiHopChains.map((c) => c.hopIndices[c.hopIndices.length - 1]));
 	const recommendedNextReads = [...leafIndices].map((i) => ({
 		hopIndex: i,
 		reason: `End of evidence chain — follow up on ${hops[i].sourceType}: ${hops[i].source}`,

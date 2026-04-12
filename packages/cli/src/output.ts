@@ -111,7 +111,9 @@ export function formatTraceLineage(result: TraceResult): string {
 		return lines.join("\n");
 	}
 
-	const chains = result.lineageChains;
+	// Only show chains with 2+ hops (real traversals). Single-hop seeds go to Related Context.
+	// Follows the pattern from insights.ts detectEvidenceChains (3+ source types for insights).
+	const chains = result.lineageChains.filter((c) => c.hopIndices.length >= 2);
 	const hopsInChains = new Set<number>();
 
 	for (let ci = 0; ci < chains.length; ci++) {
