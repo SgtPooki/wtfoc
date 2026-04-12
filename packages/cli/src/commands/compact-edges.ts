@@ -33,15 +33,8 @@ export function registerCompactEdgesCommand(program: Command): void {
 				return;
 			}
 
-			// No-op: only 1 layer (nothing to merge)
-			if (layers.length === 1 && !opts.dryRun) {
-				if (format === "json") {
-					console.log(JSON.stringify({ noop: true, reason: "single-layer", inputLayers: 1 }));
-				} else if (format !== "quiet") {
-					console.error("Only 1 layer — nothing to compact.");
-				}
-				return;
-			}
+			// Even 1 layer benefits from compaction — it prunes orphan edges
+			// whose source chunks were removed by reingest/reindex.
 
 			if (format !== "quiet") {
 				console.error(`⏳ Loading ${layers.length} derived edge layers...`);
