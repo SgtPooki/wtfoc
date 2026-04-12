@@ -24,8 +24,8 @@ describe("buildLineageChains", () => {
 		];
 		const chains = buildLineageChains(hops);
 		expect(chains).toHaveLength(2);
-		expect(chains[0].hopIndices).toEqual([0]);
-		expect(chains[1].hopIndices).toEqual([1]);
+		expect(chains.at(0)?.hopIndices).toEqual([0]);
+		expect(chains.at(1)?.hopIndices).toEqual([1]);
 	});
 
 	it("reconstructs a linear chain from parentHopIndex links", () => {
@@ -36,11 +36,15 @@ describe("buildLineageChains", () => {
 			makeHop({ sourceType: "code", parentHopIndex: 2 }),
 		];
 		const chains = buildLineageChains(hops);
-		// Should produce one chain: 0 → 1 → 2 → 3
 		expect(chains).toHaveLength(1);
-		expect(chains[0].hopIndices).toEqual([0, 1, 2, 3]);
-		expect(chains[0].typeSequence).toEqual(["slack-message", "github-issue", "github-pr", "code"]);
-		expect(chains[0].sourceTypeDiversity).toBe(4);
+		expect(chains.at(0)?.hopIndices).toEqual([0, 1, 2, 3]);
+		expect(chains.at(0)?.typeSequence).toEqual([
+			"slack-message",
+			"github-issue",
+			"github-pr",
+			"code",
+		]);
+		expect(chains.at(0)?.sourceTypeDiversity).toBe(4);
 	});
 
 	it("produces separate chains for branching DFS trees", () => {
@@ -51,9 +55,7 @@ describe("buildLineageChains", () => {
 			makeHop({ sourceType: "code", parentHopIndex: 1 }), // 3: child of 1 (branch B leaf)
 		];
 		const chains = buildLineageChains(hops);
-		// Two chains: 0→1→2 and 0→1→3
 		expect(chains).toHaveLength(2);
-		// Sorted by length desc (both length 3), then by diversity
 		const chainPaths = chains.map((c) => c.hopIndices);
 		expect(chainPaths).toContainEqual([0, 1, 2]);
 		expect(chainPaths).toContainEqual([0, 1, 3]);
@@ -67,10 +69,8 @@ describe("buildLineageChains", () => {
 		];
 		const chains = buildLineageChains(hops);
 		expect(chains).toHaveLength(1);
-		// "github-pr" appears twice consecutively → deduplicated
-		expect(chains[0].typeSequence).toEqual(["github-pr", "code"]);
-		// But sourceTypeDiversity counts unique types
-		expect(chains[0].sourceTypeDiversity).toBe(2);
+		expect(chains.at(0)?.typeSequence).toEqual(["github-pr", "code"]);
+		expect(chains.at(0)?.sourceTypeDiversity).toBe(2);
 	});
 
 	it("sorts chains by length descending, then diversity descending", () => {
@@ -81,8 +81,8 @@ describe("buildLineageChains", () => {
 			makeHop({ sourceType: "code" }), // 3: root B (chain B: length 1, diversity 1)
 		];
 		const chains = buildLineageChains(hops);
-		expect(chains[0].hopIndices).toEqual([0, 1, 2]); // longer chain first
-		expect(chains[1].hopIndices).toEqual([3]); // shorter chain second
+		expect(chains.at(0)?.hopIndices).toEqual([0, 1, 2]);
+		expect(chains.at(1)?.hopIndices).toEqual([3]);
 	});
 
 	it("handles unknown sourceTypes as-is", () => {
@@ -91,6 +91,6 @@ describe("buildLineageChains", () => {
 			makeHop({ sourceType: "custom-adapter-v2", parentHopIndex: 0 }),
 		];
 		const chains = buildLineageChains(hops);
-		expect(chains[0].typeSequence).toEqual(["custom-adapter", "custom-adapter-v2"]);
+		expect(chains.at(0)?.typeSequence).toEqual(["custom-adapter", "custom-adapter-v2"]);
 	});
 });

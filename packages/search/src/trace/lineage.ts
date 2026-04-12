@@ -21,7 +21,9 @@ export function buildLineageChains(hops: TraceHop[]): LineageChain[] {
 	const roots: number[] = [];
 
 	for (let i = 0; i < hops.length; i++) {
-		const parent = hops[i].parentHopIndex;
+		const hop = hops[i];
+		if (!hop) continue;
+		const parent = hop.parentHopIndex;
 		if (parent == null) {
 			roots.push(i);
 		} else {
@@ -62,7 +64,7 @@ export function buildLineageChains(hops: TraceHop[]): LineageChain[] {
 }
 
 function buildChain(hopIndices: number[], hops: TraceHop[]): LineageChain {
-	const types = hopIndices.map((i) => hops[i].sourceType);
+	const types = hopIndices.map((i) => hops[i]?.sourceType ?? "unknown");
 	const uniqueTypes = new Set(types);
 
 	// Deduplicate consecutive types

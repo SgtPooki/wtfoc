@@ -56,16 +56,24 @@ export function buildConclusion(
 		}));
 
 	// Recommended next reads: leaf hops of multi-hop chains
-	const leafIndices = new Set(multiHopChains.map((c) => c.hopIndices[c.hopIndices.length - 1]));
-	const recommendedNextReads = [...leafIndices].map((i) => ({
-		hopIndex: i,
-		reason: `End of evidence chain — follow up on ${hops[i].sourceType}: ${hops[i].source}`,
-	}));
+	const leafIndices = new Set(
+		multiHopChains.map((c) => c.hopIndices.at(-1)).filter((i): i is number => i != null),
+	);
+	const recommendedNextReads = [...leafIndices]
+		.filter((i) => hops[i] != null)
+		.map((i) => ({
+			hopIndex: i,
+			// biome-ignore lint: index is validated by filter above
+			reason: `End of evidence chain — follow up on ${hops[i]!.sourceType}: ${hops[i]!.source}`,
+		}));
+
+	const primaryHop = primary.hop;
+	if (!primaryHop) return undefined;
 
 	return {
 		primaryArtifact: {
 			hopIndex: primary.i,
-			summary: `${primary.hop.sourceType}: ${primary.hop.source}`,
+			summary: `${primaryHop.sourceType}: ${primaryHop.source}`,
 		},
 		candidateFixes,
 		relatedContext,

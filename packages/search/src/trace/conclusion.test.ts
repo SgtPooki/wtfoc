@@ -60,8 +60,8 @@ describe("buildConclusion", () => {
 		];
 		const conclusion = buildConclusion(hops, []);
 		expect(conclusion?.candidateFixes).toHaveLength(2);
-		expect(conclusion?.candidateFixes[0].hopIndex).toBe(1);
-		expect(conclusion?.candidateFixes[1].hopIndex).toBe(2);
+		expect(conclusion?.candidateFixes.at(0)?.hopIndex).toBe(1);
+		expect(conclusion?.candidateFixes.at(1)?.hopIndex).toBe(2);
 	});
 
 	it("excludes semantic hops from candidateFixes even if they look like fixes", () => {
@@ -91,7 +91,7 @@ describe("buildConclusion", () => {
 		];
 		const conclusion = buildConclusion(hops, chains);
 		expect(conclusion?.relatedContext).toHaveLength(1);
-		expect(conclusion?.relatedContext[0].hopIndex).toBe(2);
+		expect(conclusion?.relatedContext.at(0)?.hopIndex).toBe(2);
 	});
 
 	it("populates recommendedNextReads from chain leaf hops", () => {
@@ -109,7 +109,7 @@ describe("buildConclusion", () => {
 		];
 		const conclusion = buildConclusion(hops, chains);
 		expect(conclusion?.recommendedNextReads).toHaveLength(1);
-		expect(conclusion?.recommendedNextReads[0].hopIndex).toBe(2);
+		expect(conclusion?.recommendedNextReads.at(0)?.hopIndex).toBe(2);
 	});
 
 	it("returns conclusion with empty candidateFixes when no fix edges exist", () => {

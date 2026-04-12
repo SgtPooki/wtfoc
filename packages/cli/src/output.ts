@@ -118,13 +118,16 @@ export function formatTraceLineage(result: TraceResult): string {
 
 	for (let ci = 0; ci < chains.length; ci++) {
 		const chain = chains[ci];
+		if (!chain) continue;
 		const typeHeader = chain.typeSequence.join(" → ");
 		lines.push(`Chain ${ci + 1} (${typeHeader})`);
 
 		for (let si = 0; si < chain.hopIndices.length; si++) {
 			const hopIdx = chain.hopIndices[si];
+			if (hopIdx == null) continue;
 			hopsInChains.add(hopIdx);
 			const hop = result.hops[hopIdx];
+			if (!hop) continue;
 			const icon = sourceIcons[hop.sourceType] ?? "📎";
 			const snippet = hop.content.slice(0, 120).replace(/\n/g, " ");
 			const score = hop.connection.confidence.toFixed(2);
