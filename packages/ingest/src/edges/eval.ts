@@ -343,17 +343,22 @@ export async function runEdgeEval(options: EvalOptions): Promise<EvalReport> {
 	};
 
 	const batchResults = await Promise.allSettled(
-		batches.map(async (batch) => {
+		batches.map(async (batch, batchIndex) => {
 			await acquire();
 			try {
 				const messages = buildExtractionMessages(batch);
+				console.log(
+					`[eval] Batch ${batchIndex + 1}/${batches.length}: ${batch.length} chunks, sending to LLM...`,
+				);
 				const response = await chatCompletion(messages, options);
 				if (response.usage) {
 					totalPromptTokens += response.usage.prompt_tokens;
 					totalCompletionTokens += response.usage.completion_tokens;
 				}
 				const parsed = parseJsonResponse<RawLlmEdge[]>(response.content);
-				return Array.isArray(parsed) ? parsed : [];
+				const edges = Array.isArray(parsed) ? parsed : [];
+				console.log(`[eval] Batch ${batchIndex + 1}: ${edges.length} raw edges extracted`);
+				return edges;
 			} finally {
 				release();
 			}
@@ -361,6 +366,9 @@ export async function runEdgeEval(options: EvalOptions): Promise<EvalReport> {
 	);
 
 	for (const result of batchResults) {
+		if (result.status === "rejected") {
+			console.error(`[eval] Batch failed: ${result.reason}`);
+		}
 		if (result.status === "fulfilled") {
 			allRawLlmEdges.push(...result.value);
 		}
