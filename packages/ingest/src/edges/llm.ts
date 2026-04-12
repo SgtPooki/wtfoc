@@ -196,9 +196,17 @@ export class LlmEdgeExtractor implements EdgeExtractor {
 		const messages = buildExtractionMessages(chunks);
 
 		const response = await chatCompletion(messages, this.#options, signal);
+
 		const rawEdges = parseJsonResponse<RawEdge[]>(response.content);
 
-		if (!Array.isArray(rawEdges)) return [];
+		if (!Array.isArray(rawEdges)) {
+			if (response.content.trim().length > 0) {
+				console.error(
+					`[wtfoc] LLM response not parseable as array (${response.content.length} chars): ${response.content.slice(0, 200)}`,
+				);
+			}
+			return [];
+		}
 
 		const validChunkIds = new Set(chunks.map((c) => c.id));
 		const edges: Edge[] = [];

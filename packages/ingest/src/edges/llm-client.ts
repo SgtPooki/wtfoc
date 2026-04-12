@@ -66,26 +66,41 @@ export async function chatCompletion(
 	}
 
 	try {
-		const response = await fetch(url, {
-			method: "POST",
-			headers,
-			body: JSON.stringify(body),
-			signal: controller.signal,
-		});
+		const maxRetries = 3;
+		for (let attempt = 0; attempt <= maxRetries; attempt++) {
+			const response = await fetch(url, {
+				method: "POST",
+				headers,
+				body: JSON.stringify(body),
+				signal: controller.signal,
+			});
 
-		if (!response.ok) {
-			const text = await response.text().catch(() => "");
-			throw new Error(`LLM request failed: ${response.status} ${response.statusText} ${text}`);
+			// Retry on rate limit with backoff
+			if (response.status === 429 && attempt < maxRetries) {
+				const retryAfter = Number(response.headers.get("Retry-After") ?? "0");
+				const waitMs = retryAfter > 0 ? retryAfter * 1000 : Math.min(10000, 2000 * 2 ** attempt);
+				console.error(
+					`[wtfoc] Rate limited (429), waiting ${(waitMs / 1000).toFixed(1)}s before retry ${attempt + 1}/${maxRetries}`,
+				);
+				await new Promise((r) => setTimeout(r, waitMs));
+				continue;
+			}
+
+			if (!response.ok) {
+				const text = await response.text().catch(() => "");
+				throw new Error(`LLM request failed: ${response.status} ${response.statusText} ${text}`);
+			}
+
+			const data = (await response.json()) as {
+				choices?: Array<{ message?: { content?: string } }>;
+				usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+			};
+
+			const content = data.choices?.[0]?.message?.content ?? "";
+
+			return { content, usage: data.usage };
 		}
-
-		const data = (await response.json()) as {
-			choices?: Array<{ message?: { content?: string } }>;
-			usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
-		};
-
-		const content = data.choices?.[0]?.message?.content ?? "";
-
-		return { content, usage: data.usage };
+		throw new Error("LLM request failed: rate limited after max retries");
 	} finally {
 		clearTimeout(timeout);
 	}
