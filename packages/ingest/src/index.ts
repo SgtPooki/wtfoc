@@ -74,6 +74,7 @@ export {
 	loadDerivedEdgeLayers,
 	parseDerivedEdgeLayer,
 } from "./edges/derived-layer.js";
+export { type ValidationResult, validateEdges } from "./edges/edge-validator.js";
 export {
 	type ContextStatus,
 	computeContextHash,

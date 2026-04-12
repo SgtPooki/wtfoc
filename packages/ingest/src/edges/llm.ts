@@ -1,4 +1,5 @@
 import type { Chunk, Edge, EdgeExtractor, StructuredEvidence } from "@wtfoc/common";
+import { validateEdges } from "./edge-validator.js";
 import { chatCompletion, type LlmClientOptions, parseJsonResponse } from "./llm-client.js";
 import { buildExtractionMessages, estimatePromptOverhead, estimateTokens } from "./llm-prompt.js";
 
@@ -243,7 +244,14 @@ export class LlmEdgeExtractor implements EdgeExtractor {
 			});
 		}
 
-		return edges;
+		// Run acceptance gates to filter low-quality edges
+		const { accepted, rejected } = validateEdges(edges);
+		if (rejected.length > 0) {
+			for (const r of rejected) {
+				console.error(`[wtfoc] Edge rejected: ${r.reason}`);
+			}
+		}
+		return accepted;
 	}
 }
 
