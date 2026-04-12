@@ -3,7 +3,7 @@ import { extname, relative } from "node:path";
 import type { Chunk, Edge, SourceAdapter } from "@wtfoc/common";
 import { WtfocError } from "@wtfoc/common";
 import { createIgnoreFilter, loadWtfocIgnore } from "@wtfoc/config";
-import { chunkMarkdown, type MarkdownChunkerOptions } from "../../chunker.js";
+import { chunkMarkdown, type MarkdownChunkerOptions, sha256Hex } from "../../chunker.js";
 import { acquireRepo, extractRepoName } from "./acquisition.js";
 import { chunkCode, DEFAULT_EXCLUDE, DEFAULT_INCLUDE, walkFiles } from "./chunking.js";
 
@@ -84,9 +84,15 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 			const sourceType = isMarkdown ? "markdown" : "code";
 			const sourceUrl = `https://github.com/${repo}/blob/main/${relPath}`;
 
+			// Document identity: stable key is repo/path, version is content hash
+			const documentId = `${repo}/${relPath}`;
+			const documentVersionId = sha256Hex(content);
+
 			if (isMarkdown) {
 				const chunks = chunkMarkdown(content, {
 					source: `${repo}/${relPath}`,
+					documentId,
+					documentVersionId,
 					...opts.chunkerOptions,
 				});
 				for (const chunk of chunks) {
@@ -103,7 +109,10 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 					};
 				}
 			} else {
-				const chunks = chunkCode(content, relPath, repo, sourceUrl);
+				const chunks = chunkCode(content, relPath, repo, sourceUrl, {
+					documentId,
+					documentVersionId,
+				});
 				for (const chunk of chunks) {
 					yield chunk;
 				}

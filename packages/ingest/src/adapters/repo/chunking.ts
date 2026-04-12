@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
 import { readdir } from "node:fs/promises";
 import { basename, extname, join, relative } from "node:path";
 import type { Chunk } from "@wtfoc/common";
+import { sha256Hex } from "../../chunker.js";
 
 /**
  * Manifest files that should always be emitted as a single chunk.
@@ -87,32 +87,50 @@ export async function walkFiles(
 	return files.sort();
 }
 
+export interface ChunkCodeOptions {
+	documentId?: string;
+	documentVersionId?: string;
+}
+
 export function chunkCode(
 	content: string,
 	filePath: string,
 	repo: string,
 	sourceUrl: string,
+	options?: ChunkCodeOptions,
 ): Chunk[] {
+	const documentId = options?.documentId;
+	const documentVersionId = options?.documentVersionId;
+
+	function makeChunkId(chunkContent: string, idx: number): string {
+		if (documentVersionId) {
+			return sha256Hex(`${documentVersionId}:${idx}:${chunkContent}`);
+		}
+		return sha256Hex(chunkContent);
+	}
+
 	// Manifest files are emitted as a single chunk so parsers get complete content
 	if (MANIFEST_FILENAMES.has(basename(filePath))) {
 		if (!content.trim()) return [];
-		const id = createHash("sha256").update(content).digest("hex");
-		return [
-			{
-				id,
-				content,
-				sourceType: "code",
-				source: `${repo}/${filePath}`,
-				sourceUrl,
-				chunkIndex: 0,
-				totalChunks: 1,
-				metadata: {
-					filePath,
-					language: extname(filePath).slice(1),
-					repo,
-				},
+		const contentFingerprint = sha256Hex(content);
+		const chunk: Chunk = {
+			id: makeChunkId(content, 0),
+			content,
+			sourceType: "code",
+			source: `${repo}/${filePath}`,
+			sourceUrl,
+			chunkIndex: 0,
+			totalChunks: 1,
+			metadata: {
+				filePath,
+				language: extname(filePath).slice(1),
+				repo,
 			},
-		];
+			contentFingerprint,
+		};
+		if (documentId) chunk.documentId = documentId;
+		if (documentVersionId) chunk.documentVersionId = documentVersionId;
+		return [chunk];
 	}
 
 	const chunkSize = 512;
@@ -126,10 +144,9 @@ export function chunkCode(
 		const chunkContent = content.slice(offset, end);
 
 		if (chunkContent.trim()) {
-			const id = createHash("sha256").update(chunkContent).digest("hex");
-
-			chunks.push({
-				id,
+			const contentFingerprint = sha256Hex(chunkContent);
+			const chunk: Chunk = {
+				id: makeChunkId(chunkContent, chunkIndex),
 				content: chunkContent,
 				sourceType: "code",
 				source: `${repo}/${filePath}`,
@@ -141,7 +158,11 @@ export function chunkCode(
 					language: extname(filePath).slice(1),
 					repo,
 				},
-			});
+				contentFingerprint,
+			};
+			if (documentId) chunk.documentId = documentId;
+			if (documentVersionId) chunk.documentVersionId = documentVersionId;
+			chunks.push(chunk);
 			chunkIndex++;
 		}
 
