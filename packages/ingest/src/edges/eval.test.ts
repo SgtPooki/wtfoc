@@ -36,7 +36,7 @@ describe.runIf(hasLlm)("edge eval (real LLM)", () => {
 	let report: EvalReport;
 
 	// Run the full eval once, share across assertions.
-	// 120s timeout — real LLM calls on local hardware can be slow.
+	// 10 min timeout — local models can be slow, and we process multiple batches sequentially.
 	it("runs the evaluation harness", async () => {
 		report = await runEdgeEval({
 			baseUrl: resolveUrl(extractorUrl ?? ""),
@@ -54,37 +54,40 @@ describe.runIf(hasLlm)("edge eval (real LLM)", () => {
 		expect(report.stages).toHaveLength(3);
 	}, 600_000);
 
+	it("evaluates at least 50% of chunks", () => {
+		// If most batches timeout, the results are meaningless
+		expect(report.coverage.evaluatedChunks).toBeGreaterThan(report.chunkCount * 0.5);
+	});
+
 	it("produces edges from positive examples", () => {
 		const gated = getStage(report, "gated");
-		// We should get at least some edges from 12 chunks
 		expect(gated.edgeCount).toBeGreaterThan(0);
 	});
 
-	it("meets minimum precision floor (gated)", () => {
+	it("meets minimum precision floor (gated, evaluated chunks only)", () => {
 		const gated = getStage(report, "gated");
-		// Floor: precision > 0.1 — conservative for local models with limited context
+		// Floor: precision > 0.1 — conservative smoke test for local models
 		expect(gated.microPrecision).toBeGreaterThan(0.1);
 	});
 
-	it("meets minimum recall floor (gated)", () => {
+	it("meets minimum recall floor (gated, evaluated chunks only)", () => {
 		const gated = getStage(report, "gated");
-		// Floor: recall > 0.05 — conservative for local models; the report matters more than pass/fail
+		// Floor: recall > 0.05 — conservative; the report is the main output
 		expect(gated.microRecall).toBeGreaterThan(0.05);
 	});
 
 	it("acceptance gates do not over-reject (gold survival > 5%)", () => {
-		// Gates should not kill most of the gold edges that the LLM found
 		expect(report.gates.goldSurvivalRate).toBeGreaterThan(0.05);
 	});
 
 	it("handles hard negative chunks (no edges expected)", () => {
-		// At least one of the hard negative chunks should correctly produce 0 edges
-		expect(report.negatives.hardNegativeCorrect).toBeGreaterThan(0);
+		// Only check evaluated hard negatives
+		if (report.negatives.hardNegativeChunks > 0) {
+			expect(report.negatives.hardNegativeCorrect).toBeGreaterThan(0);
+		}
 	});
 
 	it("respects forbidden edge constraints", () => {
-		// Log violations for debugging but use a soft threshold —
-		// some models may produce borderline edges that get through
 		if (report.negatives.forbiddenViolations.length > 0) {
 			console.warn(
 				`Forbidden violations (${report.negatives.forbiddenViolations.length}):`,
@@ -93,16 +96,14 @@ describe.runIf(hasLlm)("edge eval (real LLM)", () => {
 				),
 			);
 		}
-		// Allow up to 3 violations — the acceptance gates handle most, but some
-		// models may slip through. The report is the main output, not this assertion.
+		// Allow up to 3 violations — acceptance gates handle most
 		expect(report.negatives.forbiddenViolations.length).toBeLessThan(4);
 	});
 
 	it("normalization improves raw LLM output", () => {
 		const raw = getStage(report, "raw");
 		const normalized = getStage(report, "normalized");
-		// Normalization should not reduce recall (it only remaps types)
-		// and should improve or maintain precision by mapping to canonical types
+		// Normalization should not significantly reduce recall
 		expect(normalized.microRecall).toBeGreaterThanOrEqual(raw.microRecall * 0.9);
 	});
 });

@@ -21,6 +21,18 @@ Definitions:
 - evidence: One or two sentences that QUOTE or closely paraphrase the source chunk. This must be sufficient for a human to confirm the edge without guessing. If you cannot cite supporting text, omit the edge.
 - confidence: A number between 0.3 and 0.8 inclusive. Use lower values when inference is required or identifiers are implicit. Never exceed 0.8 for LLM-proposed edges.
 
+Type usage guide (choose the most accurate type):
+- "closes" / "addresses": Only when the source ACTIVELY resolves or fixes a target issue/bug. A bug report describing a problem does NOT "address" it.
+- "implements": The source creates or builds what the target describes. A proposal to implement something is NOT "implements".
+- "changes": The source modifies the target file or behavior. Only use for actual changes, not mere mentions of files.
+- "documents": The source EXPLAINS or DESCRIBES the target in detail (e.g., a doc page about a module). Simply mentioning a file path is NOT "documents" — use "references" instead.
+- "references": The source mentions or links to the target without a stronger semantic claim. This is the correct default when a file, issue, or PR is mentioned but not actively changed, documented, or closed.
+- "authored-by": The target person CREATED the source artifact. Do NOT use for mentions, cc lines, or people merely discussed. "@alice proposed X" means authored-by; "cc @alice" does NOT.
+- "discusses": The source talks about a concept, topic, or entity. Use for semantic discussions, not for status updates about issues/PRs.
+- "imports" / "depends-on": Code-level dependencies and imports.
+- "tests": The source tests or validates the target.
+- "reviewed-by": The target person reviewed the source artifact.
+
 Rules:
 1) Only emit edges you can justify with evidence from the provided chunk(s).
 2) Prefer precision over quantity: fewer high-quality edges beat many weak ones.
@@ -28,7 +40,8 @@ Rules:
 4) Extract ALL meaningful relationships you find, including explicit references and mentions. Duplicates with pattern-based extractors are resolved downstream.
 5) Focus on semantic relationships: design discussions, implementation links, person mentions, concept references, dependencies, documentation links, testing relationships.
 6) If the text is purely factual listing with no relational claim, return [].
-7) Do not include commentary outside the JSON array.`;
+7) Do not include commentary outside the JSON array.
+8) When in doubt between a strong type (closes, implements, changes, documents) and "references", prefer "references". Strong types require clear evidence of active action.`;
 
 const FEW_SHOT_EXAMPLES: ChatMessage[] = [
 	// Example 1: Engineering PR with multiple relationship types

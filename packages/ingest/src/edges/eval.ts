@@ -78,6 +78,23 @@ export interface GateMetrics {
 	goldSurvivalRate: number;
 }
 
+export interface CoverageMetrics {
+	/** Total batches attempted */
+	totalBatches: number;
+	/** Batches that completed successfully */
+	succeededBatches: number;
+	/** Batches that failed (timeout, error, etc.) */
+	failedBatches: number;
+	/** Total chunks in the fixture set */
+	totalChunks: number;
+	/** Chunks that were in successful batches (actually evaluated) */
+	evaluatedChunks: number;
+	/** Chunks that were in failed batches (not evaluated) */
+	skippedChunks: number;
+	/** IDs of chunks that were skipped */
+	skippedChunkIds: string[];
+}
+
 export interface NegativeMetrics {
 	/** Chunks expected to produce no edges */
 	hardNegativeChunks: number;
@@ -100,9 +117,11 @@ export interface EvalReport {
 	stages: StageMetrics[];
 	/** Acceptance gate behavior */
 	gates: GateMetrics;
+	/** Coverage — how much of the fixture set was actually evaluated */
+	coverage: CoverageMetrics;
 	/** Negative example performance */
 	negatives: NegativeMetrics;
-	/** Total chunks evaluated */
+	/** Total chunks in fixture set */
 	chunkCount: number;
 	/** Total wall-clock time in ms */
 	durationMs: number;
@@ -124,11 +143,31 @@ function matchesTarget(produced: string, pattern: string, mode: MatchMode): bool
 }
 
 function edgeMatchesGold(edge: Edge, gold: GoldEdge): boolean {
-	return (
+	// Primary match: exact type + targetType + targetId pattern
+	if (
 		edge.type === gold.type &&
 		edge.targetType === gold.targetType &&
 		matchesTarget(edge.targetId, gold.targetPattern, gold.match)
-	);
+	) {
+		return true;
+	}
+	// Acceptable alternatives: if the gold edge defines them, try those too
+	if (gold.acceptableAlternatives) {
+		for (const alt of gold.acceptableAlternatives) {
+			const altType = alt.type ?? gold.type;
+			const altTargetType = alt.targetType ?? gold.targetType;
+			const altPattern = alt.targetPattern ?? gold.targetPattern;
+			const altMatch = alt.match ?? gold.match;
+			if (
+				edge.type === altType &&
+				edge.targetType === altTargetType &&
+				matchesTarget(edge.targetId, altPattern, altMatch)
+			) {
+				return true;
+			}
+		}
+	}
+	return false;
 }
 
 function edgeMatchesForbidden(edge: Edge, forbidden: ForbiddenEdge): boolean {
@@ -142,10 +181,12 @@ function edgeMatchesForbidden(edge: Edge, forbidden: ForbiddenEdge): boolean {
 /**
  * Score a set of produced edges against the gold set.
  * Uses one-to-one assignment: each produced edge can satisfy at most one gold edge.
+ * Only scores against gold entries whose chunks were actually evaluated.
  */
 function scoreEdges(
 	producedEdges: Edge[],
 	goldEntries: GoldEntry[],
+	evaluatedChunkIds: Set<string>,
 ): {
 	perType: Map<string, { tp: number; fp: number; fn: number }>;
 	totalTp: number;
@@ -171,6 +212,9 @@ function scoreEdges(
 	let totalFn = 0;
 
 	for (const entry of goldEntries) {
+		// Skip gold entries for chunks that were not evaluated (timed out, etc.)
+		if (!evaluatedChunkIds.has(entry.chunkId)) continue;
+
 		const chunkEdges = [...(producedByChunk.get(entry.chunkId) ?? [])];
 		const matchedProduced = new Set<number>();
 
@@ -215,8 +259,13 @@ function computeStageMetrics(
 	stage: string,
 	producedEdges: Edge[],
 	goldEntries: GoldEntry[],
+	evaluatedChunkIds: Set<string>,
 ): StageMetrics {
-	const { perType, totalTp, totalFp, totalFn } = scoreEdges(producedEdges, goldEntries);
+	const { perType, totalTp, totalFp, totalFn } = scoreEdges(
+		producedEdges,
+		goldEntries,
+		evaluatedChunkIds,
+	);
 
 	const perTypeMetrics: EdgeTypeMetrics[] = [];
 	let f1Sum = 0;
@@ -325,6 +374,11 @@ export async function runEdgeEval(options: EvalOptions): Promise<EvalReport> {
 	const chunkBudget = maxInputTokens - promptOverhead;
 	const batches = batchChunks(chunks, chunkBudget);
 
+	// Track which chunks were successfully evaluated
+	const evaluatedChunkIds = new Set<string>();
+	const skippedChunkIds: string[] = [];
+	let failedBatchCount = 0;
+
 	// Run LLM extraction on all batches
 	const allRawLlmEdges: RawLlmEdge[] = [];
 	let totalPromptTokens = 0;
@@ -358,21 +412,33 @@ export async function runEdgeEval(options: EvalOptions): Promise<EvalReport> {
 				const parsed = parseJsonResponse<RawLlmEdge[]>(response.content);
 				const edges = Array.isArray(parsed) ? parsed : [];
 				console.log(`[eval] Batch ${batchIndex + 1}: ${edges.length} raw edges extracted`);
-				return edges;
+				return { edges, chunkIds: batch.map((c) => c.id) };
 			} finally {
 				release();
 			}
 		}),
 	);
 
-	for (const result of batchResults) {
+	for (let i = 0; i < batchResults.length; i++) {
+		const result = batchResults[i];
+		const batch = batches[i];
 		if (result.status === "rejected") {
-			console.error(`[eval] Batch failed: ${result.reason}`);
-		}
-		if (result.status === "fulfilled") {
-			allRawLlmEdges.push(...result.value);
+			console.error(`[eval] Batch ${i + 1} failed: ${result.reason}`);
+			failedBatchCount++;
+			for (const chunk of batch) {
+				skippedChunkIds.push(chunk.id);
+			}
+		} else {
+			allRawLlmEdges.push(...result.value.edges);
+			for (const id of result.value.chunkIds) {
+				evaluatedChunkIds.add(id);
+			}
 		}
 	}
+
+	console.log(
+		`[eval] Coverage: ${evaluatedChunkIds.size}/${chunks.length} chunks evaluated, ${failedBatchCount}/${batches.length} batches failed`,
+	);
 
 	// Stage 1: Raw LLM output (parsed, filtered for required fields, but not normalized)
 	const rawEdges = parseAndFilterRaw(allRawLlmEdges, validChunkIds);
@@ -385,18 +451,26 @@ export async function runEdgeEval(options: EvalOptions): Promise<EvalReport> {
 	const gatedEdges = validation.accepted;
 
 	// Count downgrades: edges whose type changed between normalized and gated
-	// (validateEdges may downgrade before accepting)
 	const preGateValidation = validateEdgesWithDowngradeTracking(normalizedEdges);
 
-	// ── Compute metrics at each stage ─────────────────────────────────
+	// ── Compute metrics (only against evaluated chunks) ─────────────
 
-	const rawStage = computeStageMetrics("raw", rawEdges, GOLD_SET);
-	const normalizedStage = computeStageMetrics("normalized", normalizedEdges, GOLD_SET);
-	const gatedStage = computeStageMetrics("gated", gatedEdges, GOLD_SET);
+	const rawStage = computeStageMetrics("raw", rawEdges, GOLD_SET, evaluatedChunkIds);
+	const normalizedStage = computeStageMetrics(
+		"normalized",
+		normalizedEdges,
+		GOLD_SET,
+		evaluatedChunkIds,
+	);
+	const gatedStage = computeStageMetrics("gated", gatedEdges, GOLD_SET, evaluatedChunkIds);
 
 	// ── Gate metrics ──────────────────────────────────────────────────
 
-	const goldEdgeCount = GOLD_SET.reduce((sum, entry) => sum + entry.expectedEdges.length, 0);
+	const evaluatedGoldEntries = GOLD_SET.filter((e) => evaluatedChunkIds.has(e.chunkId));
+	const goldEdgeCount = evaluatedGoldEntries.reduce(
+		(sum, entry) => sum + entry.expectedEdges.length,
+		0,
+	);
 
 	const gates: GateMetrics = {
 		accepted: preGateValidation.accepted.length,
@@ -416,16 +490,30 @@ export async function runEdgeEval(options: EvalOptions): Promise<EvalReport> {
 				: 1,
 	};
 
+	// ── Coverage metrics ─────────────────────────────────────────────
+
+	const coverage: CoverageMetrics = {
+		totalBatches: batches.length,
+		succeededBatches: batches.length - failedBatchCount,
+		failedBatches: failedBatchCount,
+		totalChunks: chunks.length,
+		evaluatedChunks: evaluatedChunkIds.size,
+		skippedChunks: skippedChunkIds.length,
+		skippedChunkIds,
+	};
+
 	// ── Negative example metrics ──────────────────────────────────────
 
-	const hardNegativeEntries = GOLD_SET.filter((e) => e.expectNoEdges);
+	const hardNegativeEntries = GOLD_SET.filter(
+		(e) => e.expectNoEdges && evaluatedChunkIds.has(e.chunkId),
+	);
 	const hardNegativeCorrect = hardNegativeEntries.filter(
 		(entry) => !gatedEdges.some((e) => e.sourceId === entry.chunkId),
 	).length;
 
 	const forbiddenViolations: NegativeMetrics["forbiddenViolations"] = [];
 	for (const entry of GOLD_SET) {
-		if (!entry.forbiddenEdges) continue;
+		if (!entry.forbiddenEdges || !evaluatedChunkIds.has(entry.chunkId)) continue;
 		for (const forbidden of entry.forbiddenEdges) {
 			for (const edge of gatedEdges) {
 				if (edge.sourceId === entry.chunkId && edgeMatchesForbidden(edge, forbidden)) {
@@ -450,6 +538,7 @@ export async function runEdgeEval(options: EvalOptions): Promise<EvalReport> {
 		baseUrl: options.baseUrl,
 		stages: [rawStage, normalizedStage, gatedStage],
 		gates,
+		coverage,
 		negatives,
 		chunkCount: chunks.length,
 		durationMs: Date.now() - startTime,
@@ -495,9 +584,6 @@ function batchChunks(chunks: Chunk[], maxTokens: number): Chunk[][] {
 function validateEdgesWithDowngradeTracking(
 	edges: Edge[],
 ): ValidationResult & { downgraded: number } {
-	// We need to compare pre/post types to detect downgrades.
-	// validateEdges may change the type (e.g., "implements" → "references").
-	// Run it and compare accepted edges' types to originals.
 	const originalTypes = new Map(
 		edges.map((e) => [`${e.sourceId}:${e.targetId}:${e.evidence}`, e.type]),
 	);
@@ -533,6 +619,20 @@ export function formatEvalReport(report: EvalReport): string {
 		lines.push(
 			`  Tokens:        ${report.tokenUsage.total} (${report.tokenUsage.prompt}p + ${report.tokenUsage.completion}c)`,
 		);
+	}
+	lines.push("");
+
+	// Coverage section
+	lines.push("── COVERAGE ──");
+	lines.push("");
+	lines.push(
+		`  Batches:         ${report.coverage.succeededBatches}/${report.coverage.totalBatches} succeeded`,
+	);
+	lines.push(
+		`  Chunks:          ${report.coverage.evaluatedChunks}/${report.coverage.totalChunks} evaluated`,
+	);
+	if (report.coverage.skippedChunkIds.length > 0) {
+		lines.push(`  Skipped:         ${report.coverage.skippedChunkIds.join(", ")}`);
 	}
 	lines.push("");
 
@@ -577,7 +677,7 @@ export function formatEvalReport(report: EvalReport): string {
 	if (report.negatives.forbiddenViolations.length > 0) {
 		for (const v of report.negatives.forbiddenViolations) {
 			lines.push(
-				`    - ${v.chunkId}: got ${v.edge.type}→${v.edge.targetType}:${v.edge.targetId} (forbidden: ${v.forbidden.type})`,
+				`    - ${v.chunkId}: got ${v.edge.type}\u2192${v.edge.targetType}:${v.edge.targetId} (forbidden: ${v.forbidden.type})`,
 			);
 		}
 	}
