@@ -62,8 +62,8 @@ describe("evaluateSignals", () => {
 
 		const result = await evaluateSignals(segments);
 		const perSource = result.metrics.perSourceType as Record<string, Record<string, number>>;
-		expect(perSource["github-issue"].pain).toBeGreaterThan(0);
-		expect(perSource["slack-message"].praise).toBeGreaterThan(0);
+		expect(perSource["github-issue"]?.pain).toBeGreaterThan(0);
+		expect(perSource["slack-message"]?.praise).toBeGreaterThan(0);
 	});
 
 	it("empty segments handled gracefully", async () => {

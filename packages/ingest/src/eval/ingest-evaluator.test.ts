@@ -124,7 +124,7 @@ describe("evaluateIngest", () => {
 
 		const result = await evaluateIngest(segments, HEAD);
 		const perSource = result.metrics.perSourceType as Record<string, { documentIdRate: number }>;
-		expect(perSource["github-issue"].documentIdRate).toBe(1);
-		expect(perSource["slack-message"].documentIdRate).toBe(0);
+		expect(perSource["github-issue"]?.documentIdRate).toBe(1);
+		expect(perSource["slack-message"]?.documentIdRate).toBe(0);
 	});
 });

@@ -70,7 +70,7 @@ describe("evaluateSearch", () => {
 
 		const result = await evaluateSearch(mockEmbedder, mockVectorIndex, mockSegments);
 		const qr = result.metrics.queryResults as Array<Record<string, unknown>>;
-		expect(qr[0].topScore).toBe(0.95);
+		expect(qr[0]?.topScore).toBe(0.95);
 	});
 
 	it("MRR calculation", async () => {

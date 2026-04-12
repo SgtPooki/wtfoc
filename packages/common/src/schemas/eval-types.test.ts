@@ -38,8 +38,9 @@ describe("eval types", () => {
 		expect(parsed.reportSchemaVersion).toBe("1.0.0");
 		expect(parsed.collectionName).toBe("test-collection");
 		expect(parsed.stages).toHaveLength(1);
-		expect(parsed.stages[0].stage).toBe("ingest");
-		expect(parsed.stages[0].checks[0].name).toBe("required:id");
+		const firstStage = parsed.stages[0];
+		expect(firstStage?.stage).toBe("ingest");
+		expect(firstStage?.checks[0]?.name).toBe("required:id");
 		expect(parsed.verdict).toBe("pass");
 	});
 

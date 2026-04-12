@@ -46,7 +46,7 @@ export async function evaluateSearch(
 
 			const resultCount = qResult.results.length;
 			totalQueryResults += resultCount;
-			const topScore = resultCount > 0 ? qResult.results[0].score : 0;
+			const topScore = resultCount > 0 ? (qResult.results[0]?.score ?? 0) : 0;
 			const resultSourceTypes = qResult.results.map((r) => r.sourceType);
 			const expectedFound = fixture.expectedSourceTypes.some((st) =>
 				resultSourceTypes.includes(st),
@@ -55,7 +55,8 @@ export async function evaluateSearch(
 			// Reciprocal rank: find first result matching expected source type
 			let rr = 0;
 			for (let i = 0; i < qResult.results.length; i++) {
-				if (fixture.expectedSourceTypes.includes(qResult.results[i].sourceType)) {
+				const resultItem = qResult.results[i];
+				if (resultItem && fixture.expectedSourceTypes.includes(resultItem.sourceType)) {
 					rr = 1 / (i + 1);
 					break;
 				}
