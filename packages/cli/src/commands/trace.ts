@@ -1,6 +1,6 @@
 import {
 	catalogFilePath,
-	getChunkIdsByState,
+	getSupersededChunkIds,
 	overlayFilePath,
 	readCatalog,
 	readOverlayEdges,
@@ -74,7 +74,7 @@ export function registerTraceCommand(program: Command): void {
 			const manifestDir = getManifestDir(store);
 			const catPath = catalogFilePath(manifestDir, opts.collection);
 			const catalog = await readCatalog(catPath);
-			const supersededIds = catalog ? getChunkIdsByState(catalog, "superseded") : undefined;
+			const supersededIds = catalog ? getSupersededChunkIds(catalog) : undefined;
 
 			const { vectorIndex, segments } = await loadCollection(store, head.manifest, {
 				excludeChunkIds: supersededIds?.size ? supersededIds : undefined,

@@ -29,12 +29,18 @@ export function sha256Hex(content: string): string {
 
 /**
  * Compute a chunk ID that encodes document provenance when available.
- * When documentVersionId is present: hash(documentVersionId + chunkIndex + content) — true identity.
+ * When document identity is present: hash(documentId + documentVersionId + chunkIndex + content).
+ * documentId ensures two files with identical content get different chunk IDs.
  * Otherwise: hash(content) — backward-compatible content-based identity.
  */
-function computeChunkId(content: string, chunkIndex: number, documentVersionId?: string): string {
-	if (documentVersionId) {
-		return sha256Hex(`${documentVersionId}:${chunkIndex}:${content}`);
+function computeChunkId(
+	content: string,
+	chunkIndex: number,
+	documentId?: string,
+	documentVersionId?: string,
+): string {
+	if (documentId && documentVersionId) {
+		return sha256Hex(`${documentId}:${documentVersionId}:${chunkIndex}:${content}`);
 	}
 	return sha256Hex(content);
 }
@@ -151,7 +157,7 @@ export function chunkMarkdown(markdown: string, options: MarkdownChunkerOptions)
 	const chunks: Chunk[] = rawChunks.map((content, chunkIndex) => {
 		const contentFingerprint = sha256Hex(content);
 		const chunk: Chunk = {
-			id: computeChunkId(content, chunkIndex, options.documentVersionId),
+			id: computeChunkId(content, chunkIndex, options.documentId, options.documentVersionId),
 			content,
 			sourceType: "markdown",
 			source: options.source,
@@ -214,7 +220,7 @@ export function rechunkOversized(chunks: Chunk[], maxChars?: number): Chunk[] {
 			const contentFingerprint = sha256Hex(content);
 			result.push({
 				...chunk,
-				id: computeChunkId(content, i, chunk.documentVersionId),
+				id: computeChunkId(content, i, chunk.documentId, chunk.documentVersionId),
 				content,
 				chunkIndex: i,
 				totalChunks,

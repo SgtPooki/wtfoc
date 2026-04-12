@@ -157,7 +157,7 @@ export class SlackAdapter implements SourceAdapter<SlackAdapterConfig> {
 			const documentVersionId = lastMsg.ts;
 
 			yield {
-				id: sha256Hex(`${documentVersionId}:0:${content}`),
+				id: sha256Hex(`${documentId}:${documentVersionId}:0:${content}`),
 				content,
 				sourceType: "slack-message",
 				source: `#${channelName}`,

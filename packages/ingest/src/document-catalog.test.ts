@@ -10,6 +10,7 @@ import {
 	getActiveChunkIds,
 	getChunkIdsByState,
 	getDocument,
+	getSupersededChunkIds,
 	readCatalog,
 	renameDocument,
 	updateDocument,
@@ -45,6 +46,7 @@ describe("document-catalog", () => {
 				currentVersionId: "v1",
 				previousVersionIds: [],
 				chunkIds: ["c1", "c2"],
+				supersededChunkIds: [],
 				state: "active",
 				mutability: "mutable-state",
 				sourceType: "code",
@@ -112,6 +114,40 @@ describe("document-catalog", () => {
 			expect(doc?.currentVersionId).toBe("v2");
 			expect(doc?.chunkIds).toEqual(["c3", "c4"]);
 			expect(doc?.previousVersionIds).toEqual(["v1"]);
+		});
+
+		it("accumulates superseded chunk IDs across versions", () => {
+			updateDocument(catalog, {
+				documentId: "repo/file.ts",
+				versionId: "v1",
+				chunkIds: ["c1"],
+				sourceType: "code",
+				mutability: "mutable-state",
+			});
+
+			updateDocument(catalog, {
+				documentId: "repo/file.ts",
+				versionId: "v2",
+				chunkIds: ["c2"],
+				sourceType: "code",
+				mutability: "mutable-state",
+			});
+
+			updateDocument(catalog, {
+				documentId: "repo/file.ts",
+				versionId: "v3",
+				chunkIds: ["c3"],
+				sourceType: "code",
+				mutability: "mutable-state",
+			});
+
+			const doc = catalog.documents["repo/file.ts"];
+			expect(doc?.supersededChunkIds).toEqual(["c1", "c2"]);
+
+			const superseded = getSupersededChunkIds(catalog);
+			expect(superseded.has("c1")).toBe(true);
+			expect(superseded.has("c2")).toBe(true);
+			expect(superseded.has("c3")).toBe(false);
 		});
 
 		it("does not supersede for same version", () => {

@@ -171,7 +171,7 @@ export class DiscordAdapter implements SourceAdapter<DiscordAdapterConfig> {
 			const documentVersionId = lastMsg.id;
 
 			yield {
-				id: sha256Hex(`${documentVersionId}:0:${content}`),
+				id: sha256Hex(`${documentId}:${documentVersionId}:0:${content}`),
 				content,
 				sourceType: "discord-message",
 				source: `${serverName}/#${channelName}`,
@@ -288,7 +288,7 @@ export class DiscordAdapter implements SourceAdapter<DiscordAdapterConfig> {
 				const documentVersionId = lastMsg.id;
 
 				yield {
-					id: sha256Hex(`${documentVersionId}:0:${content}`),
+					id: sha256Hex(`${documentId}:${documentVersionId}:0:${content}`),
 					content,
 					sourceType: "discord-message",
 					source: `${serverName}/#${channelName}`,

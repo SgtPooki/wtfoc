@@ -103,8 +103,8 @@ export function chunkCode(
 	const documentVersionId = options?.documentVersionId;
 
 	function makeChunkId(chunkContent: string, idx: number): string {
-		if (documentVersionId) {
-			return sha256Hex(`${documentVersionId}:${idx}:${chunkContent}`);
+		if (documentId && documentVersionId) {
+			return sha256Hex(`${documentId}:${documentVersionId}:${idx}:${chunkContent}`);
 		}
 		return sha256Hex(chunkContent);
 	}

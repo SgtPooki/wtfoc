@@ -1,4 +1,9 @@
-import { catalogFilePath, getChunkIdsByState, readCatalog } from "@wtfoc/ingest";
+import {
+	catalogFilePath,
+	getChunkIdsByState,
+	getSupersededChunkIds,
+	readCatalog,
+} from "@wtfoc/ingest";
 import { query } from "@wtfoc/search";
 import type { Command } from "commander";
 import { getProjectConfig } from "../cli.js";
@@ -38,9 +43,9 @@ export function registerQueryCommand(program: Command): void {
 		const catPath = catalogFilePath(manifestDir, opts.collection);
 		const catalog = await readCatalog(catPath);
 		const archivedIds = catalog ? getChunkIdsByState(catalog, "archived") : undefined;
-		const supersededIds = catalog ? getChunkIdsByState(catalog, "superseded") : undefined;
+		const supersededIds = catalog ? getSupersededChunkIds(catalog) : undefined;
 		const excludeChunkIds =
-			archivedIds || supersededIds
+			archivedIds?.size || supersededIds?.size
 				? new Set([...(archivedIds ?? []), ...(supersededIds ?? [])])
 				: undefined;
 

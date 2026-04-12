@@ -95,6 +95,22 @@ export function getChunkIdsByState(
 }
 
 /**
+ * Get all superseded chunk IDs across all documents.
+ * These are chunks from previous versions that should be excluded from search.
+ */
+export function getSupersededChunkIds(catalog: DocumentCatalog): Set<string> {
+	const ids = new Set<string>();
+	for (const entry of Object.values(catalog.documents)) {
+		if (entry.supersededChunkIds) {
+			for (const id of entry.supersededChunkIds) {
+				ids.add(id);
+			}
+		}
+	}
+	return ids;
+}
+
+/**
  * Look up a document entry by its documentId.
  */
 export function getDocument(
@@ -130,6 +146,7 @@ export function updateDocument(
 			currentVersionId: options.versionId,
 			previousVersionIds: [],
 			chunkIds: options.chunkIds,
+			supersededChunkIds: [],
 			state: "active",
 			mutability: options.mutability,
 			sourceType: options.sourceType,
@@ -158,6 +175,8 @@ export function updateDocument(
 
 	existing.previousVersionIds = [previousVersionId, ...existing.previousVersionIds];
 	existing.currentVersionId = options.versionId;
+	// Accumulate superseded chunk IDs so they can be excluded from search
+	existing.supersededChunkIds = [...(existing.supersededChunkIds ?? []), ...supersededChunkIds];
 	existing.chunkIds = options.chunkIds;
 	existing.state = "active";
 	existing.updatedAt = new Date().toISOString();

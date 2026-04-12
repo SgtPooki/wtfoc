@@ -47,6 +47,8 @@ export interface DocumentCatalogEntry {
 	previousVersionIds: string[];
 	/** Chunk IDs belonging to the current version */
 	chunkIds: string[];
+	/** Chunk IDs from superseded versions (should be excluded from search) */
+	supersededChunkIds: string[];
 	/** Current lifecycle state */
 	state: DocumentLifecycleState;
 	/** How this source handles updates */

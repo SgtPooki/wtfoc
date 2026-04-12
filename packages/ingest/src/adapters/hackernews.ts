@@ -186,7 +186,7 @@ export class HackerNewsAdapter implements SourceAdapter<HackerNewsAdapterConfig>
 		const documentVersionId = hit.objectID;
 
 		return {
-			id: sha256Hex(`${documentVersionId}:0:${content}`),
+			id: sha256Hex(`${documentId}:${documentVersionId}:0:${content}`),
 			content,
 			sourceType: "hn-story",
 			source: `hn:${hit.objectID}`,
@@ -216,7 +216,7 @@ export class HackerNewsAdapter implements SourceAdapter<HackerNewsAdapterConfig>
 		const documentVersionId = hit.objectID;
 
 		return {
-			id: sha256Hex(`${documentVersionId}:0:${text}`),
+			id: sha256Hex(`${documentId}:${documentVersionId}:0:${text}`),
 			content: text,
 			sourceType: "hn-comment",
 			source: `hn:${hit.objectID}`,

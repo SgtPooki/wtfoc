@@ -49,6 +49,7 @@ export {
 	getActiveChunkIds,
 	getChunkIdsByState,
 	getDocument,
+	getSupersededChunkIds,
 	readCatalog,
 	renameDocument,
 	type UpdateDocumentOptions,

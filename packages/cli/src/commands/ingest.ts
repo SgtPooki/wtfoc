@@ -1,6 +1,7 @@
-import type { DocumentCatalog, Edge, Segment } from "@wtfoc/common";
+import type { DocumentCatalog, Segment } from "@wtfoc/common";
 import { type Chunk, type CollectionHead, CURRENT_SCHEMA_VERSION } from "@wtfoc/common";
 import {
+	archiveDocument,
 	buildSegment,
 	buildSourceKey,
 	CodeEdgeExtractor,
@@ -247,61 +248,12 @@ export function registerIngestCommand(program: Command): void {
 			let totalChunksSkipped = 0;
 			let totalDocsSuperseded = 0;
 			let batchNumber = 0;
+			// Track all chunks per document for catalog updates (even dedup-skipped ones)
+			const catalogPendingChunks = new Map<string, Chunk[]>();
 
 			async function flushBatch(batchChunks: Chunk[]): Promise<void> {
 				if (batchChunks.length === 0) return;
 				batchNumber++;
-
-				// Update document catalog and collect supersession edges
-				const supersessionEdges: Edge[] = [];
-				const docChunkGroups = new Map<string, Chunk[]>();
-
-				for (const chunk of batchChunks) {
-					if (chunk.documentId) {
-						const group = docChunkGroups.get(chunk.documentId) ?? [];
-						group.push(chunk);
-						docChunkGroups.set(chunk.documentId, group);
-					}
-				}
-
-				for (const [docId, docChunks] of docChunkGroups) {
-					const firstChunk = docChunks[0];
-					if (!firstChunk?.documentVersionId) continue;
-
-					// Determine mutability from source type
-					const appendOnlyTypes = new Set([
-						"slack-message",
-						"discord-message",
-						"hn-story",
-						"hn-comment",
-						"github-pr-comment",
-					]);
-					const mutability = appendOnlyTypes.has(firstChunk.sourceType)
-						? ("append-only" as const)
-						: ("mutable-state" as const);
-
-					const result = updateDocument(catalog, {
-						documentId: docId,
-						versionId: firstChunk.documentVersionId,
-						chunkIds: docChunks.map((c) => c.id),
-						sourceType: firstChunk.sourceType,
-						mutability,
-					});
-
-					if (result.previousVersionId && result.supersededChunkIds.length > 0) {
-						totalDocsSuperseded++;
-						// Emit supersedes edge at document level
-						supersessionEdges.push({
-							type: "supersedes",
-							sourceId: docId,
-							targetType: "document-version",
-							targetId: `${docId}@${result.previousVersionId}`,
-							evidence: `Document ${docId} updated: version ${result.previousVersionId} → ${firstChunk.documentVersionId}`,
-							confidence: 1.0,
-							provenance: ["lifecycle"],
-						});
-					}
-				}
 
 				// Extract edges for this batch
 				const compositeExtractor = new CompositeEdgeExtractor();
@@ -335,9 +287,6 @@ export function registerIngestCommand(program: Command): void {
 				const edges = mergeEdges([
 					{ extractorName: "adapter", edges: await adapter.extractEdges(batchChunks) },
 					{ extractorName: "composite", edges: await compositeExtractor.extract(batchChunks) },
-					...(supersessionEdges.length > 0
-						? [{ extractorName: "lifecycle", edges: supersessionEdges }]
-						: []),
 				]);
 
 				// Embed this batch
@@ -426,10 +375,6 @@ export function registerIngestCommand(program: Command): void {
 				}
 
 				await store.manifests.putHead(opts.collection, manifest, currentPrevHeadId);
-
-				// Persist document catalog after each batch
-				await writeCatalog(catPath, catalog);
-
 				totalChunksIngested += batchChunks.length;
 			}
 
@@ -445,8 +390,17 @@ export function registerIngestCommand(program: Command): void {
 				if (chunks.length > 1) rechunkedCount += chunks.length;
 
 				for (const chunk of chunks) {
-					// Dedup: use contentFingerprint if available (new identity model),
-					// fall back to chunk.id (legacy content-hash identity)
+					// Always track document identity in catalog even if content is unchanged.
+					// This ensures renames, re-ingests, and lifecycle transitions are recorded.
+					if (chunk.documentId && chunk.documentVersionId) {
+						const key = chunk.documentId;
+						if (!catalogPendingChunks.has(key)) {
+							catalogPendingChunks.set(key, []);
+						}
+						(catalogPendingChunks.get(key) as Chunk[]).push(chunk);
+					}
+
+					// Dedup: skip re-embedding when content is unchanged
 					const dedupKey = chunk.contentFingerprint ?? chunk.id;
 					if (knownFingerprints.has(dedupKey) || knownChunkIds.has(chunk.id)) {
 						totalChunksSkipped++;
@@ -464,6 +418,42 @@ export function registerIngestCommand(program: Command): void {
 			// Flush remaining chunks
 			await flushBatch(batch);
 			batch = [];
+
+			// Update document catalog from ALL seen chunks (including dedup-skipped).
+			// This ensures renames, unchanged files, and lifecycle transitions are tracked.
+			if (catalogPendingChunks.size > 0) {
+				for (const [docId, docChunks] of catalogPendingChunks) {
+					const firstChunk = docChunks[0];
+					if (!firstChunk?.documentVersionId) continue;
+
+					// Tombstone chunks signal deletion
+					if (firstChunk.sourceType === "tombstone") {
+						archiveDocument(catalog, docId);
+						continue;
+					}
+
+					// Grouped chat chunks (Slack/Discord) use mutable-state because
+					// grouping windows can change across ingests, replacing old snapshots
+					const mutability = "mutable-state" as const;
+
+					const result = updateDocument(catalog, {
+						documentId: docId,
+						versionId: firstChunk.documentVersionId,
+						chunkIds: docChunks.map((c) => c.id),
+						sourceType: firstChunk.sourceType,
+						mutability,
+					});
+
+					if (result.previousVersionId && result.supersededChunkIds.length > 0) {
+						totalDocsSuperseded++;
+					}
+				}
+
+				await writeCatalog(catPath, catalog);
+				if (format !== "quiet" && totalDocsSuperseded > 0) {
+					console.error(`   📋 Catalog updated: ${catalogPendingChunks.size} documents tracked`);
+				}
+			}
 
 			if (totalChunksIngested === 0 && totalChunksSkipped === 0) {
 				if (format !== "quiet") console.error("⚠️  No chunks produced — skipping upload");
