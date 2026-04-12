@@ -75,6 +75,12 @@ export type {
 } from "./schemas/chunk.js";
 export type { Edge } from "./schemas/edge.js";
 export type {
+	DogfoodReport,
+	EvalCheck,
+	EvalStageResult,
+} from "./schemas/eval.js";
+export { aggregateVerdict } from "./schemas/eval.js";
+export type {
 	ArtifactRole,
 	ArtifactSummaryEntry,
 	BatchRecord,

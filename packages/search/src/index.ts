@@ -8,6 +8,10 @@ export type { OpenAIEmbedderOptions } from "./embedders/openai.js";
 export { OpenAIEmbedder } from "./embedders/openai.js";
 export type { TransformersEmbedderOptions } from "./embedders/transformers.js";
 export { TransformersEmbedder } from "./embedders/transformers.js";
+// Eval evaluators
+export { evaluateEdgeResolution } from "./eval/edge-resolution-evaluator.js";
+export { evaluateSearch } from "./eval/search-evaluator.js";
+export { evaluateThemes } from "./eval/themes-evaluator.js";
 export type { VectorBackend, VectorIndexConfig } from "./index/factory.js";
 export { createVectorIndex } from "./index/factory.js";
 export { InMemoryVectorIndex } from "./index/in-memory.js";
