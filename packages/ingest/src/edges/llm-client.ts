@@ -107,37 +107,56 @@ export async function chatCompletion(
 }
 
 /**
- * Parse JSON from LLM response content with three-tier fallback:
- * 1. Direct JSON.parse (if response is valid JSON)
+ * Try to parse and unwrap a JSON value. If it's an object with a single
+ * array value (e.g. { "edges": [...] }), return the array.
+ */
+function tryParseAndUnwrap<T>(text: string): T | null {
+	try {
+		const parsed = JSON.parse(text);
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+			const values = Object.values(parsed);
+			if (values.length === 1 && Array.isArray(values[0])) {
+				return values[0] as T;
+			}
+		}
+		return parsed as T;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Parse JSON from LLM response content with multi-tier fallback:
+ * 1. Direct JSON.parse (unwraps single-key object wrappers)
  * 2. Extract from fenced code block
- * 3. Extract from first [ ... ] or { ... } in response
+ * 3. Extract outermost [ ... ] bracket pair
  */
 export function parseJsonResponse<T>(content: string): T | null {
+	const trimmed = content.trim();
+
 	// Tier 1: direct parse
-	try {
-		return JSON.parse(content) as T;
-	} catch {
-		// continue to fallback
-	}
+	const direct = tryParseAndUnwrap<T>(trimmed);
+	if (direct !== null) return direct;
 
 	// Tier 2: fenced block
-	const fencedMatch = /```(?:json)?\s*([\s\S]*?)```/.exec(content);
+	const fencedMatch = /```(?:json)?\s*([\s\S]*?)```/.exec(trimmed);
 	if (fencedMatch?.[1]) {
-		try {
-			return JSON.parse(fencedMatch[1].trim()) as T;
-		} catch {
-			// continue
-		}
+		const fenced = tryParseAndUnwrap<T>(fencedMatch[1].trim());
+		if (fenced !== null) return fenced;
 	}
 
-	// Tier 3: first JSON array or object (non-greedy to avoid over-capture)
-	const bracketMatch = /(\[[\s\S]*?\]|\{[\s\S]*?\})/.exec(content);
-	if (bracketMatch?.[1]) {
-		try {
-			return JSON.parse(bracketMatch[1]) as T;
-		} catch {
-			// give up
-		}
+	// Tier 3: extract outermost [ ... ] or { ... } bracket pair
+	const arrayStart = trimmed.indexOf("[");
+	const arrayEnd = trimmed.lastIndexOf("]");
+	if (arrayStart >= 0 && arrayEnd > arrayStart) {
+		const bracket = tryParseAndUnwrap<T>(trimmed.slice(arrayStart, arrayEnd + 1));
+		if (bracket !== null) return bracket;
+	}
+	const objStart = trimmed.indexOf("{");
+	const objEnd = trimmed.lastIndexOf("}");
+	if (objStart >= 0 && objEnd > objStart) {
+		const bracket = tryParseAndUnwrap<T>(trimmed.slice(objStart, objEnd + 1));
+		if (bracket !== null) return bracket;
 	}
 
 	return null;
