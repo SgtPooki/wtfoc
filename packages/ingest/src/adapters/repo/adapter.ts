@@ -40,6 +40,7 @@ export interface RepoAdapterConfig {
 /** Metadata about the repo state after ingest, used for cursor persistence */
 export interface RepoIngestMetadata {
 	headCommitSha: string | null;
+	renamedFiles: Array<{ oldPath: string; newPath: string }>;
 }
 
 export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
@@ -89,7 +90,7 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 		// Try git-diff incremental ingest if we have a cursor
 		const gitRepo = await isGitRepo(repoPath);
 		const headSha = gitRepo ? await getHeadCommit(repoPath) : null;
-		this.lastIngestMetadata = { headCommitSha: headSha };
+		this.lastIngestMetadata = { headCommitSha: headSha, renamedFiles: [] };
 
 		let files: string[];
 		let deletedFiles: string[] = [];
@@ -150,6 +151,9 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 		} else {
 			files = await walkFiles(repoPath, includeExts, excludeDirs, ignoreFilter);
 		}
+
+		// Store rename info for catalog lifecycle management
+		this.lastIngestMetadata = { headCommitSha: headSha, renamedFiles };
 
 		// Emit tombstone chunks for deleted files so the catalog can archive them
 		for (const deletedPath of deletedFiles) {

@@ -51,6 +51,8 @@ export interface DocumentCatalogEntry {
 	chunkIds: string[];
 	/** Chunk IDs from superseded versions (should be excluded from search) */
 	supersededChunkIds: string[];
+	/** Content fingerprints of current version chunks — for compute dedup across versions */
+	contentFingerprints: string[];
 	/** Current lifecycle state */
 	state: DocumentLifecycleState;
 	/** How this source handles updates */

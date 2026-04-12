@@ -124,6 +124,7 @@ export interface UpdateDocumentOptions {
 	documentId: string;
 	versionId: string;
 	chunkIds: string[];
+	contentFingerprints: string[];
 	sourceType: string;
 	mutability: "mutable-state" | "append-only";
 }
@@ -147,6 +148,7 @@ export function updateDocument(
 			previousVersionIds: [],
 			chunkIds: options.chunkIds,
 			supersededChunkIds: [],
+			contentFingerprints: options.contentFingerprints,
 			state: "active",
 			mutability: options.mutability,
 			sourceType: options.sourceType,
@@ -159,6 +161,10 @@ export function updateDocument(
 		// Append-only: add new chunks alongside existing ones, don't supersede
 		const newChunks = options.chunkIds.filter((id) => !existing.chunkIds.includes(id));
 		existing.chunkIds = [...existing.chunkIds, ...newChunks];
+		const newFp = options.contentFingerprints.filter(
+			(fp) => !(existing.contentFingerprints ?? []).includes(fp),
+		);
+		existing.contentFingerprints = [...(existing.contentFingerprints ?? []), ...newFp];
 		existing.currentVersionId = options.versionId;
 		existing.updatedAt = new Date().toISOString();
 		return { supersededChunkIds: [], previousVersionId: null };
@@ -178,6 +184,7 @@ export function updateDocument(
 	// Accumulate superseded chunk IDs so they can be excluded from search
 	existing.supersededChunkIds = [...(existing.supersededChunkIds ?? []), ...supersededChunkIds];
 	existing.chunkIds = options.chunkIds;
+	existing.contentFingerprints = options.contentFingerprints;
 	existing.state = "active";
 	existing.updatedAt = new Date().toISOString();
 

@@ -27,6 +27,7 @@ import {
 	readCatalog,
 	readCursors,
 	rechunkOversized,
+	renameDocument,
 	segmentId,
 	TreeSitterEdgeExtractor,
 	updateDocument,
@@ -251,9 +252,15 @@ export function registerIngestCommand(program: Command): void {
 					for (const chunkId of entry.supersededChunkIds ?? []) {
 						knownChunkIds.add(chunkId);
 					}
+					// Collect content fingerprints for cross-version dedup
+					for (const fp of entry.contentFingerprints ?? []) {
+						knownFingerprints.add(fp);
+					}
 				}
 				if (knownChunkIds.size > 0 && format !== "quiet") {
-					console.error(`   ${knownChunkIds.size} existing chunks from catalog (fast dedup)`);
+					console.error(
+						`   ${knownChunkIds.size} existing chunks from catalog (fast dedup, ${knownFingerprints.size} fingerprints)`,
+					);
 				}
 			} else if (head) {
 				// Fallback: scan segments for legacy collections without a catalog
@@ -536,6 +543,9 @@ export function registerIngestCommand(program: Command): void {
 			// Update document catalog from ALL seen chunks (including dedup-skipped).
 			// This ensures renames, unchanged files, and lifecycle transitions are tracked.
 			if (catalogPendingChunks.size > 0) {
+				// Determine source-specific mutability
+				const appendOnlyTypes = new Set(["hn-story", "hn-comment"]);
+
 				for (const [docId, docChunks] of catalogPendingChunks) {
 					const firstChunk = docChunks[0];
 					if (!firstChunk?.documentVersionId) continue;
@@ -546,20 +556,55 @@ export function registerIngestCommand(program: Command): void {
 						continue;
 					}
 
-					// Grouped chat chunks (Slack/Discord) use mutable-state because
-					// grouping windows can change across ingests, replacing old snapshots
-					const mutability = "mutable-state" as const;
+					// Source-specific mutability:
+					// - HN stories/comments are append-only (content doesn't change)
+					// - Everything else is mutable-state (files, issues, PRs, Slack/Discord groups, docs)
+					const mutability = appendOnlyTypes.has(firstChunk.sourceType)
+						? ("append-only" as const)
+						: ("mutable-state" as const);
+
+					const fingerprints = docChunks
+						.map((c) => c.contentFingerprint)
+						.filter((fp): fp is string => fp !== undefined);
 
 					const result = updateDocument(catalog, {
 						documentId: docId,
 						versionId: firstChunk.documentVersionId,
 						chunkIds: docChunks.map((c) => c.id),
+						contentFingerprints: fingerprints,
 						sourceType: firstChunk.sourceType,
 						mutability,
 					});
 
 					if (result.previousVersionId && result.supersededChunkIds.length > 0) {
 						totalDocsSuperseded++;
+					}
+				}
+
+				// Handle renames: archive old document IDs from git-diff renames
+				if (
+					sourceType === "repo" &&
+					"lastIngestMetadata" in adapter &&
+					(
+						adapter as {
+							lastIngestMetadata: {
+								renamedFiles: Array<{ oldPath: string; newPath: string }>;
+							} | null;
+						}
+					).lastIngestMetadata?.renamedFiles.length
+				) {
+					const repo = args[0] ?? "";
+					const renames = (
+						adapter as {
+							lastIngestMetadata: { renamedFiles: Array<{ oldPath: string; newPath: string }> };
+						}
+					).lastIngestMetadata.renamedFiles;
+					for (const { oldPath } of renames) {
+						const oldDocId = `${repo}/${oldPath}`;
+						renameDocument(catalog, oldDocId);
+					}
+					if (format !== "quiet" && renames.length > 0) {
+						console.error(`   📋 ${renames.length} renamed file(s) archived in catalog`);
 					}
 				}
 
@@ -595,14 +640,21 @@ export function registerIngestCommand(program: Command): void {
 			}
 
 			// Persist cursor after successful ingest (FR-001, FR-004: only on success)
+			// IMPORTANT: Don't advance cursor when filter flags are active — partial runs
+			// should not skip unprocessed changes on the next full ingest
+			const isPartialRun = !!(opts.documentIds || opts.sourcePaths || opts.changedSince);
+			if (isPartialRun && format !== "quiet") {
+				console.error("   ⚠️  Partial run (filter flags active) — cursor not advanced");
+			}
+
 			// For repo adapters: use git HEAD SHA as cursor (enables git-diff next run)
 			// For other adapters: use max timestamp from chunk data
 			const repoHeadSha =
-				sourceType === "repo" && "lastIngestMetadata" in adapter
+				!isPartialRun && sourceType === "repo" && "lastIngestMetadata" in adapter
 					? (adapter as { lastIngestMetadata: { headCommitSha: string | null } | null })
 							.lastIngestMetadata?.headCommitSha
 					: null;
-			const cursorValue = repoHeadSha ?? (maxTimestamp || null);
+			const cursorValue = isPartialRun ? null : (repoHeadSha ?? (maxTimestamp || null));
 
 			if (cursorValue) {
 				const existingCursorValue = cursorData?.cursors?.[sourceKey]?.cursorValue;

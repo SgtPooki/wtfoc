@@ -47,6 +47,7 @@ describe("document-catalog", () => {
 				previousVersionIds: [],
 				chunkIds: ["c1", "c2"],
 				supersededChunkIds: [],
+				contentFingerprints: ["fp1", "fp2"],
 				state: "active",
 				mutability: "mutable-state",
 				sourceType: "code",
@@ -82,6 +83,7 @@ describe("document-catalog", () => {
 				chunkIds: ["c1", "c2"],
 				sourceType: "code",
 				mutability: "mutable-state",
+				contentFingerprints: [],
 			});
 
 			expect(result.supersededChunkIds).toEqual([]);
@@ -98,6 +100,7 @@ describe("document-catalog", () => {
 				chunkIds: ["c1", "c2"],
 				sourceType: "code",
 				mutability: "mutable-state",
+				contentFingerprints: [],
 			});
 
 			const result = updateDocument(catalog, {
@@ -106,6 +109,7 @@ describe("document-catalog", () => {
 				chunkIds: ["c3", "c4"],
 				sourceType: "code",
 				mutability: "mutable-state",
+				contentFingerprints: [],
 			});
 
 			expect(result.supersededChunkIds).toEqual(["c1", "c2"]);
@@ -123,6 +127,7 @@ describe("document-catalog", () => {
 				chunkIds: ["c1"],
 				sourceType: "code",
 				mutability: "mutable-state",
+				contentFingerprints: [],
 			});
 
 			updateDocument(catalog, {
@@ -131,6 +136,7 @@ describe("document-catalog", () => {
 				chunkIds: ["c2"],
 				sourceType: "code",
 				mutability: "mutable-state",
+				contentFingerprints: [],
 			});
 
 			updateDocument(catalog, {
@@ -139,6 +145,7 @@ describe("document-catalog", () => {
 				chunkIds: ["c3"],
 				sourceType: "code",
 				mutability: "mutable-state",
+				contentFingerprints: [],
 			});
 
 			const doc = catalog.documents["repo/file.ts"];
@@ -157,6 +164,7 @@ describe("document-catalog", () => {
 				chunkIds: ["c1"],
 				sourceType: "code",
 				mutability: "mutable-state",
+				contentFingerprints: [],
 			});
 
 			const result = updateDocument(catalog, {
@@ -165,6 +173,7 @@ describe("document-catalog", () => {
 				chunkIds: ["c1"],
 				sourceType: "code",
 				mutability: "mutable-state",
+				contentFingerprints: [],
 			});
 
 			expect(result.supersededChunkIds).toEqual([]);
@@ -178,6 +187,7 @@ describe("document-catalog", () => {
 				chunkIds: ["c1"],
 				sourceType: "slack-message",
 				mutability: "append-only",
+				contentFingerprints: [],
 			});
 
 			const result = updateDocument(catalog, {
@@ -186,6 +196,7 @@ describe("document-catalog", () => {
 				chunkIds: ["c2"],
 				sourceType: "slack-message",
 				mutability: "append-only",
+				contentFingerprints: [],
 			});
 
 			expect(result.supersededChunkIds).toEqual([]);
@@ -203,6 +214,7 @@ describe("document-catalog", () => {
 				chunkIds: ["c1", "c2"],
 				sourceType: "code",
 				mutability: "mutable-state",
+				contentFingerprints: [],
 			});
 
 			const result = archiveDocument(catalog, "repo/deleted.ts");
@@ -226,6 +238,7 @@ describe("document-catalog", () => {
 				chunkIds: ["c1"],
 				sourceType: "code",
 				mutability: "mutable-state",
+				contentFingerprints: [],
 			});
 
 			renameDocument(catalog, "repo/old.ts");
@@ -242,6 +255,7 @@ describe("document-catalog", () => {
 				chunkIds: ["c1", "c2"],
 				sourceType: "code",
 				mutability: "mutable-state",
+				contentFingerprints: [],
 			});
 			updateDocument(catalog, {
 				documentId: "doc2",
@@ -249,6 +263,7 @@ describe("document-catalog", () => {
 				chunkIds: ["c3"],
 				sourceType: "code",
 				mutability: "mutable-state",
+				contentFingerprints: [],
 			});
 			archiveDocument(catalog, "doc2");
 
@@ -268,6 +283,7 @@ describe("document-catalog", () => {
 				chunkIds: ["c1"],
 				sourceType: "code",
 				mutability: "mutable-state",
+				contentFingerprints: [],
 			});
 			archiveDocument(catalog, "doc1");
 
@@ -285,6 +301,7 @@ describe("document-catalog", () => {
 				chunkIds: ["c1"],
 				sourceType: "code",
 				mutability: "mutable-state",
+				contentFingerprints: [],
 			});
 
 			const doc = getDocument(catalog, "repo/file.ts");
