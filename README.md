@@ -10,6 +10,8 @@ A customer complains in Slack. Someone files an issue. Someone else fixes it in 
 
 wtfoc makes those connections queryable. One trace surfaces the Slack complaint, the GitHub issue, the PR that fixed it, and the code that changed — all linked by extracted edges, not keyword matches.
 
+**Learn more:** [Why wtfoc?](docs/why.md) | [Vision & North-Star Goals](docs/vision.md) | [Pipeline Architecture](docs/pipeline-architecture.md)
+
 ## Try It Now
 
 ### Point Claude at the hosted MCP endpoint

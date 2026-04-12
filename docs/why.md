@@ -1,18 +1,24 @@
 # Why wtfoc?
 
+*For the full north-star goals and what "done" looks like, see [vision.md](./vision.md).*
+
 ## The Problem
 
-Your team's knowledge is scattered. Code lives in GitHub. Decisions happen in Slack. Requirements are in Jira. Documentation drifts out of sync. Customer feedback sits in a support tool. When someone asks "why was auth.ts rewritten?" the answer spans a Slack thread, two PRs, a design doc, and a customer escalation ticket — and no existing tool connects those dots.
+Your team's knowledge is scattered. Code lives in GitHub. Decisions happen in Slack. Requirements are in Jira. Documentation drifts out of sync. Customer feedback sits in a support tool. When someone asks "why was auth.ts rewritten?" the answer spans a Slack thread, two PRs, a design doc, and a customer escalation ticket — and piecing that together today is manual, slow, and fragile.
 
-**Enterprise search tools** (Glean, Onyx, GoSearch) solve "find me a document about X." They index your sources and return the most relevant pages. That works for simple lookups. But they can't tell you *why* something happened, *what led to* a decision, or *which code paths are affected* by a change — because they don't model relationships.
+Existing tools each solve a piece of this, but none solve the whole thing:
 
-**Code intelligence tools** (Sourcegraph, Greptile, GitNexus) solve "understand this codebase." They build dependency graphs and call chains. But they're code-only — they can't connect a function to the Slack discussion that motivated it, or to the customer complaint that triggered the refactor.
+**Enterprise search tools** (Glean, Onyx, GoSearch) are excellent at "find me a document about X." They index your sources and return relevant pages. But they don't model the *relationships* between those pages — they can't trace *why* something happened or *what led to* a decision across sources.
 
-**RAG frameworks** (LlamaIndex, LangChain, Haystack) solve "give an LLM context from my docs." But they treat documents as bags of text — chunks go in, nearest neighbors come out. No relationships, no provenance, no evidence chains.
+**Code intelligence tools** (Sourcegraph, Greptile, GitNexus) understand codebases deeply — dependency graphs, call chains, cross-repo analysis. But they're code-focused — they don't connect a function to the Slack discussion that motivated it, or to the customer complaint that triggered the refactor.
+
+**RAG frameworks** (LlamaIndex, LangChain, Haystack) give LLMs context from your docs. But they typically treat documents as bags of text — chunks go in, nearest neighbors come out. Some support knowledge graphs, but building a cross-source, evidence-backed graph pipeline is still a build-it-yourself exercise.
+
+These tools are good at what they do. The gap is in **cross-source traceability** — following evidence chains across different tools and source types to answer "why" and "how did this happen?"
 
 ## What wtfoc Does Differently
 
-wtfoc builds **knowledge graphs with explicit, evidence-backed edges** across every source type. Not just embeddings — actual typed relationships between artifacts, with confidence scores and evidence trails.
+wtfoc is an **evidence-backed trace engine for engineering context**. It builds knowledge graphs with explicit, typed edges across every source type — not just embeddings, but actual relationships between artifacts with confidence scores, evidence trails, and provenance you can verify.
 
 ### Search vs. Trace
 
@@ -123,22 +129,30 @@ FOC is the best default, not the only option. The `StorageBackend` seam means yo
 
 ### Onyx / Glean (Enterprise Search)
 
-They find documents. wtfoc traces relationships between documents. Onyx can answer "find me the doc about billing migration." wtfoc can answer "what Slack discussions, PRs, customer tickets, and code changes were involved in the billing migration, and how do they connect?"
+Enterprise search excels at finding documents. wtfoc excels at tracing relationships *between* documents. Onyx can answer "find me the doc about billing migration." wtfoc can answer "what Slack discussions, PRs, customer tickets, and code changes were involved in the billing migration, and how do they connect?" These tools are complementary — enterprise search for lookup, wtfoc for cross-source traceability.
 
 ### Sourcegraph / Greptile / GitNexus (Code Intelligence)
 
-They understand code. wtfoc understands code *in context*. GitNexus builds a knowledge graph of one repo's functions and imports. wtfoc builds a knowledge graph across repos, Slack, GitHub issues, documentation, and customer feedback — connecting a function to the conversation that motivated it.
+Code intelligence tools understand codebases deeply. wtfoc adds the surrounding context — the Slack discussions, issue threads, design docs, and customer feedback that explain *why* the code is the way it is. GitNexus builds a knowledge graph within a repo; wtfoc builds one across repos, conversations, docs, and feedback.
 
 ### LlamaIndex / LangChain / Haystack (RAG Frameworks)
 
-They're libraries for building RAG pipelines. wtfoc is a complete tool with a specific opinion: **explicit, typed, evidence-backed edges are better than embeddings alone for cross-source sensemaking.** You could build something similar with LlamaIndex, but you'd be building wtfoc from scratch.
+These are excellent libraries for building RAG pipelines. wtfoc is an opinionated complete tool built on a specific thesis: **explicit, typed, evidence-backed edges are better than embeddings alone for cross-source sensemaking.** You could build something similar with LlamaIndex — but you'd be building wtfoc from scratch, including the multi-extractor edge pipeline, the version-chain model, and the FOC storage integration.
 
 ### Neo4j / Knowledge Graph Databases
 
-They're general-purpose graph databases. wtfoc is an opinionated pipeline for building knowledge graphs from engineering artifacts specifically. You don't define a schema and populate it — wtfoc ingests your sources and discovers relationships automatically through its multi-extractor pipeline.
+General-purpose graph databases require you to define a schema and populate it. wtfoc is an opinionated pipeline that ingests your sources and discovers relationships automatically through its multi-extractor pipeline. The graph builds itself from your engineering artifacts.
+
+## Embedding Model Audit Trail
+
+Every segment records which embedding model produced its vectors. Switching models creates new segments — old ones persist as an immutable audit trail. The full model history is verifiable via content-addressed identifiers.
+
+This means you can always answer: "Which model was used for our Q3 knowledge base?" and "Can we reproduce last month's search results?"
 
 ## The Bottom Line
 
-If you need to search across your tools — use Onyx. It's free, open-source, and has 40+ connectors.
+If you need to search across your tools — use Onyx or Glean. They're great at that.
 
 If you need to **understand how things connect across your entire engineering context** — code, conversations, decisions, documentation, customer feedback — with evidence trails you can follow and verify, stored in portable, content-addressed artifacts that outlive any single tool or infrastructure — that's what wtfoc is for.
+
+For the full vision of where wtfoc is headed, see [vision.md](./vision.md).
