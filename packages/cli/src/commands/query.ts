@@ -35,7 +35,7 @@ export function registerQueryCommand(program: Command): void {
 			process.exit(1);
 		}
 
-		if (format !== "quiet") console.error("⏳ Loading embedder + index...");
+		if (format === "human") console.error("⏳ Loading embedder + index...");
 		const { embedder } = createEmbedder(opts, getProjectConfig()?.embedder);
 
 		// Load document catalog to exclude archived/superseded chunks from search

@@ -15,7 +15,7 @@ export function registerCollectionsCommand(program: Command): void {
 			if (names.length === 0) {
 				if (format === "json") {
 					console.log(JSON.stringify([]));
-				} else if (format !== "quiet") {
+				} else if (format === "human") {
 					console.log("No collections found.");
 				}
 				return;

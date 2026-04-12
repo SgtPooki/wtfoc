@@ -47,7 +47,7 @@ export function registerDescribeCommand(program: Command): void {
 							description: updatedManifest.description ?? null,
 						}),
 					);
-				} else if (format !== "quiet") {
+				} else if (format === "human") {
 					if (opts.clear) {
 						console.log(`Cleared description for "${opts.collection}"`);
 					} else {

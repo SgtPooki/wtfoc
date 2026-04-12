@@ -69,10 +69,10 @@ export function registerReindexCommand(program: Command): void {
 			}
 
 			// Probe embed to detect dimensions (OpenAI-compatible embedders auto-detect on first call)
-			if (format !== "quiet") console.error("⏳ Detecting embedding dimensions...");
+			if (format === "human") console.error("⏳ Detecting embedding dimensions...");
 			await embedder.embed("dimension probe");
 
-			if (format !== "quiet") {
+			if (format === "human") {
 				console.error(
 					`🔄 Re-indexing "${opts.collection}"${targetName !== opts.collection ? ` → "${targetName}"` : ""}`,
 				);
@@ -112,7 +112,7 @@ export function registerReindexCommand(program: Command): void {
 				}
 			}
 
-			if (format !== "quiet") {
+			if (format === "human") {
 				console.error(`   Loaded ${allChunks.length} chunks and ${allEdges.length} edges`);
 			}
 
@@ -155,7 +155,7 @@ export function registerReindexCommand(program: Command): void {
 				const rechunked = rechunkOversized(oversized, maxChars);
 				chunksToEmbed.push(...rechunked);
 
-				if (format !== "quiet") {
+				if (format === "human") {
 					if (preservedChunks.length > 0) {
 						console.error(
 							`   Preserved ${preservedChunks.length} chunks, re-chunked ${oversized.length} oversized → ${rechunked.length} new chunks`,
@@ -182,7 +182,7 @@ export function registerReindexCommand(program: Command): void {
 				const batchNum = Math.floor(i / batchSize) + 1;
 				const totalBatches = Math.ceil(chunksToEmbed.length / batchSize);
 
-				if (format !== "quiet" && chunksToEmbed.length > 0) {
+				if (format === "human" && chunksToEmbed.length > 0) {
 					console.error(
 						`⏳ Embedding batch ${batchNum}/${totalBatches} (${batchChunks.length} chunks)...`,
 					);
@@ -222,7 +222,7 @@ export function registerReindexCommand(program: Command): void {
 				let batchRecord: import("@wtfoc/common").BatchRecord | undefined;
 
 				if (storageType === "foc") {
-					if (format !== "quiet") console.error("⏳ Bundling into CAR...");
+					if (format === "human") console.error("⏳ Bundling into CAR...");
 					const bundleResult = await bundleAndUpload(
 						[{ id: segId, data: segmentBytes }],
 						store.storage,
@@ -234,7 +234,7 @@ export function registerReindexCommand(program: Command): void {
 					resultId = segmentResult.id;
 				}
 
-				if (format !== "quiet") {
+				if (format === "human") {
 					console.error(`   Segment stored: ${resultId.slice(0, 16)}...`);
 				}
 
@@ -287,7 +287,7 @@ export function registerReindexCommand(program: Command): void {
 						chunks: chunksProcessed,
 					}),
 				);
-			} else if (format !== "quiet") {
+			} else if (format === "human") {
 				console.error(
 					`\n✅ Re-indexed "${opts.collection}"${targetName !== opts.collection ? ` → "${targetName}"` : ""}`,
 				);

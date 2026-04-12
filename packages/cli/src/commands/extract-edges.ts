@@ -90,7 +90,7 @@ async function pruneStaleData(
 			updatedAt: new Date().toISOString(),
 		});
 		await writeExtractionStatus(statusPath, statusData);
-		if (format !== "quiet") {
+		if (format === "human") {
 			if (edgesPruned > 0) console.error(`🧹 Pruned ${edgesPruned} stale overlay edges`);
 			if (contextsPruned > 0) console.error(`🧹 Pruned ${contextsPruned} stale status entries`);
 		}
@@ -135,7 +135,7 @@ export function registerExtractEdgesCommand(program: Command): void {
 		}
 		const head = headResult;
 
-		if (format !== "quiet") {
+		if (format === "human") {
 			console.error(`⏳ Loading collection "${opts.collection}"...`);
 		}
 
@@ -145,7 +145,7 @@ export function registerExtractEdgesCommand(program: Command): void {
 		// Map to Chunk interface
 		const allChunks: Chunk[] = segments.flatMap((seg) => seg.chunks.map(segmentChunkToChunk));
 
-		if (format !== "quiet") {
+		if (format === "human") {
 			console.error(`📦 ${allChunks.length} chunks in ${segments.length} segments`);
 		}
 
@@ -218,13 +218,13 @@ export function registerExtractEdgesCommand(program: Command): void {
 		const toProcess = getContextsToProcess(existingStatus, contexts, config.model);
 
 		if (toProcess.length === 0) {
-			if (format !== "quiet") {
+			if (format === "human") {
 				console.error("✅ All contexts already processed. Nothing to do.");
 			}
 			return;
 		}
 
-		if (format !== "quiet") {
+		if (format === "human") {
 			console.error(
 				`🔍 ${toProcess.length}/${contexts.length} contexts to process (${toProcess.reduce((sum, c) => sum + c.chunkIds.length, 0)} chunks)`,
 			);
@@ -244,7 +244,7 @@ export function registerExtractEdgesCommand(program: Command): void {
 		let processed = 0;
 		const contextConcurrency = Math.max(1, Number.parseInt(opts.contextConcurrency, 10) || 4);
 
-		if (format !== "quiet" && contextConcurrency > 1) {
+		if (format === "human" && contextConcurrency > 1) {
 			console.error(`   Context concurrency: ${contextConcurrency}`);
 		}
 
@@ -271,7 +271,7 @@ export function registerExtractEdgesCommand(program: Command): void {
 			if (!chunksForContext || chunksForContext.length === 0) return;
 
 			const idx = ++processed;
-			if (format !== "quiet") {
+			if (format === "human") {
 				console.error(
 					`  [${idx}/${toProcess.length}] Extracting: ${ctx.contextId} (${chunksForContext.length} chunks)...`,
 				);
@@ -336,7 +336,7 @@ export function registerExtractEdgesCommand(program: Command): void {
 		// Wait for remaining
 		await Promise.all(active);
 
-		if (signal.aborted && format !== "quiet") {
+		if (signal.aborted && format === "human") {
 			console.error(`\n⚠️  Cancelled. ${processed} contexts processed before abort.`);
 		}
 
@@ -376,12 +376,12 @@ export function registerExtractEdgesCommand(program: Command): void {
 				await store.manifests.putHead(opts.collection, manifest, currentHead.headId);
 			}
 
-			if (format !== "quiet") {
+			if (format === "human") {
 				console.error(`   📦 Stored derived edge layer: ${layerStorageResult.id.slice(0, 16)}...`);
 			}
 		}
 
-		if (format !== "quiet") {
+		if (format === "human") {
 			console.error(`\n✅ Done. ${totalNewEdges} new edges extracted.`);
 			console.error(
 				`   Contexts: ${completed} completed, ${failed} failed, ${contexts.length} total`,
