@@ -1,6 +1,6 @@
 # Runtime Modes and Responsibilities
 
-> Design notes for issue #109 — canonical specs live under `.specify/specs/`.
+> Design notes for issue #109.
 
 ## Overview
 

@@ -164,11 +164,11 @@ Repo: ${REPO}
 
 ## Task
 
-This is a SPEC task. Follow the spec-kit flow:
+This is a SPEC task. Follow the specweave increment flow:
 
-1. Read SPEC.md and .specify/memory/constitution.md to understand project rules
-2. Run /speckit.specify to create the specification in .specify/specs/${branch}/spec.md
-3. Run /speckit.clarify to resolve any ambiguities
+1. Read SPEC.md and docs/principles.md to understand project rules
+2. Run /sw:increment to create the increment
+3. Run /peer-review to get cross-review
 4. Commit the spec and push to the branch
 5. Open a PR: gh pr create --title "[spec] ${title}" --body "Spec for #${num}. Needs /peer-review before merge."
 6. Comment on the PR that it needs cross-review before merge
@@ -180,7 +180,7 @@ ${body}
 ## Rules
 
 - Read SPEC.md and AGENTS.md first
-- Every spec follows the spec-kit template format
+- Every spec follows the specweave increment format
 - Commit atomically — each commit is one logical change
 - Push after each meaningful commit
 - Do NOT merge the PR — it needs peer review first
@@ -203,7 +203,7 @@ Repo: ${REPO}
 This is an IMPLEMENTATION task. Follow the spec and implement:
 
 1. Read SPEC.md, AGENTS.md, and the ratified spec referenced in the issue
-2. Run /speckit.implement or implement manually following the task breakdown
+2. Run /sw:do or implement manually following the task breakdown
 3. Write behavioral tests for all changes (vitest, test .ts files directly)
 4. Ensure pnpm test and pnpm lint pass
 5. Commit atomically — each commit is one logical change that builds

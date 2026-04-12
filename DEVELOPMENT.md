@@ -57,18 +57,18 @@ skills/         Distributable agent skills (npx skills add)
 
 ## Spec-Driven Development
 
-Every non-trivial change requires a spec, cross-reviewed by a different AI agent before implementation. The project uses [spec-kit](https://github.com/github/spec-kit):
+Every non-trivial change requires a spec, cross-reviewed by a different AI agent before implementation. The project uses [specweave](https://spec-weave.com):
 
 ```
-/speckit.specify       Create or update a feature specification
-/speckit.clarify       Identify underspecified areas, ask targeted questions
-/speckit.plan          Generate implementation plan from spec
-/speckit.tasks         Generate dependency-ordered tasks
-/speckit.implement     Execute the implementation plan
-/speckit.analyze       Cross-artifact consistency check
+/sw:increment          Create a new increment (spec + plan + tasks)
+/sw:do                 Manual task-by-task execution
+/sw:auto               Autonomous hands-free execution
+/sw:done               Close increment after quality validation
+/sw:validate           Rule-based validation
+/sw:grill              Comprehensive implementation audit
 ```
 
-Feature specs live in `.specify/specs/`. The project constitution is at `.specify/memory/constitution.md`.
+Increments live in `.specweave/increments/`.
 
 ## Key Files
 
@@ -76,7 +76,8 @@ Feature specs live in `.specify/specs/`. The project constitution is at `.specif
 |------|---------|
 | [SPEC.md](SPEC.md) | Project-wide invariants and architecture rules |
 | [AGENTS.md](AGENTS.md) | AI agent operating instructions |
-| [.specify/memory/constitution.md](.specify/memory/constitution.md) | Governance and workflow |
+| [docs/principles.md](docs/principles.md) | Design principles |
+| [docs/configuration.md](docs/configuration.md) | Configuration reference |
 
 ## Style
 

@@ -4,7 +4,7 @@
 
 Decentralized knowledge tracing and recall on FOC (Filecoin Onchain Cloud).
 
-This document defines **project-wide invariants** — rules that apply to all features and all packages. Feature-specific specs live in `.specify/specs/` and follow the [spec-kit](https://github.com/github/spec-kit) driven development flow.
+This document defines **project-wide invariants** — rules that apply to all features and all packages. Feature-specific specs live in `.specweave/increments/` and follow the [specweave](https://spec-weave.com) increment flow.
 
 ## Foundational Rules
 
@@ -118,19 +118,13 @@ Manifests and segments include `schemaVersion`. Readers reject unknown versions.
 
 Every change requires a spec. No implementation without a ratified specification.
 
-1. `/speckit.specify` — create the specification
-2. `/speckit.clarify` — clarify and de-risk (before /plan)
-3. **`/peer-review`** — spec cross-reviewed by a different agent. Address all feedback before ratifying.
-4. `/speckit.plan` — create implementation plan
-5. `/speckit.checklist` — quality checklists (optional)
-6. `/speckit.tasks` — generate actionable tasks
-7. `/speckit.analyze` — validate alignment (optional, before /implement)
-8. `/speckit.implement` — execute implementation
-9. `/speckit.taskstoissues` — convert tasks to GitHub issues (optional)
+1. `/sw:increment` — create the increment (spec + plan + tasks)
+2. **`/peer-review`** — spec cross-reviewed by a different agent. Address all feedback before ratifying.
+3. `/sw:do` — execute implementation task by task
+4. `/sw:grill` — comprehensive implementation audit
+5. `/sw:done` — close increment after quality validation
 
-See also: `/speckit.constitution` for updating project principles.
-
-Feature specs live in `.specify/specs/`. See [spec-kit](https://github.com/github/spec-kit) for the full workflow.
+Feature specs live in `.specweave/increments/`. See [specweave](https://spec-weave.com) for the full workflow.
 
 ### Atomic commits
 
@@ -167,17 +161,6 @@ Deferred: `@wtfoc/memory` (agent memory), `@wtfoc/mcp` (MCP server) — scaffold
 
 ## Feature Specs
 
-Feature-level architecture, user stories, and implementation details live in spec-kit specs:
-
-| Spec | Description | Status |
-|------|-------------|--------|
-| [001-store-backend](.specify/specs/001-store-backend/spec.md) | Storage backends (local + FOC), manifest chain, dual CIDs | ✅ Implemented (cross-reviewed) |
-| [002-ingest-pipeline](.specify/specs/002-ingest-pipeline/spec.md) | Chunking, repo adapter, edge extraction, segments | ✅ Implemented (retro spec) |
-| [003-search-and-trace](.specify/specs/003-search-and-trace/spec.md) | Embedder, vector index, query, trace command | ✅ Implemented (retro spec) |
-| [004-cli](.specify/specs/004-cli/spec.md) | CLI commands (init, ingest, trace, query, status, verify) | ✅ Implemented (retro spec) |
-| [005-golden-demo](.specify/specs/005-golden-demo/spec.md) | Synthetic demo dataset | Superseded by 006 |
-| [006-demo-real-data](.specify/specs/006-demo-real-data/spec.md) | Real FOC ecosystem data (10 repos) | In progress |
-| [007-foc-storage-backend](.specify/specs/007-foc-storage-backend/spec.md) | FOC storage with dual CIDs (IPFS + PieceCID) | ✅ Implemented (retro spec) |
-| [5-001-ingest-pipeline](.specify/specs/5-001-ingest-pipeline/spec.md) | Cursor's detailed ingest spec | Merged |
+Feature increments are tracked in `.specweave/increments/`. Historical specs are preserved in git history.
 
 See also: [Issue #1](https://github.com/SgtPooki/wtfoc/issues/1) (architecture history), [Issue #2](https://github.com/SgtPooki/wtfoc/issues/2) (Slack webhook — future)

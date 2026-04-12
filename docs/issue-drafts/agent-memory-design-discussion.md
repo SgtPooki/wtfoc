@@ -198,12 +198,10 @@ A strong outcome would be a future workflow where:
 
 ## Next Step After Discussion
 
-If this direction holds up, the next step should be a formal spec created through the normal flow:
+If this direction holds up, the next step should be a formal spec created through the normal specweave increment flow:
 
-1. `/speckit.specify`
-2. `/speckit.clarify`
-3. `/peer-review`
-4. `/speckit.plan`
-5. `/speckit.tasks`
+1. `/sw:increment` — create the increment (spec + plan + tasks)
+2. `/peer-review` — cross-review by different agent
+3. `/sw:do` — execute implementation
 
 Implementation should only begin after that process is complete.

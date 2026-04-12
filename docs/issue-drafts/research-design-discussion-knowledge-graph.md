@@ -212,12 +212,10 @@ If this discussion is productive, likely next specs would be:
 
 ## Next Step
 
-After discussion, any architecture changes should go through the normal spec flow:
+After discussion, any architecture changes should go through the normal specweave increment flow:
 
-1. `/speckit.specify`
-2. `/speckit.clarify`
-3. `/peer-review`
-4. `/speckit.plan`
-5. `/speckit.tasks`
+1. `/sw:increment` — create the increment (spec + plan + tasks)
+2. `/peer-review` — cross-review by different agent
+3. `/sw:do` — execute implementation
 
 Implementation should only happen after that process.
