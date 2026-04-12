@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
 import type { Chunk, Edge, SourceAdapter } from "@wtfoc/common";
 import { WtfocError } from "@wtfoc/common";
+import { sha256Hex } from "../chunker.js";
 import { RegexEdgeExtractor } from "../edges/extractor.js";
 
 // ─── Algolia Search API response shapes ─────────────────────────────────────
@@ -59,9 +59,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 	});
 }
 
-function sha256(content: string): string {
-	return createHash("sha256").update(content, "utf8").digest("hex");
-}
+// Use sha256Hex from chunker for consistency
 
 function stripHtml(html: string): string {
 	return html
@@ -182,8 +180,13 @@ export class HackerNewsAdapter implements SourceAdapter<HackerNewsAdapterConfig>
 
 		if (!content.trim()) return null;
 
+		const documentId = `hn:${hit.objectID}`;
+		const contentFingerprint = sha256Hex(content);
+		// HN stories are append-only (content doesn't change), use objectID as version
+		const documentVersionId = hit.objectID;
+
 		return {
-			id: sha256(content),
+			id: sha256Hex(`${documentVersionId}:0:${content}`),
 			content,
 			sourceType: "hn-story",
 			source: `hn:${hit.objectID}`,
@@ -198,6 +201,9 @@ export class HackerNewsAdapter implements SourceAdapter<HackerNewsAdapterConfig>
 				...(externalUrl ? { externalUrl } : {}),
 				...(hit.story_id ? { storyId: String(hit.story_id) } : {}),
 			},
+			documentId,
+			documentVersionId,
+			contentFingerprint,
 		};
 	}
 
@@ -205,8 +211,12 @@ export class HackerNewsAdapter implements SourceAdapter<HackerNewsAdapterConfig>
 		const text = hit.comment_text ? stripHtml(hit.comment_text) : "";
 		if (!text.trim()) return null;
 
+		const documentId = `hn:${hit.objectID}`;
+		const contentFingerprint = sha256Hex(text);
+		const documentVersionId = hit.objectID;
+
 		return {
-			id: sha256(text),
+			id: sha256Hex(`${documentVersionId}:0:${text}`),
 			content: text,
 			sourceType: "hn-comment",
 			source: `hn:${hit.objectID}`,
@@ -219,6 +229,9 @@ export class HackerNewsAdapter implements SourceAdapter<HackerNewsAdapterConfig>
 				...(hit.parent_id ? { parentId: String(hit.parent_id) } : {}),
 				...(hit.story_id ? { storyId: String(hit.story_id) } : {}),
 			},
+			documentId,
+			documentVersionId,
+			contentFingerprint,
 		};
 	}
 }

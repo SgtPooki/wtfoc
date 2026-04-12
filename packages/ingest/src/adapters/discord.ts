@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { Chunk, Edge, SourceAdapter } from "@wtfoc/common";
 import { WtfocError } from "@wtfoc/common";
+import { sha256Hex } from "../chunker.js";
 import { RegexEdgeExtractor } from "../edges/extractor.js";
 import { type ChatGroupingAccessors, groupChatMessages } from "./chat-utils.js";
 
@@ -166,8 +166,12 @@ export class DiscordAdapter implements SourceAdapter<DiscordAdapterConfig> {
 			if (!firstMsg || !lastMsg) continue;
 			const sourceUrl = `https://discord.com/channels/${serverId}/${channelId}/${firstMsg.id}`;
 
+			const contentFingerprint = sha256Hex(content);
+			const documentId = `discord:${channelId}:${firstMsg.id}`;
+			const documentVersionId = lastMsg.id;
+
 			yield {
-				id: createHash("sha256").update(content).digest("hex"),
+				id: sha256Hex(`${documentVersionId}:0:${content}`),
 				content,
 				sourceType: "discord-message",
 				source: `${serverName}/#${channelName}`,
@@ -183,6 +187,9 @@ export class DiscordAdapter implements SourceAdapter<DiscordAdapterConfig> {
 					lastMessageId: lastMsg.id,
 					messageCount: String(group.messages.length),
 				},
+				documentId,
+				documentVersionId,
+				contentFingerprint,
 			};
 		}
 	}
@@ -276,8 +283,12 @@ export class DiscordAdapter implements SourceAdapter<DiscordAdapterConfig> {
 				if (!firstMsg || !lastMsg) continue;
 				const sourceUrl = `https://discord.com/channels/${serverId}/${channelId}/${firstMsg.id}`;
 
+				const contentFingerprint = sha256Hex(content);
+				const documentId = `discord:${channelId}:${firstMsg.id}`;
+				const documentVersionId = lastMsg.id;
+
 				yield {
-					id: createHash("sha256").update(content).digest("hex"),
+					id: sha256Hex(`${documentVersionId}:0:${content}`),
 					content,
 					sourceType: "discord-message",
 					source: `${serverName}/#${channelName}`,
@@ -293,6 +304,9 @@ export class DiscordAdapter implements SourceAdapter<DiscordAdapterConfig> {
 						lastMessageId: lastMsg.id,
 						messageCount: String(group.messages.length),
 					},
+					documentId,
+					documentVersionId,
+					contentFingerprint,
 				};
 			}
 		} finally {

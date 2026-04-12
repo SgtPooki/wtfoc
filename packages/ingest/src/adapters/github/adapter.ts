@@ -137,12 +137,17 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 				updatedAt: String(rec.updated_at ?? ""),
 			};
 
+			const documentId = `${repo}#${number}`;
+			const documentVersionId = String(rec.updated_at ?? rec.created_at ?? "");
+
 			const chunks = chunkMarkdown(content, {
 				chunkSize: GITHUB_CHUNK_SIZE,
 				source: `${repo}#${number}`,
 				sourceUrl: String(rec.html_url ?? ""),
 				timestamp: String(rec.updated_at ?? rec.created_at ?? ""),
 				metadata,
+				documentId,
+				documentVersionId,
 			});
 
 			for (const chunk of chunks) {
@@ -184,12 +189,17 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 				updatedAt: String(rec.updated_at ?? ""),
 			};
 
+			const documentId = `${repo}#${number}`;
+			const documentVersionId = String(rec.updated_at ?? rec.created_at ?? "");
+
 			const chunks = chunkMarkdown(content, {
 				chunkSize: GITHUB_CHUNK_SIZE,
 				source: `${repo}#${number}`,
 				sourceUrl: String(rec.html_url ?? ""),
 				timestamp: String(rec.updated_at ?? rec.created_at ?? ""),
 				metadata,
+				documentId,
+				documentVersionId,
 			});
 
 			for (const chunk of chunks) {
@@ -246,12 +256,17 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 				createdAt: String(rec.created_at ?? ""),
 			};
 
+			const documentId = `${repo}#${prNumber}/comment/${commentId}`;
+			const documentVersionId = String(rec.updated_at ?? rec.created_at ?? "");
+
 			const chunks = chunkMarkdown(body, {
 				chunkSize: GITHUB_CHUNK_SIZE,
 				source: `${repo}#${prNumber}`,
 				sourceUrl: String(rec.html_url ?? ""),
 				timestamp: String(rec.updated_at ?? rec.created_at ?? ""),
 				metadata,
+				documentId,
+				documentVersionId,
 			});
 
 			for (const chunk of chunks) {
@@ -317,12 +332,17 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 					createdAt: String(node.createdAt ?? ""),
 				};
 
+				const documentId = `${repo}/discussions/${number}`;
+				const documentVersionId = String(node.createdAt ?? "");
+
 				const chunks = chunkMarkdown(content, {
 					chunkSize: GITHUB_CHUNK_SIZE,
 					source: `${repo}/discussions/${number}`,
 					sourceUrl: String(node.url ?? ""),
 					timestamp: String(node.createdAt ?? ""),
 					metadata,
+					documentId,
+					documentVersionId,
 				});
 
 				for (const chunk of chunks) {

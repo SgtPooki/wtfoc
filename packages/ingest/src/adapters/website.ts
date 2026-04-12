@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { Chunk, Edge, SourceAdapter } from "@wtfoc/common";
 import { CheerioCrawler, Configuration } from "crawlee";
 import TurndownService from "turndown";
-import { chunkMarkdown } from "../chunker.js";
+import { chunkMarkdown, sha256Hex } from "../chunker.js";
 
 export interface WebsiteAdapterConfig {
 	/** The URL to crawl (e.g., "https://docs.filecoin.io") */
@@ -62,6 +62,9 @@ export class WebsiteAdapter implements SourceAdapter<WebsiteAdapterConfig> {
 		for (const page of pages) {
 			if (!page.markdown.trim()) continue;
 
+			const documentId = page.url;
+			const documentVersionId = sha256Hex(page.markdown);
+
 			const chunks = chunkMarkdown(page.markdown, {
 				source: new URL(page.url).pathname,
 				sourceUrl: page.url,
@@ -69,6 +72,8 @@ export class WebsiteAdapter implements SourceAdapter<WebsiteAdapterConfig> {
 					url: page.url,
 					title: page.title,
 				},
+				documentId,
+				documentVersionId,
 			});
 
 			for (const chunk of chunks) {

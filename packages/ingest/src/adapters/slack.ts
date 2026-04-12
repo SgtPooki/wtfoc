@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
 import type { Chunk, Edge, SourceAdapter } from "@wtfoc/common";
 import { WtfocError } from "@wtfoc/common";
+import { sha256Hex } from "../chunker.js";
 import { RegexEdgeExtractor } from "../edges/extractor.js";
 import { type ChatGroupingAccessors, groupChatMessages } from "./chat-utils.js";
 
@@ -151,8 +151,13 @@ export class SlackAdapter implements SourceAdapter<SlackAdapterConfig> {
 			const lastMsg = group.messages[group.messages.length - 1];
 			if (!firstMsg || !lastMsg) continue;
 
+			const contentFingerprint = sha256Hex(content);
+			// Slack messages are append-only; documentId is channel:firstTs, version is lastTs
+			const documentId = `${channelId}:${firstMsg.ts}`;
+			const documentVersionId = lastMsg.ts;
+
 			yield {
-				id: createHash("sha256").update(content).digest("hex"),
+				id: sha256Hex(`${documentVersionId}:0:${content}`),
 				content,
 				sourceType: "slack-message",
 				source: `#${channelName}`,
@@ -168,6 +173,9 @@ export class SlackAdapter implements SourceAdapter<SlackAdapterConfig> {
 					lastMessageTs: lastMsg.ts,
 					messageCount: String(group.messages.length),
 				},
+				documentId,
+				documentVersionId,
+				contentFingerprint,
 			};
 		}
 	}
