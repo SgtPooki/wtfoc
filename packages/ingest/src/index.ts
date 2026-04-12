@@ -34,6 +34,7 @@ export {
 	sha256Hex,
 } from "./chunker.js";
 export {
+	AstHeuristicChunker,
 	CodeWindowChunker,
 	getAvailableChunkers,
 	getChunker,
