@@ -44,7 +44,7 @@ export async function chatCompletion(
 		model: options.model,
 		messages,
 		temperature: 0,
-		max_tokens: 2000,
+		max_tokens: 4000,
 	};
 
 	// JSON mode: "on" forces response_format, "auto" relies on prompt only
