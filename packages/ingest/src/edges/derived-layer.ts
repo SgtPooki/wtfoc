@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Edge } from "@wtfoc/common";
+import { edgeKey } from "./merge.js";
 
 /**
  * Immutable derived-edge layer blob.
@@ -103,7 +104,7 @@ export function compactDerivedLayers(
 				continue;
 			}
 
-			const key = JSON.stringify([edge.type, edge.sourceId, edge.targetType, edge.targetId]);
+			const key = edgeKey(edge);
 			const existing = edgeMap.get(key);
 			if (existing) {
 				droppedDuplicate++;

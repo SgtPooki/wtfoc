@@ -115,6 +115,7 @@ export { TemporalEdgeExtractor, type TemporalEdgeExtractorOptions } from "./edge
 export {
 	type TemporalEdgeType,
 	type TemporalEvent,
+	type TemporalExtractionResult,
 	TemporalSemanticExtractor,
 	type TemporalSemanticOptions,
 } from "./edges/temporal-semantic.js";

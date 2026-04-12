@@ -1,5 +1,5 @@
 import type { CollectionHead, DerivedEdgeLayerSummary, Segment } from "@wtfoc/common";
-import { compactDerivedLayers, parseDerivedEdgeLayer } from "@wtfoc/ingest";
+import { compactDerivedLayers, type DerivedEdgeLayer, parseDerivedEdgeLayer } from "@wtfoc/ingest";
 import type { Command } from "commander";
 import { getFormat, getStore } from "../helpers.js";
 
@@ -22,15 +22,22 @@ export function registerCompactEdgesCommand(program: Command): void {
 			}
 
 			const layers = head.manifest.derivedEdgeLayers ?? [];
+
+			// No-op: no layers
 			if (layers.length === 0) {
-				if (format !== "quiet") {
+				if (format === "json") {
+					console.log(JSON.stringify({ noop: true, reason: "no-layers", inputLayers: 0 }));
+				} else if (format !== "quiet") {
 					console.error("No derived edge layers to compact.");
 				}
 				return;
 			}
 
+			// No-op: only 1 layer (nothing to merge)
 			if (layers.length === 1 && !opts.dryRun) {
-				if (format !== "quiet") {
+				if (format === "json") {
+					console.log(JSON.stringify({ noop: true, reason: "single-layer", inputLayers: 1 }));
+				} else if (format !== "quiet") {
 					console.error("Only 1 layer — nothing to compact.");
 				}
 				return;
@@ -40,8 +47,8 @@ export function registerCompactEdgesCommand(program: Command): void {
 				console.error(`⏳ Loading ${layers.length} derived edge layers...`);
 			}
 
-			// Load all layers
-			const loadedLayers = [];
+			// Load all layers (typed)
+			const loadedLayers: DerivedEdgeLayer[] = [];
 			for (const ref of layers) {
 				const data = await store.storage.download(ref.id);
 				loadedLayers.push(parseDerivedEdgeLayer(data));
@@ -52,6 +59,7 @@ export function registerCompactEdgesCommand(program: Command): void {
 				console.error("⏳ Loading segments to validate chunk references...");
 			}
 			const validChunkIds = new Set<string>();
+			let segmentFailures = 0;
 			for (const segSummary of head.manifest.segments) {
 				try {
 					const segBytes = await store.storage.download(segSummary.id);
@@ -60,30 +68,49 @@ export function registerCompactEdgesCommand(program: Command): void {
 						validChunkIds.add(c.id);
 					}
 				} catch {
-					// Skip undownloadable segments
+					segmentFailures++;
 				}
 			}
+
+			// If any segments failed to load, disable orphan-dropping to prevent data loss
+			const safeToDropOrphans = segmentFailures === 0;
+			if (!safeToDropOrphans && format !== "quiet") {
+				console.error(
+					`   ⚠️  ${segmentFailures} segment(s) failed to load — orphan detection disabled to prevent data loss`,
+				);
+			}
+
+			// When segments are incomplete, pass all edge sourceIds as valid
+			const effectiveValidIds = safeToDropOrphans
+				? validChunkIds
+				: new Set([
+						...validChunkIds,
+						...loadedLayers.flatMap((l) => l.edges.map((e) => e.sourceId)),
+					]);
 
 			// Compact
 			const { layer: compacted, stats } = compactDerivedLayers(
 				loadedLayers,
-				validChunkIds,
+				effectiveValidIds,
 				head.manifest.collectionId,
 			);
 
 			if (format !== "quiet") {
-				console.error(`\n📊 Compaction results:`);
+				console.error("\n📊 Compaction results:");
 				console.error(`   Input: ${stats.inputLayers} layers, ${stats.inputEdges} edges`);
 				console.error(`   Output: 1 layer, ${stats.outputEdges} edges`);
 				console.error(
 					`   Dropped: ${stats.droppedOrphan} orphan, ${stats.droppedDuplicate} duplicate`,
 				);
+				if (segmentFailures > 0) {
+					console.error(`   ⚠️  ${segmentFailures} segments could not be loaded`);
+				}
 			}
 
 			if (opts.dryRun) {
 				console.error("   --dry-run: no changes written");
 				if (format === "json") {
-					console.log(JSON.stringify(stats));
+					console.log(JSON.stringify({ ...stats, segmentFailures }));
 				}
 				return;
 			}
@@ -120,6 +147,7 @@ export function registerCompactEdgesCommand(program: Command): void {
 					JSON.stringify({
 						collection: opts.collection,
 						...stats,
+						segmentFailures,
 						compactedLayerId: result.id,
 					}),
 				);
