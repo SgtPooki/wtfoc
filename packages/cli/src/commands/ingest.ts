@@ -231,11 +231,32 @@ export function registerIngestCommand(program: Command): void {
 				: (embedder.maxInputChars ?? DEFAULT_MAX_CHUNK_CHARS);
 			const storageType = (program.opts().storage ?? "local") as string;
 
-			// Build dedup set from existing segments for resumability
-			// Uses contentFingerprint when available (new chunks), falls back to id (legacy)
+			// Build dedup set: prefer catalog (fast, no downloads) with segment fallback
 			const knownFingerprints = new Set<string>();
 			const knownChunkIds = new Set<string>();
-			if (head) {
+
+			// Load or create document catalog for lifecycle management
+			const collectionId = head?.manifest.collectionId ?? generateCollectionId(opts.collection);
+			const catPath = catalogFilePath(manifestDir, opts.collection);
+			const catalog: DocumentCatalog =
+				(await readCatalog(catPath)) ?? createEmptyCatalog(collectionId);
+
+			// Try catalog-based dedup first (O(1) — no segment downloads)
+			const catalogHasEntries = Object.keys(catalog.documents).length > 0;
+			if (catalogHasEntries) {
+				for (const entry of Object.values(catalog.documents)) {
+					for (const chunkId of entry.chunkIds) {
+						knownChunkIds.add(chunkId);
+					}
+					for (const chunkId of entry.supersededChunkIds ?? []) {
+						knownChunkIds.add(chunkId);
+					}
+				}
+				if (knownChunkIds.size > 0 && format !== "quiet") {
+					console.error(`   ${knownChunkIds.size} existing chunks from catalog (fast dedup)`);
+				}
+			} else if (head) {
+				// Fallback: scan segments for legacy collections without a catalog
 				for (const segSummary of head.manifest.segments) {
 					try {
 						const segBytes = await store.storage.download(segSummary.id);
@@ -251,15 +272,9 @@ export function registerIngestCommand(program: Command): void {
 					}
 				}
 				if (knownChunkIds.size > 0 && format !== "quiet") {
-					console.error(`   ${knownChunkIds.size} existing chunks found (will skip duplicates)`);
+					console.error(`   ${knownChunkIds.size} existing chunks from segments (legacy dedup)`);
 				}
 			}
-
-			// Load or create document catalog for lifecycle management
-			const collectionId = head?.manifest.collectionId ?? generateCollectionId(opts.collection);
-			const catPath = catalogFilePath(manifestDir, opts.collection);
-			const catalog: DocumentCatalog =
-				(await readCatalog(catPath)) ?? createEmptyCatalog(collectionId);
 
 			// Load or create raw source archive index
 			const arcPath = archiveIndexPath(manifestDir, opts.collection);
