@@ -6,10 +6,11 @@ import { ManifestConflictError, WtfocError } from "@wtfoc/common";
 import { validateManifestSchema } from "../schema.js";
 
 /**
- * Pattern matching manifest files: name with no dots, followed by .json.
+ * Pattern matching manifest files: valid collection name followed by .json.
+ * Must match the same character set as VALID_COLLECTION_NAME.
  * Excludes sidecar files like {name}.ingest-cursors.json, {name}.document-catalog.json, etc.
  */
-const MANIFEST_FILE_PATTERN = /^[^.]+\.json$/;
+const MANIFEST_FILE_PATTERN = /^[a-zA-Z0-9_-]+\.json$/;
 
 /**
  * Valid collection name pattern: alphanumeric, hyphens, underscores.
@@ -24,7 +25,14 @@ const VALID_COLLECTION_NAME = /^[a-zA-Z0-9_-]+$/;
 export function validateCollectionName(name: string): void {
 	if (!name || !VALID_COLLECTION_NAME.test(name)) {
 		throw new WtfocError(
-			`Invalid collection name "${name}": must contain only letters, numbers, hyphens, and underscores (no dots)`,
+			`Invalid collection name "${name}": must contain only letters, numbers, hyphens, and underscores (1-128 chars, no dots)`,
+			"COLLECTION_INVALID_NAME",
+			{ projectName: name },
+		);
+	}
+	if (name.length > 128) {
+		throw new WtfocError(
+			`Collection name too long (${name.length} chars): max 128 characters`,
 			"COLLECTION_INVALID_NAME",
 			{ projectName: name },
 		);

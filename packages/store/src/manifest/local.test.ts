@@ -186,6 +186,16 @@ describe("LocalManifestStore", () => {
 			expect(() => validateCollectionName("foo/bar")).toThrow("Invalid collection name");
 			expect(() => validateCollectionName("foo@bar")).toThrow("Invalid collection name");
 		});
+
+		it("rejects names longer than 128 characters", () => {
+			const longName = "a".repeat(129);
+			expect(() => validateCollectionName(longName)).toThrow("too long");
+		});
+
+		it("accepts names up to 128 characters", () => {
+			const maxName = "a".repeat(128);
+			expect(() => validateCollectionName(maxName)).not.toThrow();
+		});
 	});
 
 	describe("listProjects excludes sidecar files", () => {
@@ -218,14 +228,14 @@ describe("LocalManifestStore", () => {
 		});
 	});
 
-	describe("getHead returns null for non-manifest files", () => {
-		it("returns null for sidecar JSON files", async () => {
+	describe("getHead returns null for invalid manifest files", () => {
+		it("returns null for JSON that is not a valid manifest", async () => {
 			await writeFile(
-				join(manifestDir, "test-sidecar.json"),
+				join(manifestDir, "invalid-manifest.json"),
 				JSON.stringify({ cursors: {}, notAManifest: true }),
 			);
 			const store = new LocalManifestStore(manifestDir);
-			const head = await store.getHead("test-sidecar");
+			const head = await store.getHead("invalid-manifest");
 			expect(head).toBeNull();
 		});
 
