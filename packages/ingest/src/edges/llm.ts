@@ -2,6 +2,7 @@ import type { Chunk, Edge, EdgeExtractor, StructuredEvidence } from "@wtfoc/comm
 import { validateEdges } from "./edge-validator.js";
 import { chatCompletion, type LlmClientOptions, parseJsonResponse } from "./llm-client.js";
 import { buildExtractionMessages, estimatePromptOverhead, estimateTokens } from "./llm-prompt.js";
+import { Semaphore } from "./semaphore.js";
 
 /** Canonical edge types that the product supports. Non-canonical types are normalized to these. */
 const CANONICAL_EDGE_TYPES = new Set([
@@ -151,11 +152,26 @@ export class LlmEdgeExtractor implements EdgeExtractor {
 			}),
 		);
 
+		let failedCount = 0;
 		for (const result of results) {
 			if (result.status === "fulfilled") {
 				allEdges.push(...result.value);
+			} else {
+				failedCount++;
 			}
-			// Failed batches silently dropped (fail-open)
+		}
+		if (failedCount > 0) {
+			const reasons = results
+				.map((r, i) =>
+					r.status === "rejected"
+						? `  batch ${i}: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`
+						: null,
+				)
+				.filter(Boolean)
+				.join("\n");
+			console.error(
+				`[wtfoc] LLM edge extraction: ${failedCount}/${results.length} batch(es) failed (fail-open)\n${reasons}`,
+			);
 		}
 
 		return allEdges;
@@ -252,37 +268,5 @@ export class LlmEdgeExtractor implements EdgeExtractor {
 			}
 		}
 		return accepted;
-	}
-}
-
-/**
- * Simple counting semaphore for concurrency limiting.
- */
-class Semaphore {
-	#count: number;
-	readonly #waiters: Array<() => void> = [];
-
-	constructor(count: number) {
-		this.#count = count;
-	}
-
-	async acquire(): Promise<() => void> {
-		if (this.#count > 0) {
-			this.#count--;
-			return () => this.#release();
-		}
-
-		return new Promise<() => void>((resolve) => {
-			this.#waiters.push(() => {
-				this.#count--;
-				resolve(() => this.#release());
-			});
-		});
-	}
-
-	#release(): void {
-		this.#count++;
-		const next = this.#waiters.shift();
-		if (next) next();
 	}
 }

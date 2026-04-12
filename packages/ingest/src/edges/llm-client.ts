@@ -53,21 +53,24 @@ export async function chatCompletion(
 		body.response_format = { type: "json_object" };
 	}
 
-	const controller = new AbortController();
-	const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 20000);
-
-	// Chain external signal
-	if (signal) {
-		if (signal.aborted) {
-			clearTimeout(timeout);
-			throw signal.reason;
-		}
-		signal.addEventListener("abort", () => controller.abort(signal.reason), { once: true });
+	// Check external signal before starting
+	if (signal?.aborted) {
+		throw signal.reason;
 	}
 
-	try {
-		const maxRetries = 3;
-		for (let attempt = 0; attempt <= maxRetries; attempt++) {
+	const maxRetries = 3;
+	for (let attempt = 0; attempt <= maxRetries; attempt++) {
+		// Fresh timeout per attempt so 429 wait doesn't eat into the next request's budget
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 20000);
+
+		// Chain external signal for this attempt
+		const onAbort = () => controller.abort(signal?.reason);
+		if (signal) {
+			signal.addEventListener("abort", onAbort, { once: true });
+		}
+
+		try {
 			const response = await fetch(url, {
 				method: "POST",
 				headers,
@@ -82,7 +85,23 @@ export async function chatCompletion(
 				console.error(
 					`[wtfoc] Rate limited (429), waiting ${(waitMs / 1000).toFixed(1)}s before retry ${attempt + 1}/${maxRetries}`,
 				);
-				await new Promise((r) => setTimeout(r, waitMs));
+				await new Promise<void>((resolve, reject) => {
+					if (signal?.aborted) {
+						reject(signal.reason);
+						return;
+					}
+					const onRetryAbort = () => {
+						clearTimeout(timer);
+						reject(signal?.reason);
+					};
+					const timer = setTimeout(() => {
+						if (signal) signal.removeEventListener("abort", onRetryAbort);
+						resolve();
+					}, waitMs);
+					if (signal) {
+						signal.addEventListener("abort", onRetryAbort, { once: true });
+					}
+				});
 				continue;
 			}
 
@@ -99,11 +118,12 @@ export async function chatCompletion(
 			const content = data.choices?.[0]?.message?.content ?? "";
 
 			return { content, usage: data.usage };
+		} finally {
+			clearTimeout(timeout);
+			signal?.removeEventListener("abort", onAbort);
 		}
-		throw new Error("LLM request failed: rate limited after max retries");
-	} finally {
-		clearTimeout(timeout);
 	}
+	throw new Error("LLM request failed: rate limited after max retries");
 }
 
 /**

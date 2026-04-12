@@ -22,6 +22,7 @@ import { type ValidationResult, validateEdges } from "./edge-validator.js";
 import { normalizeEdgeType } from "./llm.js";
 import { chatCompletion, type LlmClientOptions, parseJsonResponse } from "./llm-client.js";
 import { buildExtractionMessages, estimatePromptOverhead, estimateTokens } from "./llm-prompt.js";
+import { Semaphore } from "./semaphore.js";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -388,22 +389,13 @@ export async function runEdgeEval(options: EvalOptions, signal?: AbortSignal): P
 	let totalPromptTokens = 0;
 	let totalCompletionTokens = 0;
 
-	// Simple concurrency limiter
-	const semaphore = { count: maxConcurrency };
-	const acquire = async () => {
-		while (semaphore.count <= 0) {
-			await new Promise((r) => setTimeout(r, 50));
-		}
-		semaphore.count--;
-	};
-	const release = () => {
-		semaphore.count++;
-	};
+	// Concurrency limiter (proper wait-queue, no polling)
+	const semaphore = new Semaphore(maxConcurrency);
 
 	const batchResults = await Promise.allSettled(
 		batches.map(async (batch, batchIndex) => {
 			signal?.throwIfAborted();
-			await acquire();
+			const release = await semaphore.acquire();
 			try {
 				signal?.throwIfAborted();
 				const messages = buildExtractionMessages(batch);
