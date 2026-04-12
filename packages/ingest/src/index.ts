@@ -60,6 +60,13 @@ export { CodeEdgeExtractor } from "./edges/code.js";
 export { CompositeEdgeExtractor } from "./edges/composite.js";
 export { extractPackageJsonDeps, extractRequirementsTxtDeps } from "./edges/dependency-parser.js";
 export {
+	buildDerivedEdgeLayer,
+	type DerivedEdgeLayer,
+	derivedLayerId,
+	loadDerivedEdgeLayers,
+	parseDerivedEdgeLayer,
+} from "./edges/derived-layer.js";
+export {
 	type ContextStatus,
 	computeContextHash,
 	type ExtractionStatusData,

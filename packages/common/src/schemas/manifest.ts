@@ -119,6 +119,24 @@ export interface ThemeSnapshot {
  *
  * Schema v1 redefined in place — no external consumers to break.
  */
+/**
+ * Summary of an immutable derived-edge layer stored alongside segments.
+ * Each extract-edges run produces one layer. Mount merges all layers with
+ * base segment edges. Layers survive reindex/reingest.
+ */
+export interface DerivedEdgeLayerSummary {
+	/** Storage ID of the layer blob */
+	id: string;
+	/** Extractor model that produced this layer */
+	extractorModel: string;
+	/** Number of edges in this layer */
+	edgeCount: number;
+	/** When this layer was created */
+	createdAt: string;
+	/** Contexts processed in this extraction run */
+	contextsProcessed: number;
+}
+
 export interface CollectionHead {
 	schemaVersion: number;
 	collectionId: string;
@@ -136,6 +154,8 @@ export interface CollectionHead {
 	batches?: BatchRecord[];
 	/** Persisted theme clustering results */
 	themes?: ThemeSnapshot;
+	/** Immutable derived-edge layers from extract-edges runs. Each layer is a stored blob of Edge[]. */
+	derivedEdgeLayers?: DerivedEdgeLayerSummary[];
 }
 
 /**

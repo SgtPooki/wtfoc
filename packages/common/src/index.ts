@@ -76,6 +76,7 @@ export type {
 	CollectionHead,
 	CollectionRevision,
 	DatasetRoutingMetadata,
+	DerivedEdgeLayerSummary,
 	HeadManifest,
 	NoiseCategory,
 	ProvenanceRecord,

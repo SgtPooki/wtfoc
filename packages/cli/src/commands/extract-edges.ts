@@ -1,5 +1,6 @@
-import type { Chunk, Segment } from "@wtfoc/common";
+import type { Chunk, CollectionHead, DerivedEdgeLayerSummary, Segment } from "@wtfoc/common";
 import {
+	buildDerivedEdgeLayer,
 	computeContextHash,
 	type ExtractionStatusData,
 	getContextsToProcess,
@@ -344,6 +345,41 @@ export function registerExtractEdgesCommand(program: Command): void {
 		const completed = Object.values(statusData.contexts).filter(
 			(c) => c.status === "completed",
 		).length;
+
+		// Store as immutable derived-edge layer artifact
+		if (totalNewEdges > 0) {
+			const layer = buildDerivedEdgeLayer(
+				head.manifest.collectionId,
+				config.model,
+				overlayEdges,
+				processed,
+			);
+			const layerBytes = new TextEncoder().encode(JSON.stringify(layer));
+			const layerStorageResult = await store.storage.upload(layerBytes);
+
+			const layerSummary: DerivedEdgeLayerSummary = {
+				id: layerStorageResult.id,
+				extractorModel: config.model,
+				edgeCount: overlayEdges.length,
+				createdAt: layer.createdAt,
+				contextsProcessed: processed,
+			};
+
+			// Update manifest with new layer reference
+			const currentHead = await store.manifests.getHead(opts.collection);
+			if (currentHead) {
+				const manifest: CollectionHead = {
+					...currentHead.manifest,
+					derivedEdgeLayers: [...(currentHead.manifest.derivedEdgeLayers ?? []), layerSummary],
+					updatedAt: new Date().toISOString(),
+				};
+				await store.manifests.putHead(opts.collection, manifest, currentHead.headId);
+			}
+
+			if (format !== "quiet") {
+				console.error(`   📦 Stored derived edge layer: ${layerStorageResult.id.slice(0, 16)}...`);
+			}
+		}
 
 		if (format !== "quiet") {
 			console.error(`\n✅ Done. ${totalNewEdges} new edges extracted.`);

@@ -1,6 +1,7 @@
 import {
 	catalogFilePath,
 	getSupersededChunkIds,
+	loadDerivedEdgeLayers,
 	overlayFilePath,
 	readCatalog,
 	readOverlayEdges,
@@ -80,12 +81,29 @@ export function registerTraceCommand(program: Command): void {
 				excludeChunkIds: supersededIds?.size ? supersededIds : undefined,
 			});
 
-			// Load overlay edges (from extract-edges) if available
-			const overlay = await readOverlayEdges(overlayFilePath(manifestDir, opts.collection));
-			const overlayEdges = overlay?.edges ?? [];
-			if (overlayEdges.length > 0 && format !== "quiet") {
-				console.error(`🔗 Loaded ${overlayEdges.length} overlay edges from extract-edges`);
+			// Load derived edge layers from manifest (immutable, versioned)
+			const derivedLayers = head.manifest.derivedEdgeLayers ?? [];
+			let derivedEdges: import("@wtfoc/common").Edge[] = [];
+			if (derivedLayers.length > 0) {
+				derivedEdges = await loadDerivedEdgeLayers(derivedLayers, (id, s) =>
+					store.storage.download(id, s),
+				);
+				if (format !== "quiet") {
+					console.error(
+						`🔗 Loaded ${derivedEdges.length} edges from ${derivedLayers.length} derived layer(s)`,
+					);
+				}
 			}
+
+			// Fall back to legacy overlay file if no derived layers exist
+			if (derivedEdges.length === 0) {
+				const overlay = await readOverlayEdges(overlayFilePath(manifestDir, opts.collection));
+				derivedEdges = overlay?.edges ?? [];
+				if (derivedEdges.length > 0 && format !== "quiet") {
+					console.error(`🔗 Loaded ${derivedEdges.length} overlay edges (legacy)`);
+				}
+			}
+			const overlayEdges = derivedEdges;
 
 			// Check dimension compatibility before querying (skip if dimensions unknown yet)
 			const collectionDims = head.manifest.embeddingDimensions;
