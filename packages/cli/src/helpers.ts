@@ -250,7 +250,10 @@ export function createEmbedder(
 export async function loadCollection(
 	store: ReturnType<typeof createStore>,
 	manifest: CollectionHead,
+	options?: { excludeChunkIds?: ReadonlySet<string> },
 ): Promise<LoadedCollection> {
 	const vectorIndex = new InMemoryVectorIndex();
-	return mountCollection(manifest, store.storage, vectorIndex);
+	return mountCollection(manifest, store.storage, vectorIndex, {
+		excludeChunkIds: options?.excludeChunkIds,
+	});
 }

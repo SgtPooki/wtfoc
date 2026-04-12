@@ -54,6 +54,12 @@ export interface MountOptions {
 	 * MountedCollection so callers can feed them into trace/search.
 	 */
 	overlayEdges?: Edge[];
+	/**
+	 * Set of chunk IDs to exclude from the vector index (e.g. archived/superseded
+	 * chunks from the document catalog). These chunks are still present in
+	 * segments for trace historical context, but won't appear in search results.
+	 */
+	excludeChunkIds?: ReadonlySet<string>;
 }
 
 /**
@@ -108,7 +114,12 @@ export async function mountCollection(
 		const segment = parsed as Segment;
 		segments.push(segment);
 
-		const entries: VectorEntry[] = segment.chunks.map((chunk) => {
+		const excludeIds = options?.excludeChunkIds;
+		const entries: VectorEntry[] = [];
+		for (const chunk of segment.chunks) {
+			// Skip archived/superseded chunks when lifecycle filtering is active
+			if (excludeIds?.has(chunk.id)) continue;
+
 			const metadata: Record<string, string> = {
 				sourceType: chunk.sourceType,
 				source: chunk.source,
@@ -119,13 +130,13 @@ export async function mountCollection(
 			if (chunk.signalScores && Object.keys(chunk.signalScores).length > 0) {
 				metadata.signalScores = JSON.stringify(chunk.signalScores);
 			}
-			return {
+			entries.push({
 				id: chunk.id,
 				vector: new Float32Array(chunk.embedding),
 				storageId: chunk.storageId || segRef,
 				metadata,
-			};
-		});
+			});
+		}
 		await vectorIndex.add(entries);
 	}
 

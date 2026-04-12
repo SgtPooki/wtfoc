@@ -1,4 +1,10 @@
-import { overlayFilePath, readOverlayEdges } from "@wtfoc/ingest";
+import {
+	catalogFilePath,
+	getChunkIdsByState,
+	overlayFilePath,
+	readCatalog,
+	readOverlayEdges,
+} from "@wtfoc/ingest";
 import { type TraceMode, trace } from "@wtfoc/search";
 import type { Command } from "commander";
 import { getProjectConfig } from "../cli.js";
@@ -62,10 +68,19 @@ export function registerTraceCommand(program: Command): void {
 
 			if (format !== "quiet") console.error("⏳ Loading embedder + index...");
 			const { embedder } = createEmbedder(opts, getProjectConfig()?.embedder);
-			const { vectorIndex, segments } = await loadCollection(store, head.manifest);
+
+			// Load document catalog — trace includes archived chunks for historical context
+			// but excludes superseded chunks (replaced by newer versions)
+			const manifestDir = getManifestDir(store);
+			const catPath = catalogFilePath(manifestDir, opts.collection);
+			const catalog = await readCatalog(catPath);
+			const supersededIds = catalog ? getChunkIdsByState(catalog, "superseded") : undefined;
+
+			const { vectorIndex, segments } = await loadCollection(store, head.manifest, {
+				excludeChunkIds: supersededIds?.size ? supersededIds : undefined,
+			});
 
 			// Load overlay edges (from extract-edges) if available
-			const manifestDir = getManifestDir(store);
 			const overlay = await readOverlayEdges(overlayFilePath(manifestDir, opts.collection));
 			const overlayEdges = overlay?.edges ?? [];
 			if (overlayEdges.length > 0 && format !== "quiet") {

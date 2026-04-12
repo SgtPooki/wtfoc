@@ -1,3 +1,4 @@
+import { catalogFilePath, getChunkIdsByState, readCatalog } from "@wtfoc/ingest";
 import { query } from "@wtfoc/search";
 import type { Command } from "commander";
 import { getProjectConfig } from "../cli.js";
@@ -5,6 +6,7 @@ import {
 	createEmbedder,
 	type EmbedderOpts,
 	getFormat,
+	getManifestDir,
 	getStore,
 	loadCollection,
 	withEmbedderOptions,
@@ -30,7 +32,19 @@ export function registerQueryCommand(program: Command): void {
 
 		if (format !== "quiet") console.error("⏳ Loading embedder + index...");
 		const { embedder } = createEmbedder(opts, getProjectConfig()?.embedder);
-		const { vectorIndex } = await loadCollection(store, head.manifest);
+
+		// Load document catalog to exclude archived/superseded chunks from search
+		const manifestDir = getManifestDir(store);
+		const catPath = catalogFilePath(manifestDir, opts.collection);
+		const catalog = await readCatalog(catPath);
+		const archivedIds = catalog ? getChunkIdsByState(catalog, "archived") : undefined;
+		const supersededIds = catalog ? getChunkIdsByState(catalog, "superseded") : undefined;
+		const excludeChunkIds =
+			archivedIds || supersededIds
+				? new Set([...(archivedIds ?? []), ...(supersededIds ?? [])])
+				: undefined;
+
+		const { vectorIndex } = await loadCollection(store, head.manifest, { excludeChunkIds });
 
 		const collectionDims = head.manifest.embeddingDimensions;
 		let traceDims = 0;
