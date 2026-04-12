@@ -1,11 +1,12 @@
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
-import type { Chunk, Edge, SourceAdapter } from "@wtfoc/common";
+import type { Chunk, ChunkerDocument, Edge, SourceAdapter } from "@wtfoc/common";
 import { WtfocError } from "@wtfoc/common";
 import { createIgnoreFilter, loadWtfocIgnore } from "@wtfoc/config";
-import { chunkMarkdown, type MarkdownChunkerOptions, sha256Hex } from "../../chunker.js";
+import { type MarkdownChunkerOptions, sha256Hex } from "../../chunker.js";
+import { selectChunker } from "../../chunkers/index.js";
 import { acquireRepo, extractRepoName } from "./acquisition.js";
-import { chunkCode, DEFAULT_EXCLUDE, DEFAULT_INCLUDE, walkFiles } from "./chunking.js";
+import { DEFAULT_EXCLUDE, DEFAULT_INCLUDE, walkFiles } from "./chunking.js";
 import {
 	type ChangedFile,
 	commitExists,
@@ -192,39 +193,39 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 			const documentId = `${repo}/${relPath}`;
 			const documentVersionId = sha256Hex(content);
 
-			if (isMarkdown) {
-				const chunks = chunkMarkdown(content, {
-					source: `${repo}/${relPath}`,
-					documentId,
-					documentVersionId,
-					...opts.chunkerOptions,
-				});
-				for (const chunk of chunks) {
-					const yieldChunk: Chunk = {
-						...chunk,
-						sourceType,
-						sourceUrl,
-						metadata: {
-							...chunk.metadata,
-							filePath: relPath,
-							language: "markdown",
-							repo,
-						},
-					};
-					// Carry raw content on first chunk for archive
-					if (chunk.chunkIndex === 0) yieldChunk.rawContent = content;
-					yield yieldChunk;
-				}
-			} else {
-				const chunks = chunkCode(content, relPath, repo, sourceUrl, {
-					documentId,
-					documentVersionId,
-				});
-				for (const chunk of chunks) {
-					// Carry raw content on first chunk for archive
-					if (chunk.chunkIndex === 0) chunk.rawContent = content;
-					yield chunk;
-				}
+			const language = isMarkdown ? "markdown" : extname(filePath).slice(1);
+			const chunker = selectChunker(sourceType, relPath);
+
+			const doc: ChunkerDocument = {
+				documentId,
+				documentVersionId,
+				content,
+				sourceType,
+				source: `${repo}/${relPath}`,
+				sourceUrl,
+				filePath: relPath,
+				metadata: {
+					filePath: relPath,
+					language,
+					repo,
+				},
+			};
+
+			const chunks = chunker.chunk(doc, opts.chunkerOptions);
+			for (const chunk of chunks) {
+				const yieldChunk: Chunk = {
+					...chunk,
+					sourceType,
+					sourceUrl,
+					metadata: {
+						...chunk.metadata,
+						filePath: relPath,
+						language,
+						repo,
+					},
+				};
+				if (chunk.chunkIndex === 0) yieldChunk.rawContent = content;
+				yield yieldChunk;
 			}
 		}
 	}

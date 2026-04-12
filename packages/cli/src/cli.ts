@@ -5,6 +5,7 @@ import { ConfigParseError, ConfigValidationError } from "@wtfoc/common";
 import { loadProjectConfig, resolveConfig } from "@wtfoc/config";
 import { Command } from "commander";
 import { registerCollectionsCommand } from "./commands/collections.js";
+import { registerCompactEdgesCommand } from "./commands/compact-edges.js";
 import { registerDescribeCommand } from "./commands/describe.js";
 import { registerExtractEdgesCommand } from "./commands/extract-edges.js";
 import { registerIngestCommand } from "./commands/ingest.js";
@@ -62,6 +63,7 @@ program
 
 registerInitCommand(program);
 registerIngestCommand(program);
+registerCompactEdgesCommand(program);
 registerExtractEdgesCommand(program);
 registerMaterializeEdgesCommand(program);
 registerTraceCommand(program);

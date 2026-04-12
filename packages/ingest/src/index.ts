@@ -34,6 +34,7 @@ export {
 	sha256Hex,
 } from "./chunker.js";
 export {
+	AstHeuristicChunker,
 	CodeWindowChunker,
 	getAvailableChunkers,
 	getChunker,
@@ -69,6 +70,8 @@ export { CompositeEdgeExtractor } from "./edges/composite.js";
 export { extractPackageJsonDeps, extractRequirementsTxtDeps } from "./edges/dependency-parser.js";
 export {
 	buildDerivedEdgeLayer,
+	type CompactionStats,
+	compactDerivedLayers,
 	type DerivedEdgeLayer,
 	derivedLayerId,
 	loadDerivedEdgeLayers,
@@ -109,6 +112,13 @@ export {
 	writeOverlayEdges,
 } from "./edges/overlay-store.js";
 export { TemporalEdgeExtractor, type TemporalEdgeExtractorOptions } from "./edges/temporal.js";
+export {
+	type TemporalEdgeType,
+	type TemporalEvent,
+	type TemporalExtractionResult,
+	TemporalSemanticExtractor,
+	type TemporalSemanticOptions,
+} from "./edges/temporal-semantic.js";
 export {
 	TreeSitterEdgeExtractor,
 	type TreeSitterEdgeExtractorOptions,

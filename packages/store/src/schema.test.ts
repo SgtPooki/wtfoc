@@ -297,6 +297,27 @@ describe("validateManifestSchema", () => {
 		expect(out.segments[1].pieceCid).toBeUndefined();
 		expect(out.batches).toHaveLength(1);
 	});
+
+	it("preserves derivedEdgeLayers through validation", () => {
+		const layers = [
+			{
+				id: "layer-abc",
+				extractorModel: "test-model",
+				edgeCount: 42,
+				createdAt: "2026-01-01T00:00:00Z",
+				contextsProcessed: 10,
+			},
+		];
+		const input = { ...minimalValidManifest(), derivedEdgeLayers: layers };
+		const out = validateManifestSchema(input);
+		expect(out.derivedEdgeLayers).toEqual(layers);
+	});
+
+	it("returns undefined derivedEdgeLayers when not present", () => {
+		const input = minimalValidManifest();
+		const out = validateManifestSchema(input);
+		expect(out.derivedEdgeLayers).toBeUndefined();
+	});
 });
 
 describe("validateSegmentSchema", () => {
