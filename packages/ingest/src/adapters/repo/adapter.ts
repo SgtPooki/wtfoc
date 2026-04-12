@@ -7,8 +7,8 @@ import { chunkMarkdown, type MarkdownChunkerOptions, sha256Hex } from "../../chu
 import { acquireRepo, extractRepoName } from "./acquisition.js";
 import { chunkCode, DEFAULT_EXCLUDE, DEFAULT_INCLUDE, walkFiles } from "./chunking.js";
 import {
-	commitExists,
 	type ChangedFile,
+	commitExists,
 	getChangedFiles,
 	getHeadCommit,
 	isGitRepo,
@@ -125,13 +125,12 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 						.filter((c) => c.status !== "deleted")
 						.map((c) => join(repoPath, c.path));
 
-					deletedFiles = relevantChanges
-						.filter((c) => c.status === "deleted")
-						.map((c) => c.path);
+					deletedFiles = relevantChanges.filter((c) => c.status === "deleted").map((c) => c.path);
 
 					renamedFiles = relevantChanges
-						.filter((c): c is ChangedFile & { oldPath: string } =>
-							c.status === "renamed" && c.oldPath !== undefined,
+						.filter(
+							(c): c is ChangedFile & { oldPath: string } =>
+								c.status === "renamed" && c.oldPath !== undefined,
 						)
 						.map((c) => ({ oldPath: c.oldPath, newPath: c.path }));
 

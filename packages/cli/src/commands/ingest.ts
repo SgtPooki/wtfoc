@@ -3,9 +3,9 @@ import { type Chunk, type CollectionHead, CURRENT_SCHEMA_VERSION } from "@wtfoc/
 import {
 	buildSegment,
 	buildSourceKey,
-	catalogFilePath,
 	CodeEdgeExtractor,
 	CompositeEdgeExtractor,
+	catalogFilePath,
 	createEmptyCatalog,
 	cursorFilePath,
 	DEFAULT_MAX_CHUNK_CHARS,
@@ -17,10 +17,10 @@ import {
 	HeuristicEdgeExtractor,
 	LlmEdgeExtractor,
 	mergeEdges,
+	RegexEdgeExtractor,
 	readCatalog,
 	readCursors,
 	rechunkOversized,
-	RegexEdgeExtractor,
 	segmentId,
 	TreeSitterEdgeExtractor,
 	updateDocument,
@@ -199,7 +199,7 @@ export function registerIngestCommand(program: Command): void {
 				adapterConfig.quiet = format === "quiet";
 				// Pass previous commit SHA for git-diff incremental ingest
 				const storedCursor = getCursorSince(cursorData, sourceKey);
-				if (storedCursor && storedCursor.match(/^[0-9a-f]{40}$/)) {
+				if (storedCursor?.match(/^[0-9a-f]{40}$/)) {
 					adapterConfig.lastCommitSha = storedCursor;
 				}
 			}
@@ -236,7 +236,7 @@ export function registerIngestCommand(program: Command): void {
 			// Load or create document catalog for lifecycle management
 			const collectionId = head?.manifest.collectionId ?? generateCollectionId(opts.collection);
 			const catPath = catalogFilePath(manifestDir, opts.collection);
-			let catalog: DocumentCatalog =
+			const catalog: DocumentCatalog =
 				(await readCatalog(catPath)) ?? createEmptyCatalog(collectionId);
 
 			// Process chunks in batches to limit memory usage

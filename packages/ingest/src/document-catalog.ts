@@ -184,20 +184,13 @@ export function archiveDocument(
 }
 
 /**
- * Handle a file rename: archive the old documentId, transfer to new documentId.
+ * Handle a file rename: archive the old documentId.
+ * The new documentId entry will be created when the renamed file is ingested.
  */
-export function renameDocument(
-	catalog: DocumentCatalog,
-	oldDocumentId: string,
-	newDocumentId: string,
-): void {
+export function renameDocument(catalog: DocumentCatalog, oldDocumentId: string): void {
 	const existing = catalog.documents[oldDocumentId];
 	if (!existing) return;
 
-	// Archive old entry
 	existing.state = "archived";
 	existing.updatedAt = new Date().toISOString();
-
-	// Create new entry (will be populated when the renamed file is ingested)
-	// The actual chunks will come from the new ingest, not transferred from old
 }

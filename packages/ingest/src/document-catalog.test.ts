@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DocumentCatalog } from "@wtfoc/common";
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	archiveDocument,
 	catalogFilePath,
@@ -40,7 +40,7 @@ describe("document-catalog", () => {
 		it("writes and reads back a catalog", async () => {
 			const path = catalogFilePath(tmpDir, "my-collection");
 			const catalog = createEmptyCatalog("coll-1");
-			catalog.documents["doc1"] = {
+			catalog.documents.doc1 = {
 				documentId: "doc1",
 				currentVersionId: "v1",
 				previousVersionIds: [],
@@ -192,7 +192,7 @@ describe("document-catalog", () => {
 				mutability: "mutable-state",
 			});
 
-			renameDocument(catalog, "repo/old.ts", "repo/new.ts");
+			renameDocument(catalog, "repo/old.ts");
 			expect(catalog.documents["repo/old.ts"]?.state).toBe("archived");
 		});
 	});
