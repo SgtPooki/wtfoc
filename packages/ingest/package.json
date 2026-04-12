@@ -24,7 +24,8 @@
 	],
 	"scripts": {
 		"build": "tsc -b",
-		"test": "vitest run"
+		"test": "vitest run --exclude '**/eval.test.ts'",
+		"test:eval": "vitest run --include '**/eval.test.ts'"
 	},
 	"dependencies": {
 		"@wtfoc/common": "workspace:*",

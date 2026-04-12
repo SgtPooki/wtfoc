@@ -73,7 +73,7 @@ const EDGE_TYPE_NORMALIZATION: Record<string, string> = {
  * Normalize an edge type to the canonical vocabulary.
  * Returns the canonical type if found, otherwise returns the original.
  */
-function normalizeEdgeType(type: string): string {
+export function normalizeEdgeType(type: string): string {
 	if (CANONICAL_EDGE_TYPES.has(type)) return type;
 	const normalized = EDGE_TYPE_NORMALIZATION[type];
 	if (normalized) return normalized;
