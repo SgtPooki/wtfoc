@@ -115,17 +115,17 @@ describe("LlmEdgeExtractor", () => {
 			{
 				type: "references",
 				sourceId: "chunk-1",
-				targetType: "concept",
-				targetId: "test",
-				evidence: "evidence here",
+				targetType: "issue",
+				targetId: "owner/repo#42",
+				evidence: "references issue owner/repo#42 here",
 				confidence: 1.0, // too high
 			},
 			{
 				type: "references",
 				sourceId: "chunk-1",
-				targetType: "concept",
-				targetId: "test2",
-				evidence: "more evidence",
+				targetType: "issue",
+				targetId: "owner/repo#43",
+				evidence: "also references owner/repo#43 for more context",
 				confidence: 0.1, // too low
 			},
 		]);

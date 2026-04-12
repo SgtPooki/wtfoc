@@ -157,6 +157,23 @@ function maybeDowngrade(edge: Edge): Edge {
 		return { ...edge, type: "references" };
 	}
 
+	// Downgrade: "discusses" with temporal/status language → references
+	if (edge.type === "discusses") {
+		const statusPatterns = [
+			/\bmerge[sd]?\b/i,
+			/\blanded\b/i,
+			/\bsoon will\b/i,
+			/\bpending\b/i,
+			/\bblocked\b/i,
+			/\bwill be\b/i,
+			/\bup until\b/i,
+		];
+		const hasStatus = statusPatterns.some((p) => p.test(edge.evidence));
+		if (hasStatus) {
+			return { ...edge, type: "references" };
+		}
+	}
+
 	return edge;
 }
 
@@ -203,7 +220,20 @@ function getRejectReason(edge: Edge): string | null {
 		return `low-confidence discusses edge (${edge.confidence})`;
 	}
 
-	// Gate 7: Reject uncertainty markers in strong factual relations
+	// Gate 7: Reject synthesized concept targets not explicitly named in evidence
+	if (edge.targetType === "concept") {
+		// The concept ID should appear (or be closely paraphrased) in the evidence
+		const conceptWords = edge.targetId.replace(/-/g, " ").toLowerCase();
+		const evidenceLower = edge.evidence.toLowerCase();
+		// Check if at least 2/3 of the concept words appear in the evidence
+		const words = conceptWords.split(/\s+/).filter((w) => w.length > 2);
+		const matchedWords = words.filter((w) => evidenceLower.includes(w));
+		if (words.length > 0 && matchedWords.length / words.length < 0.5) {
+			return `synthesized concept not grounded in evidence: "${edge.targetId}"`;
+		}
+	}
+
+	// Gate 8: Reject uncertainty markers in strong factual relations
 	const strongFactual = new Set(["implements", "changes", "closes", "tests"]);
 	if (strongFactual.has(edge.type)) {
 		for (const pattern of UNCERTAINTY_PATTERNS) {
