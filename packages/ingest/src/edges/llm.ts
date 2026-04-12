@@ -1,6 +1,84 @@
-import type { Chunk, Edge, EdgeExtractor } from "@wtfoc/common";
+import type { Chunk, Edge, EdgeExtractor, StructuredEvidence } from "@wtfoc/common";
 import { chatCompletion, type LlmClientOptions, parseJsonResponse } from "./llm-client.js";
 import { buildExtractionMessages, estimatePromptOverhead, estimateTokens } from "./llm-prompt.js";
+
+/** Canonical edge types that the product supports. Non-canonical types are normalized to these. */
+const CANONICAL_EDGE_TYPES = new Set([
+	"references",
+	"closes",
+	"changes",
+	"imports",
+	"depends-on",
+	"implements",
+	"documents",
+	"tests",
+	"addresses",
+	"discusses",
+	"authored-by",
+	"reviewed-by",
+	"supersedes",
+	"superseded-by",
+]);
+
+/** Map freeform LLM labels to canonical types */
+const EDGE_TYPE_NORMALIZATION: Record<string, string> = {
+	// → addresses
+	"responds-to": "addresses",
+	fixes: "addresses",
+	solves: "addresses",
+	mitigates: "addresses",
+	"fixes-bug": "addresses",
+	resolves: "addresses",
+	// → discusses
+	about: "discusses",
+	covers: "discusses",
+	"talks-about": "discusses",
+	mentions: "discusses",
+	describes: "discusses",
+	// → implements
+	"adds-support-for": "implements",
+	realizes: "implements",
+	"implements-feature": "implements",
+	// → documents
+	"doc-for": "documents",
+	explains: "documents",
+	"describes-api": "documents",
+	summarizes: "documents",
+	// → tests
+	verifies: "tests",
+	"regression-test-for": "tests",
+	validates: "tests",
+	// → references
+	cites: "references",
+	"links-to": "references",
+	quotes: "references",
+	"related-to": "references",
+	// → depends-on
+	requires: "depends-on",
+	"blocked-by": "depends-on",
+	// → closes
+	"closes-issue": "closes",
+	// → imports
+	"re-exports": "imports",
+	uses: "imports",
+	// → authored-by
+	"created-by": "authored-by",
+	"written-by": "authored-by",
+	"proposed-by": "authored-by",
+	"published-by": "authored-by",
+};
+
+/**
+ * Normalize an edge type to the canonical vocabulary.
+ * Returns the canonical type if found, otherwise returns the original.
+ */
+function normalizeEdgeType(type: string): string {
+	if (CANONICAL_EDGE_TYPES.has(type)) return type;
+	const normalized = EDGE_TYPE_NORMALIZATION[type];
+	if (normalized) return normalized;
+	// If not recognized, map to "discusses" as the safest generic semantic edge
+	return "discusses";
+}
 
 export interface LlmEdgeExtractorOptions extends LlmClientOptions {
 	maxConcurrency?: number;
@@ -135,13 +213,25 @@ export class LlmEdgeExtractor implements EdgeExtractor {
 			// Clamp confidence to LLM tier
 			const confidence = Math.min(0.8, Math.max(0.3, raw.confidence ?? 0.5));
 
+			// Normalize to canonical vocabulary
+			const canonicalType = normalizeEdgeType(raw.type);
+
+			const structuredEvidence: StructuredEvidence = {
+				text: raw.evidence,
+				extractor: "llm",
+				model: this.#options.model,
+				observedAt: new Date().toISOString(),
+				confidence,
+			};
+
 			edges.push({
-				type: raw.type,
+				type: canonicalType,
 				sourceId: raw.sourceId,
 				targetType: raw.targetType,
 				targetId: raw.targetId,
 				evidence: raw.evidence,
 				confidence,
+				structuredEvidence,
 			});
 		}
 

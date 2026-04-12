@@ -1,4 +1,4 @@
-import type { Edge } from "@wtfoc/common";
+import type { Edge, StructuredEvidence } from "@wtfoc/common";
 
 /**
  * Compute canonical dedup key for an edge.
@@ -49,15 +49,26 @@ export function mergeEdges(results: Array<{ extractorName: string; edges: Edge[]
 	}
 
 	const output: Edge[] = [];
+	const now = new Date().toISOString();
 	for (const { edge, provenance, evidenceParts } of merged.values()) {
 		const agreementBoost = Math.max(0, (provenance.size - 1) * 0.05);
 		const finalConfidence = Math.min(1.0, edge.confidence + agreementBoost);
+		const provenanceArr = [...provenance];
+
+		// Build structured evidence if not already present from the extractor
+		const structuredEvidence: StructuredEvidence = edge.structuredEvidence ?? {
+			text: evidenceParts.join(" | "),
+			extractor: provenanceArr.join("+"),
+			observedAt: now,
+			confidence: finalConfidence,
+		};
 
 		output.push({
 			...edge,
 			confidence: finalConfidence,
 			evidence: evidenceParts.join(" | "),
-			provenance: [...provenance],
+			provenance: provenanceArr,
+			structuredEvidence,
 		});
 	}
 
