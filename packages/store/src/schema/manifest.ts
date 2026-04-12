@@ -283,6 +283,11 @@ export function validateManifestSchema(data: unknown): CollectionHead {
 		manifest.themes = data.themes as CollectionHead["themes"];
 	}
 
+	// Derived edge layers: pass through (optional, from extract-edges)
+	if ("derivedEdgeLayers" in data && Array.isArray(data.derivedEdgeLayers)) {
+		manifest.derivedEdgeLayers = data.derivedEdgeLayers as CollectionHead["derivedEdgeLayers"];
+	}
+
 	if ("batches" in data && data.batches !== undefined) {
 		if (!Array.isArray(data.batches)) {
 			throw schemaInvalid("headManifest", "batches must be an array", "batches");
