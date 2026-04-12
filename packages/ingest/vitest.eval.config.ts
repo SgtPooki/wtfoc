@@ -2,7 +2,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
-const rootDir = dirname(fileURLToPath(import.meta.url));
+const rootDir = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
 export default defineConfig({
 	resolve: {
@@ -15,9 +15,6 @@ export default defineConfig({
 		},
 	},
 	test: {
-		include: ["packages/*/src/**/*.test.ts"],
-		// Exclude e2e tests from the default `pnpm test` run.
-		// Use `pnpm test:e2e` to run them separately.
-		exclude: ["**/node_modules/**", "tests/**", "**/eval.test.ts"],
+		include: ["src/edges/eval.test.ts"],
 	},
 });
