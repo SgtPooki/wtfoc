@@ -3,7 +3,14 @@ import { GreedyClusterer } from "@wtfoc/search";
 import type { Command } from "commander";
 import type { ExtractorCliOpts, LlmExtractorEnabled } from "../extractor-config.js";
 import { resolveExtractorConfig } from "../extractor-config.js";
-import { getFormat, getStore, loadCollection, withExtractorOptions } from "../helpers.js";
+import {
+	type EmbedderOpts,
+	getFormat,
+	getStore,
+	loadCollection,
+	withEmbedderOptions,
+	withExtractorOptions,
+} from "../helpers.js";
 import { labelClusters, summarizeNoise } from "../llm-labels.js";
 import type { OutputFormat } from "../output.js";
 
@@ -103,7 +110,7 @@ export function registerThemesCommand(program: Command): void {
 		.option("--show", "Display persisted themes without re-clustering")
 		.option("--force", "Re-compute themes even if a fresh snapshot exists");
 
-	withExtractorOptions(cmd).action(
+	withEmbedderOptions(withExtractorOptions(cmd)).action(
 		async (
 			opts: {
 				collection: string;
@@ -116,7 +123,8 @@ export function registerThemesCommand(program: Command): void {
 				dryRun?: boolean;
 				show?: boolean;
 				force?: boolean;
-			} & ExtractorCliOpts,
+			} & ExtractorCliOpts &
+				EmbedderOpts,
 		) => {
 			const store = getStore(program);
 			const format = getFormat(program.opts()) as OutputFormat;
