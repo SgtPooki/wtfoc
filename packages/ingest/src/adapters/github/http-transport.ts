@@ -192,22 +192,31 @@ export function resolveGitHubExecFn(): TaggedExecFn {
 	const privateKey = process.env.GITHUB_PRIVATE_KEY;
 	const installationId = process.env.GITHUB_INSTALLATION_ID;
 
-	if (appId && privateKey && installationId) {
+	const parsedInstallationId = Number(installationId);
+	if (
+		appId &&
+		privateKey &&
+		installationId &&
+		Number.isFinite(parsedInstallationId) &&
+		parsedInstallationId > 0
+	) {
 		const provider = new GitHubAppTokenProvider({
 			appId,
 			privateKey: decodePrivateKey(privateKey),
-			installationId: Number(installationId),
+			installationId: parsedInstallationId,
 		});
-		const fn = createHttpExecFn(provider) as TaggedExecFn;
-		fn._transport = "github-app";
+		const fn: TaggedExecFn = Object.assign(createHttpExecFn(provider), {
+			_transport: "github-app" as const,
+		});
 		return fn;
 	}
 
-	const pat = process.env.GITHUB_TOKEN ?? process.env.WTFOC_GITHUB_TOKEN;
+	const pat = process.env.GITHUB_TOKEN || process.env.WTFOC_GITHUB_TOKEN;
 	if (pat) {
 		const provider = new PatTokenProvider(pat);
-		const fn = createHttpExecFn(provider) as TaggedExecFn;
-		fn._transport = "pat";
+		const fn: TaggedExecFn = Object.assign(createHttpExecFn(provider), {
+			_transport: "pat" as const,
+		});
 		return fn;
 	}
 
