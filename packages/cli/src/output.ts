@@ -1,79 +1,220 @@
-import type { QueryResult, TraceResult } from "@wtfoc/search";
+import type { QueryResult, TraceHop, TraceResult, TraceView } from "@wtfoc/search";
 
 export type OutputFormat = "human" | "json" | "quiet";
 
+const sourceIcons: Record<string, string> = {
+	"slack-message": "📨",
+	"discord-message": "💬",
+	"github-issue": "📋",
+	"github-pr": "🔀",
+	"github-issue-comment": "💬",
+	"github-pr-review": "👀",
+	code: "📄",
+	markdown: "📝",
+	"doc-page": "🌐",
+};
+
 /**
  * Format trace results for terminal output.
+ * Dispatches to view-specific formatters for human output.
  */
-export function formatTrace(result: TraceResult, format: OutputFormat): string {
+export function formatTrace(result: TraceResult, format: OutputFormat, view?: TraceView): string {
 	if (format === "json") return JSON.stringify(result, null, "\t");
 	if (format === "quiet") return "";
 
+	const resolvedView = view ?? "evidence";
+	switch (resolvedView) {
+		case "lineage":
+			return formatTraceLineage(result);
+		case "timeline":
+			return formatTraceTimeline(result);
+		case "evidence":
+			return formatTraceEvidence(result);
+	}
+}
+
+function formatHopLine(hop: TraceHop): string[] {
+	const lines: string[] = [];
+	const snippet = hop.content.slice(0, 120).replace(/\n/g, " ");
+	const score = hop.connection.confidence.toFixed(2);
+	lines.push(`  [${score}] ${hop.source}`);
+	lines.push(`         ${snippet}${hop.content.length > 120 ? "..." : ""}`);
+	if (hop.connection.method === "edge") {
+		lines.push(`         🔗 ${hop.connection.edgeType}: ${hop.connection.evidence ?? ""}`);
+	}
+	if (hop.sourceUrl) {
+		lines.push(`         ${hop.sourceUrl}`);
+	}
+	lines.push(`         ID: ${hop.storageId}`);
+	return lines;
+}
+
+function formatInsights(result: TraceResult): string[] {
+	if (!result.insights || result.insights.length === 0) return [];
+
+	const insightIcons: Record<string, string> = {
+		convergence: "🔄",
+		"evidence-chain": "🔗",
+		"temporal-cluster": "📅",
+	};
+
+	const lines: string[] = ["─── Cross-Source Insights ───\n"];
+	for (const insight of result.insights) {
+		const icon = insightIcons[insight.kind] ?? "💡";
+		const strength = (insight.strength * 100).toFixed(0);
+		lines.push(`${icon} [${strength}%] ${insight.summary}`);
+	}
+	lines.push("");
+	return lines;
+}
+
+function formatStats(result: TraceResult): string {
+	return (
+		`📊 ${result.stats.totalHops} results (${result.stats.edgeHops} via edges, ${result.stats.semanticHops} semantic) across ${result.stats.sourceTypes.length} source types` +
+		(result.stats.insightCount > 0
+			? `, ${result.stats.insightCount} insight${result.stats.insightCount === 1 ? "" : "s"}`
+			: "")
+	);
+}
+
+/**
+ * Evidence view: grouped by source type (the original/current output).
+ */
+export function formatTraceEvidence(result: TraceResult): string {
 	const lines: string[] = [];
 	lines.push(`🔍 Trace: "${result.query}"\n`);
-
-	const sourceIcons: Record<string, string> = {
-		"slack-message": "📨",
-		"discord-message": "💬",
-		"github-issue": "📋",
-		"github-pr": "🔀",
-		"github-issue-comment": "💬",
-		"github-pr-review": "👀",
-		code: "📄",
-		markdown: "📝",
-		"doc-page": "🌐",
-	};
 
 	for (const [sourceType, hops] of Object.entries(result.groups)) {
 		const icon = sourceIcons[sourceType] ?? "📎";
 		lines.push(`${icon} ${sourceType} (${hops.length} matches)`);
 
 		for (const hop of hops) {
-			const snippet = hop.content.slice(0, 120).replace(/\n/g, " ");
-			const score = hop.connection.confidence.toFixed(2);
-			lines.push(`  [${score}] ${hop.source}`);
-			lines.push(`         ${snippet}${hop.content.length > 120 ? "..." : ""}`);
-
-			if (hop.connection.method === "edge") {
-				lines.push(`         🔗 ${hop.connection.edgeType}: ${hop.connection.evidence ?? ""}`);
-			}
-
-			if (hop.sourceUrl) {
-				lines.push(`         ${hop.sourceUrl}`);
-			}
-
-			lines.push(`         ID: ${hop.storageId}`);
+			lines.push(...formatHopLine(hop));
 			lines.push("");
 		}
 	}
 
-	// Show cross-source insights (analytical mode)
-	if (result.insights && result.insights.length > 0) {
-		lines.push("─── Cross-Source Insights ───\n");
+	lines.push(...formatInsights(result));
+	lines.push(formatStats(result));
+	return lines.join("\n");
+}
 
-		const insightIcons: Record<string, string> = {
-			convergence: "🔄",
-			"evidence-chain": "🔗",
-			"temporal-cluster": "📅",
-		};
+/**
+ * Lineage view: causal chains reconstructed from DFS tree.
+ */
+export function formatTraceLineage(result: TraceResult): string {
+	const lines: string[] = [];
+	lines.push(`🔍 Trace: "${result.query}"\n`);
 
-		for (const insight of result.insights) {
-			const icon = insightIcons[insight.kind] ?? "💡";
-			const strength = (insight.strength * 100).toFixed(0);
-			lines.push(`${icon} [${strength}%] ${insight.summary}`);
+	if (result.hops.length === 0) {
+		lines.push("No results found.");
+		return lines.join("\n");
+	}
+
+	const chains = result.lineageChains;
+	const hopsInChains = new Set<number>();
+
+	for (let ci = 0; ci < chains.length; ci++) {
+		const chain = chains[ci];
+		const typeHeader = chain.typeSequence.join(" → ");
+		lines.push(`Chain ${ci + 1} (${typeHeader})`);
+
+		for (let si = 0; si < chain.hopIndices.length; si++) {
+			const hopIdx = chain.hopIndices[si];
+			hopsInChains.add(hopIdx);
+			const hop = result.hops[hopIdx];
+			const icon = sourceIcons[hop.sourceType] ?? "📎";
+			const snippet = hop.content.slice(0, 120).replace(/\n/g, " ");
+			const score = hop.connection.confidence.toFixed(2);
+
+			lines.push(
+				`  ${si + 1}. ${icon} [${hop.sourceType}] ${hop.source}  (${hop.connection.method}, ${score})`,
+			);
+			lines.push(`     ${snippet}${hop.content.length > 120 ? "..." : ""}`);
+
+			if (hop.connection.method === "edge" && hop.connection.edgeType) {
+				lines.push(`     🔗 ${hop.connection.edgeType}: ${hop.connection.evidence ?? ""}`);
+			}
+			if (hop.sourceUrl) {
+				lines.push(`     ${hop.sourceUrl}`);
+			}
 		}
-
 		lines.push("");
 	}
 
-	lines.push(
-		`📊 ${result.stats.totalHops} results (${result.stats.edgeHops} via edges, ${result.stats.semanticHops} semantic) across ${result.stats.sourceTypes.length} source types` +
-			(result.stats.insightCount > 0
-				? `, ${result.stats.insightCount} insight${result.stats.insightCount === 1 ? "" : "s"}`
-				: ""),
-	);
+	// Orphan hops not in any chain
+	const orphans = result.hops.filter((_, i) => !hopsInChains.has(i));
+	if (orphans.length > 0) {
+		lines.push("─── Related Context ───\n");
+		for (const hop of orphans) {
+			lines.push(...formatHopLine(hop));
+			lines.push("");
+		}
+	}
 
+	lines.push(...formatInsights(result));
+	lines.push(formatStats(result));
 	return lines.join("\n");
+}
+
+/**
+ * Timeline view: all hops sorted by UTC timestamp.
+ */
+export function formatTraceTimeline(result: TraceResult): string {
+	const lines: string[] = [];
+	lines.push(`🔍 Trace: "${result.query}"\n`);
+
+	if (result.hops.length === 0) {
+		lines.push("No results found.");
+		return lines.join("\n");
+	}
+
+	// Sort hops: dated first by timestamp, undated at end. Stable sort by index for ties.
+	const indexed = result.hops.map((hop, i) => ({ hop, i }));
+	indexed.sort((a, b) => {
+		const aDate = parseTimestamp(a.hop.timestamp);
+		const bDate = parseTimestamp(b.hop.timestamp);
+		if (aDate && bDate) return aDate.getTime() - bDate.getTime() || a.i - b.i;
+		if (aDate && !bDate) return -1;
+		if (!aDate && bDate) return 1;
+		return a.i - b.i;
+	});
+
+	let currentDateHeader = "";
+	for (const { hop } of indexed) {
+		const ts = parseTimestamp(hop.timestamp);
+		const dateHeader = ts ? ts.toISOString().slice(0, 10) : "(no timestamp)";
+
+		if (dateHeader !== currentDateHeader) {
+			if (currentDateHeader) lines.push("");
+			lines.push(`📅 ${dateHeader}`);
+			currentDateHeader = dateHeader;
+		}
+
+		const icon = sourceIcons[hop.sourceType] ?? "📎";
+		const score = hop.connection.confidence.toFixed(2);
+		const snippet = hop.content.slice(0, 100).replace(/\n/g, " ");
+		lines.push(`  ${icon} [${score}] ${hop.source}`);
+		lines.push(`         ${snippet}${hop.content.length > 100 ? "..." : ""}`);
+		if (hop.connection.method === "edge" && hop.connection.edgeType) {
+			lines.push(`         🔗 ${hop.connection.edgeType}`);
+		}
+		if (hop.sourceUrl) {
+			lines.push(`         ${hop.sourceUrl}`);
+		}
+	}
+
+	lines.push("");
+	lines.push(...formatInsights(result));
+	lines.push(formatStats(result));
+	return lines.join("\n");
+}
+
+/** Parse a timestamp string to Date, returning null for invalid/missing values. */
+function parseTimestamp(ts: string | undefined): Date | null {
+	if (!ts) return null;
+	const d = new Date(ts);
+	return Number.isNaN(d.getTime()) ? null : d;
 }
 
 /**

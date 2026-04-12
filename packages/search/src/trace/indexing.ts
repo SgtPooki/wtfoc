@@ -6,6 +6,7 @@ export interface ChunkData {
 	source: string;
 	sourceUrl?: string;
 	storageId: string;
+	timestamp?: string;
 }
 
 export interface ChunkIndexes {
@@ -30,6 +31,7 @@ export function buildChunkIndexes(segments: Segment[]): ChunkIndexes {
 				source: chunk.source,
 				sourceUrl: chunk.sourceUrl,
 				storageId: chunk.storageId,
+				timestamp: chunk.timestamp,
 			};
 			byId.set(chunk.id, data);
 

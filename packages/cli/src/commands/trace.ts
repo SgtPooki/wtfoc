@@ -6,7 +6,7 @@ import {
 	readCatalog,
 	readOverlayEdges,
 } from "@wtfoc/ingest";
-import { type TraceMode, trace } from "@wtfoc/search";
+import { type TraceMode, type TraceView, trace } from "@wtfoc/search";
 import type { Command } from "commander";
 import { getProjectConfig } from "../cli.js";
 import {
@@ -35,13 +35,18 @@ export function registerTraceCommand(program: Command): void {
 			.option("--max-per-source <number>", "Max results per source type (default: 3)")
 			.option("--max-hops <number>", "Max edge hops to follow (default: 3)")
 			.option("--exclude <types...>", "Exclude source types (e.g. github-pr-comment)")
-			.option("--include <types...>", "Only include these source types"),
+			.option("--include <types...>", "Only include these source types")
+			.option(
+				"--view <view>",
+				'Output view: "lineage", "timeline", or "evidence" (default: lineage for analytical, evidence for discovery)',
+			),
 	).action(
 		async (
 			queryText: string,
 			opts: {
 				collection: string;
 				mode: string;
+				view?: string;
 				maxTotal?: string;
 				maxPerSource?: string;
 				maxHops?: string;
@@ -58,6 +63,18 @@ export function registerTraceCommand(program: Command): void {
 			}
 			// Safe after validation above
 			const mode: TraceMode = opts.mode === "analytical" ? "analytical" : "discovery";
+
+			// Resolve view: explicit --view overrides mode default
+			const validViews: TraceView[] = ["lineage", "timeline", "evidence"];
+			if (opts.view && !validViews.includes(opts.view as TraceView)) {
+				console.error(
+					`Error: invalid trace view "${opts.view}". Must be one of: ${validViews.join(", ")}`,
+				);
+				process.exit(2);
+			}
+			const view: TraceView =
+				(opts.view as TraceView) ?? (mode === "analytical" ? "lineage" : "evidence");
+
 			const store = getStore(program);
 			const format = getFormat(program.opts());
 
@@ -140,7 +157,7 @@ export function registerTraceCommand(program: Command): void {
 					excludeSourceTypes: opts.exclude,
 					includeSourceTypes: opts.include,
 				});
-				console.log(formatTrace(result, format));
+				console.log(formatTrace(result, format, view));
 			} catch (err) {
 				if (
 					err instanceof Error &&

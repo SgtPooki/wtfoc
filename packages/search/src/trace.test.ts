@@ -390,6 +390,70 @@ describe("trace", () => {
 		expect(issueHop?.connection.method).toBe("edge");
 		expect(issueHop?.connection.edgeType).toBe("implements");
 	});
+
+	it("carries chunk timestamps through to TraceHop", async () => {
+		const timestampedSegment: Segment = {
+			schemaVersion: 1,
+			embeddingModel: "test",
+			embeddingDimensions: 3,
+			chunks: [
+				{
+					id: "slack-msg-1",
+					storageId: "storage-slack-1",
+					content: "users are seeing upload timeouts",
+					embedding: [1.0, 0.0, 0.0],
+					terms: ["upload", "timeout"],
+					source: "#foc-support",
+					sourceType: "slack-message",
+					timestamp: "2026-04-10T14:30:00Z",
+					metadata: {},
+				},
+				{
+					id: "issue-142",
+					storageId: "storage-issue-142",
+					content: "Upload timeout on large files",
+					embedding: [0.9, 0.1, 0.0],
+					terms: ["upload", "timeout", "large"],
+					source: "FilOzone/synapse-sdk#142",
+					sourceType: "github-issue",
+					sourceUrl: "https://github.com/FilOzone/synapse-sdk/issues/142",
+					timestamp: "2026-04-10T16:00:00Z",
+					metadata: {},
+				},
+			],
+			edges: [
+				{
+					type: "references",
+					sourceId: "slack-msg-1",
+					targetType: "issue",
+					targetId: "FilOzone/synapse-sdk#142",
+					evidence: "#142 in message",
+					confidence: 1.0,
+				},
+			],
+		};
+
+		const index = createMockIndex([slackChunk]);
+		const result = await trace("upload failures", mockEmbedder, index, [timestampedSegment]);
+
+		// Seed hop should carry timestamp
+		const slackHop = result.hops.find((h) => h.sourceType === "slack-message");
+		expect(slackHop?.timestamp).toBe("2026-04-10T14:30:00Z");
+
+		// Edge-traversed hop should carry timestamp
+		const issueHop = result.hops.find((h) => h.sourceType === "github-issue");
+		expect(issueHop?.timestamp).toBe("2026-04-10T16:00:00Z");
+	});
+
+	it("leaves timestamp undefined when chunk has no timestamp", async () => {
+		const index = createMockIndex([slackChunk]);
+		const result = await trace("upload failures", mockEmbedder, index, [testSegment]);
+
+		// testSegment chunks have no timestamp field
+		for (const hop of result.hops) {
+			expect(hop.timestamp).toBeUndefined();
+		}
+	});
 });
 
 describe("buildEdgeIndex", () => {

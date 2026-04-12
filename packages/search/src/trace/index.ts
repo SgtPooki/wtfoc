@@ -1,8 +1,12 @@
+export type { TraceConclusion } from "./conclusion.js";
+export { buildConclusion } from "./conclusion.js";
 export type { ChunkData, ChunkIndexes } from "./indexing.js";
 export { buildChunkIndexes, buildEdgeIndex } from "./indexing.js";
 export type { InsightKind, TraceInsight } from "./insights.js";
 export { detectInsights } from "./insights.js";
+export type { LineageChain } from "./lineage.js";
+export { buildLineageChains } from "./lineage.js";
 export { findChunksByTarget } from "./resolution.js";
-export type { TraceHop, TraceMode, TraceOptions, TraceResult } from "./trace.js";
+export type { TraceHop, TraceMode, TraceOptions, TraceResult, TraceView } from "./trace.js";
 export { trace } from "./trace.js";
 export { followEdges } from "./traversal.js";

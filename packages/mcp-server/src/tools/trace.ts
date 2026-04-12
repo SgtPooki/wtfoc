@@ -1,5 +1,5 @@
 import type { Embedder } from "@wtfoc/common";
-import { type TraceMode, trace } from "@wtfoc/search";
+import { type TraceMode, type TraceView, trace } from "@wtfoc/search";
 import type { createStore } from "@wtfoc/store";
 import type { CollectionLoader } from "../helpers.js";
 import { resolveCollection } from "../helpers.js";
@@ -11,6 +11,8 @@ export async function handleTrace(
 		query: string;
 		collection: string;
 		mode?: TraceMode;
+		/** Hint for how the client should render results */
+		view?: TraceView;
 		maxTotal?: number;
 		maxPerSource?: number;
 		maxHops?: number;
