@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { WtfocError } from "@wtfoc/common";
 import { describe, expect, it } from "vitest";
-import { chunkMarkdown, findMarkdownSplitEnd, rechunkOversized } from "./chunker.js";
+import { chunkMarkdown, findMarkdownSplitEnd, rechunkOversized, sha256Hex } from "./chunker.js";
 
 function sha256(content: string): string {
 	return createHash("sha256").update(content, "utf8").digest("hex");
@@ -240,5 +240,97 @@ describe("rechunkOversized", () => {
 		const result = rechunkOversized([chunk]);
 		expect(result).toHaveLength(1);
 		expect(result[0]).toBe(chunk);
+	});
+});
+
+describe("document identity in chunkMarkdown", () => {
+	it("sets documentId and documentVersionId when provided", () => {
+		const chunks = chunkMarkdown("Hello world", {
+			source: "test",
+			documentId: "repo/file.md",
+			documentVersionId: "abc123",
+		});
+		expect(chunks).toHaveLength(1);
+		expect(chunks[0]?.documentId).toBe("repo/file.md");
+		expect(chunks[0]?.documentVersionId).toBe("abc123");
+	});
+
+	it("generates content fingerprint for all chunks", () => {
+		const chunks = chunkMarkdown("Hello world", { source: "test" });
+		expect(chunks[0]?.contentFingerprint).toBe(sha256Hex("Hello world"));
+	});
+
+	it("changes chunk ID when documentVersionId is provided", () => {
+		const withoutDoc = chunkMarkdown("Hello world", { source: "test" });
+		const withDoc = chunkMarkdown("Hello world", {
+			source: "test",
+			documentId: "repo/file.md",
+			documentVersionId: "abc123",
+		});
+
+		// Same content, different IDs because document identity is included
+		expect(withoutDoc[0]?.id).not.toBe(withDoc[0]?.id);
+		// But same content fingerprint
+		expect(withoutDoc[0]?.contentFingerprint).toBe(withDoc[0]?.contentFingerprint);
+	});
+
+	it("produces stable IDs for same document version", () => {
+		const a = chunkMarkdown("Hello world", {
+			source: "test",
+			documentId: "repo/file.md",
+			documentVersionId: "v1",
+		});
+		const b = chunkMarkdown("Hello world", {
+			source: "test",
+			documentId: "repo/file.md",
+			documentVersionId: "v1",
+		});
+		expect(a[0]?.id).toBe(b[0]?.id);
+	});
+
+	it("produces different IDs for different versions of same content", () => {
+		const v1 = chunkMarkdown("Hello world", {
+			source: "test",
+			documentId: "repo/file.md",
+			documentVersionId: "v1",
+		});
+		const v2 = chunkMarkdown("Hello world", {
+			source: "test",
+			documentId: "repo/file.md",
+			documentVersionId: "v2",
+		});
+		// Same content but different version IDs → different chunk IDs
+		expect(v1[0]?.id).not.toBe(v2[0]?.id);
+	});
+
+	it("does not set documentId when not provided", () => {
+		const chunks = chunkMarkdown("Hello world", { source: "test" });
+		expect(chunks[0]?.documentId).toBeUndefined();
+		expect(chunks[0]?.documentVersionId).toBeUndefined();
+	});
+});
+
+describe("document identity in rechunkOversized", () => {
+	it("preserves document identity on split chunks", () => {
+		const chunk = {
+			id: "orig",
+			content: "x".repeat(100),
+			sourceType: "code" as const,
+			source: "test",
+			chunkIndex: 0,
+			totalChunks: 1,
+			metadata: {},
+			documentId: "repo/file.ts",
+			documentVersionId: "abc123",
+			contentFingerprint: sha256Hex("x".repeat(100)),
+		};
+
+		const result = rechunkOversized([chunk], 30);
+		expect(result.length).toBeGreaterThan(1);
+		for (const c of result) {
+			expect(c.documentId).toBe("repo/file.ts");
+			expect(c.documentVersionId).toBe("abc123");
+			expect(c.contentFingerprint).toBe(sha256Hex(c.content));
+		}
 	});
 });
