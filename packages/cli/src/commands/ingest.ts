@@ -327,6 +327,9 @@ export function registerIngestCommand(program: Command): void {
 				console.error(`   Filtering to documents changed since ${opts.changedSince}`);
 			}
 
+			// Detect partial run — filter flags mean we're selectively reprocessing
+			const isPartialRun = !!(opts.documentIds || opts.sourcePaths || opts.changedSince);
+
 			// Process chunks in batches to limit memory usage
 			const scorer = new HeuristicChunkScorer();
 
@@ -582,7 +585,9 @@ export function registerIngestCommand(program: Command): void {
 				}
 
 				// Handle renames: archive old document IDs from git-diff renames
+				// Only apply on full runs — partial runs should not modify catalog for unprocessed docs
 				if (
+					!isPartialRun &&
 					sourceType === "repo" &&
 					"lastIngestMetadata" in adapter &&
 					(
@@ -642,7 +647,6 @@ export function registerIngestCommand(program: Command): void {
 			// Persist cursor after successful ingest (FR-001, FR-004: only on success)
 			// IMPORTANT: Don't advance cursor when filter flags are active — partial runs
 			// should not skip unprocessed changes on the next full ingest
-			const isPartialRun = !!(opts.documentIds || opts.sourcePaths || opts.changedSince);
 			if (isPartialRun && format !== "quiet") {
 				console.error("   ⚠️  Partial run (filter flags active) — cursor not advanced");
 			}

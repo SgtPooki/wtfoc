@@ -184,7 +184,10 @@ export function updateDocument(
 	// Accumulate superseded chunk IDs so they can be excluded from search
 	existing.supersededChunkIds = [...(existing.supersededChunkIds ?? []), ...supersededChunkIds];
 	existing.chunkIds = options.chunkIds;
-	existing.contentFingerprints = options.contentFingerprints;
+	// Accumulate old fingerprints so cross-version dedup still works for reintroduced content
+	const oldFingerprints = existing.contentFingerprints ?? [];
+	const mergedFingerprints = new Set([...oldFingerprints, ...options.contentFingerprints]);
+	existing.contentFingerprints = [...mergedFingerprints];
 	existing.state = "active";
 	existing.updatedAt = new Date().toISOString();
 
