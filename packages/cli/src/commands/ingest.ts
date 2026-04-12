@@ -1,10 +1,12 @@
-import type { Segment } from "@wtfoc/common";
+import type { DocumentCatalog, Edge, Segment } from "@wtfoc/common";
 import { type Chunk, type CollectionHead, CURRENT_SCHEMA_VERSION } from "@wtfoc/common";
 import {
 	buildSegment,
 	buildSourceKey,
+	catalogFilePath,
 	CodeEdgeExtractor,
 	CompositeEdgeExtractor,
+	createEmptyCatalog,
 	cursorFilePath,
 	DEFAULT_MAX_CHUNK_CHARS,
 	extractSegmentMetadata,
@@ -15,11 +17,14 @@ import {
 	HeuristicEdgeExtractor,
 	LlmEdgeExtractor,
 	mergeEdges,
-	RegexEdgeExtractor,
+	readCatalog,
 	readCursors,
 	rechunkOversized,
+	RegexEdgeExtractor,
 	segmentId,
 	TreeSitterEdgeExtractor,
+	updateDocument,
+	writeCatalog,
 	writeCursors,
 } from "@wtfoc/ingest";
 import { bundleAndUpload, generateCollectionId } from "@wtfoc/store";
@@ -200,6 +205,8 @@ export function registerIngestCommand(program: Command): void {
 			const storageType = (program.opts().storage ?? "local") as string;
 
 			// Build dedup set from existing segments for resumability
+			// Uses contentFingerprint when available (new chunks), falls back to id (legacy)
+			const knownFingerprints = new Set<string>();
 			const knownChunkIds = new Set<string>();
 			if (head) {
 				for (const segSummary of head.manifest.segments) {
@@ -208,6 +215,9 @@ export function registerIngestCommand(program: Command): void {
 						const seg = JSON.parse(new TextDecoder().decode(segBytes)) as Segment;
 						for (const c of seg.chunks) {
 							knownChunkIds.add(c.id);
+							if ("contentFingerprint" in c && typeof c.contentFingerprint === "string") {
+								knownFingerprints.add(c.contentFingerprint);
+							}
 						}
 					} catch {
 						// Segment may not be downloadable (e.g. FOC-only), skip
@@ -218,17 +228,75 @@ export function registerIngestCommand(program: Command): void {
 				}
 			}
 
+			// Load or create document catalog for lifecycle management
+			const collectionId = head?.manifest.collectionId ?? generateCollectionId(opts.collection);
+			const catPath = catalogFilePath(manifestDir, opts.collection);
+			let catalog: DocumentCatalog =
+				(await readCatalog(catPath)) ?? createEmptyCatalog(collectionId);
+
 			// Process chunks in batches to limit memory usage
 			const scorer = new HeuristicChunkScorer();
 
 			let batch: Chunk[] = [];
 			let totalChunksIngested = 0;
 			let totalChunksSkipped = 0;
+			let totalDocsSuperseded = 0;
 			let batchNumber = 0;
 
 			async function flushBatch(batchChunks: Chunk[]): Promise<void> {
 				if (batchChunks.length === 0) return;
 				batchNumber++;
+
+				// Update document catalog and collect supersession edges
+				const supersessionEdges: Edge[] = [];
+				const docChunkGroups = new Map<string, Chunk[]>();
+
+				for (const chunk of batchChunks) {
+					if (chunk.documentId) {
+						const group = docChunkGroups.get(chunk.documentId) ?? [];
+						group.push(chunk);
+						docChunkGroups.set(chunk.documentId, group);
+					}
+				}
+
+				for (const [docId, docChunks] of docChunkGroups) {
+					const firstChunk = docChunks[0];
+					if (!firstChunk?.documentVersionId) continue;
+
+					// Determine mutability from source type
+					const appendOnlyTypes = new Set([
+						"slack-message",
+						"discord-message",
+						"hn-story",
+						"hn-comment",
+						"github-pr-comment",
+					]);
+					const mutability = appendOnlyTypes.has(firstChunk.sourceType)
+						? ("append-only" as const)
+						: ("mutable-state" as const);
+
+					const result = updateDocument(catalog, {
+						documentId: docId,
+						versionId: firstChunk.documentVersionId,
+						chunkIds: docChunks.map((c) => c.id),
+						sourceType: firstChunk.sourceType,
+						mutability,
+					});
+
+					if (result.previousVersionId && result.supersededChunkIds.length > 0) {
+						totalDocsSuperseded++;
+						// Emit supersedes edge at document level
+						supersessionEdges.push({
+							type: "supersedes",
+							sourceId: docId,
+							targetType: "document-version",
+							targetId: `${docId}@${result.previousVersionId}`,
+							evidence: `Document ${docId} updated: version ${result.previousVersionId} → ${firstChunk.documentVersionId}`,
+							confidence: 1.0,
+							provenance: ["lifecycle"],
+						});
+					}
+				}
 
 				// Extract edges for this batch
 				const compositeExtractor = new CompositeEdgeExtractor();
@@ -262,6 +330,9 @@ export function registerIngestCommand(program: Command): void {
 				const edges = mergeEdges([
 					{ extractorName: "adapter", edges: await adapter.extractEdges(batchChunks) },
 					{ extractorName: "composite", edges: await compositeExtractor.extract(batchChunks) },
+					...(supersessionEdges.length > 0
+						? [{ extractorName: "lifecycle", edges: supersessionEdges }]
+						: []),
 				]);
 
 				// Embed this batch
@@ -350,6 +421,10 @@ export function registerIngestCommand(program: Command): void {
 				}
 
 				await store.manifests.putHead(opts.collection, manifest, currentPrevHeadId);
+
+				// Persist document catalog after each batch
+				await writeCatalog(catPath, catalog);
+
 				totalChunksIngested += batchChunks.length;
 			}
 
@@ -365,7 +440,10 @@ export function registerIngestCommand(program: Command): void {
 				if (chunks.length > 1) rechunkedCount += chunks.length;
 
 				for (const chunk of chunks) {
-					if (knownChunkIds.has(chunk.id)) {
+					// Dedup: use contentFingerprint if available (new identity model),
+					// fall back to chunk.id (legacy content-hash identity)
+					const dedupKey = chunk.contentFingerprint ?? chunk.id;
+					if (knownFingerprints.has(dedupKey) || knownChunkIds.has(chunk.id)) {
 						totalChunksSkipped++;
 						continue;
 					}
@@ -392,6 +470,7 @@ export function registerIngestCommand(program: Command): void {
 				if (batchNumber > 1) parts[0] += ` (${batchNumber} batches)`;
 				if (rechunkedCount > 0) parts.push(`${rechunkedCount} from oversized splits`);
 				if (totalChunksSkipped > 0) parts.push(`${totalChunksSkipped} skipped as duplicates`);
+				if (totalDocsSuperseded > 0) parts.push(`${totalDocsSuperseded} documents superseded`);
 				console.error(
 					`✅ Ingested ${parts.join(", ")} from ${sourceArg} into "${opts.collection}"`,
 				);
