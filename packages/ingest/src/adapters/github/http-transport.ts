@@ -1,8 +1,9 @@
 import { GitHubApiError, GitHubNotFoundError, GitHubRateLimitError } from "@wtfoc/common";
 import type { GitHubTokenProvider } from "./auth.js";
-import { PatTokenProvider } from "./auth.js";
+import { GitHubAppTokenProvider, PatTokenProvider } from "./auth.js";
+import { decodePrivateKey } from "./jwt.js";
 import type { ExecFn } from "./transport.js";
-import { sleep } from "./transport.js";
+import { defaultExecFn, sleep } from "./transport.js";
 
 const MAX_RATE_LIMIT_WAIT_MS = 5 * 60 * 1000;
 const BASE_BACKOFF_MS = 5000;
@@ -173,6 +174,57 @@ export function createHttpExecFn(tokenProvider?: TokenProvider): ExecFn {
 		const stdout = JSON.stringify(results);
 		return { stdout, stderr: "" };
 	};
+}
+
+/** ExecFn with a transport tag for diagnostics/testing. */
+export type TaggedExecFn = ExecFn & { _transport: "github-app" | "pat" | "cli" };
+
+/**
+ * Resolve the best GitHub ExecFn from environment variables.
+ *
+ * Priority:
+ * 1. GitHub App (GITHUB_APP_ID + GITHUB_PRIVATE_KEY + GITHUB_INSTALLATION_ID)
+ * 2. PAT (GITHUB_TOKEN or WTFOC_GITHUB_TOKEN)
+ * 3. gh CLI fallback (defaultExecFn)
+ */
+export function resolveGitHubExecFn(): TaggedExecFn {
+	const appId = process.env.GITHUB_APP_ID;
+	const privateKey = process.env.GITHUB_PRIVATE_KEY;
+	const installationId = process.env.GITHUB_INSTALLATION_ID;
+
+	const parsedInstallationId = Number(installationId);
+	if (
+		appId &&
+		privateKey &&
+		installationId &&
+		Number.isFinite(parsedInstallationId) &&
+		parsedInstallationId > 0
+	) {
+		const provider = new GitHubAppTokenProvider({
+			appId,
+			privateKey: decodePrivateKey(privateKey),
+			installationId: parsedInstallationId,
+		});
+		const fn: TaggedExecFn = Object.assign(createHttpExecFn(provider), {
+			_transport: "github-app" as const,
+		});
+		return fn;
+	}
+
+	const pat = process.env.GITHUB_TOKEN || process.env.WTFOC_GITHUB_TOKEN;
+	if (pat) {
+		const provider = new PatTokenProvider(pat);
+		const fn: TaggedExecFn = Object.assign(createHttpExecFn(provider), {
+			_transport: "pat" as const,
+		});
+		return fn;
+	}
+
+	const fn: TaggedExecFn = Object.assign(
+		(cmd: string, args: string[], signal?: AbortSignal) => defaultExecFn(cmd, args, signal),
+		{ _transport: "cli" as const },
+	);
+	return fn;
 }
 
 async function fetchGraphQL(
