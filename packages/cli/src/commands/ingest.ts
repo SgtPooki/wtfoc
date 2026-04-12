@@ -197,6 +197,11 @@ export function registerIngestCommand(program: Command): void {
 				const adapterConfig = config as Record<string, unknown>;
 				adapterConfig.ignorePatternSources = [projectCfg?.ignore, opts.ignore];
 				adapterConfig.quiet = format === "quiet";
+				// Pass previous commit SHA for git-diff incremental ingest
+				const storedCursor = getCursorSince(cursorData, sourceKey);
+				if (storedCursor && storedCursor.match(/^[0-9a-f]{40}$/)) {
+					adapterConfig.lastCommitSha = storedCursor;
+				}
 			}
 			const maxBatch = Number.parseInt(opts.batchSize, 10) || 500;
 			const maxChunkChars = opts.maxChunkChars
@@ -477,13 +482,24 @@ export function registerIngestCommand(program: Command): void {
 			}
 
 			// Persist cursor after successful ingest (FR-001, FR-004: only on success)
-			// Use max(existing, computed) to prevent cursor regression from explicit --since or out-of-order timestamps
-			if (maxTimestamp) {
+			// For repo adapters: use git HEAD SHA as cursor (enables git-diff next run)
+			// For other adapters: use max timestamp from chunk data
+			const repoHeadSha =
+				sourceType === "repo" && "lastIngestMetadata" in adapter
+					? (adapter as { lastIngestMetadata: { headCommitSha: string | null } | null })
+							.lastIngestMetadata?.headCommitSha
+					: null;
+			const cursorValue = repoHeadSha ?? (maxTimestamp || null);
+
+			if (cursorValue) {
 				const existingCursorValue = cursorData?.cursors?.[sourceKey]?.cursorValue;
+				// For repo adapter with SHA cursor, always use the latest head SHA
+				// For timestamp cursors, use max(existing, computed) to prevent regression
 				const nextCursorValue =
-					existingCursorValue && existingCursorValue > maxTimestamp
+					repoHeadSha ??
+					(existingCursorValue && existingCursorValue > cursorValue
 						? existingCursorValue
-						: maxTimestamp;
+						: cursorValue);
 				const updatedCursors = cursorData ?? { schemaVersion: 1 as const, cursors: {} };
 				updatedCursors.cursors[sourceKey] = {
 					sourceKey,

@@ -1,11 +1,18 @@
 import { readFile, stat } from "node:fs/promises";
-import { extname, relative } from "node:path";
+import { extname, join, relative } from "node:path";
 import type { Chunk, Edge, SourceAdapter } from "@wtfoc/common";
 import { WtfocError } from "@wtfoc/common";
 import { createIgnoreFilter, loadWtfocIgnore } from "@wtfoc/config";
 import { chunkMarkdown, type MarkdownChunkerOptions, sha256Hex } from "../../chunker.js";
 import { acquireRepo, extractRepoName } from "./acquisition.js";
 import { chunkCode, DEFAULT_EXCLUDE, DEFAULT_INCLUDE, walkFiles } from "./chunking.js";
+import {
+	commitExists,
+	type ChangedFile,
+	getChangedFiles,
+	getHeadCommit,
+	isGitRepo,
+} from "./git-diff.js";
 
 function getMatchGroup(match: RegExpMatchArray | RegExpExecArray, index: number): string | null {
 	return typeof match[index] === "string" ? match[index] : null;
@@ -26,6 +33,13 @@ export interface RepoAdapterConfig {
 	ignorePatternSources?: (string[] | undefined)[];
 	/** Suppress informational messages (e.g., .wtfocignore detection) */
 	quiet?: boolean;
+	/** Previous commit SHA for git-diff incremental ingest */
+	lastCommitSha?: string;
+}
+
+/** Metadata about the repo state after ingest, used for cursor persistence */
+export interface RepoIngestMetadata {
+	headCommitSha: string | null;
 }
 
 export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
@@ -48,6 +62,9 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 		};
 	}
 
+	/** After ingest, this holds the HEAD commit SHA for cursor persistence */
+	lastIngestMetadata: RepoIngestMetadata | null = null;
+
 	async *ingest(config: RepoAdapterConfig): AsyncIterable<Chunk> {
 		const opts = config;
 		const repoPath = await acquireRepo(opts.source);
@@ -69,7 +86,91 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 		const excludeDirs = opts.exclude ?? DEFAULT_EXCLUDE;
 		const maxFileSize = opts.maxFileSize ?? 100_000;
 
-		const files = await walkFiles(repoPath, includeExts, excludeDirs, ignoreFilter);
+		// Try git-diff incremental ingest if we have a cursor
+		const gitRepo = await isGitRepo(repoPath);
+		const headSha = gitRepo ? await getHeadCommit(repoPath) : null;
+		this.lastIngestMetadata = { headCommitSha: headSha };
+
+		let files: string[];
+		let deletedFiles: string[] = [];
+		let renamedFiles: Array<{ oldPath: string; newPath: string }> = [];
+
+		if (gitRepo && opts.lastCommitSha && headSha && opts.lastCommitSha !== headSha) {
+			const cursorValid = await commitExists(repoPath, opts.lastCommitSha);
+			if (cursorValid) {
+				// Git-diff incremental: only process changed files
+				const changes = await getChangedFiles(repoPath, opts.lastCommitSha, headSha);
+
+				// Check if .wtfocignore changed — if so, fall back to full walk
+				const ignoreChanged = changes.some(
+					(c) => c.path === ".wtfocignore" || c.path === ".wtfoc.json",
+				);
+
+				if (ignoreChanged) {
+					if (!opts.quiet) {
+						console.error("   .wtfocignore or .wtfoc.json changed — full re-walk");
+					}
+					files = await walkFiles(repoPath, includeExts, excludeDirs, ignoreFilter);
+				} else {
+					// Filter to relevant file extensions and apply ignore patterns
+					const relevantChanges = changes.filter((c) => {
+						const path = c.status === "deleted" ? c.path : c.path;
+						const ext = extname(path);
+						if (!includeExts.has(ext)) return false;
+						if (ignoreFilter && !ignoreFilter(path)) return false;
+						return true;
+					});
+
+					files = relevantChanges
+						.filter((c) => c.status !== "deleted")
+						.map((c) => join(repoPath, c.path));
+
+					deletedFiles = relevantChanges
+						.filter((c) => c.status === "deleted")
+						.map((c) => c.path);
+
+					renamedFiles = relevantChanges
+						.filter((c): c is ChangedFile & { oldPath: string } =>
+							c.status === "renamed" && c.oldPath !== undefined,
+						)
+						.map((c) => ({ oldPath: c.oldPath, newPath: c.path }));
+
+					if (!opts.quiet) {
+						console.error(
+							`   Git diff: ${files.length} changed, ${deletedFiles.length} deleted, ${renamedFiles.length} renamed`,
+						);
+					}
+				}
+			} else {
+				// Cursor commit not found (shallow clone, branch switch) — full walk
+				if (!opts.quiet) {
+					console.error("   Cursor commit not found — full re-walk");
+				}
+				files = await walkFiles(repoPath, includeExts, excludeDirs, ignoreFilter);
+			}
+		} else {
+			files = await walkFiles(repoPath, includeExts, excludeDirs, ignoreFilter);
+		}
+
+		// Emit tombstone chunks for deleted files so the catalog can archive them
+		for (const deletedPath of deletedFiles) {
+			yield {
+				id: sha256Hex(`tombstone:${repo}/${deletedPath}`),
+				content: "",
+				sourceType: "tombstone",
+				source: `${repo}/${deletedPath}`,
+				chunkIndex: 0,
+				totalChunks: 0,
+				metadata: {
+					filePath: deletedPath,
+					repo,
+					deleted: "true",
+				},
+				documentId: `${repo}/${deletedPath}`,
+				documentVersionId: "deleted",
+				contentFingerprint: sha256Hex(""),
+			};
+		}
 
 		for (const filePath of files) {
 			const fileInfo = await stat(filePath);
