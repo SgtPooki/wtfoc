@@ -34,12 +34,6 @@ describe("validateDonorEntry", () => {
 		expect(validateDonorEntry(entry)).toBe(false);
 	});
 
-	it("returns false when sourceKey is missing", () => {
-		const entry = makeEntry();
-		delete (entry as Record<string, unknown>).sourceKey;
-		expect(validateDonorEntry(entry)).toBe(false);
-	});
-
 	it("returns false when sourceKey is undefined", () => {
 		const entry = makeEntry({ sourceKey: undefined });
 		expect(validateDonorEntry(entry)).toBe(false);

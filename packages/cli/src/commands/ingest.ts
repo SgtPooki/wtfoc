@@ -484,10 +484,10 @@ export function registerIngestCommand(program: Command): void {
 			}
 
 			// Cross-collection source reuse: pre-populate archive and dedup sets from donors.
-			// Donor content is archived locally and fingerprints added to knownFingerprints,
-			// so when the adapter fetches the same content, archiving is a no-op and embedding
-			// is skipped by dedup. The adapter still runs with the recipient's own cursor to
-			// ensure correct catalog versioning and adapter-specific chunking.
+			// Donor content is archived locally and per-chunk fingerprints from donor catalogs
+			// are added to knownFingerprints, so when the adapter fetches the same content,
+			// archiving is a no-op and embedding is skipped by dedup. The adapter still runs
+			// with the recipient's own cursor for correct catalog versioning and chunking.
 			let totalReusedFromDonors = 0;
 			let donorCollectionNames: string[] = [];
 			if (opts.sourceReuse !== false && !isPartialRun) {
@@ -505,6 +505,11 @@ export function registerIngestCommand(program: Command): void {
 						);
 					}
 					for (const match of scanResult.matches) {
+						// Load donor's document catalog to get per-chunk fingerprints
+						// (raw-content fingerprint != per-chunk fingerprints after rechunking)
+						const donorCatPath = catalogFilePath(manifestDir, match.collectionName);
+						const donorCatalog = await readCatalog(donorCatPath);
+
 						for await (const replayedChunk of replayFromArchive(
 							match.archiveEntries,
 							store.storage,
@@ -535,9 +540,19 @@ export function registerIngestCommand(program: Command): void {
 								totalArchived++;
 							}
 
-							// Add fingerprint to dedup set so adapter duplicates skip embedding
-							if (replayedChunk.contentFingerprint) {
-								knownFingerprints.add(replayedChunk.contentFingerprint);
+							// Add per-chunk fingerprints from donor catalog for accurate dedup.
+							// The donor catalog tracks contentFingerprints per document across
+							// all versions — these match what the adapter will produce.
+							if (donorCatalog && replayedChunk.documentId) {
+								const donorDoc = donorCatalog.documents[replayedChunk.documentId];
+								if (donorDoc) {
+									for (const fp of donorDoc.contentFingerprints ?? []) {
+										knownFingerprints.add(fp);
+									}
+									for (const chunkId of donorDoc.chunkIds) {
+										knownChunkIds.add(chunkId);
+									}
+								}
 							}
 							totalReusedFromDonors++;
 						}
@@ -711,6 +726,10 @@ export function registerIngestCommand(program: Command): void {
 			}
 
 			if (totalChunksIngested === 0 && totalChunksSkipped === 0) {
+				// Persist donor pre-cached archives even when adapter yields nothing
+				if (totalArchived > 0) {
+					await writeArchiveIndex(arcPath, archiveIndex);
+				}
 				if (format === "human") console.error("⚠️  No chunks produced — skipping upload");
 				return;
 			}
