@@ -122,6 +122,9 @@ export function registerReingestCommand(program: Command): void {
 						chunkIndex: 0,
 						totalChunks: 0,
 						metadata: c.metadata,
+						documentId: c.documentId,
+						documentVersionId: c.documentVersionId,
+						contentFingerprint: c.contentFingerprint,
 					});
 				}
 			}
