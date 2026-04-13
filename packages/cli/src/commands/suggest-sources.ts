@@ -2,6 +2,38 @@ import type { Segment } from "@wtfoc/common";
 import type { Command } from "commander";
 import { getFirstMatchGroup, getFormat, getStore } from "../helpers.js";
 
+/**
+ * Common placeholder org/repo patterns used in docs, specs, and examples that
+ * should never appear as suggested real repositories (#192).
+ */
+const PLACEHOLDER_REPOS = new Set([
+	"owner/repo",
+	"org/repo",
+	"user/repo",
+	"your-org/your-repo",
+	"example/repo",
+	"username/repository",
+	"my-org/my-repo",
+	"acme/my-repo",
+]);
+
+/**
+ * Returns true if the repo string looks like a placeholder or file-path
+ * false-positive rather than a real GitHub org/repo pair.
+ * Exported for unit testing.
+ */
+export function isPlaceholderRepo(repo: string): boolean {
+	if (PLACEHOLDER_REPOS.has(repo.toLowerCase())) return true;
+	// Skip file-path false positives like "docs/user-stories.md" where the
+	// "repo name" part has a file extension (edge targetIds like docs/x.md#5)
+	const slash = repo.indexOf("/");
+	if (slash !== -1) {
+		const repoPart = repo.slice(slash + 1);
+		if (/\.\w{1,6}$/.test(repoPart)) return true;
+	}
+	return false;
+}
+
 export function registerSuggestSourcesCommand(program: Command): void {
 	program
 		.command("suggest-sources")
@@ -68,7 +100,7 @@ export function registerSuggestSourcesCommand(program: Command): void {
 					for (const match of chunk.content.matchAll(GITHUB_REPO_URL)) {
 						const repo = getFirstMatchGroup(match);
 						if (!repo) continue;
-						if (!ingestedRepos.has(repo.toLowerCase())) {
+						if (!ingestedRepos.has(repo.toLowerCase()) && !isPlaceholderRepo(repo)) {
 							repoRefs.set(repo, (repoRefs.get(repo) ?? 0) + 1);
 						}
 					}
@@ -85,7 +117,7 @@ export function registerSuggestSourcesCommand(program: Command): void {
 				for (const edge of seg.edges) {
 					const repoMatch = edge.targetId.match(/^([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)#/);
 					const repo = repoMatch ? getFirstMatchGroup(repoMatch) : null;
-					if (!repo || ingestedRepos.has(repo.toLowerCase())) continue;
+					if (!repo || ingestedRepos.has(repo.toLowerCase()) || isPlaceholderRepo(repo)) continue;
 					repoRefs.set(repo, (repoRefs.get(repo) ?? 0) + 1);
 				}
 			}
