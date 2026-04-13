@@ -137,6 +137,7 @@ export {
 	archiveKey,
 	archiveRawSource,
 	createEmptyArchiveIndex,
+	findEntriesBySourceKey,
 	inferMediaType,
 	isArchived,
 	type RawSourceEntry,
@@ -152,6 +153,13 @@ export {
 	type SegmentChunk,
 	segmentId,
 } from "./segment-builder.js";
+export { replayFromArchive } from "./source-replay.js";
+export {
+	type ScanResult,
+	type SourceMatch,
+	scanForReusableSources,
+	validateDonorEntry,
+} from "./source-scanner.js";
 
 // Register built-in adapters
 import { registerAdapter as _register } from "./adapter-registry.js";
