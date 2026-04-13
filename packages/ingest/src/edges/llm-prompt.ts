@@ -50,7 +50,7 @@ const FEW_SHOT_EXAMPLES: ChatMessage[] = [
 		content: JSON.stringify({
 			chunk_id: "chunk-001",
 			source_type: "github-pr",
-			source: "owner/repo#42",
+			source: "acme-corp/web-api#42",
 			text: "This PR implements the caching layer from the architecture RFC that @alice proposed. It addresses the performance regression discussed in the #backend Slack channel.",
 		}),
 	},
@@ -128,7 +128,7 @@ const FEW_SHOT_EXAMPLES: ChatMessage[] = [
 		content: JSON.stringify({
 			chunk_id: "chunk-003",
 			source_type: "markdown",
-			source: "owner/repo/docs/api.md",
+			source: "acme-corp/web-api/docs/api.md",
 			text: "## Authentication API\n\nThe /auth/token endpoint is implemented in src/auth/handler.ts. See RFC 6749 for the OAuth 2.0 spec. Tests are in src/auth/__tests__/handler.test.ts.",
 		}),
 	},

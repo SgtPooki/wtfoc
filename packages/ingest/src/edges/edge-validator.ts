@@ -1,4 +1,5 @@
 import type { Edge } from "@wtfoc/common";
+import { stripSuffix } from "./stem.js";
 
 /**
  * Post-extraction acceptance gates for LLM-produced edges.
@@ -15,6 +16,7 @@ const PLACEHOLDER_PATTERNS = [
 	/^EXAMPLE_/i,
 	/^\[.*\]$/,
 	/^#$/,
+	/^owner\/repo(\/.*)?$/i,
 ];
 
 /** Proposal/planning language — indicates intent, not fact */
@@ -220,15 +222,28 @@ function getRejectReason(edge: Edge): string | null {
 		return `low-confidence discusses edge (${edge.confidence})`;
 	}
 
-	// Gate 7: Reject synthesized concept targets not explicitly named in evidence
+	// Gate 7: Reject synthesized concept targets not grounded in evidence
 	if (edge.targetType === "concept") {
-		// The concept ID should appear (or be closely paraphrased) in the evidence
-		const conceptWords = edge.targetId.replace(/-/g, " ").toLowerCase();
-		const evidenceLower = edge.evidence.toLowerCase();
+		// The concept ID should appear (or be closely paraphrased) in the evidence.
+		// Use suffix-stripped stems to bridge morphological variants
+		// (e.g., "deployment" ↔ "deployed", "collision" ↔ "collide").
+		const conceptWords = edge.targetId
+			.replace(/-/g, " ")
+			.toLowerCase()
+			.split(/\s+/)
+			.filter((w) => w.length > 2);
+		const conceptStems = conceptWords.map(stripSuffix);
+		const evidenceStems = edge.evidence.toLowerCase().split(/\s+/).map(stripSuffix);
+		const matched = conceptStems.filter((stem) =>
+			evidenceStems.some(
+				(es) =>
+					es === stem ||
+					(stem.length >= 3 && es.startsWith(stem)) ||
+					(es.length >= 3 && stem.startsWith(es)),
+			),
+		);
 		// Check if at least 2/3 of the concept words appear in the evidence
-		const words = conceptWords.split(/\s+/).filter((w) => w.length > 2);
-		const matchedWords = words.filter((w) => evidenceLower.includes(w));
-		if (words.length > 0 && matchedWords.length / words.length < 0.5) {
+		if (conceptStems.length > 0 && matched.length / conceptStems.length < 2 / 3) {
 			return `synthesized concept not grounded in evidence: "${edge.targetId}"`;
 		}
 	}

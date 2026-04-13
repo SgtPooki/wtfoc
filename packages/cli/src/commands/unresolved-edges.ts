@@ -36,6 +36,7 @@ export function registerUnresolvedEdgesCommand(program: Command): void {
 				resolvedEdges,
 				bareRefs,
 				unresolvedEdges: unresolvedCount,
+				conceptEdges,
 				unresolvedByRepo,
 			} = stats;
 			const sorted = [...unresolvedByRepo.entries()].sort((a, b) => b[1] - a[1]);
@@ -47,6 +48,7 @@ export function registerUnresolvedEdgesCommand(program: Command): void {
 						totalEdges,
 						resolvedEdges,
 						bareRefs,
+						conceptEdges,
 						unresolvedEdges: unresolvedCount,
 						unresolvedByRepo: Object.fromEntries(unresolvedByRepo),
 					}),
@@ -55,9 +57,10 @@ export function registerUnresolvedEdgesCommand(program: Command): void {
 				console.log(`\n📊 Edge resolution for "${opts.collection}"`);
 				console.log(`   Total edges: ${totalEdges}`);
 				console.log(
-					`   Resolved:    ${resolvedEdges} (${Math.round((resolvedEdges / totalEdges) * 100)}%)`,
+					`   Resolved:    ${resolvedEdges} (${totalEdges > 0 ? Math.round((resolvedEdges / totalEdges) * 100) : 0}%)`,
 				);
 				console.log(`   Bare #N:     ${bareRefs} (no repo context)`);
+				console.log(`   Concepts:    ${conceptEdges} (semantic, not resolvable)`);
 				console.log(`   Unresolved:  ${unresolvedCount}`);
 
 				if (sorted.length > 0) {
