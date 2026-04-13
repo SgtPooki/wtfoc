@@ -204,6 +204,11 @@ function getRejectReason(edge: Edge): string | null {
 
 	// Gate 4: Reject non-resolvable targets for types that should be resolvable
 	if (RESOLVABLE_TARGET_TYPES.has(edge.targetType)) {
+		// Reject relative file paths — they cannot resolve against the chunk source index.
+		// LLM should either resolve to an absolute repo-qualified path or use targetType "concept".
+		if (edge.targetType === "file" && /^\.\.?\//.test(edge.targetId)) {
+			return `relative file path cannot resolve to a chunk source: "${edge.targetId}" — use repo-qualified path or targetType 'concept'`;
+		}
 		const hasPath = edge.targetId.includes("/") || edge.targetId.includes(".");
 		const hasNumber = /[#@]\d+|\d+/.test(edge.targetId);
 		const hasUrl = edge.targetId.startsWith("http");

@@ -110,6 +110,36 @@ describe("edge-validator", () => {
 			).toBe(true);
 		});
 
+		it("rejects relative path file targets starting with ./", () => {
+			expect(
+				rejectReason({
+					targetType: "file",
+					targetId: "./llm-client.js",
+					evidence: 'imports { chatCompletion } from "./llm-client.js" in the edge extractor',
+				}),
+			).toMatch(/relative.*path|cannot.*resolv/i);
+		});
+
+		it("rejects relative path file targets starting with ../", () => {
+			expect(
+				rejectReason({
+					targetType: "file",
+					targetId: "../utils/helpers.ts",
+					evidence: 'imported helper functions from "../utils/helpers.ts" for the pipeline',
+				}),
+			).toMatch(/relative.*path|cannot.*resolv/i);
+		});
+
+		it("accepts repo-qualified file path (resolved from relative import)", () => {
+			expect(
+				accepted({
+					targetType: "file",
+					targetId: "sgtpooki/wtfoc/packages/ingest/src/edges/llm-client.ts",
+					evidence: "imports { chatCompletion } from llm-client.ts in the same directory",
+				}),
+			).toBe(true);
+		});
+
 		it("accepts issue target with number", () => {
 			expect(
 				accepted({

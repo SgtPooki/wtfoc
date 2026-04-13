@@ -16,7 +16,11 @@ Output: a single JSON array of objects. Each object MUST match this shape:
 Definitions:
 - type: A short relation label (lowercase kebab-case). Common types include: references, closes, changes, imports, depends-on, implements, documents, tests, addresses, discusses, authored-by, reviewed-by, part-of, blocks, cites, announces, caused-by. Use whatever label best describes the relationship. Non-standard labels are accepted and normalized downstream.
 - sourceId: The chunk identifier provided in the input. Copy it exactly.
-- targetType: What kind of thing the targetId denotes (e.g. issue, file, person, pr, concept, document, package, url, organization, event). Use the most specific type the text supports.
+- targetType: What kind of thing the targetId denotes. Valid values: issue, file, person, pr, concept, document, package, url, organization, event.
+  - Use "concept" for: abstract ideas, TypeScript/language type names (string, boolean, Chunk, Record<K,V>), language built-ins (AbortSignal, Promise, Map), bare repo or module names without full qualifier, and anything that is NOT a stable resolvable artifact.
+  - Use "file" ONLY for repo-qualified paths (e.g., "acme-corp/api/src/auth.ts") or root-relative paths (e.g., "src/auth.ts") that could realistically exist in the ingested collection. Never use "file" for relative paths (./foo.ts, ../bar.ts).
+  - Use "package" only for named package registrations you can identify (e.g., "@anthropic-ai/sdk", "express"). Bare names like "react" or a repo slug alone are "concept".
+  - When in doubt, prefer "concept" — it is always safe and never blocks resolution.
 - targetId: A stable identifier string. Prefer explicit IDs from the text (URLs, DOIs, issue numbers with repo context, file paths, @mentions). If none exists, use a short canonical phrase (lowercase, hyphenated) that uniquely picks out the entity. Never use vague targets like "it" or "this".
 - evidence: One or two sentences that QUOTE or closely paraphrase the source chunk. This must be sufficient for a human to confirm the edge without guessing. If you cannot cite supporting text, omit the edge.
 - confidence: A number between 0.3 and 0.8 inclusive. Use lower values when inference is required or identifiers are implicit. Never exceed 0.8 for LLM-proposed edges.
@@ -41,7 +45,10 @@ Rules:
 5) Focus on semantic relationships: design discussions, implementation links, person mentions, concept references, dependencies, documentation links, testing relationships.
 6) If the text is purely factual listing with no relational claim, return [].
 7) Do not include commentary outside the JSON array.
-8) When in doubt between a strong type (closes, implements, changes, documents) and "references", prefer "references". Strong types require clear evidence of active action.`;
+8) When in doubt between a strong type (closes, implements, changes, documents) and "references", prefer "references". Strong types require clear evidence of active action.
+9) Never use targetType "file" for relative paths (./foo.ts, ../bar.ts). Either resolve to the full repo-qualified path using the source field as a base (e.g., source "acme/api/src/edges/llm.ts" + import "./client.js" → "acme/api/src/edges/client.ts"), or use targetType "concept" if you cannot determine the absolute path.
+10) TypeScript/programming type names (string, boolean, Chunk, EdgeExtractor, Record<K,V>) and language built-ins are NOT files or packages — use targetType "concept", or omit the edge entirely if it carries no semantic value beyond the type declaration.
+11) Bare, unqualified names (a repo slug like "wtfoc" without an org, a built-in like "fetch") are "concept" unless the text makes a clear dependency or resolvable reference claim.`;
 
 const FEW_SHOT_EXAMPLES: ChatMessage[] = [
 	// Example 1: Engineering PR with multiple relationship types
@@ -161,11 +168,68 @@ const FEW_SHOT_EXAMPLES: ChatMessage[] = [
 			},
 		]),
 	},
-	// Example 4: No edges
+	// Example 4: Code file with relative imports and TypeScript type references
 	{
 		role: "user",
 		content: JSON.stringify({
 			chunk_id: "chunk-004",
+			source_type: "code",
+			source: "acme-corp/web-api/src/edges/extractor.ts",
+			text: `import type { Chunk, Edge, EdgeExtractor } from "@wtfoc/common";
+import { validateEdges } from "./edge-validator.js";
+import { chatCompletion, type LlmClientOptions } from "./llm-client.js";
+
+export class LlmEdgeExtractor implements EdgeExtractor {
+  async extract(chunks: Chunk[], signal?: AbortSignal): Promise<Edge[]> {`,
+		}),
+	},
+	{
+		role: "assistant",
+		// Chunk, Edge, EdgeExtractor, AbortSignal are TypeScript type names — not emitted as
+		// separate "file" or "package" edges. Relative imports (./edge-validator.js) are resolved
+		// to absolute repo paths using the source field as the base directory.
+		content: JSON.stringify([
+			{
+				type: "imports",
+				sourceId: "chunk-004",
+				targetType: "package",
+				targetId: "@wtfoc/common",
+				evidence: 'import type { Chunk, Edge, EdgeExtractor } from "@wtfoc/common"',
+				confidence: 0.8,
+			},
+			{
+				type: "imports",
+				sourceId: "chunk-004",
+				targetType: "file",
+				targetId: "acme-corp/web-api/src/edges/edge-validator.ts",
+				evidence:
+					'import { validateEdges } from "./edge-validator.js" — resolved from source directory',
+				confidence: 0.7,
+			},
+			{
+				type: "imports",
+				sourceId: "chunk-004",
+				targetType: "file",
+				targetId: "acme-corp/web-api/src/edges/llm-client.ts",
+				evidence:
+					'import { chatCompletion, type LlmClientOptions } from "./llm-client.js" — resolved from source directory',
+				confidence: 0.7,
+			},
+			{
+				type: "implements",
+				sourceId: "chunk-004",
+				targetType: "concept",
+				targetId: "edge-extractor",
+				evidence: '"export class LlmEdgeExtractor implements EdgeExtractor"',
+				confidence: 0.7,
+			},
+		]),
+	},
+	// Example 5: No edges
+	{
+		role: "user",
+		content: JSON.stringify({
+			chunk_id: "chunk-005",
 			source_type: "slack-message",
 			source: "#general",
 			text: "Tuesday.",
