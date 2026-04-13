@@ -11,6 +11,7 @@ import {
 	type ChangedFile,
 	commitExists,
 	getChangedFiles,
+	getFilesLastCommits,
 	getHeadCommit,
 	isGitRepo,
 } from "./git-diff.js";
@@ -156,6 +157,10 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 		// Store rename info for catalog lifecycle management
 		this.lastIngestMetadata = { headCommitSha: headSha, renamedFiles };
 
+		// Get git commit info for all files (batched with concurrency)
+		const relPaths = files.map((f) => relative(repoPath, f));
+		const commitInfoMap = gitRepo ? await getFilesLastCommits(repoPath, relPaths) : new Map();
+
 		// Emit tombstone chunks for deleted files so the catalog can archive them
 		for (const deletedPath of deletedFiles) {
 			yield {
@@ -195,6 +200,7 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 
 			const language = isMarkdown ? "markdown" : extname(filePath).slice(1);
 			const chunker = selectChunker(sourceType, relPath);
+			const commitInfo = commitInfoMap.get(relPath);
 
 			const doc: ChunkerDocument = {
 				documentId,
@@ -203,11 +209,17 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 				sourceType,
 				source: `${repo}/${relPath}`,
 				sourceUrl,
+				timestamp: commitInfo?.date,
 				filePath: relPath,
 				metadata: {
 					filePath: relPath,
 					language,
 					repo,
+					...(commitInfo && {
+						lastCommitSha: commitInfo.sha,
+						lastCommitAuthor: commitInfo.author,
+						lastCommitMessage: commitInfo.message,
+					}),
 				},
 			};
 
@@ -217,11 +229,17 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 					...chunk,
 					sourceType,
 					sourceUrl,
+					timestamp: commitInfo?.date ?? chunk.timestamp,
 					metadata: {
 						...chunk.metadata,
 						filePath: relPath,
 						language,
 						repo,
+						...(commitInfo && {
+							lastCommitSha: commitInfo.sha,
+							lastCommitAuthor: commitInfo.author,
+							lastCommitMessage: commitInfo.message,
+						}),
 					},
 				};
 				if (chunk.chunkIndex === 0) yieldChunk.rawContent = content;

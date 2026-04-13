@@ -1,0 +1,50 @@
+{
+  "version": "1.1",
+  "scope": "increment 0057-temporal-code-chunks (uncommitted changes)",
+  "date": "2026-04-12",
+  "reviewers": ["logic", "security", "types", "silent-failures", "spec-compliance"],
+  "gateCheck": { "passed": true, "reason": null },
+  "summary": {
+    "total": 1,
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 1,
+    "info": 0
+  },
+  "validation": {
+    "performed": false,
+    "preValidation": { "critical": 0, "high": 0 },
+    "postValidation": { "critical": 0, "high": 0 },
+    "rejected": 0
+  },
+  "findings": [
+    {
+      "id": "F-001",
+      "severity": "LOW",
+      "reviewer": "types",
+      "file": "packages/ingest/src/adapters/repo/git-diff.ts",
+      "line": 84,
+      "category": "Type assertion",
+      "title": "Type assertion on error object uses broad union",
+      "description": "The error is cast to { code?: string | number }. Node.js child_process errors use numeric `code` for exit codes and string `code` for system errors (e.g., 'ENOENT'). The union is correct for handling both, but the comparison `code === 128` only matches the numeric case. If a future Node version changes exit code representation, the string comparison path would silently fall through to the warning log, which is acceptable behavior.",
+      "impact": "Negligible. The function returns null in all error cases regardless. The warning log path is best-effort diagnostics only.",
+      "recommendation": "No action required. The current approach is pragmatic. For strict correctness, a type guard could distinguish ExecException (numeric code) from SystemError (string code), but the added complexity is not warranted for this use case.",
+      "validated": true
+    }
+  ],
+  "specCompliance": {
+    "summary": "All ACs pass. The uncommitted change is a minor refinement to error handling in getFileLastCommit, improving robustness for ENOENT (git binary not found). No ACs are affected by this change.",
+    "criteria": [
+      { "id": "AC-US1-01", "verdict": "PASS", "evidence": "Code chunks get timestamp from git history via getFileLastCommit/getFilesLastCommits" },
+      { "id": "AC-US1-02", "verdict": "PASS", "evidence": "Markdown chunks use same path as code chunks" },
+      { "id": "AC-US1-03", "verdict": "PASS", "evidence": "lastCommitSha set from FileCommitInfo.sha" },
+      { "id": "AC-US1-04", "verdict": "PASS", "evidence": "lastCommitAuthor set from FileCommitInfo.author" },
+      { "id": "AC-US1-05", "verdict": "PASS", "evidence": "lastCommitMessage set from FileCommitInfo.message" },
+      { "id": "AC-US2-01", "verdict": "PASS", "evidence": "getFilesLastCommits uses Semaphore with default concurrency 20" },
+      { "id": "AC-US2-02", "verdict": "PASS", "evidence": "getFileLastCommit returns null for missing files; getFilesLastCommits skips nulls" },
+      { "id": "AC-US2-03", "verdict": "PASS", "evidence": "Exit code 128 (not a git repo) returns null silently" }
+    ],
+    "scopeCreep": []
+  }
+}

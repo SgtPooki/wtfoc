@@ -108,6 +108,69 @@ describe("RepoAdapter", () => {
 		});
 	});
 
+	describe("temporal metadata", () => {
+		it("sets timestamp on code chunks from git history", async () => {
+			const chunks = [];
+			for await (const chunk of adapter.ingest(adapter.parseConfig({ source: FIXTURE_PATH }))) {
+				chunks.push(chunk);
+			}
+
+			const codeChunks = chunks.filter((c) => c.sourceType === "code");
+			for (const chunk of codeChunks) {
+				expect(chunk.timestamp).toBeDefined();
+				expect(chunk.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+			}
+		});
+
+		it("sets timestamp on markdown chunks from git history", async () => {
+			const chunks = [];
+			for await (const chunk of adapter.ingest(adapter.parseConfig({ source: FIXTURE_PATH }))) {
+				chunks.push(chunk);
+			}
+
+			const mdChunks = chunks.filter((c) => c.sourceType === "markdown");
+			for (const chunk of mdChunks) {
+				expect(chunk.timestamp).toBeDefined();
+				expect(chunk.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+			}
+		});
+
+		it("includes lastCommitSha in chunk metadata", async () => {
+			const chunks = [];
+			for await (const chunk of adapter.ingest(adapter.parseConfig({ source: FIXTURE_PATH }))) {
+				chunks.push(chunk);
+			}
+
+			for (const chunk of chunks) {
+				expect(chunk.metadata.lastCommitSha).toBeDefined();
+				expect(chunk.metadata.lastCommitSha).toMatch(/^[0-9a-f]{40}$/);
+			}
+		});
+
+		it("includes lastCommitAuthor in chunk metadata", async () => {
+			const chunks = [];
+			for await (const chunk of adapter.ingest(adapter.parseConfig({ source: FIXTURE_PATH }))) {
+				chunks.push(chunk);
+			}
+
+			for (const chunk of chunks) {
+				expect(chunk.metadata.lastCommitAuthor).toBeDefined();
+				expect((chunk.metadata.lastCommitAuthor ?? "").length).toBeGreaterThan(0);
+			}
+		});
+
+		it("includes lastCommitMessage in chunk metadata", async () => {
+			const chunks = [];
+			for await (const chunk of adapter.ingest(adapter.parseConfig({ source: FIXTURE_PATH }))) {
+				chunks.push(chunk);
+			}
+
+			for (const chunk of chunks) {
+				expect(chunk.metadata.lastCommitMessage).toBeDefined();
+			}
+		});
+	});
+
 	describe("extractEdges", () => {
 		it("extracts import references from code", async () => {
 			const chunks = [];
