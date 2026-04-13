@@ -1,7 +1,7 @@
 /**
- * Gold standard queries for the filoz-ecosystem-2026-04 collection.
- * Spans: direct lookup, cross-source tracing, gap detection, and synthesis.
- * Used by the quality-queries dogfood stage to measure search quality.
+ * Gold standard queries for dogfood evaluation.
+ * Spans: direct lookup, cross-source tracing, coverage analysis, and synthesis.
+ * Designed to work across collections (wtfoc, filoz-ecosystem, etc.).
  *
  * @see https://github.com/SgtPooki/wtfoc/issues/232
  */
@@ -11,9 +11,9 @@ export interface GoldStandardQuery {
 	id: string;
 	/** The query text to search/trace */
 	queryText: string;
-	/** Category: direct-lookup | cross-source | gap-detection | synthesis */
-	category: "direct-lookup" | "cross-source" | "gap-detection" | "synthesis";
-	/** Source types that MUST appear in results for the query to pass */
+	/** Category: direct-lookup | cross-source | coverage | synthesis */
+	category: "direct-lookup" | "cross-source" | "coverage" | "synthesis";
+	/** Source types that MUST appear in query results OR trace hops for the query to pass */
 	requiredSourceTypes: string[];
 	/** Substrings that should appear in at least one result source */
 	expectedSourceSubstrings?: string[];
@@ -37,7 +37,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 	},
 	{
 		id: "dl-2",
-		queryText: "What is the CollectionHead manifest schema?",
+		queryText: "What is the manifest schema for collections?",
 		category: "direct-lookup",
 		requiredSourceTypes: ["code"],
 		expectedSourceSubstrings: ["manifest", ".ts"],
@@ -45,17 +45,17 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 	},
 	{
 		id: "dl-3",
-		queryText: "How does edge extraction work with tree-sitter?",
+		queryText: "How does edge extraction work?",
 		category: "direct-lookup",
-		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["tree-sitter", "edge"],
+		requiredSourceTypes: ["code", "markdown"],
+		expectedSourceSubstrings: ["edge", "/src/"],
 		minResults: 1,
 	},
 
 	// ── Cross-source tracing ──────────────────────────────────
 	{
 		id: "cs-1",
-		queryText: "What GitHub issues discuss edge resolution and how is it implemented in code?",
+		queryText: "What issues discuss edge resolution and how is it implemented?",
 		category: "cross-source",
 		requiredSourceTypes: ["github-issue"],
 		minResults: 2,
@@ -75,25 +75,26 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		id: "cs-3",
 		queryText: "What documentation covers the storage layer and how does the code implement it?",
 		category: "cross-source",
-		requiredSourceTypes: ["doc-page"],
+		requiredSourceTypes: ["markdown"],
 		minResults: 2,
 		requireCrossSourceHops: true,
 	},
 
-	// ── Gap detection ─────────────────────────────────────────
+	// ── Coverage (positive presence queries, not absence) ─────
 	{
-		id: "gd-1",
-		queryText: "What parts of the codebase have no documentation?",
-		category: "gap-detection",
+		id: "cov-1",
+		queryText: "What source types are represented in this collection?",
+		category: "coverage",
 		requiredSourceTypes: ["code"],
-		minResults: 1,
+		minResults: 3,
 	},
 	{
-		id: "gd-2",
-		queryText: "Which GitHub issues have no corresponding code changes?",
-		category: "gap-detection",
+		id: "cov-2",
+		queryText: "What GitHub issues reference code changes or PRs?",
+		category: "coverage",
 		requiredSourceTypes: ["github-issue"],
 		minResults: 1,
+		requireEdgeHop: true,
 	},
 
 	// ── Synthesis ─────────────────────────────────────────────
@@ -101,16 +102,15 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		id: "syn-1",
 		queryText: "How does data flow from ingestion through embedding to search results?",
 		category: "synthesis",
-		requiredSourceTypes: ["code"],
+		requiredSourceTypes: ["code", "markdown"],
 		minResults: 3,
 		requireCrossSourceHops: true,
 	},
 	{
 		id: "syn-2",
-		queryText: "What is the architecture of the wtfoc knowledge graph system?",
+		queryText: "What is the overall architecture of this system?",
 		category: "synthesis",
-		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["/src/"],
+		requiredSourceTypes: ["markdown"],
 		minResults: 3,
 	},
 ];

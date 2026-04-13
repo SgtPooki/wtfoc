@@ -113,9 +113,36 @@ describe("evaluateQualityQueries", () => {
 		>;
 		expect(breakdown["direct-lookup"]).toBeDefined();
 		expect(breakdown["cross-source"]).toBeDefined();
-		expect(breakdown["gap-detection"]).toBeDefined();
+		expect(breakdown.coverage).toBeDefined();
 		expect(breakdown.synthesis).toBeDefined();
 		expect(breakdown["direct-lookup"]?.total).toBe(3);
+	});
+
+	it("passes cross-source query when requiredSourceTypes found in trace hops, not query seeds", async () => {
+		// Query results DON'T contain github-issue, but trace DOES reach it
+		mockQuery.mockResolvedValue(
+			makeQueryResult([
+				{ sourceType: "github-pr", source: "owner/repo#10", score: 0.9 },
+				{ sourceType: "markdown", source: "docs/readme.md", score: 0.8 },
+			]),
+		);
+		mockTrace.mockResolvedValue(
+			makeTraceResult([
+				{ method: "edge", sourceType: "github-issue" },
+				{ method: "edge", sourceType: "code" },
+				{ method: "semantic", sourceType: "github-pr" },
+			]),
+		);
+
+		const result = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
+		const scores = result.metrics.scores as Array<{
+			id: string;
+			passed: boolean;
+			requiredTypesFound: boolean;
+		}>;
+		// cs-1 requires github-issue — trace reached it even though query didn't
+		const csQuery = scores.find((s) => s.id === "cs-1");
+		expect(csQuery?.requiredTypesFound).toBe(true);
 	});
 
 	it("fails cross-source query when trace has only one source type", async () => {

@@ -51,7 +51,7 @@ export async function evaluateQualityQueries(
 	const passRate = GOLD_STANDARD_QUERIES.length > 0 ? passCount / GOLD_STANDARD_QUERIES.length : 0;
 
 	// Category breakdown
-	const categories = ["direct-lookup", "cross-source", "gap-detection", "synthesis"] as const;
+	const categories = ["direct-lookup", "cross-source", "coverage", "synthesis"] as const;
 	const categoryBreakdown: Record<string, { total: number; passed: number; passRate: number }> = {};
 	for (const cat of categories) {
 		const catScores = scores.filter((s) => s.category === cat);
@@ -162,6 +162,11 @@ async function scoreQuery(
 		});
 
 		for (const st of tResult.stats.sourceTypes) sourceTypesReached.push(st);
+
+		// Re-check requiredSourceTypes against combined query + trace source types
+		// Cross-source and synthesis queries often surface required types via trace, not query seeds
+		const allReachedTypes = new Set([...resultSourceTypes, ...tResult.stats.sourceTypes]);
+		requiredTypesFound = gq.requiredSourceTypes.every((st) => allReachedTypes.has(st));
 
 		if (gq.requireEdgeHop) {
 			edgeHopFound = tResult.stats.edgeHops > 0;
