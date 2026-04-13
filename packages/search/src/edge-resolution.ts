@@ -1,4 +1,4 @@
-import type { Segment } from "@wtfoc/common";
+import type { Edge, Segment } from "@wtfoc/common";
 import { normalizeRepoSource } from "./normalize-source.js";
 
 /**
@@ -87,11 +87,16 @@ export interface EdgeResolutionStats {
 }
 
 /**
- * Analyze edge resolution across all segments.
+ * Analyze edge resolution across all segments plus any overlay edges.
+ *
+ * @param overlayEdges - Additional edges from extract-edges overlays that are
+ *   not yet baked into segment blobs. Passing them here lets the dogfood loop
+ *   measure the effect of post-hoc extraction without running compact-edges.
  */
 export function analyzeEdgeResolution(
 	segments: Segment[],
 	index: SourceIndex,
+	overlayEdges: Edge[] = [],
 ): EdgeResolutionStats {
 	const repoCounts = new Map<string, number>();
 	let totalEdges = 0;
@@ -99,32 +104,41 @@ export function analyzeEdgeResolution(
 	let bareRefs = 0;
 	let conceptEdges = 0;
 
+	// Collect all edges: segment-baked first, then overlay
+	const allEdges: Edge[] = [];
 	for (const seg of segments) {
 		for (const edge of seg.edges) {
-			totalEdges++;
+			allEdges.push(edge);
+		}
+	}
+	for (const edge of overlayEdges) {
+		allEdges.push(edge);
+	}
 
-			if (/^#\d+$/.test(edge.targetId)) {
-				bareRefs++;
-				continue;
-			}
+	for (const edge of allEdges) {
+		totalEdges++;
 
-			// Concept edges are semantic labels, not chunk IDs — track separately
-			if (edge.targetType === "concept") {
-				conceptEdges++;
-				continue;
-			}
+		if (/^#\d+$/.test(edge.targetId)) {
+			bareRefs++;
+			continue;
+		}
 
-			if (resolves(edge.targetId, index)) {
-				resolvedEdges++;
-				continue;
-			}
+		// Concept edges are semantic labels, not chunk IDs — track separately
+		if (edge.targetType === "concept") {
+			conceptEdges++;
+			continue;
+		}
 
-			const match = edge.targetId.match(/^([^#]+)#/);
-			if (match) {
-				const repo = match[1];
-				if (!repo) continue;
-				repoCounts.set(repo, (repoCounts.get(repo) ?? 0) + 1);
-			}
+		if (resolves(edge.targetId, index)) {
+			resolvedEdges++;
+			continue;
+		}
+
+		const match = edge.targetId.match(/^([^#]+)#/);
+		if (match) {
+			const repo = match[1];
+			if (!repo) continue;
+			repoCounts.set(repo, (repoCounts.get(repo) ?? 0) + 1);
 		}
 	}
 

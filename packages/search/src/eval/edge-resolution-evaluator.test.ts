@@ -1,4 +1,4 @@
-import type { Segment } from "@wtfoc/common";
+import type { Edge, Segment } from "@wtfoc/common";
 import { describe, expect, it } from "vitest";
 import { evaluateEdgeResolution } from "./edge-resolution-evaluator.js";
 
@@ -143,6 +143,95 @@ describe("evaluateEdgeResolution", () => {
 		expect(result.metrics.unresolvedEdges).toBe(1); // only the nonexistent repo
 		// adjustedResolutionRate = 1 / (4 - 2 - 0) = 1/2 = 0.5
 		expect(result.metrics.adjustedResolutionRate).toBe(0.5);
+	});
+
+	// ── Overlay edges ─────────────────────────────────────────────
+	describe("with overlayEdges", () => {
+		it("counts overlay edges in total and resolution metrics", async () => {
+			const segments = [
+				makeSegment(
+					[
+						{ id: "c1", source: "owner/repo#1", sourceType: "github-issue" },
+						{ id: "c2", source: "owner/repo#2", sourceType: "github-pr" },
+					],
+					[], // no segment-baked edges
+				),
+			];
+			const overlayEdges: Edge[] = [
+				{
+					sourceId: "c1",
+					targetId: "owner/repo#2",
+					targetType: "pr",
+					type: "references",
+					evidence: "references pr",
+					confidence: 0.7,
+				},
+				{
+					sourceId: "c1",
+					targetId: "nonexistent/repo#99",
+					targetType: "issue",
+					type: "references",
+					evidence: "references missing",
+					confidence: 0.7,
+				},
+				{
+					sourceId: "c1",
+					targetId: "performance-regression",
+					targetType: "concept",
+					type: "discusses",
+					evidence: "performance regression concept",
+					confidence: 0.7,
+				},
+			];
+
+			const result = await evaluateEdgeResolution(segments, overlayEdges);
+			expect(result.metrics.totalEdges).toBe(3);
+			expect(result.metrics.resolvedEdges).toBe(1);
+			expect(result.metrics.conceptEdges).toBe(1);
+			expect(result.metrics.unresolvedEdges).toBe(1);
+		});
+
+		it("merges segment edges and overlay edges for combined metrics", async () => {
+			const segments = [
+				makeSegment(
+					[
+						{ id: "c1", source: "owner/repo#1", sourceType: "github-issue" },
+						{ id: "c2", source: "owner/repo#2", sourceType: "github-pr" },
+					],
+					[
+						{ sourceId: "c1", targetId: "owner/repo#2", type: "references" }, // resolves
+					],
+				),
+			];
+			const overlayEdges: Edge[] = [
+				{
+					sourceId: "c2",
+					targetId: "owner/repo#1",
+					targetType: "issue",
+					type: "closes",
+					evidence: "closes issue",
+					confidence: 0.8,
+				}, // also resolves
+			];
+
+			const result = await evaluateEdgeResolution(segments, overlayEdges);
+			expect(result.metrics.totalEdges).toBe(2);
+			expect(result.metrics.resolvedEdges).toBe(2);
+		});
+
+		it("empty overlayEdges behaves identically to no overlayEdges arg", async () => {
+			const segments = [
+				makeSegment(
+					[{ id: "c1", source: "owner/repo#1", sourceType: "github-issue" }],
+					[{ sourceId: "c1", targetId: "owner/repo#1", type: "references" }],
+				),
+			];
+
+			const withEmpty = await evaluateEdgeResolution(segments, []);
+			const withoutArg = await evaluateEdgeResolution(segments);
+			expect(withEmpty.metrics.totalEdges).toBe(withoutArg.metrics.totalEdges);
+			expect(withEmpty.metrics.resolvedEdges).toBe(withoutArg.metrics.resolvedEdges);
+		});
 	});
 
 	it("resolves edges when source uses GitHub URL format", async () => {

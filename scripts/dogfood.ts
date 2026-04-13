@@ -15,7 +15,7 @@ import {
 	type Segment,
 	aggregateVerdict,
 } from "@wtfoc/common";
-import { evaluateIngest, evaluateEdgeExtraction, evaluateSignals, readCatalog, catalogFilePath } from "@wtfoc/ingest";
+import { evaluateIngest, evaluateEdgeExtraction, evaluateSignals, readCatalog, catalogFilePath, loadAllOverlayEdges } from "@wtfoc/ingest";
 import {
 	evaluateEdgeResolution,
 	evaluateThemes,
@@ -180,9 +180,14 @@ async function main() {
 					break;
 				}
 
-				case "resolution":
-					result = await evaluateEdgeResolution(segments);
+				case "resolution": {
+					const manifestDir =
+						(store.manifests as { dir?: string }).dir ??
+						`${process.env.HOME ?? "."}.wtfoc/projects`;
+					const overlayEdges = await loadAllOverlayEdges(manifestDir, values.collection!);
+					result = await evaluateEdgeResolution(segments, overlayEdges);
 					break;
+				}
 
 				case "storage": {
 					// Load document catalog for AC-US6-04 orphan check

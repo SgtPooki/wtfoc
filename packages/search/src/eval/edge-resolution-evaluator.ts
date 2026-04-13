@@ -1,4 +1,4 @@
-import type { EvalCheck, EvalStageResult, Segment } from "@wtfoc/common";
+import type { Edge, EvalCheck, EvalStageResult, Segment } from "@wtfoc/common";
 import { analyzeEdgeResolution, buildSourceIndex, type SourceIndex } from "../edge-resolution.js";
 import { normalizeRepoSource } from "../normalize-source.js";
 
@@ -36,8 +36,15 @@ function resolveTarget(targetId: string, index: SourceIndex): string | undefined
 /**
  * Evaluate edge resolution quality: resolution rate, cross-source density,
  * source-type pairs, top unresolved repos.
+ *
+ * @param overlayEdges - Additional edges from extract-edges overlays (not yet
+ *   baked into segments). Pass the output of loadAllOverlayEdges() so the
+ *   dogfood loop measures the full post-extraction graph.
  */
-export async function evaluateEdgeResolution(segments: Segment[]): Promise<EvalStageResult> {
+export async function evaluateEdgeResolution(
+	segments: Segment[],
+	overlayEdges: Edge[] = [],
+): Promise<EvalStageResult> {
 	const startedAt = new Date().toISOString();
 	const t0 = performance.now();
 
@@ -66,7 +73,7 @@ export async function evaluateEdgeResolution(segments: Segment[]): Promise<EvalS
 	}
 
 	const index = buildSourceIndex(segments);
-	const stats = analyzeEdgeResolution(segments, index);
+	const stats = analyzeEdgeResolution(segments, index, overlayEdges);
 
 	const resolutionRate = stats.totalEdges > 0 ? stats.resolvedEdges / stats.totalEdges : 0;
 	const bareRefRate = stats.totalEdges > 0 ? stats.bareRefs / stats.totalEdges : 0;
@@ -88,21 +95,25 @@ export async function evaluateEdgeResolution(segments: Segment[]): Promise<EvalS
 	let crossSourceEdges = 0;
 	const sourceTypePairs: Record<string, number> = {};
 
+	const allEdgesForCrossSource: Edge[] = [];
 	for (const seg of segments) {
-		for (const edge of seg.edges) {
-			if (/^#\d+$/.test(edge.targetId)) continue; // skip bare refs
+		for (const edge of seg.edges) allEdgesForCrossSource.push(edge);
+	}
+	for (const edge of overlayEdges) allEdgesForCrossSource.push(edge);
 
-			const resolvedChunkId = resolveTarget(edge.targetId, index);
-			if (!resolvedChunkId) continue;
+	for (const edge of allEdgesForCrossSource) {
+		if (/^#\d+$/.test(edge.targetId)) continue; // skip bare refs
 
-			const sourceSt = chunkSourceType.get(edge.sourceId);
-			const targetSt = chunkSourceType.get(resolvedChunkId);
+		const resolvedChunkId = resolveTarget(edge.targetId, index);
+		if (!resolvedChunkId) continue;
 
-			if (sourceSt && targetSt && sourceSt !== targetSt) {
-				crossSourceEdges++;
-				const pair = `${sourceSt}->${targetSt}`;
-				sourceTypePairs[pair] = (sourceTypePairs[pair] || 0) + 1;
-			}
+		const sourceSt = chunkSourceType.get(edge.sourceId);
+		const targetSt = chunkSourceType.get(resolvedChunkId);
+
+		if (sourceSt && targetSt && sourceSt !== targetSt) {
+			crossSourceEdges++;
+			const pair = `${sourceSt}->${targetSt}`;
+			sourceTypePairs[pair] = (sourceTypePairs[pair] || 0) + 1;
 		}
 	}
 
