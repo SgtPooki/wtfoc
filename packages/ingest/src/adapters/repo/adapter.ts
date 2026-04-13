@@ -235,6 +235,11 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 						filePath: relPath,
 						language,
 						repo,
+						...(commitInfo && {
+							lastCommitSha: commitInfo.sha,
+							lastCommitAuthor: commitInfo.author,
+							lastCommitMessage: commitInfo.message,
+						}),
 					},
 				};
 				if (chunk.chunkIndex === 0) yieldChunk.rawContent = content;
