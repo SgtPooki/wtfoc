@@ -82,7 +82,7 @@ describe("evaluateIngest", () => {
 			makeSegment([
 				makeChunk({ id: "c1", contentFingerprint: "fp1" }),
 				makeChunk({ id: "c2", contentFingerprint: "" }),
-				makeChunk({ id: "c3", contentFingerprint: undefined as unknown as string }),
+				makeChunk({ id: "c3", contentFingerprint: undefined }),
 				makeChunk({ id: "c4", contentFingerprint: "fp4" }),
 			]),
 		];

@@ -22,9 +22,9 @@ project: wtfoc
 ## Acceptance Criteria
 
 - [x] **AC-US8-01**: The themes evaluator runs `GreedyClusterer` from `@wtfoc/search` against loaded chunks and reports cluster count, min/max/mean cluster size, and noise chunk count
-- [x] **AC-US8-02**: Reports intra-cluster cohesion: mean pairwise cosine similarity within each cluster (higher = more coherent clusters)
+- [ ] **AC-US8-02**: (DEFERRED) Reports intra-cluster cohesion: mean pairwise cosine similarity within each cluster (higher = more coherent clusters)
 - [x] **AC-US8-03**: Reports source-type diversity per cluster: how many distinct source types appear in each cluster (cross-source clusters are more valuable)
-- [x] **AC-US8-04**: When extractor options are provided, runs LLM labeling via `labelClusters()` and reports: label count, duplicate label rate, mean label length
+- [ ] **AC-US8-04**: (DEFERRED) When extractor options are provided, runs LLM labeling via `labelClusters()` and reports: label count, duplicate label rate, mean label length
 - [x] **AC-US8-05**: Skippable when embedder options are not configured (clustering requires embeddings)
 - [x] **AC-US8-06**: Produces a `ThemesEvalReport` typed and JSON-serializable
 

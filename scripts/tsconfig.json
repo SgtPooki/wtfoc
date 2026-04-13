@@ -6,6 +6,7 @@
 		"strict": true,
 		"esModuleInterop": true,
 		"skipLibCheck": true,
+		"baseUrl": ".",
 		"paths": {
 			"@wtfoc/common": ["../packages/common/src/index.ts"],
 			"@wtfoc/ingest": ["../packages/ingest/src/index.ts"],

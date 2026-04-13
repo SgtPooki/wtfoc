@@ -58,7 +58,7 @@ export async function evaluateStorage(
 		abortSignal?.throwIfAborted();
 		try {
 			const raw = await storageBackend.download(segSummary.id);
-			const text = typeof raw === "string" ? raw : new TextDecoder().decode(raw as Uint8Array);
+			const text = new TextDecoder().decode(raw);
 			const seg = JSON.parse(text) as Segment;
 
 			if (!Array.isArray(seg.chunks) || !Array.isArray(seg.edges)) {
@@ -93,7 +93,7 @@ export async function evaluateStorage(
 			abortSignal?.throwIfAborted();
 			try {
 				const raw = await storageBackend.download(layer.id);
-				const text = typeof raw === "string" ? raw : new TextDecoder().decode(raw as Uint8Array);
+				const text = new TextDecoder().decode(raw);
 				const edges = JSON.parse(text) as Edge[];
 
 				for (const edge of edges) {

@@ -77,3 +77,4 @@ tmp/
 .claude-plugin/
 plugins/
 vskill.lock
+.playwright-mcp/

@@ -172,7 +172,7 @@
   - **Source-type pair distribution** (AC-US5-05): `Record<"from->to", number>` for resolved cross-source edges
   - **Top-10 unresolved repos** (AC-US5-04): from `unresolvedByRepo` sorted desc, slice to 10
   - `metrics`: all of the above
-  - `checks`: one for resolutionRate (pass if >= 0.15, warn if < 0.23 baseline)
+  - `checks`: one for resolutionRate (pass if >= 0.05, warn if < 0.23 baseline)
   - **Verdict**: fail if resolutionRate < 0.05, warn if < 0.23, pass otherwise
 - Export from `packages/search/src/index.ts`
 

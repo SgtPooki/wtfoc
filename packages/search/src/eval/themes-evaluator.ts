@@ -55,8 +55,8 @@ export async function evaluateThemes(
 
 	// Cluster sizes
 	const sizes = result.clusters.map((c) => c.size);
-	const minSize = sizes.length > 0 ? Math.min(...sizes) : 0;
-	const maxSize = sizes.length > 0 ? Math.max(...sizes) : 0;
+	const minSize = sizes.length > 0 ? sizes.reduce((a, b) => Math.min(a, b), sizes[0] ?? 0) : 0;
+	const maxSize = sizes.length > 0 ? sizes.reduce((a, b) => Math.max(a, b), sizes[0] ?? 0) : 0;
 	const meanSize = sizes.length > 0 ? sizes.reduce((a, b) => a + b, 0) / sizes.length : 0;
 
 	// Source-type diversity per cluster

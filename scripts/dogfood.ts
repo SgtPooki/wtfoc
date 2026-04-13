@@ -8,10 +8,11 @@
 
 import { parseArgs } from "node:util";
 import { writeFileSync, mkdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
 	type DogfoodReport,
 	type EvalStageResult,
+	type Segment,
 	aggregateVerdict,
 } from "@wtfoc/common";
 import { evaluateIngest, evaluateEdgeExtraction, evaluateSignals, readCatalog, catalogFilePath } from "@wtfoc/ingest";
@@ -22,7 +23,7 @@ import {
 	OpenAIEmbedder,
 	InMemoryVectorIndex,
 } from "@wtfoc/search";
-import { evaluateStorage, createStore } from "@wtfoc/store";
+import { evaluateStorage, createStore, type Store } from "@wtfoc/store";
 import { formatDogfoodReport } from "./dogfood-formatter.js";
 
 const VALID_STAGES = [
@@ -35,6 +36,17 @@ const VALID_STAGES = [
 	"search",
 ] as const;
 type StageName = (typeof VALID_STAGES)[number];
+
+/** Map CLI stage names to canonical report stage IDs */
+const STAGE_ID: Record<StageName, string> = {
+	ingest: "ingest",
+	edges: "edge-extraction",
+	resolution: "edge-resolution",
+	storage: "storage",
+	themes: "themes",
+	signals: "signals",
+	search: "search",
+};
 
 const { values } = parseArgs({
 	options: {
@@ -116,14 +128,11 @@ async function main() {
 	}
 
 	// Load segments
-	const segments = [];
+	const segments: Segment[] = [];
 	for (const segSummary of head.manifest.segments) {
 		const raw = await store.storage.download(segSummary.id);
-		const text =
-			typeof raw === "string"
-				? raw
-				: new TextDecoder().decode(raw as Uint8Array);
-		segments.push(JSON.parse(text));
+		const text = new TextDecoder().decode(raw);
+		segments.push(JSON.parse(text) as Segment);
 	}
 
 	const stageResults: EvalStageResult[] = [];
@@ -131,11 +140,11 @@ async function main() {
 	for (const stage of stagesToRun) {
 		if (skipLlm && (stage === "edges" || stage === "search" || stage === "themes")) {
 			stageResults.push({
-				stage,
+				stage: STAGE_ID[stage],
 				startedAt: new Date().toISOString(),
 				durationMs: 0,
 				verdict: "pass",
-				summary: `skipped: --skip-llm flag set`,
+				summary: "skipped: --skip-llm flag set",
 				metrics: {},
 				checks: [],
 			});
@@ -153,7 +162,7 @@ async function main() {
 				case "edges": {
 					if (!values["extractor-url"] || !values["extractor-model"]) {
 						result = {
-							stage,
+							stage: STAGE_ID[stage],
 							startedAt: new Date().toISOString(),
 							durationMs: 0,
 							verdict: "pass",
@@ -177,8 +186,8 @@ async function main() {
 
 				case "storage": {
 					// Load document catalog for AC-US6-04 orphan check
-					const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? ".";
-					const manifestDir = `${homeDir}/.wtfoc/projects`;
+					// Derive manifest dir from store to avoid hardcoding paths
+					const manifestDir = (store.manifests as { dir?: string }).dir ?? `${process.env.HOME ?? "."}/.wtfoc/projects`;
 					const catPath = catalogFilePath(manifestDir, values.collection!);
 					const catalog = await readCatalog(catPath);
 					result = await evaluateStorage({
@@ -200,7 +209,7 @@ async function main() {
 				case "search": {
 					if (!values["embedder-url"] || !values["embedder-model"]) {
 						result = {
-							stage,
+							stage: STAGE_ID[stage],
 							startedAt: new Date().toISOString(),
 							durationMs: 0,
 							verdict: "pass",
@@ -251,7 +260,7 @@ async function main() {
 			stageResults.push(result);
 		} catch (err) {
 			stageResults.push({
-				stage,
+				stage: STAGE_ID[stage],
 				startedAt: new Date().toISOString(),
 				durationMs: 0,
 				verdict: "fail",
@@ -284,20 +293,27 @@ async function main() {
 		const outputPath = values.output;
 		let filePath: string;
 
+		const ts = report.timestamp.replace(/[:.]/g, "-");
+		const defaultFilename = `dogfood-${report.collectionName}-${ts}.json`;
+
 		try {
 			const stat = statSync(outputPath);
 			if (stat.isDirectory()) {
-				const ts = report.timestamp.replace(/[:.]/g, "-");
-				filePath = join(outputPath, `dogfood-${report.collectionName}-${ts}.json`);
+				filePath = join(outputPath, defaultFilename);
 			} else {
 				filePath = outputPath;
 			}
 		} catch {
-			// Path doesn't exist — treat as file path
-			filePath = outputPath;
+			// Path doesn't exist — if it ends with / or has no extension, treat as directory
+			if (outputPath.endsWith("/") || outputPath.endsWith("\\")) {
+				mkdirSync(outputPath, { recursive: true });
+				filePath = join(outputPath, defaultFilename);
+			} else {
+				filePath = outputPath;
+			}
 		}
 
-		mkdirSync(join(filePath, ".."), { recursive: true });
+		mkdirSync(dirname(filePath), { recursive: true });
 		writeFileSync(filePath, JSON.stringify(report, null, 2));
 		console.error(`Report written to: ${filePath}`);
 	}

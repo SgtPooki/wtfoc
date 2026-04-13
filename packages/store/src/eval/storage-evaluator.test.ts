@@ -28,15 +28,14 @@ function makeHead(
 
 function makeStorage(data: Record<string, unknown>): StorageBackend {
 	return {
-		upload: vi.fn(),
+		upload: vi.fn(async () => ({ id: "mock-id" })),
 		download: vi.fn(async (id: string) => {
 			const val = data[id];
 			if (val === undefined) throw new Error(`Not found: ${id}`);
 			if (typeof val === "string") return new TextEncoder().encode(val);
 			return new TextEncoder().encode(JSON.stringify(val));
 		}),
-		exists: vi.fn(),
-	} as unknown as StorageBackend;
+	};
 }
 
 const validSegment = {

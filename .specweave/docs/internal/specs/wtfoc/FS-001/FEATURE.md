@@ -6,7 +6,7 @@ status: completed
 priority: P1
 created: 2026-04-12T00:00:00.000Z
 lastUpdated: 2026-04-12
-tldr: "A developer-only script (`pnpm dogfood` via `scripts/dogfood.ts`) that runs comprehensive quality evaluation across the entire wtfoc pipeline (ingest, edge extraction, edge resolution, storage, themes/clustering, signal scoring, search/trace) and produces structured, versioned, JSON-seriali."
+tldr: "A developer-only script (`pnpm dogfood` via `scripts/dogfood.ts`) that runs comprehensive quality evaluation across the entire wtfoc pipeline (ingest, edge extraction, edge resolution, storage, themes/clustering, signal scoring, search/trace) and produces structured, versioned, JSON-serializable reports."
 complexity: high
 stakeholder_relevant: true
 ---
@@ -15,7 +15,7 @@ stakeholder_relevant: true
 
 ## TL;DR
 
-**What**: A developer-only script (`pnpm dogfood` via `scripts/dogfood.ts`) that runs comprehensive quality evaluation across the entire wtfoc pipeline (ingest, edge extraction, edge resolution, storage, themes/clustering, signal scoring, search/trace) and produces structured, versioned, JSON-seriali.
+**What**: A developer-only script (`pnpm dogfood` via `scripts/dogfood.ts`) that runs comprehensive quality evaluation across the entire wtfoc pipeline (ingest, edge extraction, edge resolution, storage, themes/clustering, signal scoring, search/trace) and produces structured, versioned, JSON-serializable reports.
 **Status**: completed | **Priority**: P1
 **User Stories**: 10
 
@@ -23,7 +23,7 @@ stakeholder_relevant: true
 
 ## Overview
 
-A developer-only script (`pnpm dogfood` via `scripts/dogfood.ts`) that runs comprehensive quality evaluation across the entire wtfoc pipeline (ingest, edge extraction, edge resolution, storage, themes/clustering, signal scoring, search/trace) and produces structured, versioned, JSON-seriali
+A developer-only script (`pnpm dogfood` via `scripts/dogfood.ts`) that runs comprehensive quality evaluation across the entire wtfoc pipeline (ingest, edge extraction, edge resolution, storage, themes/clustering, signal scoring, search/trace) and produces structured, versioned, JSON-serializable reports.
 
 ## Implementation History
 
