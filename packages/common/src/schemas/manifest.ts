@@ -127,8 +127,8 @@ export interface ThemeSnapshot {
 export interface DerivedEdgeLayerSummary {
 	/** Storage ID of the layer blob */
 	id: string;
-	/** Extractor model that produced this layer */
-	extractorModel: string;
+	/** Identifier of the extractor(s) that produced this layer (e.g. "regex", "tree-sitter", "llm-<hash>") */
+	extractorId: string;
 	/** Number of edges in this layer */
 	edgeCount: number;
 	/** When this layer was created */

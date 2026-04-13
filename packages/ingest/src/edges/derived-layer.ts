@@ -10,8 +10,8 @@ import { edgeKey } from "./merge.js";
 export interface DerivedEdgeLayer {
 	schemaVersion: 1;
 	collectionId: string;
-	/** Extractor model that produced these edges */
-	extractorModel: string;
+	/** Identifier of the extractor(s) that produced this layer (e.g. "regex", "tree-sitter", "llm-<hash>") */
+	extractorId: string;
 	/** When this layer was created */
 	createdAt: string;
 	/** Contexts processed in this extraction run */
@@ -33,14 +33,14 @@ export function derivedLayerId(layer: DerivedEdgeLayer): string {
  */
 export function buildDerivedEdgeLayer(
 	collectionId: string,
-	extractorModel: string,
+	extractorId: string,
 	edges: Edge[],
 	contextsProcessed: number,
 ): DerivedEdgeLayer {
 	return {
 		schemaVersion: 1,
 		collectionId,
-		extractorModel,
+		extractorId,
 		createdAt: new Date().toISOString(),
 		contextsProcessed,
 		edges,
@@ -92,7 +92,7 @@ export function compactDerivedLayers(
 	let totalContexts = 0;
 
 	for (const layer of layers) {
-		models.add(layer.extractorModel);
+		models.add(layer.extractorId);
 		totalContexts += layer.contextsProcessed;
 
 		for (const edge of layer.edges) {

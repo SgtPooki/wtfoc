@@ -121,7 +121,7 @@ describe("evaluateStorage", () => {
 			[
 				{
 					id: "layer1",
-					extractorModel: "test",
+					extractorId: "test",
 					edgeCount: 1,
 					createdAt: "2026-01-01",
 					contextsProcessed: 1,

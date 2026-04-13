@@ -1,4 +1,4 @@
-import { overlayFilePath, readOverlayEdges } from "@wtfoc/ingest";
+import { loadAllOverlayEdges } from "@wtfoc/ingest";
 import type { Command } from "commander";
 import { getFormat, getManifestDir, getStore } from "../helpers.js";
 import { formatStatus } from "../output.js";
@@ -20,8 +20,8 @@ export function registerStatusCommand(program: Command): void {
 
 			// Check for pending overlay edges
 			const manifestDir = getManifestDir(store);
-			const overlay = await readOverlayEdges(overlayFilePath(manifestDir, opts.collection));
-			const overlayCount = overlay?.edges.length ?? 0;
+			const allOverlayEdges = await loadAllOverlayEdges(manifestDir, opts.collection);
+			const overlayCount = allOverlayEdges.length;
 
 			console.log(
 				formatStatus(

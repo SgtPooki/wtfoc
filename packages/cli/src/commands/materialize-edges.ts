@@ -3,6 +3,7 @@ import { CURRENT_SCHEMA_VERSION } from "@wtfoc/common";
 import {
 	buildSegment,
 	edgeKey,
+	listExtractorOverlayIds,
 	mergeOverlayEdges,
 	overlayFilePath,
 	readOverlayEdges,
@@ -30,12 +31,29 @@ export function registerMaterializeEdgesCommand(program: Command): void {
 				process.exit(1);
 			}
 
-			// Load overlay edges
+			// Load ALL extractor overlays and merge them
 			const manifestDir = getManifestDir(store);
-			const overlayPath = overlayFilePath(manifestDir, opts.collection);
-			const overlay = await readOverlayEdges(overlayPath);
+			const extractorIds = await listExtractorOverlayIds(manifestDir, opts.collection);
 
-			if (!overlay || overlay.edges.length === 0) {
+			const allOverlayEdges: Edge[] = [];
+			const perExtractorEdges: Map<string, Edge[]> = new Map();
+
+			for (const extractorId of extractorIds) {
+				const overlayPath = overlayFilePath(manifestDir, opts.collection, extractorId);
+				const overlay = await readOverlayEdges(overlayPath);
+				if (overlay && overlay.edges.length > 0) {
+					perExtractorEdges.set(extractorId, overlay.edges);
+					// Merge into combined set — same merge semantics as extract-edges
+					for (const edge of overlay.edges) {
+						allOverlayEdges.push(edge);
+					}
+				}
+			}
+
+			// Deduplicate merged edges by canonical key (highest confidence wins)
+			const deduped = mergeOverlayEdges([], allOverlayEdges);
+
+			if (deduped.length === 0) {
 				if (format === "human") {
 					console.error(
 						`No overlay edges found for "${opts.collection}". Run extract-edges first.`,
@@ -46,18 +64,22 @@ export function registerMaterializeEdgesCommand(program: Command): void {
 
 			if (format === "human") {
 				console.error(
-					`🔗 Materializing ${overlay.edges.length} overlay edges into ${head.manifest.segments.length} segments`,
+					`🔗 Materializing ${deduped.length} overlay edges from ${perExtractorEdges.size} extractor(s) into ${head.manifest.segments.length} segments`,
 				);
+				for (const [id, edges] of perExtractorEdges) {
+					console.error(`   ${id}: ${edges.length} edges`);
+				}
 			}
 
 			if (opts.dryRun) {
-				// Show which segments would be affected
 				let affectedCount = 0;
+				const allChunkIds = new Set<string>();
 				for (const segSummary of head.manifest.segments) {
 					const segBytes = await store.storage.download(segSummary.id);
 					const segment = JSON.parse(new TextDecoder().decode(segBytes)) as Segment;
 					const chunkIds = new Set(segment.chunks.map((c) => c.id));
-					const relevantOverlay = overlay.edges.filter((e) => chunkIds.has(e.sourceId));
+					for (const id of chunkIds) allChunkIds.add(id);
+					const relevantOverlay = deduped.filter((e) => chunkIds.has(e.sourceId));
 					if (relevantOverlay.length > 0) {
 						affectedCount++;
 						console.error(
@@ -65,17 +87,10 @@ export function registerMaterializeEdgesCommand(program: Command): void {
 						);
 					}
 				}
-				// Also count overlay edges that don't match any segment chunk
-				const allChunkIds = new Set<string>();
-				for (const segSummary of head.manifest.segments) {
-					const segBytes = await store.storage.download(segSummary.id);
-					const segment = JSON.parse(new TextDecoder().decode(segBytes)) as Segment;
-					for (const c of segment.chunks) allChunkIds.add(c.id);
-				}
-				const orphanEdges = overlay.edges.filter((e) => !allChunkIds.has(e.sourceId));
+				const orphanEdges = deduped.filter((e) => !allChunkIds.has(e.sourceId));
 				if (orphanEdges.length > 0) {
 					console.error(
-						`   ⚠️  ${orphanEdges.length} overlay edges reference chunks not in any segment (will be preserved in overlay)`,
+						`   ⚠️  ${orphanEdges.length} overlay edges reference chunks not in any segment`,
 					);
 				}
 				console.error(`   ${affectedCount} segments would be rebuilt`);
@@ -89,7 +104,7 @@ export function registerMaterializeEdgesCommand(program: Command): void {
 
 			// Build a map of overlay edges by sourceId for efficient matching
 			const overlayBySource = new Map<string, Edge[]>();
-			for (const edge of overlay.edges) {
+			for (const edge of deduped) {
 				const list = overlayBySource.get(edge.sourceId) ?? [];
 				list.push(edge);
 				overlayBySource.set(edge.sourceId, list);
@@ -102,7 +117,6 @@ export function registerMaterializeEdgesCommand(program: Command): void {
 				const segBytes = await store.storage.download(segSummary.id);
 				const segment = JSON.parse(new TextDecoder().decode(segBytes)) as Segment;
 
-				// Find overlay edges whose sourceId belongs to this segment
 				const chunkIds = new Set(segment.chunks.map((c) => c.id));
 				const relevantOverlay: Edge[] = [];
 				for (const chunkId of chunkIds) {
@@ -115,11 +129,9 @@ export function registerMaterializeEdgesCommand(program: Command): void {
 					}
 				}
 
-				// Merge overlay edges with existing segment edges
 				const mergedEdges = mergeOverlayEdges([...segment.edges], relevantOverlay);
 				totalEdgesMerged += relevantOverlay.length;
 
-				// Rebuild segment with merged edges
 				const segmentChunks = segment.chunks.map(storedChunkToSegmentChunk);
 
 				const newSegment = buildSegment(segmentChunks, mergedEdges, {
@@ -143,8 +155,8 @@ export function registerMaterializeEdgesCommand(program: Command): void {
 				}
 			}
 
-			// Handle orphan overlay edges (sourceId doesn't match any segment chunk)
-			const orphanEdges = overlay.edges.filter((e) => !placedEdgeKeys.has(edgeKey(e)));
+			// Handle orphan overlay edges
+			const orphanEdges = deduped.filter((e) => !placedEdgeKeys.has(edgeKey(e)));
 			if (orphanEdges.length > 0 && format === "human") {
 				console.error(
 					`   ⚠️  ${orphanEdges.length} overlay edges couldn't be placed (sourceId not in any segment)`,
@@ -162,13 +174,21 @@ export function registerMaterializeEdgesCommand(program: Command): void {
 
 			await store.manifests.putHead(opts.collection, manifest, currentHead?.headId ?? null);
 
-			// Preserve orphan edges in overlay; clear only successfully placed edges
-			await writeOverlayEdges(overlayPath, {
-				collectionId: overlay.collectionId,
-				edges: orphanEdges,
-				createdAt: overlay.createdAt,
-				updatedAt: new Date().toISOString(),
-			});
+			// Clear placed edges from all extractor overlays; preserve orphans
+			const orphanKeys = new Set(orphanEdges.map(edgeKey));
+			for (const [extractorId, edges] of perExtractorEdges) {
+				const overlayPath = overlayFilePath(manifestDir, opts.collection, extractorId);
+				const overlay = await readOverlayEdges(overlayPath);
+				if (!overlay) continue;
+
+				const remainingEdges = edges.filter((e) => orphanKeys.has(edgeKey(e)));
+				await writeOverlayEdges(overlayPath, {
+					collectionId: overlay.collectionId,
+					edges: remainingEdges,
+					createdAt: overlay.createdAt,
+					updatedAt: new Date().toISOString(),
+				});
+			}
 
 			if (format === "json") {
 				console.log(
@@ -177,6 +197,7 @@ export function registerMaterializeEdgesCommand(program: Command): void {
 						segmentsRebuilt: newSegmentRefs.length,
 						edgesMaterialized: totalEdgesMerged,
 						orphanEdges: orphanEdges.length,
+						extractors: [...perExtractorEdges.keys()],
 					}),
 				);
 			} else if (format === "human") {
@@ -187,7 +208,7 @@ export function registerMaterializeEdgesCommand(program: Command): void {
 						`   ${orphanEdges.length} orphan edges preserved in overlay (sourceId not in any segment)`,
 					);
 				} else {
-					console.error("   Overlay file cleared — ready for promote");
+					console.error("   Overlays cleared — ready for promote");
 				}
 			}
 		});

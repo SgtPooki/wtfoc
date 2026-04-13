@@ -86,7 +86,6 @@ export {
 	type ExtractionStatusData,
 	getContextsToProcess,
 	readExtractionStatus,
-	statusFilePath,
 	writeExtractionStatus,
 } from "./edges/extraction-status.js";
 export type { ChangedFile } from "./edges/extractor.js";
@@ -107,10 +106,14 @@ export {
 } from "./edges/llm-prompt.js";
 export { edgeKey, mergeEdges } from "./edges/merge.js";
 export {
+	listExtractorOverlayIds,
+	loadAllOverlayEdges,
 	mergeOverlayEdges,
 	type OverlayEdgeData,
 	overlayFilePath,
+	overlayRootDir,
 	readOverlayEdges,
+	statusFilePath,
 	writeOverlayEdges,
 } from "./edges/overlay-store.js";
 export { TemporalEdgeExtractor, type TemporalEdgeExtractorOptions } from "./edges/temporal.js";

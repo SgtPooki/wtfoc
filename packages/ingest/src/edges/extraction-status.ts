@@ -1,5 +1,5 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 
 export interface ContextStatus {
 	contextId: string;
@@ -12,7 +12,8 @@ export interface ContextStatus {
 }
 
 export interface ExtractionStatusData {
-	extractorModel: string;
+	/** Identifier of the extractor (e.g. "regex", "tree-sitter", "llm-<hash>") */
+	extractorId: string;
 	contexts: Record<string, ContextStatus>;
 }
 
@@ -49,14 +50,6 @@ export async function writeExtractionStatus(
 }
 
 /**
- * Get the extraction status file path for a collection.
- * Uses flat layout: {manifestDir}/{collection}.extraction-status.json
- */
-export function statusFilePath(manifestDir: string, collectionName: string): string {
-	return join(manifestDir, `${collectionName}.extraction-status.json`);
-}
-
-/**
  * Compute a context hash from chunk contents.
  */
 export async function computeContextHash(
@@ -77,10 +70,10 @@ export async function computeContextHash(
 export function getContextsToProcess(
 	status: ExtractionStatusData | null,
 	contexts: Array<{ contextId: string; contextHash: string; chunkIds: string[] }>,
-	model: string,
+	extractorId: string,
 ): Array<{ contextId: string; contextHash: string; chunkIds: string[] }> {
-	// If no status file or model changed, process everything
-	if (!status || status.extractorModel !== model) {
+	// If no status file or extractor changed, process everything
+	if (!status || status.extractorId !== extractorId) {
 		return contexts;
 	}
 

@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Edge } from "@wtfoc/common";
 import { edgeKey } from "./merge.js";
@@ -11,11 +11,51 @@ export interface OverlayEdgeData {
 }
 
 /**
- * Get the overlay edge file path for a collection.
- * Matches the flat layout used by extract-edges: {manifestDir}/{collection}.edges-overlay.json
+ * Get the per-extractor overlay edges file path for a collection.
+ * Layout: {manifestDir}/{collection}.edge-overlays/{extractorId}/edges.json
  */
-export function overlayFilePath(manifestDir: string, collectionName: string): string {
-	return join(manifestDir, `${collectionName}.edges-overlay.json`);
+export function overlayFilePath(
+	manifestDir: string,
+	collectionName: string,
+	extractorId: string,
+): string {
+	return join(manifestDir, `${collectionName}.edge-overlays`, extractorId, "edges.json");
+}
+
+/**
+ * Get the per-extractor status file path for a collection.
+ * Layout: {manifestDir}/{collection}.edge-overlays/{extractorId}/status.json
+ */
+export function statusFilePath(
+	manifestDir: string,
+	collectionName: string,
+	extractorId: string,
+): string {
+	return join(manifestDir, `${collectionName}.edge-overlays`, extractorId, "status.json");
+}
+
+/**
+ * Get the root directory for all extractor overlays for a collection.
+ */
+export function overlayRootDir(manifestDir: string, collectionName: string): string {
+	return join(manifestDir, `${collectionName}.edge-overlays`);
+}
+
+/**
+ * List all extractor IDs that have overlay data for a collection.
+ * Returns empty array if the overlay root doesn't exist.
+ */
+export async function listExtractorOverlayIds(
+	manifestDir: string,
+	collectionName: string,
+): Promise<string[]> {
+	const root = overlayRootDir(manifestDir, collectionName);
+	try {
+		const entries = await readdir(root, { withFileTypes: true });
+		return entries.filter((e) => e.isDirectory()).map((e) => e.name);
+	} catch {
+		return [];
+	}
 }
 
 /**
@@ -42,6 +82,26 @@ export async function writeOverlayEdges(filePath: string, data: OverlayEdgeData)
 	const tmpPath = `${filePath}.tmp.${Date.now()}`;
 	await writeFile(tmpPath, JSON.stringify(data, null, 2));
 	await rename(tmpPath, filePath);
+}
+
+/**
+ * Load and merge all extractor overlay edges for a collection.
+ * Useful for commands that need the combined view of all overlay sources.
+ */
+export async function loadAllOverlayEdges(
+	manifestDir: string,
+	collectionName: string,
+): Promise<Edge[]> {
+	const extractorIds = await listExtractorOverlayIds(manifestDir, collectionName);
+	let merged: Edge[] = [];
+	for (const extractorId of extractorIds) {
+		const filePath = overlayFilePath(manifestDir, collectionName, extractorId);
+		const overlay = await readOverlayEdges(filePath);
+		if (overlay?.edges.length) {
+			merged = mergeOverlayEdges(merged, overlay.edges);
+		}
+	}
+	return merged;
 }
 
 /**

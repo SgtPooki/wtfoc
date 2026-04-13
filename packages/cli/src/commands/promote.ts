@@ -1,5 +1,5 @@
 import type { CollectionHead } from "@wtfoc/common";
-import { overlayFilePath, readOverlayEdges } from "@wtfoc/ingest";
+import { loadAllOverlayEdges } from "@wtfoc/ingest";
 import { bundleAndUpload, createStore, validateIpniIndexing } from "@wtfoc/store";
 import type { Command } from "commander";
 import { getFormat, getManifestDir } from "../helpers.js";
@@ -30,10 +30,10 @@ export function registerPromoteCommand(program: Command): void {
 
 			// Check for pending overlay edges that should be materialized before promote
 			const manifestDir = getManifestDir(localStore);
-			const overlay = await readOverlayEdges(overlayFilePath(manifestDir, collectionName));
-			if (overlay && overlay.edges.length > 0) {
+			const allOverlayEdges = await loadAllOverlayEdges(manifestDir, collectionName);
+			if (allOverlayEdges.length > 0) {
 				console.error(
-					`⚠️  ${overlay.edges.length} overlay edges from extract-edges have not been materialized.`,
+					`⚠️  ${allOverlayEdges.length} overlay edges from extract-edges have not been materialized.`,
 				);
 				console.error(
 					"   These edges will NOT be included in the promoted data unless you materialize first:",

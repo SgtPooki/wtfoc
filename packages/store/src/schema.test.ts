@@ -302,7 +302,7 @@ describe("validateManifestSchema", () => {
 		const layers = [
 			{
 				id: "layer-abc",
-				extractorModel: "test-model",
+				extractorId: "test-model",
 				edgeCount: 42,
 				createdAt: "2026-01-01T00:00:00Z",
 				contextsProcessed: 10,

@@ -1,10 +1,9 @@
 import {
 	catalogFilePath,
 	getSupersededChunkIds,
+	loadAllOverlayEdges,
 	loadDerivedEdgeLayers,
-	overlayFilePath,
 	readCatalog,
-	readOverlayEdges,
 } from "@wtfoc/ingest";
 import { type TraceMode, type TraceView, trace } from "@wtfoc/search";
 import type { Command } from "commander";
@@ -112,12 +111,11 @@ export function registerTraceCommand(program: Command): void {
 				}
 			}
 
-			// Fall back to legacy overlay file if no derived layers exist
+			// Fall back to extractor overlays if no derived layers exist
 			if (derivedEdges.length === 0) {
-				const overlay = await readOverlayEdges(overlayFilePath(manifestDir, opts.collection));
-				derivedEdges = overlay?.edges ?? [];
+				derivedEdges = await loadAllOverlayEdges(manifestDir, opts.collection);
 				if (derivedEdges.length > 0 && format === "human") {
-					console.error(`🔗 Loaded ${derivedEdges.length} overlay edges (legacy)`);
+					console.error(`🔗 Loaded ${derivedEdges.length} overlay edges`);
 				}
 			}
 			const overlayEdges = derivedEdges;

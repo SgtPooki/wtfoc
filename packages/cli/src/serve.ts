@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { CollectionHead, Edge, Embedder, Segment, VectorIndex } from "@wtfoc/common";
-import { overlayFilePath, readOverlayEdges } from "@wtfoc/ingest";
+import { loadAllOverlayEdges } from "@wtfoc/ingest";
 import type { VectorBackend } from "@wtfoc/search";
 import {
 	analyzeEdgeResolution,
@@ -73,9 +73,8 @@ export async function startServer(options: ServeOptions): Promise<ServerHandle> 
 	});
 	const mounted = await mountCollection(head.manifest, store.storage, vectorIndex);
 
-	// Load overlay edges from extract-edges if available
-	const overlay = await readOverlayEdges(overlayFilePath(options.manifestDir, collection));
-	const overlayEdges = overlay?.edges ?? [];
+	// Load overlay edges from all extractor overlays if available
+	const overlayEdges = await loadAllOverlayEdges(options.manifestDir, collection);
 	if (overlayEdges.length > 0) {
 		console.error(`🔗 Loaded ${overlayEdges.length} overlay edges from extract-edges`);
 	}

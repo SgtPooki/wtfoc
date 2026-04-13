@@ -114,7 +114,7 @@ export function registerCompactEdgesCommand(program: Command): void {
 
 			const layerSummary: DerivedEdgeLayerSummary = {
 				id: result.id,
-				extractorModel: compacted.extractorModel,
+				extractorId: compacted.extractorId,
 				edgeCount: compacted.edges.length,
 				createdAt: compacted.createdAt,
 				contextsProcessed: compacted.contextsProcessed,
