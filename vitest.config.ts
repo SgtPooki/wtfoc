@@ -15,7 +15,7 @@ export default defineConfig({
 		},
 	},
 	test: {
-		include: ["packages/*/src/**/*.test.ts"],
+		include: ["packages/*/src/**/*.test.ts", "scripts/**/*.test.ts"],
 		// Exclude e2e tests from the default `pnpm test` run.
 		// Use `pnpm test:e2e` to run them separately.
 		exclude: ["**/node_modules/**", "tests/**", "**/eval.test.ts"],

@@ -1,0 +1,16 @@
+{
+  "id": "0001-dogfood-eval",
+  "status": "completed",
+  "type": "feature",
+  "priority": "P1",
+  "created": "2026-04-12T20:14:08.546Z",
+  "lastActivity": "2026-04-12T21:36:23.527Z",
+  "testMode": "TDD",
+  "coverageTarget": 0,
+  "feature_id": null,
+  "epic_id": null,
+  "externalLinks": {},
+  "project": "wtfoc",
+  "readyForReviewAt": "2026-04-12T21:35:28.096Z",
+  "approvedAt": "2026-04-12T21:36:23.527Z"
+}

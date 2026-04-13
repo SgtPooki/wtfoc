@@ -132,6 +132,10 @@ export type {
 	TreeSitterParseResponse,
 } from "./edges/tree-sitter-client.js";
 export { treeSitterHealth, treeSitterParse } from "./edges/tree-sitter-client.js";
+export { evaluateEdgeExtraction } from "./eval/edge-extraction-evaluator.js";
+// Eval evaluators
+export { evaluateIngest } from "./eval/ingest-evaluator.js";
+export { evaluateSignals } from "./eval/signal-evaluator.js";
 export {
 	archiveIndexPath,
 	archiveKey,

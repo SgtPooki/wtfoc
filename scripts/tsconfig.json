@@ -1,0 +1,19 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"strict": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"baseUrl": ".",
+		"paths": {
+			"@wtfoc/common": ["../packages/common/src/index.ts"],
+			"@wtfoc/ingest": ["../packages/ingest/src/index.ts"],
+			"@wtfoc/search": ["../packages/search/src/index.ts"],
+			"@wtfoc/store": ["../packages/store/src/index.ts"],
+			"@wtfoc/config": ["../packages/config/src/index.ts"]
+		}
+	},
+	"include": ["./**/*.ts"]
+}

@@ -22,6 +22,8 @@ export {
 	validateRoutingMetadata,
 } from "./collection.js";
 export { computeRevisionDiff, generateContentIdentity, type RevisionDiff } from "./diff.js";
+// Eval evaluator
+export { evaluateStorage, type StorageEvalOptions } from "./eval/storage-evaluator.js";
 export type { Store, StoreConfig } from "./factory.js";
 export { createStore } from "./factory.js";
 export { LocalManifestStore, validateCollectionName } from "./manifest/local.js";
