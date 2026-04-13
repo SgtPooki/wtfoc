@@ -1,5 +1,6 @@
 import type { EvalCheck, EvalStageResult, Segment } from "@wtfoc/common";
 import { analyzeEdgeResolution, buildSourceIndex, type SourceIndex } from "../edge-resolution.js";
+import { normalizeRepoSource } from "../normalize-source.js";
 
 /**
  * Resolve a target ID and return the first matched chunk ID, or undefined.
@@ -9,8 +10,8 @@ function resolveTarget(targetId: string, index: SourceIndex): string | undefined
 	// 1. Direct chunk ID match
 	if (index.chunkIds.has(targetId)) return targetId;
 
-	// 2. Exact source match (case-insensitive)
-	const lower = targetId.toLowerCase();
+	// 2. Exact source match (case-insensitive, URL-normalized)
+	const lower = normalizeRepoSource(targetId);
 	const exact = index.bySource.get(lower);
 	if (exact && exact.length > 0) return exact[0];
 
@@ -69,6 +70,11 @@ export async function evaluateEdgeResolution(segments: Segment[]): Promise<EvalS
 
 	const resolutionRate = stats.totalEdges > 0 ? stats.resolvedEdges / stats.totalEdges : 0;
 	const bareRefRate = stats.totalEdges > 0 ? stats.bareRefs / stats.totalEdges : 0;
+	// Adjusted rate excludes concept edges and bare refs from the denominator
+	// (concept edges are semantic labels that can never resolve to chunks)
+	const adjustedDenominator = stats.totalEdges - stats.conceptEdges - stats.bareRefs;
+	const adjustedResolutionRate =
+		adjustedDenominator > 0 ? stats.resolvedEdges / adjustedDenominator : 0;
 
 	// Build chunk → sourceType map for cross-source analysis
 	const chunkSourceType = new Map<string, string>();
@@ -138,7 +144,9 @@ export async function evaluateEdgeResolution(segments: Segment[]): Promise<EvalS
 			resolvedEdges: stats.resolvedEdges,
 			bareRefs: stats.bareRefs,
 			unresolvedEdges: stats.unresolvedEdges,
+			conceptEdges: stats.conceptEdges,
 			resolutionRate,
+			adjustedResolutionRate,
 			bareRefRate,
 			crossSourceEdgeDensity,
 			sourceTypePairs,

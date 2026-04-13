@@ -1,4 +1,5 @@
 import type { Edge, Segment } from "@wtfoc/common";
+import { normalizeRepoSource } from "../normalize-source.js";
 
 export interface ChunkData {
 	content: string;
@@ -35,8 +36,8 @@ export function buildChunkIndexes(segments: Segment[]): ChunkIndexes {
 			};
 			byId.set(chunk.id, data);
 
-			// Index by lowercased source for case-insensitive edge resolution
-			const key = chunk.source.toLowerCase();
+			// Index by normalized source for case-insensitive, URL-normalized edge resolution
+			const key = normalizeRepoSource(chunk.source);
 			const ids = bySource.get(key) ?? [];
 			ids.push(chunk.id);
 			bySource.set(key, ids);

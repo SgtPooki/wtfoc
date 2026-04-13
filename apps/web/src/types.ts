@@ -58,6 +58,7 @@ export interface EdgesResponse {
 	resolvedEdges: number;
 	bareRefs: number;
 	unresolvedEdges: number;
+	conceptEdges?: number;
 	resolution: number;
 	topUnresolved: Record<string, number>;
 }

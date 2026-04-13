@@ -172,7 +172,9 @@ export async function startServer(options: ServeOptions): Promise<ServerHandle> 
 					resolvedEdges: stats.resolvedEdges,
 					bareRefs: stats.bareRefs,
 					unresolvedEdges: stats.unresolvedEdges,
-					resolution: Math.round((stats.resolvedEdges / stats.totalEdges) * 100),
+					conceptEdges: stats.conceptEdges,
+					resolution:
+						stats.totalEdges > 0 ? Math.round((stats.resolvedEdges / stats.totalEdges) * 100) : 0,
 					topUnresolved: Object.fromEntries(sorted.slice(0, 20)),
 				});
 			}

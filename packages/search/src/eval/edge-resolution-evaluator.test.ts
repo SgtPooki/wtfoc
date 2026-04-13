@@ -4,7 +4,7 @@ import { evaluateEdgeResolution } from "./edge-resolution-evaluator.js";
 
 function makeSegment(
 	chunks: Array<{ id: string; source: string; sourceType: string }>,
-	edges: Array<{ sourceId: string; targetId: string; type: string }>,
+	edges: Array<{ sourceId: string; targetId: string; type: string; targetType?: string }>,
 ): Segment {
 	return {
 		schemaVersion: 1,
@@ -24,7 +24,7 @@ function makeSegment(
 		})),
 		edges: edges.map((e) => ({
 			...e,
-			targetType: "document",
+			targetType: e.targetType ?? "document",
 			evidence: "test",
 			confidence: 0.8,
 		})),
@@ -113,5 +113,53 @@ describe("evaluateEdgeResolution", () => {
 		const result = await evaluateEdgeResolution([]);
 		expect(result.verdict).toBe("pass");
 		expect(result.metrics.totalEdges).toBe(0);
+	});
+
+	it("tracks concept edges separately from unresolved", async () => {
+		const segments = [
+			makeSegment(
+				[
+					{ id: "c1", source: "owner/repo#1", sourceType: "github-issue" },
+					{ id: "c2", source: "owner/repo#2", sourceType: "github-pr" },
+				],
+				[
+					{ sourceId: "c1", targetId: "owner/repo#2", type: "references" }, // resolves
+					{
+						sourceId: "c1",
+						targetId: "performance-regression",
+						type: "discusses",
+						targetType: "concept",
+					},
+					{ sourceId: "c2", targetId: "auth-rewrite", type: "discusses", targetType: "concept" },
+					{ sourceId: "c2", targetId: "nonexistent/repo#99", type: "closes" }, // unresolved
+				],
+			),
+		];
+
+		const result = await evaluateEdgeResolution(segments);
+		expect(result.metrics.totalEdges).toBe(4);
+		expect(result.metrics.resolvedEdges).toBe(1);
+		expect(result.metrics.conceptEdges).toBe(2);
+		expect(result.metrics.unresolvedEdges).toBe(1); // only the nonexistent repo
+		// adjustedResolutionRate = 1 / (4 - 2 - 0) = 1/2 = 0.5
+		expect(result.metrics.adjustedResolutionRate).toBe(0.5);
+	});
+
+	it("resolves edges when source uses GitHub URL format", async () => {
+		const segments = [
+			makeSegment(
+				[
+					{ id: "c1", source: "https://github.com/Owner/Repo#1", sourceType: "github-issue" },
+					{ id: "c2", source: "Owner/Repo#2", sourceType: "github-pr" },
+				],
+				[
+					// Target without URL prefix should still resolve to URL-prefixed source
+					{ sourceId: "c2", targetId: "Owner/Repo#1", type: "references" },
+				],
+			),
+		];
+
+		const result = await evaluateEdgeResolution(segments);
+		expect(result.metrics.resolvedEdges).toBe(1);
 	});
 });

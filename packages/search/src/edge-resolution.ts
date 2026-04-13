@@ -1,4 +1,5 @@
 import type { Segment } from "@wtfoc/common";
+import { normalizeRepoSource } from "./normalize-source.js";
 
 /**
  * Lightweight source index for checking whether edge targets resolve
@@ -25,7 +26,7 @@ export function buildSourceIndex(segments: Segment[]): SourceIndex {
 		for (const chunk of seg.chunks) {
 			chunkIds.add(chunk.id);
 
-			const key = chunk.source.toLowerCase();
+			const key = normalizeRepoSource(chunk.source);
 			const ids = bySource.get(key) ?? [];
 			ids.push(chunk.id);
 			bySource.set(key, ids);
@@ -54,8 +55,8 @@ export function resolves(targetId: string, index: SourceIndex): boolean {
 	// 1. Direct chunk ID match
 	if (index.chunkIds.has(targetId)) return true;
 
-	// 2. Exact source match (case-insensitive)
-	const lower = targetId.toLowerCase();
+	// 2. Exact source match (case-insensitive, URL-normalized)
+	const lower = normalizeRepoSource(targetId);
 	if (index.bySource.has(lower)) return true;
 
 	// 3. Partial source match for structured IDs
@@ -80,6 +81,8 @@ export interface EdgeResolutionStats {
 	resolvedEdges: number;
 	bareRefs: number;
 	unresolvedEdges: number;
+	/** Concept-type edges (unresolvable by design — semantic labels, not chunk IDs) */
+	conceptEdges: number;
 	unresolvedByRepo: Map<string, number>;
 }
 
@@ -94,6 +97,7 @@ export function analyzeEdgeResolution(
 	let totalEdges = 0;
 	let resolvedEdges = 0;
 	let bareRefs = 0;
+	let conceptEdges = 0;
 
 	for (const seg of segments) {
 		for (const edge of seg.edges) {
@@ -101,6 +105,12 @@ export function analyzeEdgeResolution(
 
 			if (/^#\d+$/.test(edge.targetId)) {
 				bareRefs++;
+				continue;
+			}
+
+			// Concept edges are semantic labels, not chunk IDs — track separately
+			if (edge.targetType === "concept") {
+				conceptEdges++;
 				continue;
 			}
 
@@ -122,7 +132,8 @@ export function analyzeEdgeResolution(
 		totalEdges,
 		resolvedEdges,
 		bareRefs,
-		unresolvedEdges: totalEdges - resolvedEdges - bareRefs,
+		unresolvedEdges: totalEdges - resolvedEdges - bareRefs - conceptEdges,
+		conceptEdges,
 		unresolvedByRepo: repoCounts,
 	};
 }

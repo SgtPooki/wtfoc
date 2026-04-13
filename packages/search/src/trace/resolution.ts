@@ -1,3 +1,4 @@
+import { normalizeRepoSource } from "../normalize-source.js";
 import type { ChunkData, ChunkIndexes } from "./indexing.js";
 
 /**
@@ -24,8 +25,8 @@ export function findChunksByTarget(
 		return results;
 	}
 
-	// 2. Exact source match (O(1) via lowercased source index)
-	const lowerTarget = targetId.toLowerCase();
+	// 2. Exact source match (O(1) via normalized source index)
+	const lowerTarget = normalizeRepoSource(targetId);
 	const sourceMatches = indexes.bySource.get(lowerTarget);
 	if (sourceMatches) {
 		for (const id of sourceMatches) {
