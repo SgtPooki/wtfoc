@@ -40,6 +40,8 @@ No setup required. Point Claude Code or Claude Desktop at the hosted endpoint:
 }
 ```
 
+> **Note:** `https://wtfoc.xyz/mcp` is read-only. You can use it to list available hosted collections and run query/trace workflows, but you cannot ingest data or create collections through the hosted MCP endpoint. To ingest data or build your own collection, use the CLI flow below with a local or self-hosted deployment.
+
 Then ask:
 
 > List the available wtfoc collections, then trace upload failures in the largest one.
@@ -78,7 +80,7 @@ The container exposes:
 
 - **Web UI** at `/`
 - **REST API** at `/api/collections`
-- **MCP endpoint** at `/mcp`
+- **MCP endpoint** at `/mcp` (read-only: query/trace only)
 
 You can also browse the hosted UI at [wtfoc.xyz](https://wtfoc.xyz).
 
