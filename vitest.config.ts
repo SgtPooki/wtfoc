@@ -19,5 +19,12 @@ export default defineConfig({
 		// Exclude e2e tests from the default `pnpm test` run.
 		// Use `pnpm test:e2e` to run them separately.
 		exclude: ["**/node_modules/**", "tests/**", "**/eval.test.ts"],
+		coverage: {
+			provider: "v8",
+			include: ["packages/*/src/**/*.ts"],
+			exclude: ["**/*.test.ts", "**/*.d.ts", "**/index.ts", "**/__fixtures__/**", "**/eval/**"],
+			reporter: ["text", "json-summary"],
+			reportsDirectory: "./coverage",
+		},
 	},
 });
