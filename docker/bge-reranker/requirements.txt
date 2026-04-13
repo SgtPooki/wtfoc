@@ -1,2 +1,2 @@
 sentence-transformers==3.4.1
-torch==2.6.0+cpu
+torch==2.6.0
