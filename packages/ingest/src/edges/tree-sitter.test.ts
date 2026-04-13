@@ -1,11 +1,12 @@
+/**
+ * Ownership: TreeSitterEdgeExtractor integration tests.
+ * Tests: extension-to-language mapping, sourceType filtering, edge field mapping, concurrency, empty input.
+ * Delegates to: tree-sitter-client.test.ts for HTTP transport, fail-open, timeout, and abort behavior.
+ */
 import { createServer, type Server } from "node:http";
-import type { Chunk } from "@wtfoc/common";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { makeChunk, makeCodeChunk } from "./__test-helpers.js";
 import { TreeSitterEdgeExtractor } from "./tree-sitter.js";
-
-function makeChunk(content: string, source: string, sourceType = "code", id = "chunk-1"): Chunk {
-	return { id, content, sourceType, source, chunkIndex: 0, totalChunks: 1, metadata: {} };
-}
 
 // Mock sidecar
 let server: Server;
@@ -65,37 +66,37 @@ describe("TreeSitterEdgeExtractor", () => {
 	describe("extension → language mapping", () => {
 		it("maps .ts to typescript", async () => {
 			const extractor = new TreeSitterEdgeExtractor({ baseUrl });
-			const edges = await extractor.extract([makeChunk("code", "src/main.ts")]);
+			const edges = await extractor.extract([makeCodeChunk("code", "src/main.ts")]);
 			expect(edges).toHaveLength(1);
 			expect(edges[0]?.targetId).toBe("typescript-module");
 		});
 
 		it("maps .py to python", async () => {
 			const extractor = new TreeSitterEdgeExtractor({ baseUrl });
-			const edges = await extractor.extract([makeChunk("code", "src/main.py")]);
+			const edges = await extractor.extract([makeCodeChunk("code", "src/main.py")]);
 			expect(edges).toHaveLength(1);
 			expect(edges[0]?.targetId).toBe("python-module");
 		});
 
 		it("maps .go to go", async () => {
 			const extractor = new TreeSitterEdgeExtractor({ baseUrl });
-			const edges = await extractor.extract([makeChunk("code", "main.go")]);
+			const edges = await extractor.extract([makeCodeChunk("code", "main.go")]);
 			expect(edges).toHaveLength(1);
 			expect(edges[0]?.targetId).toBe("go-module");
 		});
 
 		it("maps .rs to rust", async () => {
 			const extractor = new TreeSitterEdgeExtractor({ baseUrl });
-			const edges = await extractor.extract([makeChunk("code", "src/main.rs")]);
+			const edges = await extractor.extract([makeCodeChunk("code", "src/main.rs")]);
 			expect(edges).toHaveLength(1);
 			expect(edges[0]?.targetId).toBe("rust-module");
 		});
 
 		it("maps .jsx and .mjs to javascript", async () => {
 			const extractor = new TreeSitterEdgeExtractor({ baseUrl });
-			const jsxEdges = await extractor.extract([makeChunk("code", "src/App.jsx")]);
+			const jsxEdges = await extractor.extract([makeCodeChunk("code", "src/App.jsx")]);
 			expect(jsxEdges[0]?.targetId).toBe("javascript-module");
-			const mjsEdges = await extractor.extract([makeChunk("code", "src/lib.mjs")]);
+			const mjsEdges = await extractor.extract([makeCodeChunk("code", "src/lib.mjs")]);
 			expect(mjsEdges[0]?.targetId).toBe("javascript-module");
 		});
 	});
@@ -103,21 +104,23 @@ describe("TreeSitterEdgeExtractor", () => {
 	describe("filtering", () => {
 		it("skips unsupported extensions", async () => {
 			const extractor = new TreeSitterEdgeExtractor({ baseUrl });
-			const edges = await extractor.extract([makeChunk("code", "data.json")]);
+			const edges = await extractor.extract([makeCodeChunk("code", "data.json")]);
 			expect(edges).toHaveLength(0);
 		});
 
 		it("skips non-code source types", async () => {
 			const extractor = new TreeSitterEdgeExtractor({ baseUrl });
 			const edges = await extractor.extract([
-				makeChunk("import foo", "src/main.ts", "slack-message"),
+				makeChunk("import foo", { source: "src/main.ts", sourceType: "slack-message" }),
 			]);
 			expect(edges).toHaveLength(0);
 		});
 
 		it("processes repo source type", async () => {
 			const extractor = new TreeSitterEdgeExtractor({ baseUrl });
-			const edges = await extractor.extract([makeChunk("code", "src/main.py", "repo")]);
+			const edges = await extractor.extract([
+				makeChunk("code", { source: "src/main.py", sourceType: "repo" }),
+			]);
 			expect(edges).toHaveLength(1);
 		});
 	});
@@ -125,46 +128,24 @@ describe("TreeSitterEdgeExtractor", () => {
 	describe("edge mapping", () => {
 		it("sets sourceId from chunk", async () => {
 			const extractor = new TreeSitterEdgeExtractor({ baseUrl });
-			const edges = await extractor.extract([makeChunk("code", "main.go", "code", "my-chunk")]);
+			const edges = await extractor.extract([makeCodeChunk("code", "main.go", "my-chunk")]);
 			expect(edges[0]?.sourceId).toBe("my-chunk");
 		});
 	});
 
-	describe("fail-open", () => {
-		it("returns empty array when sidecar is unreachable", async () => {
-			const extractor = new TreeSitterEdgeExtractor({
-				baseUrl: "http://localhost:1",
-				timeoutMs: 200,
-			});
-			const edges = await extractor.extract([makeChunk("code", "src/main.ts")]);
-			expect(edges).toHaveLength(0);
-		});
-
-		it("returns empty array for empty chunk list", async () => {
-			const extractor = new TreeSitterEdgeExtractor({ baseUrl });
-			const edges = await extractor.extract([]);
-			expect(edges).toHaveLength(0);
-		});
-	});
-
-	describe("abort", () => {
-		it("respects pre-aborted signal", async () => {
-			const extractor = new TreeSitterEdgeExtractor({ baseUrl });
-			const controller = new AbortController();
-			controller.abort();
-			await expect(
-				extractor.extract([makeChunk("code", "src/main.ts")], controller.signal),
-			).rejects.toThrow();
-		});
+	it("returns empty array for empty chunk list", async () => {
+		const extractor = new TreeSitterEdgeExtractor({ baseUrl });
+		const edges = await extractor.extract([]);
+		expect(edges).toHaveLength(0);
 	});
 
 	describe("concurrency", () => {
 		it("processes multiple chunks", async () => {
 			const extractor = new TreeSitterEdgeExtractor({ baseUrl, maxConcurrency: 2 });
 			const chunks = [
-				makeChunk("a", "src/a.ts", "code", "c1"),
-				makeChunk("b", "src/b.py", "code", "c2"),
-				makeChunk("c", "src/c.go", "code", "c3"),
+				makeCodeChunk("a", "src/a.ts", "c1"),
+				makeCodeChunk("b", "src/b.py", "c2"),
+				makeCodeChunk("c", "src/c.go", "c3"),
 			];
 			const edges = await extractor.extract(chunks);
 			expect(edges).toHaveLength(3);

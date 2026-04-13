@@ -199,7 +199,8 @@ describe("DiscordAdapter: edge extraction", () => {
 
 		const edges = await adapter.extractEdges(chunks);
 		const githubEdges = edges.filter((e) => e.targetId.includes("FilOzone/synapse-sdk"));
-		expect(githubEdges.length).toBeGreaterThan(0);
+		// Golden count: 1 GitHub URL reference in discord-export.json fixture
+		expect(githubEdges.length).toBe(1);
 		expect(githubEdges[0]?.type).toBe("references");
 	});
 
@@ -214,8 +215,9 @@ describe("DiscordAdapter: edge extraction", () => {
 
 		const edges = await adapter.extractEdges(chunks);
 		const channelEdges = edges.filter((e) => e.targetType === "discord-channel");
-		expect(channelEdges.length).toBeGreaterThan(0);
-		expect(channelEdges.some((e) => e.targetId === "#dev-chat")).toBe(true);
+		// Golden count: 1 #channel reference in discord-export.json fixture
+		expect(channelEdges.length).toBe(1);
+		expect(channelEdges[0]?.targetId).toBe("#dev-chat");
 	});
 
 	it("extracts Discord message URL cross-references", async () => {
@@ -229,7 +231,8 @@ describe("DiscordAdapter: edge extraction", () => {
 
 		const edges = await adapter.extractEdges(chunks);
 		const discordMsgEdges = edges.filter((e) => e.targetType === "discord-message");
-		expect(discordMsgEdges.length).toBeGreaterThan(0);
+		// Golden count: 1 Discord message URL in discord-export.json fixture
+		expect(discordMsgEdges.length).toBe(1);
 		expect(discordMsgEdges[0]?.targetId).toMatch(/^discord:\/\//);
 	});
 });

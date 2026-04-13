@@ -1,32 +1,16 @@
-import type { Chunk } from "@wtfoc/common";
+/**
+ * Ownership: RegexEdgeExtractor + repo-affinity utility unit tests.
+ * Tests regex-based edge extraction, repo inference, batch repo affinity, and changed-file edges.
+ * Delegates: shared makeChunk/makeSlackChunk factories to __test-helpers.ts.
+ */
 import { describe, expect, it } from "vitest";
+import { makeChunk, makeSlackChunk } from "./__test-helpers.js";
 import {
 	buildBatchRepoAffinity,
 	extractChangedFileEdges,
 	inferRepoFromContent,
 	RegexEdgeExtractor,
 } from "./extractor.js";
-
-function makeChunk(content: string, overrides: Partial<Chunk> = {}): Chunk {
-	return {
-		id: overrides.id ?? "chunk-1",
-		content,
-		sourceType: "github-pr",
-		source: "owner/repo#10",
-		chunkIndex: 0,
-		totalChunks: 1,
-		metadata: {},
-		...overrides,
-	};
-}
-
-function makeSlackChunk(content: string, overrides: Partial<Chunk> = {}): Chunk {
-	return makeChunk(content, {
-		sourceType: "slack-message",
-		source: "#foc-support",
-		...overrides,
-	});
-}
 
 describe("RegexEdgeExtractor", () => {
 	const extractor = new RegexEdgeExtractor();

@@ -202,11 +202,10 @@ describe("GitHubAdapter: edge extraction", () => {
 		}
 
 		const edges = await adapter.extractEdges(chunks);
-		expect(edges.length).toBeGreaterThan(0);
-
-		const hasRefs = edges.some((e) => e.type === "references");
-		const hasCloses = edges.some((e) => e.type === "closes");
-		expect(hasRefs || hasCloses).toBe(true);
+		// Golden count: 5 edges from mock data (4 references + 1 closes)
+		expect(edges.length).toBe(5);
+		expect(edges.filter((e) => e.type === "references").length).toBe(4);
+		expect(edges.filter((e) => e.type === "closes").length).toBe(1);
 	});
 });
 

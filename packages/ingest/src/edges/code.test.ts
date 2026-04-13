@@ -1,16 +1,11 @@
-import type { Chunk } from "@wtfoc/common";
+/**
+ * Ownership: CodeEdgeExtractor integration tests.
+ * Tests: multi-language import extraction, manifest routing/delegation, multi-chunk reconstruction, abort.
+ * Delegates to: dependency-parser.test.ts for package.json/requirements.txt parsing details.
+ */
 import { describe, expect, it } from "vitest";
+import { makeCodeChunk } from "./__test-helpers.js";
 import { CodeEdgeExtractor } from "./code.js";
-
-function makeCodeChunk(
-	content: string,
-	source: string,
-	id = "chunk-1",
-	chunkIndex = 0,
-	totalChunks = 1,
-): Chunk {
-	return { id, content, sourceType: "code", source, chunkIndex, totalChunks, metadata: {} };
-}
 
 describe("CodeEdgeExtractor", () => {
 	const extractor = new CodeEdgeExtractor();
@@ -157,25 +152,16 @@ describe("CodeEdgeExtractor", () => {
 	});
 
 	describe("dependency manifests", () => {
-		it("extracts package.json dependencies", async () => {
-			const chunk = makeCodeChunk(
+		it("delegates manifest parsing to dependency-parser (details in dependency-parser.test.ts)", async () => {
+			const pkgJson = makeCodeChunk(
 				JSON.stringify({ dependencies: { express: "^4.0.0" } }),
 				"package.json",
 			);
-			const edges = await extractor.extract([chunk]);
-			expect(edges).toHaveLength(1);
-			expect(edges[0]).toMatchObject({
-				type: "depends-on",
-				targetType: "package",
-				targetId: "express",
-				confidence: 1.0,
-			});
-		});
-
-		it("extracts requirements.txt dependencies", async () => {
-			const chunk = makeCodeChunk("flask==2.0.0\nrequests>=2.28", "requirements.txt");
-			const edges = await extractor.extract([chunk]);
-			expect(edges).toHaveLength(2);
+			const reqTxt = makeCodeChunk("flask==2.0.0\nrequests>=2.28", "requirements.txt");
+			const edges = await extractor.extract([pkgJson, reqTxt]);
+			// Verify routing: manifests produce depends-on edges
+			expect(edges.length).toBeGreaterThan(0);
+			expect(edges.every((e) => e.type === "depends-on")).toBe(true);
 		});
 
 		it("extracts go.mod dependencies", async () => {

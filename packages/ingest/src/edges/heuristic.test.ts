@@ -1,17 +1,15 @@
-import type { Chunk } from "@wtfoc/common";
+/**
+ * Ownership: HeuristicEdgeExtractor unit tests.
+ * Tests mention/URL/question/link heuristic patterns on slack-message and generic chunks.
+ * Delegates: shared makeChunk factory to __test-helpers.ts.
+ */
 import { describe, expect, it } from "vitest";
+import { makeChunk } from "./__test-helpers.js";
 import { HeuristicEdgeExtractor } from "./heuristic.js";
 
-function makeChunk(content: string, id = "chunk-1"): Chunk {
-	return {
-		id,
-		content,
-		sourceType: "slack-message",
-		source: "#general",
-		chunkIndex: 0,
-		totalChunks: 1,
-		metadata: {},
-	};
+/** Convenience: heuristic tests use slack-message source type */
+function makeSlackChunk(content: string, id = "chunk-1") {
+	return makeChunk(content, { id, sourceType: "slack-message", source: "#general" });
 }
 
 describe("HeuristicEdgeExtractor", () => {
@@ -134,7 +132,10 @@ describe("HeuristicEdgeExtractor", () => {
 		});
 
 		it("processes multiple chunks", async () => {
-			const chunks = [makeChunk("See PROJ-1", "chunk-a"), makeChunk("See PROJ-2", "chunk-b")];
+			const chunks = [
+				makeSlackChunk("See PROJ-1", "chunk-a"),
+				makeSlackChunk("See PROJ-2", "chunk-b"),
+			];
 			const edges = await extractor.extract(chunks);
 			expect(edges).toHaveLength(2);
 			expect(edges[0]?.sourceId).toBe("chunk-a");

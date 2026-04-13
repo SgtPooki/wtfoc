@@ -1,18 +1,11 @@
-import type { Edge } from "@wtfoc/common";
+/**
+ * Ownership: Edge merge algorithm tests.
+ * Tests: edgeKey generation, dedup, evidence concatenation, confidence boost math, N-way convergence.
+ * Delegates to: composite.test.ts for CompositeEdgeExtractor orchestration (which invokes mergeEdges).
+ */
 import { describe, expect, it } from "vitest";
+import { makeEdge } from "./__test-helpers.js";
 import { edgeKey, mergeEdges } from "./merge.js";
-
-function makeEdge(overrides: Partial<Edge> = {}): Edge {
-	return {
-		type: "references",
-		sourceId: "chunk-1",
-		targetType: "issue",
-		targetId: "owner/repo#42",
-		evidence: "found #42",
-		confidence: 1.0,
-		...overrides,
-	};
-}
 
 describe("edgeKey", () => {
 	it("produces a JSON-encoded canonical key", () => {

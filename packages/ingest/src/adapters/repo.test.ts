@@ -18,7 +18,9 @@ describe("RepoAdapter", () => {
 				chunks.push(chunk);
 			}
 
-			expect(chunks.length).toBeGreaterThan(0);
+			// Golden count: 4 chunks from fixtures/test-repo (3 .ts code + 1 .md)
+			// If test-repo fixture changes, update: run tests and capture new values
+			expect(chunks.length).toBe(4);
 		});
 
 		it("produces code chunks for .ts files", async () => {
@@ -32,10 +34,11 @@ describe("RepoAdapter", () => {
 			}
 
 			const codeChunks = chunks.filter((c) => c.sourceType === "code");
-			expect(codeChunks.length).toBeGreaterThan(0);
+			expect(codeChunks.length).toBe(3);
 			const firstCode = codeChunks[0];
 			if (!firstCode) throw new Error("Expected at least one code chunk");
 			expect(firstCode.metadata.language).toBe("ts");
+			expect(codeChunks.some((c) => c.content.includes("StorageManager"))).toBe(true);
 		});
 
 		it("produces markdown chunks for .md files", async () => {
@@ -49,7 +52,8 @@ describe("RepoAdapter", () => {
 			}
 
 			const mdChunks = chunks.filter((c) => c.sourceType === "markdown");
-			expect(mdChunks.length).toBeGreaterThan(0);
+			expect(mdChunks.length).toBe(1);
+			expect(mdChunks[0]?.metadata.filePath).toBe("docs/getting-started.md");
 		});
 
 		it("includes filePath and repo in metadata", async () => {
@@ -62,9 +66,10 @@ describe("RepoAdapter", () => {
 				chunks.push(chunk);
 			}
 
-			for (const chunk of chunks) {
-				expect(chunk.metadata.filePath).toBeTruthy();
-			}
+			const filePaths = chunks.map((c) => c.metadata.filePath).sort();
+			expect(filePaths).toContain("docs/getting-started.md");
+			expect(filePaths).toContain("src/storage.ts");
+			expect(filePaths).toContain("src/upload.ts");
 		});
 
 		it("generates deterministic chunk IDs", async () => {
@@ -116,7 +121,8 @@ describe("RepoAdapter", () => {
 
 			const edges = await adapter.extractEdges(chunks);
 			const importEdges = edges.filter((e) => e.type === "references" && e.targetType === "file");
-			expect(importEdges.length).toBeGreaterThan(0);
+			// Golden count: 1 import edge from test-repo .ts files
+			expect(importEdges.length).toBe(1);
 		});
 
 		it("extracts issue references from comments", async () => {
@@ -131,7 +137,8 @@ describe("RepoAdapter", () => {
 
 			const edges = await adapter.extractEdges(chunks);
 			const issueEdges = edges.filter((e) => e.type === "references" && e.targetType === "issue");
-			expect(issueEdges.length).toBeGreaterThan(0);
+			// Golden count: 1 issue reference from test-repo
+			expect(issueEdges.length).toBe(1);
 		});
 
 		it("extracts URL references from markdown", async () => {
@@ -146,7 +153,8 @@ describe("RepoAdapter", () => {
 
 			const edges = await adapter.extractEdges(chunks);
 			const urlEdges = edges.filter((e) => e.type === "references" && e.targetType === "url");
-			expect(urlEdges.length).toBeGreaterThan(0);
+			// Golden count: 3 URL references from test-repo markdown
+			expect(urlEdges.length).toBe(3);
 		});
 
 		it("all edges have confidence 1.0", async () => {
