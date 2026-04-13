@@ -14,7 +14,7 @@
 	},
 	"dependencies": {
 		"@filoz/synapse-core": "^0.3.1",
-		"@hono/node-server": "^1.19.11",
+		"@hono/node-server": "^1.19.13",
 		"@modelcontextprotocol/sdk": "^1.12.1",
 		"@preact/signals": "^2.0.0",
 		"@tanstack/query-core": "^5.95.2",
