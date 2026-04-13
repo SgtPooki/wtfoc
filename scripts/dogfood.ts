@@ -23,6 +23,8 @@ import {
 	evaluateSearch,
 	OpenAIEmbedder,
 	InMemoryVectorIndex,
+	LlmReranker,
+	type Reranker,
 } from "@wtfoc/search";
 import { evaluateStorage, createStore, type Store } from "@wtfoc/store";
 import { formatDogfoodReport } from "./dogfood-formatter.js";
@@ -64,6 +66,9 @@ const { values } = parseArgs({
 		"embedder-url": { type: "string" },
 		"embedder-model": { type: "string" },
 		"embedder-key": { type: "string" },
+		"reranker-type": { type: "string" }, // "llm" | "bge" (bge not yet implemented)
+		"reranker-url": { type: "string" },  // base URL for llm or bge reranker
+		"reranker-model": { type: "string" }, // model name for llm reranker
 		help: { type: "boolean", short: "h", default: false },
 	},
 	strict: true,
@@ -136,6 +141,19 @@ async function main() {
 		const raw = await store.storage.download(segSummary.id);
 		const text = new TextDecoder().decode(raw);
 		segments.push(JSON.parse(text) as Segment);
+	}
+
+	// Build optional reranker
+	let reranker: Reranker | undefined;
+	const rerankerType = values["reranker-type"];
+	const rerankerUrl = values["reranker-url"];
+	if (rerankerType === "llm" && rerankerUrl && values["extractor-model"]) {
+		reranker = new LlmReranker({
+			baseUrl: rerankerUrl,
+			model: values["reranker-model"] ?? values["extractor-model"],
+			apiKey: values["extractor-key"],
+		});
+		console.error(`[dogfood] Reranker: llm (${rerankerUrl}, model=${values["reranker-model"] ?? values["extractor-model"]})`);
 	}
 
 	const stageResults: EvalStageResult[] = [];
@@ -310,7 +328,7 @@ async function main() {
 							(store.manifests as { dir?: string }).dir ??
 							`${process.env.HOME ?? "."}.wtfoc/projects`;
 						const qqOverlayEdges = await loadAllOverlayEdges(qqManifestDir, values.collection!);
-						result = await evaluateQualityQueries(embedder, vectorIndex, segments, undefined, qqOverlayEdges);
+						result = await evaluateQualityQueries(embedder, vectorIndex, segments, undefined, qqOverlayEdges, reranker);
 					}
 					break;
 				}

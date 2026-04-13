@@ -3,6 +3,7 @@ import type {
 	Embedder,
 	EvalCheck,
 	EvalStageResult,
+	Reranker,
 	Segment,
 	VectorIndex,
 } from "@wtfoc/common";
@@ -33,6 +34,7 @@ export async function evaluateQualityQueries(
 	segments: Segment[],
 	signal?: AbortSignal,
 	overlayEdges: Edge[] = [],
+	reranker?: Reranker,
 ): Promise<EvalStageResult> {
 	const startedAt = new Date().toISOString();
 	const t0 = performance.now();
@@ -43,7 +45,15 @@ export async function evaluateQualityQueries(
 
 	for (const gq of GOLD_STANDARD_QUERIES) {
 		signal?.throwIfAborted();
-		const score = await scoreQuery(gq, embedder, vectorIndex, segments, signal, overlayEdges);
+		const score = await scoreQuery(
+			gq,
+			embedder,
+			vectorIndex,
+			segments,
+			signal,
+			overlayEdges,
+			reranker,
+		);
 		scores.push(score);
 		if (score.passed) passCount++;
 	}
@@ -128,6 +138,7 @@ async function scoreQuery(
 	segments: Segment[],
 	signal?: AbortSignal,
 	overlayEdges: Edge[] = [],
+	reranker?: Reranker,
 ): Promise<QueryScore> {
 	let resultCount = 0;
 	let requiredTypesFound = false;
@@ -141,6 +152,7 @@ async function scoreQuery(
 		const qResult = await query(gq.queryText, embedder, vectorIndex, {
 			topK: 10,
 			signal,
+			reranker,
 		});
 		resultCount = qResult.results.length;
 
@@ -159,6 +171,7 @@ async function scoreQuery(
 			mode: "analytical",
 			signal,
 			overlayEdges: overlayEdges.length > 0 ? overlayEdges : undefined,
+			reranker,
 		});
 
 		for (const st of tResult.stats.sourceTypes) sourceTypesReached.push(st);

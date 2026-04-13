@@ -25,6 +25,8 @@ export type { QueryOptions, QueryResult } from "./query.js";
 export { query } from "./query.js";
 export type { CohereRerankerOptions } from "./rerankers/cohere.js";
 export { CohereReranker } from "./rerankers/cohere.js";
+export type { LlmRerankerOptions } from "./rerankers/llm.js";
+export { LlmReranker } from "./rerankers/llm.js";
 export { PassthroughReranker } from "./rerankers/passthrough.js";
 export type {
 	InsightKind,
