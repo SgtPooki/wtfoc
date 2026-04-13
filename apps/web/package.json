@@ -27,7 +27,7 @@
 		"@wtfoc/store": "workspace:*",
 		"d3-force": "^3.0.0",
 		"d3-selection": "^3.0.0",
-		"hono": "^4.12.9",
+		"hono": "^4.12.12",
 		"pg": "^8.20.0",
 		"preact": "^10.25.0",
 		"siwe": "^3.0.0",
