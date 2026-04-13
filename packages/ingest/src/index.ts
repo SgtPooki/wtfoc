@@ -136,6 +136,41 @@ export { evaluateEdgeExtraction } from "./eval/edge-extraction-evaluator.js";
 // Eval evaluators
 export { evaluateIngest } from "./eval/ingest-evaluator.js";
 export { evaluateSignals } from "./eval/signal-evaluator.js";
+export type {
+	CatalogUpdateResult,
+	CreateEdgeExtractorFn,
+	CursorDecision,
+	CursorDecisionInput,
+	DedupSets,
+	DocumentFilters,
+	DonorReuseDeps,
+	ExtractorConfig,
+	FlushBatchDeps,
+	FlushBatchResult,
+	IngestOptions,
+	IngestResult,
+	LogEvent,
+	LogSink,
+	OrchestrateDeps,
+	PipelineState,
+	PipelineStats,
+	ProcessStreamDeps,
+	PublishSegmentFn,
+	PublishSegmentResult,
+} from "./pipeline/index.js";
+// Pipeline — composable ingest stages with dependency injection
+export {
+	buildDedupSetsFromCatalog,
+	buildDedupSetsFromSegments,
+	decideCursorValue,
+	flushBatch,
+	handleRenames,
+	orchestrate,
+	processStream,
+	reuseDonorSources,
+	shouldIncludeChunk,
+	updateCatalogFromChunks,
+} from "./pipeline/index.js";
 export {
 	archiveIndexPath,
 	archiveKey,
