@@ -23,6 +23,7 @@ import {
 	evaluateSearch,
 	OpenAIEmbedder,
 	InMemoryVectorIndex,
+	BgeReranker,
 	LlmReranker,
 	type Reranker,
 } from "@wtfoc/search";
@@ -147,7 +148,10 @@ async function main() {
 	let reranker: Reranker | undefined;
 	const rerankerType = values["reranker-type"];
 	const rerankerUrl = values["reranker-url"];
-	if (rerankerType === "llm" && rerankerUrl && values["extractor-model"]) {
+	if (rerankerType === "bge" && rerankerUrl) {
+		reranker = new BgeReranker({ url: rerankerUrl });
+		console.error(`[dogfood] Reranker: bge (${rerankerUrl})`);
+	} else if (rerankerType === "llm" && rerankerUrl && values["extractor-model"]) {
 		reranker = new LlmReranker({
 			baseUrl: rerankerUrl,
 			model: values["reranker-model"] ?? values["extractor-model"],

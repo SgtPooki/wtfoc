@@ -10,6 +10,19 @@
 #   export WTFOC_TREE_SITTER_URL=http://localhost:8384
 
 services:
+  bge-reranker:
+    build:
+      context: docker/bge-reranker
+      dockerfile: Dockerfile
+    ports:
+      - "8385:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
   tree-sitter-parser:
     build:
       context: docker/tree-sitter-parser
