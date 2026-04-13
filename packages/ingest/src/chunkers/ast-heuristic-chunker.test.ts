@@ -112,7 +112,7 @@ describe("AstHeuristicChunker — splitLargeChunk span metadata", () => {
 		expect(uniqueLineStarts.size).toBeGreaterThan(1);
 	});
 
-	it("sub-chunks from large symbol are non-overlapping and cover the content", () => {
+	it("sub-chunks from large symbol are non-overlapping when chunkOverlap=0", () => {
 		const lines = ["export function bigFn() {"];
 		for (let i = 0; i < 200; i++) {
 			lines.push(`  const x${i} = ${i}; // padding line ${i}`);
@@ -120,7 +120,7 @@ describe("AstHeuristicChunker — splitLargeChunk span metadata", () => {
 		lines.push("}");
 		const src = lines.join("\n");
 
-		const chunks = chunker.chunk(makeDoc(src), { maxChunkChars: 1000 });
+		const chunks = chunker.chunk(makeDoc(src), { maxChunkChars: 1000, chunkOverlap: 0 });
 
 		// Sub-chunks should be ordered by byteOffsetStart
 		const sorted = [...chunks].sort((a, b) => (a.byteOffsetStart ?? 0) - (b.byteOffsetStart ?? 0));
@@ -131,5 +131,116 @@ describe("AstHeuristicChunker — splitLargeChunk span metadata", () => {
 			// Non-overlapping: each chunk starts at or after the previous ends
 			expect(curr.byteOffsetStart).toBeGreaterThanOrEqual(prev.byteOffsetEnd ?? 0);
 		}
+	});
+});
+
+describe("AstHeuristicChunker — structural overlap (#250)", () => {
+	const src = [
+		"export function alpha() {",
+		"  // alpha body",
+		"  return 1;",
+		"}",
+		"",
+		"export function beta() {",
+		"  // beta body",
+		"  return 2;",
+		"}",
+	].join("\n");
+
+	it("by default (no chunkOverlap), inter-symbol chunks have no overlap content", () => {
+		const chunks = chunker.chunk(makeDoc(src));
+		// With no overlap, beta chunk should NOT contain any alpha content
+		const betaChunk = chunks.find((c) => c.content.includes("beta"));
+		expect(betaChunk).toBeDefined();
+		expect(betaChunk?.content).not.toContain("alpha");
+	});
+
+	it("with chunkOverlap > 0, each inter-symbol chunk includes a header from the previous symbol", () => {
+		const chunks = chunker.chunk(makeDoc(src), { chunkOverlap: 30 });
+		// beta chunk should now carry some content from alpha
+		const betaChunk = chunks.find((c) => c.content.includes("beta body"));
+		expect(betaChunk).toBeDefined();
+		expect(betaChunk?.content).toContain("alpha");
+	});
+
+	it("overlap header is prepended before the symbol's own content", () => {
+		const chunks = chunker.chunk(makeDoc(src), { chunkOverlap: 30 });
+		const betaChunk = chunks.find((c) => c.content.includes("beta body"));
+		if (!betaChunk) throw new Error("beta chunk not found");
+		// alpha context appears before beta content in the chunk
+		const alphaPos = betaChunk.content.indexOf("alpha");
+		const betaPos = betaChunk.content.indexOf("beta");
+		expect(alphaPos).toBeLessThan(betaPos);
+	});
+
+	it("byteOffsetStart/End still describe beta's own position in the document", () => {
+		const chunksNoOverlap = chunker.chunk(makeDoc(src), { chunkOverlap: 0 });
+		const chunksWithOverlap = chunker.chunk(makeDoc(src), { chunkOverlap: 30 });
+		const betaNoOverlap = chunksNoOverlap.find((c) => c.content.includes("export function beta"));
+		const betaWithOverlap = chunksWithOverlap.find((c) =>
+			c.content.includes("export function beta"),
+		);
+		// byteOffsets should be consistent regardless of overlap (overlap is added to content but
+		// doesn't shift the documented position of the chunk in the source)
+		expect(betaWithOverlap?.byteOffsetStart).toBe(betaNoOverlap?.byteOffsetStart);
+	});
+
+	it("intra-symbol splits overlap by chunkOverlap chars", () => {
+		const lines = ["export function bigFn() {"];
+		for (let i = 0; i < 200; i++) {
+			lines.push(`  const x${i} = ${i}; // line ${i}`);
+		}
+		lines.push("}");
+		const src2 = lines.join("\n");
+
+		const overlap = 100;
+		const chunks = chunker.chunk(makeDoc(src2), { maxChunkChars: 1000, chunkOverlap: overlap });
+
+		expect(chunks.length).toBeGreaterThan(1);
+		// Each chunk (except the first) should share `overlap` chars with the end of the previous
+		for (let i = 1; i < chunks.length; i++) {
+			const prev = chunks[i - 1];
+			const curr = chunks[i];
+			if (!prev || !curr) continue;
+			const prevTail = prev.content.slice(-overlap);
+			expect(curr.content).toContain(prevTail.slice(0, 20)); // at least starts overlap
+		}
+	});
+
+	it("first sub-chunk of an oversized symbol carries the previous symbol's header", () => {
+		// alpha is small, beta is large (exceeds maxChunkChars) — first sub-chunk of beta
+		// must still include context from alpha when chunkOverlap > 0
+		const alphaLines = ["export function alpha() {", "  return 'alpha context';", "}"];
+		const betaLines = ["export function beta() {"];
+		for (let i = 0; i < 200; i++) {
+			betaLines.push(`  const y${i} = ${i}; // beta line ${i}`);
+		}
+		betaLines.push("}");
+
+		const src = [...alphaLines, "", ...betaLines].join("\n");
+		const chunks = chunker.chunk(makeDoc(src), { maxChunkChars: 500, chunkOverlap: 30 });
+
+		// The first beta sub-chunk (the one containing beta line 0) should carry alpha context
+		const firstBetaSubChunk = chunks.find(
+			(c) => c.content.includes("beta line 0") && !c.content.includes("alpha"),
+		);
+		expect(firstBetaSubChunk).toBeUndefined(); // should NOT exist — alpha should be present
+
+		const firstBetaWithAlpha = chunks.find(
+			(c) => c.content.includes("beta line 0") && c.content.includes("alpha"),
+		);
+		expect(firstBetaWithAlpha).toBeDefined();
+	});
+
+	it("does not hang when chunkOverlap >= maxChunkChars", () => {
+		const lines = ["export function bigFn() {"];
+		for (let i = 0; i < 200; i++) {
+			lines.push(`  const z${i} = ${i};`);
+		}
+		lines.push("}");
+		const src = lines.join("\n");
+		// Would hang without clamping; just verify it terminates and produces output
+		const chunks = chunker.chunk(makeDoc(src), { maxChunkChars: 100, chunkOverlap: 200 });
+		expect(chunks.length).toBeGreaterThan(0);
 	});
 });

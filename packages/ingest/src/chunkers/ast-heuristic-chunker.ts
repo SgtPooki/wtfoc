@@ -124,6 +124,8 @@ export class AstHeuristicChunker implements Chunker {
 		}
 
 		const chunks: ChunkerOutput[] = [];
+		const overlapChars = options?.chunkOverlap ?? 0;
+		let prevSymbolHeader: string | undefined;
 
 		// Split content at boundary lines
 		for (let i = 0; i < boundaries.length; i++) {
@@ -134,9 +136,9 @@ export class AstHeuristicChunker implements Chunker {
 			const joined = chunkLines.join("\n");
 			const leadingTrimmed = joined.length - joined.trimStart().length;
 			const trailingTrimmed = joined.length - joined.trimEnd().length;
-			const content = joined.trim();
+			const ownContent = joined.trim();
 
-			if (!content) continue;
+			if (!ownContent) continue;
 
 			// Byte offset of this chunk's raw start in the document (0-indexed)
 			const rawByteStart = lines.slice(0, startLine).join("\n").length + (startLine > 0 ? 1 : 0);
@@ -144,15 +146,26 @@ export class AstHeuristicChunker implements Chunker {
 			const byteOffsetStart = rawByteStart + leadingTrimmed + 1; // 1-indexed
 			const byteOffsetEnd = rawByteStart + joined.length - trailingTrimmed;
 
-			// If chunk is too large, split it further
-			if (content.length > maxChunkSize) {
+			// Structural overlap: prepend the header of the previous symbol so that
+			// queries landing near a boundary still retrieve relevant context (#250)
+			const header = overlapChars > 0 && prevSymbolHeader ? `${prevSymbolHeader}\n` : "";
+			const content = header + ownContent;
+
+			// Update symbol header for the next chunk (first overlapChars of own content)
+			prevSymbolHeader = overlapChars > 0 ? ownContent.slice(0, overlapChars) : undefined;
+
+			// If chunk is too large, split it further; pass header so first sub-chunk
+			// carries inter-symbol context even when the next symbol is oversized (#250)
+			if (ownContent.length > maxChunkSize) {
 				const subChunks = this.#splitLargeChunk(
-					content,
+					ownContent,
 					document,
 					chunks.length,
 					startLine + 1,
 					byteOffsetStart,
 					maxChunkSize,
+					overlapChars,
+					header,
 				);
 				chunks.push(...subChunks);
 				continue;
@@ -251,13 +264,21 @@ export class AstHeuristicChunker implements Chunker {
 		lineOffset: number,
 		byteOffsetBase: number, // 1-indexed byte offset of content[0] in the document
 		maxSize: number,
+		overlapChars = 0,
+		/** Prepended only to the first sub-chunk to carry inter-symbol context (#250 fix) */
+		firstPieceHeader = "",
 	): ChunkerOutput[] {
 		const pieces: ChunkerOutput[] = [];
 		let offset = 0;
+		// Clamp overlap to guarantee forward progress in the loop
+		const effectiveOverlap = Math.min(overlapChars, Math.max(0, maxSize - 1));
 
 		while (offset < content.length) {
 			const end = Math.min(offset + maxSize, content.length);
-			const piece = content.slice(offset, end);
+			const rawPiece = content.slice(offset, end);
+			// Apply header only to first piece so inter-symbol context carries through
+			const piece =
+				pieces.length === 0 && firstPieceHeader ? firstPieceHeader + rawPiece : rawPiece;
 			const contentFingerprint = sha256Hex(piece);
 			const chunkId =
 				document.documentId && document.documentVersionId
@@ -266,10 +287,11 @@ export class AstHeuristicChunker implements Chunker {
 						)
 					: sha256Hex(piece);
 
-			// Compute line span for this sub-piece by counting newlines in preceding content
+			// Compute line span for this sub-piece by counting newlines in preceding content.
+			// Use rawPiece (not piece) so the injected firstPieceHeader doesn't inflate lineEnd.
 			const precedingContent = content.slice(0, offset);
 			const precedingLines = precedingContent.split("\n").length - 1;
-			const pieceLines = piece.split("\n").length - 1;
+			const pieceLines = rawPiece.split("\n").length - 1;
 			const pieceLineStart = lineOffset + precedingLines;
 			const pieceLineEnd = pieceLineStart + pieceLines;
 
@@ -301,7 +323,8 @@ export class AstHeuristicChunker implements Chunker {
 				chunkerVersion: this.version,
 			});
 
-			offset = end;
+			offset = effectiveOverlap > 0 ? end - effectiveOverlap : end;
+			if (end === content.length) break;
 		}
 
 		return pieces;

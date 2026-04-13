@@ -90,6 +90,10 @@ export async function walkFiles(
 export interface ChunkCodeOptions {
 	documentId?: string;
 	documentVersionId?: string;
+	/** Characters per chunk window. Default 512. */
+	chunkSize?: number;
+	/** Characters of overlap between adjacent chunks. Default 50. */
+	chunkOverlap?: number;
 }
 
 export function chunkCode(
@@ -133,8 +137,9 @@ export function chunkCode(
 		return [chunk];
 	}
 
-	const chunkSize = 512;
-	const overlap = 50;
+	const chunkSize = options?.chunkSize ?? 512;
+	// Clamp overlap to chunkSize-1 to guarantee forward progress in the loop
+	const overlap = Math.min(options?.chunkOverlap ?? 50, Math.max(0, chunkSize - 1));
 	const chunks: Chunk[] = [];
 	let offset = 0;
 	let chunkIndex = 0;

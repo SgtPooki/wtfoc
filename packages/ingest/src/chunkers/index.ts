@@ -1,10 +1,12 @@
 import type { Chunker } from "@wtfoc/common";
 import { AstHeuristicChunker } from "./ast-heuristic-chunker.js";
 import { CodeWindowChunker } from "./code-chunker.js";
+import { GithubIssueChunker } from "./github-issue-chunker.js";
 import { MarkdownChunker } from "./markdown-chunker.js";
 
 export { AstHeuristicChunker } from "./ast-heuristic-chunker.js";
 export { CodeWindowChunker } from "./code-chunker.js";
+export { GithubIssueChunker } from "./github-issue-chunker.js";
 export { MarkdownChunker } from "./markdown-chunker.js";
 
 const registry = new Map<string, Chunker>();
@@ -49,11 +51,21 @@ const AST_SUPPORTED_EXTS = new Set([
 
 /**
  * Select the appropriate chunker for a source type and file path.
- * Prefers AST-heuristic for supported languages, markdown for .md/.mdx,
+ * Routes GitHub issues/PRs/discussions to the issue-aware chunker,
+ * prefers AST-heuristic for supported languages, markdown for .md/.mdx,
  * falls back to code-window for everything else.
  */
 export function selectChunker(sourceType: string, filePath?: string): Chunker {
 	const ext = filePath?.split(".").pop()?.toLowerCase();
+
+	if (
+		sourceType === "github-issue" ||
+		sourceType === "github-pr" ||
+		sourceType === "github-discussion"
+	) {
+		return registry.get("github-issue") ?? new GithubIssueChunker();
+	}
+
 	const isMarkdown = ext === "md" || ext === "mdx" || sourceType === "markdown";
 
 	if (isMarkdown) {
@@ -69,3 +81,4 @@ export function selectChunker(sourceType: string, filePath?: string): Chunker {
 registerChunker(new MarkdownChunker());
 registerChunker(new CodeWindowChunker());
 registerChunker(new AstHeuristicChunker());
+registerChunker(new GithubIssueChunker());

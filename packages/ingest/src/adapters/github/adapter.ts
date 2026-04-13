@@ -1,4 +1,4 @@
-import type { Chunk, Edge, SourceAdapter } from "@wtfoc/common";
+import type { Chunk, ChunkerDocument, Edge, SourceAdapter } from "@wtfoc/common";
 import {
 	GitHubApiError,
 	GitHubCliMissingError,
@@ -6,8 +6,11 @@ import {
 	WtfocError,
 } from "@wtfoc/common";
 import { chunkMarkdown } from "../../chunker.js";
+import { GithubIssueChunker } from "../../chunkers/github-issue-chunker.js";
 import { RegexEdgeExtractor } from "../../edges/extractor.js";
 import { defaultExecFn, type ExecFn, ghApi } from "./transport.js";
+
+const issueChunker = new GithubIssueChunker();
 
 export interface GitHubAdapterConfig {
 	owner: string;
@@ -140,20 +143,21 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 			const documentId = `${repo}#${number}`;
 			const documentVersionId = String(rec.updated_at ?? rec.created_at ?? "");
 
-			const chunks = chunkMarkdown(content, {
-				chunkSize: GITHUB_CHUNK_SIZE,
+			const doc: ChunkerDocument = {
+				documentId,
+				documentVersionId,
+				content,
+				sourceType: "github-issue",
 				source: `${repo}#${number}`,
 				sourceUrl: String(rec.html_url ?? ""),
 				timestamp: String(rec.updated_at ?? rec.created_at ?? ""),
 				metadata,
-				documentId,
-				documentVersionId,
-			});
+			};
 
-			for (const chunk of chunks) {
-				const out: Chunk = { ...chunk, sourceType: "github-issue" };
-				if (chunk.chunkIndex === 0) out.rawContent = content;
-				yield out;
+			const chunkOutputs = issueChunker.chunk(doc, { maxChunkChars: GITHUB_CHUNK_SIZE });
+
+			for (const chunkOutput of chunkOutputs) {
+				yield { ...chunkOutput, sourceType: "github-issue" } as Chunk;
 			}
 		}
 	}
@@ -194,20 +198,20 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 			const documentId = `${repo}#${number}`;
 			const documentVersionId = String(rec.updated_at ?? rec.created_at ?? "");
 
-			const chunks = chunkMarkdown(content, {
-				chunkSize: GITHUB_CHUNK_SIZE,
+			const doc: ChunkerDocument = {
+				documentId,
+				documentVersionId,
+				content,
+				sourceType: "github-pr",
 				source: `${repo}#${number}`,
 				sourceUrl: String(rec.html_url ?? ""),
 				timestamp: String(rec.updated_at ?? rec.created_at ?? ""),
 				metadata,
-				documentId,
-				documentVersionId,
-			});
+			};
 
-			for (const chunk of chunks) {
-				const out: Chunk = { ...chunk, sourceType: "github-pr" };
-				if (chunk.chunkIndex === 0) out.rawContent = content;
-				yield out;
+			const chunkOutputs = issueChunker.chunk(doc, { maxChunkChars: GITHUB_CHUNK_SIZE });
+			for (const chunkOutput of chunkOutputs) {
+				yield { ...chunkOutput, sourceType: "github-pr" } as Chunk;
 			}
 		}
 	}
@@ -341,20 +345,22 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 				const documentId = `${repo}/discussions/${number}`;
 				const documentVersionId = String(node.createdAt ?? "");
 
-				const chunks = chunkMarkdown(content, {
-					chunkSize: GITHUB_CHUNK_SIZE,
+				const discussionDoc: ChunkerDocument = {
+					documentId,
+					documentVersionId,
+					content,
+					sourceType: "github-discussion",
 					source: `${repo}/discussions/${number}`,
 					sourceUrl: String(node.url ?? ""),
 					timestamp: String(node.createdAt ?? ""),
 					metadata,
-					documentId,
-					documentVersionId,
-				});
+				};
 
-				for (const chunk of chunks) {
-					const out: Chunk = { ...chunk, sourceType: "github-discussion" };
-					if (chunk.chunkIndex === 0) out.rawContent = content;
-					yield out;
+				const discussionChunks = issueChunker.chunk(discussionDoc, {
+					maxChunkChars: GITHUB_CHUNK_SIZE,
+				});
+				for (const chunkOutput of discussionChunks) {
+					yield { ...chunkOutput, sourceType: "github-discussion" } as Chunk;
 				}
 			}
 
