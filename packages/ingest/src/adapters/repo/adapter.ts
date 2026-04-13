@@ -229,6 +229,7 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 					...chunk,
 					sourceType,
 					sourceUrl,
+					timestamp: commitInfo?.date ?? chunk.timestamp,
 					metadata: {
 						...chunk.metadata,
 						filePath: relPath,

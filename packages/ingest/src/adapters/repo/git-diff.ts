@@ -77,7 +77,13 @@ export async function getFileLastCommit(
 		const [sha, date, author, ...messageParts] = line.split("\t");
 		if (!sha || !date || !author) return null;
 		return { sha, date, author, message: messageParts.join("\t") };
-	} catch {
+	} catch (err: unknown) {
+		// Exit code 128 = expected (not a git repo, file never committed)
+		// Anything else is unexpected — warn so systemic failures aren't silent
+		const code = (err as { code?: number })?.code;
+		if (code !== undefined && code !== 128) {
+			console.error(`   git log warning for ${filePath}: exit code ${code}`);
+		}
 		return null;
 	}
 }
