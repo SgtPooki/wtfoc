@@ -3,6 +3,13 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
+export interface FileCommitInfo {
+	sha: string;
+	date: string;
+	author: string;
+	message: string;
+}
+
 export type FileChangeStatus = "added" | "modified" | "deleted" | "renamed";
 
 export interface ChangedFile {
@@ -49,6 +56,50 @@ export async function commitExists(repoPath: string, sha: string): Promise<boole
 	} catch {
 		return false;
 	}
+}
+
+/**
+ * Get the last commit info for a single file.
+ * Returns null if the file has no git history.
+ */
+export async function getFileLastCommit(
+	repoPath: string,
+	filePath: string,
+): Promise<FileCommitInfo | null> {
+	try {
+		const { stdout } = await execFileAsync(
+			"git",
+			["log", "-1", "--format=%H%x09%aI%x09%an%x09%s", "--", filePath],
+			{ cwd: repoPath },
+		);
+		const line = stdout.trim();
+		if (!line) return null;
+		const [sha, date, author, ...messageParts] = line.split("\t");
+		if (!sha || !date || !author) return null;
+		return { sha, date, author, message: messageParts.join("\t") };
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Get the last commit info for multiple files, with concurrency limiting.
+ */
+export async function getFilesLastCommits(
+	repoPath: string,
+	filePaths: string[],
+	concurrency = 20,
+): Promise<Map<string, FileCommitInfo>> {
+	const results = new Map<string, FileCommitInfo>();
+	for (let i = 0; i < filePaths.length; i += concurrency) {
+		const batch = filePaths.slice(i, i + concurrency);
+		const promises = batch.map(async (fp) => {
+			const info = await getFileLastCommit(repoPath, fp);
+			if (info) results.set(fp, info);
+		});
+		await Promise.all(promises);
+	}
+	return results;
 }
 
 /**
