@@ -19,10 +19,12 @@ export type { QueryOptions, QueryResult } from "./query.js";
 export { query } from "./query.js";
 export type {
 	InsightKind,
+	LineageChain,
 	TraceHop,
 	TraceInsight,
 	TraceMode,
 	TraceOptions,
 	TraceResult,
+	TraceView,
 } from "./trace/index.js";
 export { detectInsights, trace } from "./trace/index.js";

@@ -1,9 +1,12 @@
 import type { Embedder, Segment, VectorIndex } from "@wtfoc/common";
+import { buildConclusion, type TraceConclusion } from "./conclusion.js";
 import { buildChunkIndexes, buildEdgeIndex } from "./indexing.js";
 import { detectInsights, type TraceInsight } from "./insights.js";
+import { buildLineageChains, type LineageChain } from "./lineage.js";
 import { followEdges } from "./traversal.js";
 
 export type TraceMode = "discovery" | "analytical";
+export type TraceView = "lineage" | "timeline" | "evidence";
 
 export interface TraceOptions {
 	/** Max results per source type (default: 3) */
@@ -43,6 +46,8 @@ export interface TraceHop {
 	sourceUrl?: string;
 	/** Storage ID for verification */
 	storageId: string;
+	/** Timestamp from the source chunk (if available) */
+	timestamp?: string;
 	/** Index of the hop that led to this one (undefined for seeds) */
 	parentHopIndex?: number;
 	/** How this hop was found */
@@ -64,6 +69,10 @@ export interface TraceResult {
 	groups: Record<string, TraceHop[]>;
 	/** Flat list of all hops in traversal order */
 	hops: TraceHop[];
+	/** Lineage chains reconstructed from hop DFS tree (always populated) */
+	lineageChains: LineageChain[];
+	/** Agent-oriented conclusion block (only populated in analytical mode, omitted when no signal) */
+	conclusion?: TraceConclusion;
 	/** Cross-source insights (only populated in analytical mode) */
 	insights: TraceInsight[];
 	/** Summary of the trace */
@@ -147,6 +156,7 @@ export async function trace(
 			source: seed.entry.metadata.source ?? "unknown",
 			sourceUrl: seed.entry.metadata.sourceUrl,
 			storageId: seed.entry.storageId,
+			timestamp: chunkData?.timestamp,
 			connection: {
 				method: "semantic",
 				confidence: seed.score,
@@ -213,6 +223,7 @@ export async function trace(
 					source: candidate.entry.metadata.source ?? "unknown",
 					sourceUrl: candidate.entry.metadata.sourceUrl,
 					storageId: candidate.entry.storageId,
+					timestamp: chunkData?.timestamp,
 					connection: {
 						method: "semantic",
 						confidence: candidate.score,
@@ -240,6 +251,12 @@ export async function trace(
 	const sourceTypes = Object.keys(groups);
 	const edgeHops = hops.filter((h) => h.connection.method === "edge").length;
 
+	// Build lineage chains from DFS tree (always, cheap)
+	const lineageChains = buildLineageChains(hops);
+
+	// Build conclusion block in analytical mode (omitted when no signal)
+	const conclusion = mode === "analytical" ? buildConclusion(hops, lineageChains) : undefined;
+
 	// Detect cross-source insights in analytical mode
 	const insights = mode === "analytical" ? detectInsights(hops, segments, options?.signal) : [];
 
@@ -247,6 +264,8 @@ export async function trace(
 		query,
 		groups,
 		hops,
+		lineageChains,
+		conclusion,
 		insights,
 		stats: {
 			totalHops: hops.length,
