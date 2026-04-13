@@ -1,12 +1,18 @@
 {
   "id": "0041G-lineage-first-trace-output-for-human-and-agent-inv",
   "type": "feature",
-  "status": "imported",
+  "status": "completed",
   "priority": "P1",
   "created": "2026-04-12T20:49:39Z",
   "updated": "2026-04-12T20:49:39Z",
   "origin": "external",
   "source_platform": "github",
   "external_ref": "github#SgtPooki/wtfoc#54",
-  "github_issue": 54
+  "github_issue": 54,
+  "externalLinks": {},
+  "lastActivity": "2026-04-13T01:28:31.311Z",
+  "testMode": "test-after",
+  "coverageTarget": 80,
+  "readyForReviewAt": "2026-04-13T01:28:31.298Z",
+  "approvedAt": "2026-04-13T01:28:31.311Z"
 }

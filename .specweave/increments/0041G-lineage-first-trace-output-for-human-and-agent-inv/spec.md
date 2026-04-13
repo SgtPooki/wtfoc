@@ -1,3 +1,6 @@
+---
+status: completed
+---
 # Design lineage-first trace output for human and agent investigation workflows
 
 **Increment**: 0041G-lineage-first-trace-output-for-human-and-agent-inv
@@ -174,10 +177,76 @@ That is the product bar for lineage.
 
 ## User Stories
 
-- **US-001**: As a user, I want lineage first trace output for human and agent inv so that the system improves
-  - **AC-US1-01**: [ ] Implementation satisfies the issue requirements
-  - **AC-US1-02**: [ ] Tests pass for the new behavior
+### US-001: Lineage-first trace view
+**Project**: wtfoc
+
+**As a** developer investigating a cross-repo incident
+**I want** trace to show inferred causal chains (problem → fix → review)
+**So that** I don't have to manually reconstruct the story from grouped results
+
+**Acceptance Criteria**:
+- [x] **AC-US1-01**: `--view lineage` flag renders numbered causal chains reconstructed from parentHopIndex DFS tree
+- [x] **AC-US1-02**: Lineage is default view when `--mode analytical` (discovery keeps current behavior)
+- [x] **AC-US1-03**: Each chain header shows type sequence (consecutive duplicates deduplicated, unknown types pass through as-is)
+- [x] **AC-US1-04**: Explicit `--view` flag always overrides mode-based default
+
+### US-002: Timeline trace view
+**Project**: wtfoc
+
+**As a** developer investigating when things happened
+**I want** trace results in strict chronological order
+**So that** I can see how an incident evolved over time
+
+**Acceptance Criteria**:
+- [x] **AC-US2-01**: `--view timeline` globally sorts all hops by timestamp with UTC calendar date headers
+- [x] **AC-US2-02**: Hops without timestamps (or malformed timestamps) are grouped at the end, no crash
+- [x] **AC-US2-03**: Ties broken by hop index for stable ordering
+
+### US-003: Evidence view preserved
+**Project**: wtfoc
+
+**As a** developer debugging search/ingest behavior
+**I want** the current grouped-by-source output still available
+**So that** I can audit source coverage and verify which types contributed
+
+**Acceptance Criteria**:
+- [x] **AC-US3-01**: `--view evidence` renders existing sourceType-grouped output unchanged
+- [x] **AC-US3-02**: Evidence is default view for `--mode discovery`
+
+### US-004: Agent conclusion block
+**Project**: wtfoc
+
+**As an** AI agent consuming trace results
+**I want** structured conclusion fields in JSON output
+**So that** I can act on results without re-deriving obvious structure
+
+**Acceptance Criteria**:
+- [x] **AC-US4-01**: TraceResult includes `conclusion` with `primaryArtifact`, `candidateFixes[]`, `relatedContext[]`, `recommendedNextReads[]`
+- [x] **AC-US4-02**: Conclusion computed via heuristics: candidateFixes from `closes`/`addresses` edge types
+- [x] **AC-US4-03**: Conclusion available in `--json` output in analytical mode
+- [x] **AC-US4-04**: `conclusion` is optional — omitted when no reliable signal exists (not always-present with empty arrays)
+- [x] **AC-US4-05**: `candidateFixes` only includes edge-based hops (not semantic-only), filtering by confidence implicitly
+
+### US-005: Timestamp in TraceHop
+**Project**: wtfoc
+
+**As a** trace consumer (human or agent)
+**I want** trace hops to carry temporal context from source chunks
+**So that** timeline ordering and temporal reasoning are possible
+
+**Acceptance Criteria**:
+- [x] **AC-US5-01**: TraceHop includes optional `timestamp` field populated from Chunk.timestamp
+
+### US-006: Lineage chains in TraceResult
+**Project**: wtfoc
+
+**As an** agent or tool consuming trace JSON
+**I want** structured lineage chain data in the result
+**So that** I can programmatically navigate causal paths
+
+**Acceptance Criteria**:
+- [x] **AC-US6-01**: TraceResult includes `lineageChains: LineageChain[]` with hopIndices and typeSequence
 
 ## Notes
 
-Imported from GitHub issue #54 on 2026-04-12.
+Imported from GitHub issue #54 on 2026-04-12. Spec updated 2026-04-12 with proper ACs aligned to approved plan.
