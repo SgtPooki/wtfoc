@@ -80,11 +80,11 @@ export async function getFileLastCommit(
 		return { sha, date, author, message: messageParts.join("\t") };
 	} catch (err: unknown) {
 		// Exit code 128 = expected (not a git repo, file never committed)
-		// Anything else is unexpected — warn so systemic failures aren't silent
-		const code = (err as { code?: number })?.code;
-		if (code !== undefined && code !== 128) {
-			console.error(`   git log warning for ${filePath}: exit code ${code}`);
-		}
+		// ENOENT = git binary not found; other codes = unexpected
+		const errObj = err as { code?: string | number };
+		const code = errObj?.code;
+		if (code === 128 || code === undefined) return null;
+		console.error(`   git log warning for ${filePath}: ${code}`);
 		return null;
 	}
 }
