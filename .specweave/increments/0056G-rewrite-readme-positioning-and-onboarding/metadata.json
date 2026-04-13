@@ -1,0 +1,16 @@
+{
+  "id": "0056G-rewrite-readme-positioning-and-onboarding",
+  "status": "active",
+  "type": "docs",
+  "priority": "P2",
+  "created": "2026-04-12T18:00:00.000Z",
+  "lastActivity": "2026-04-12T18:20:00.000Z",
+  "testMode": "docs",
+  "coverageTarget": 0,
+  "feature_id": null,
+  "epic_id": null,
+  "externalLinks": {
+    "github": "https://github.com/SgtPooki/wtfoc/issues/235"
+  },
+  "project": "wtfoc"
+}
