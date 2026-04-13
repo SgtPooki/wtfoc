@@ -18,8 +18,8 @@ export interface EvalStageResult {
 	startedAt: string;
 	/** Wall-clock duration in ms */
 	durationMs: number;
-	/** Pass/warn/fail overall verdict */
-	verdict: "pass" | "warn" | "fail";
+	/** Pass/warn/fail/skipped overall verdict */
+	verdict: "pass" | "warn" | "fail" | "skipped";
 	/** Human-readable summary line */
 	summary: string;
 	/** Stage-specific metrics (JSON-serializable) */
@@ -39,15 +39,16 @@ export interface DogfoodReport {
 	collectionName: string;
 	/** Per-stage results in pipeline order */
 	stages: EvalStageResult[];
-	/** Aggregate verdict: fail if any stage fails, warn if any warns, else pass */
+	/** Aggregate verdict: fail if any stage fails, warn if any warns, else pass (skipped stages excluded) */
 	verdict: "pass" | "warn" | "fail";
 	/** Total wall-clock duration in ms */
 	durationMs: number;
 }
 
-/** Compute aggregate verdict from stage results: fail > warn > pass. */
+/** Compute aggregate verdict from stage results: fail > warn > pass. Skipped stages are excluded. */
 export function aggregateVerdict(stages: EvalStageResult[]): "pass" | "warn" | "fail" {
-	if (stages.some((s) => s.verdict === "fail")) return "fail";
-	if (stages.some((s) => s.verdict === "warn")) return "warn";
+	const active = stages.filter((s) => s.verdict !== "skipped");
+	if (active.some((s) => s.verdict === "fail")) return "fail";
+	if (active.some((s) => s.verdict === "warn")) return "warn";
 	return "pass";
 }

@@ -42,6 +42,7 @@ function makeTraceResult(
 			},
 		})),
 		insights: [{ type: "convergence" } as never],
+		lineageChains: [],
 		stats: {
 			totalHops: hops.length,
 			edgeHops: hops.filter((h) => h.method === "edge").length,

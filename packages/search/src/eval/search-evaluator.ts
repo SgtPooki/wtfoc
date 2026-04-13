@@ -160,6 +160,28 @@ export async function evaluateSearch(
 		});
 	}
 
+	// Trace quality checks — the core differentiator
+	if (totalHops > 0 && edgeHopRatio === 0) {
+		if (verdict !== "fail") verdict = "warn";
+		checks.push({
+			name: "trace:no-edge-hops",
+			passed: false,
+			actual: 0,
+			expected: "> 0",
+			detail: "Trace found 0 edge hops — graph is too sparse for edge-following",
+		});
+	}
+	if (totalEdgeHopsForProvenance > 0 && provenanceQualityRate < 0.5) {
+		if (verdict !== "fail") verdict = "warn";
+		checks.push({
+			name: "trace:low-provenance",
+			passed: false,
+			actual: Math.round(provenanceQualityRate * 100),
+			expected: ">= 50%",
+			detail: `Only ${Math.round(provenanceQualityRate * 100)}% of edge hops have evidence + edgeType`,
+		});
+	}
+
 	const durationMs = Math.round(performance.now() - t0);
 
 	return {

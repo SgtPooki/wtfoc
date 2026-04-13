@@ -138,12 +138,12 @@ async function main() {
 	const stageResults: EvalStageResult[] = [];
 
 	for (const stage of stagesToRun) {
-		if (skipLlm && (stage === "edges" || stage === "search" || stage === "themes")) {
+		if (skipLlm && (stage === "edges" || stage === "search")) {
 			stageResults.push({
 				stage: STAGE_ID[stage],
 				startedAt: new Date().toISOString(),
 				durationMs: 0,
-				verdict: "pass",
+				verdict: "skipped",
 				summary: "skipped: --skip-llm flag set",
 				metrics: {},
 				checks: [],

@@ -109,13 +109,36 @@ export async function evaluateIngest(
 		});
 	}
 
+	// Metadata completeness checks — these affect verdict for incremental readiness
+	const fingerprintRate = metaRates.contentFingerprintRate ?? 0;
+	const docIdRate = metaRates.documentIdRate ?? 0;
+	if (fingerprintRate < 0.5) {
+		checks.push({
+			name: "metadata:low-fingerprint",
+			passed: false,
+			actual: Math.round(fingerprintRate * 100),
+			expected: ">= 50%",
+			detail: `Only ${Math.round(fingerprintRate * 100)}% of chunks have contentFingerprint — incremental re-processing won't work`,
+		});
+	}
+	if (docIdRate < 0.5) {
+		checks.push({
+			name: "metadata:low-documentId",
+			passed: false,
+			actual: Math.round(docIdRate * 100),
+			expected: ">= 50%",
+			detail: `Only ${Math.round(docIdRate * 100)}% of chunks have documentId — document catalog tracking won't work`,
+		});
+	}
+
 	// Verdict
 	const hasRequiredViolations = checks.some((c) => c.name.startsWith("required:") && !c.passed);
 	const hasSizingWarnings = checks.some((c) => c.name.startsWith("sizing:") && !c.passed);
+	const hasMetadataWarnings = checks.some((c) => c.name.startsWith("metadata:") && !c.passed);
 
 	let verdict: "pass" | "warn" | "fail" = "pass";
 	if (hasRequiredViolations) verdict = "fail";
-	else if (hasSizingWarnings) verdict = "warn";
+	else if (hasSizingWarnings || hasMetadataWarnings) verdict = "warn";
 
 	const durationMs = Math.round(performance.now() - t0);
 
