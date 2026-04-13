@@ -64,6 +64,15 @@ export function resolves(targetId: string, index: SourceIndex): boolean {
 		for (const source of index.bySource.keys()) {
 			if (source.includes(lower)) return true;
 		}
+
+		// Strip org/repo prefix (first two segments) and retry partial match
+		const pathSegments = lower.split("/");
+		if (pathSegments.length > 2) {
+			const repoLocalPath = pathSegments.slice(2).join("/");
+			for (const source of index.bySource.keys()) {
+				if (source.includes(repoLocalPath)) return true;
+			}
+		}
 	}
 
 	// 4. Renamed repo fallback — strip org and match by repo name only
@@ -83,6 +92,10 @@ export interface EdgeResolutionStats {
 	unresolvedEdges: number;
 	/** Concept-type edges (unresolvable by design — semantic labels, not chunk IDs) */
 	conceptEdges: number;
+	/** Package-type edges (npm packages are never ingested as chunks) */
+	packageEdges: number;
+	/** URL-type edges (external URLs won't resolve to local chunks) */
+	urlEdges: number;
 	unresolvedByRepo: Map<string, number>;
 }
 
@@ -103,6 +116,8 @@ export function analyzeEdgeResolution(
 	let resolvedEdges = 0;
 	let bareRefs = 0;
 	let conceptEdges = 0;
+	let packageEdges = 0;
+	let urlEdges = 0;
 
 	// Collect all edges: segment-baked first, then overlay
 	const allEdges: Edge[] = [];
@@ -129,6 +144,16 @@ export function analyzeEdgeResolution(
 			continue;
 		}
 
+		// Package and URL edges are structurally out of scope for local collections
+		if (edge.targetType === "package") {
+			packageEdges++;
+			continue;
+		}
+		if (edge.targetType === "url") {
+			urlEdges++;
+			continue;
+		}
+
 		if (resolves(edge.targetId, index)) {
 			resolvedEdges++;
 			continue;
@@ -146,8 +171,10 @@ export function analyzeEdgeResolution(
 		totalEdges,
 		resolvedEdges,
 		bareRefs,
-		unresolvedEdges: totalEdges - resolvedEdges - bareRefs - conceptEdges,
+		unresolvedEdges: totalEdges - resolvedEdges - bareRefs - conceptEdges - packageEdges - urlEdges,
 		conceptEdges,
+		packageEdges,
+		urlEdges,
 		unresolvedByRepo: repoCounts,
 	};
 }

@@ -18,7 +18,7 @@ Definitions:
 - sourceId: The chunk identifier provided in the input. Copy it exactly.
 - targetType: What kind of thing the targetId denotes. Valid values: issue, file, person, pr, concept, document, package, url, organization, event.
   - Use "concept" for: abstract ideas, TypeScript/language type names (string, boolean, Chunk, Record<K,V>), language built-ins (AbortSignal, Promise, Map), bare repo or module names without full qualifier, and anything that is NOT a stable resolvable artifact.
-  - Use "file" ONLY for repo-qualified paths (e.g., "acme-corp/api/src/auth.ts") or root-relative paths (e.g., "src/auth.ts") that could realistically exist in the ingested collection. Never use "file" for relative paths (./foo.ts, ../bar.ts).
+  - Use "file" ONLY for repo-qualified paths (e.g., "example-org/example-repo/src/auth.ts") or root-relative paths (e.g., "src/auth.ts") that could realistically exist in the ingested collection. Never use "file" for relative paths (./foo.ts, ../bar.ts).
   - Use "package" only for named package registrations you can identify (e.g., "@anthropic-ai/sdk", "express"). Bare names like "react" or a repo slug alone are "concept".
   - When in doubt, prefer "concept" — it is always safe and never blocks resolution.
 - targetId: A stable identifier string. Prefer explicit IDs from the text (URLs, DOIs, issue numbers with repo context, file paths, @mentions). If none exists, use a short canonical phrase (lowercase, hyphenated) that uniquely picks out the entity. Never use vague targets like "it" or "this".
@@ -46,7 +46,7 @@ Rules:
 6) If the text is purely factual listing with no relational claim, return [].
 7) Do not include commentary outside the JSON array.
 8) When in doubt between a strong type (closes, implements, changes, documents) and "references", prefer "references". Strong types require clear evidence of active action.
-9) Never use targetType "file" for relative paths (./foo.ts, ../bar.ts). Either resolve to the full repo-qualified path using the source field as a base (e.g., source "acme/api/src/edges/llm.ts" + import "./client.js" → "acme/api/src/edges/client.ts"), or use targetType "concept" if you cannot determine the absolute path.
+9) Never use targetType "file" for relative paths (./foo.ts, ../bar.ts). For local-checkout collections where sources are stored as ./path/to/file.ts, prefer root-relative paths (e.g., "packages/path/to/file.ts") in targetId so the resolver's partial match works without needing the org prefix. Otherwise resolve to the full repo-qualified path using the source field as a base (e.g., source "example-org/example-repo/src/edges/llm.ts" + import "./client.js" → "example-org/example-repo/src/edges/client.ts"), or use targetType "concept" if you cannot determine the absolute path.
 10) TypeScript/programming type names (string, boolean, Chunk, EdgeExtractor, Record<K,V>) and language built-ins are NOT files or packages — use targetType "concept", or omit the edge entirely if it carries no semantic value beyond the type declaration.
 11) Bare, unqualified names (a repo slug like "wtfoc" without an org, a built-in like "fetch") are "concept" unless the text makes a clear dependency or resolvable reference claim.`;
 
@@ -57,7 +57,7 @@ const FEW_SHOT_EXAMPLES: ChatMessage[] = [
 		content: JSON.stringify({
 			chunk_id: "chunk-001",
 			source_type: "github-pr",
-			source: "acme-corp/web-api#42",
+			source: "example-org/example-repo#42",
 			text: "This PR implements the caching layer from the architecture RFC that @alice proposed. It addresses the performance regression discussed in the #backend Slack channel.",
 		}),
 	},
@@ -135,7 +135,7 @@ const FEW_SHOT_EXAMPLES: ChatMessage[] = [
 		content: JSON.stringify({
 			chunk_id: "chunk-003",
 			source_type: "markdown",
-			source: "acme-corp/web-api/docs/api.md",
+			source: "example-org/example-repo/docs/api.md",
 			text: "## Authentication API\n\nThe /auth/token endpoint is implemented in src/auth/handler.ts. See RFC 6749 for the OAuth 2.0 spec. Tests are in src/auth/__tests__/handler.test.ts.",
 		}),
 	},
@@ -174,7 +174,7 @@ const FEW_SHOT_EXAMPLES: ChatMessage[] = [
 		content: JSON.stringify({
 			chunk_id: "chunk-004",
 			source_type: "code",
-			source: "acme-corp/web-api/src/edges/extractor.ts",
+			source: "example-org/example-repo/src/edges/extractor.ts",
 			text: `import type { Chunk, Edge, EdgeExtractor } from "@wtfoc/common";
 import { validateEdges } from "./edge-validator.js";
 import { chatCompletion, type LlmClientOptions } from "./llm-client.js";
@@ -201,7 +201,7 @@ export class LlmEdgeExtractor implements EdgeExtractor {
 				type: "imports",
 				sourceId: "chunk-004",
 				targetType: "file",
-				targetId: "acme-corp/web-api/src/edges/edge-validator.ts",
+				targetId: "example-org/example-repo/src/edges/edge-validator.ts",
 				evidence:
 					'import { validateEdges } from "./edge-validator.js" — resolved from source directory',
 				confidence: 0.7,
@@ -210,7 +210,7 @@ export class LlmEdgeExtractor implements EdgeExtractor {
 				type: "imports",
 				sourceId: "chunk-004",
 				targetType: "file",
-				targetId: "acme-corp/web-api/src/edges/llm-client.ts",
+				targetId: "example-org/example-repo/src/edges/llm-client.ts",
 				evidence:
 					'import { chatCompletion, type LlmClientOptions } from "./llm-client.js" — resolved from source directory',
 				confidence: 0.7,

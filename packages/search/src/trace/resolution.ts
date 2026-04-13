@@ -50,6 +50,22 @@ export function findChunksByTarget(
 			}
 		}
 		if (results.length > 0) return results;
+
+		// Strip org/repo prefix (first two segments) and retry partial match
+		const pathSegments = lowerTarget.split("/");
+		if (pathSegments.length > 2) {
+			const repoLocalPath = pathSegments.slice(2).join("/");
+			for (const [source, chunkIds] of indexes.bySource) {
+				if (source.includes(repoLocalPath)) {
+					for (const id of chunkIds) {
+						const data = indexes.byId.get(id);
+						if (data) results.push([id, data]);
+					}
+					if (results.length >= 10) break;
+				}
+			}
+			if (results.length > 0) return results;
+		}
 	}
 
 	// 4. Renamed repo fallback — strip org prefix and match by repo name only (O(1))

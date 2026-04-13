@@ -145,6 +145,47 @@ describe("evaluateEdgeResolution", () => {
 		expect(result.metrics.adjustedResolutionRate).toBe(0.5);
 	});
 
+	it("excludes package and url typed edges from inScopeResolutionRate denominator", async () => {
+		const segments = [
+			makeSegment(
+				[
+					{ id: "c1", source: "owner/repo#1", sourceType: "github-issue" },
+					{ id: "c2", source: "owner/repo#2", sourceType: "github-pr" },
+				],
+				[
+					{ sourceId: "c1", targetId: "owner/repo#2", type: "references" }, // resolves
+					{
+						sourceId: "c1",
+						targetId: "performance-regression",
+						type: "discusses",
+						targetType: "concept",
+					}, // concept — excluded
+					{
+						sourceId: "c1",
+						targetId: "@wtfoc/common",
+						type: "imports",
+						targetType: "package",
+					}, // package — excluded from in-scope
+					{
+						sourceId: "c2",
+						targetId: "https://docs.filecoin.io",
+						type: "references",
+						targetType: "url",
+					}, // url — excluded from in-scope
+					{ sourceId: "c2", targetId: "nonexistent/repo#99", type: "closes" }, // unresolved
+				],
+			),
+		];
+
+		const result = await evaluateEdgeResolution(segments);
+		expect(result.metrics.totalEdges).toBe(5);
+		// In-scope denominator = total - concept - bareRefs - package - url
+		//                      = 5 - 1 - 0 - 1 - 1 = 2
+		// In-scope resolved = 1 (owner/repo#2)
+		// inScopeResolutionRate = 1/2 = 0.5
+		expect(result.metrics.inScopeResolutionRate).toBe(0.5);
+	});
+
 	// ── Overlay edges ─────────────────────────────────────────────
 	describe("with overlayEdges", () => {
 		it("counts overlay edges in total and resolution metrics", async () => {

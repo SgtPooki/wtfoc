@@ -61,4 +61,14 @@ describe("normalizeRepoSource", () => {
 	it("does not strip .git from bare filenames", () => {
 		expect(normalizeRepoSource("config.git")).toBe("config.git");
 	});
+
+	it("strips leading ./ from relative paths", () => {
+		expect(normalizeRepoSource("./packages/ingest/src/index.ts")).toBe(
+			"packages/ingest/src/index.ts",
+		);
+	});
+
+	it("strips leading ./ from simple relative paths", () => {
+		expect(normalizeRepoSource("./src/foo.ts")).toBe("src/foo.ts");
+	});
 });

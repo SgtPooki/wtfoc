@@ -20,6 +20,15 @@ function resolveTarget(targetId: string, index: SourceIndex): string | undefined
 		for (const [source, ids] of index.bySource.entries()) {
 			if (source.includes(lower) && ids.length > 0) return ids[0];
 		}
+
+		// Strip org/repo prefix (first two segments) and retry partial match
+		const pathSegments = lower.split("/");
+		if (pathSegments.length > 2) {
+			const repoLocalPath = pathSegments.slice(2).join("/");
+			for (const [source, ids] of index.bySource.entries()) {
+				if (source.includes(repoLocalPath) && ids.length > 0) return ids[0];
+			}
+		}
 	}
 
 	// 4. Renamed repo fallback
@@ -82,6 +91,12 @@ export async function evaluateEdgeResolution(
 	const adjustedDenominator = stats.totalEdges - stats.conceptEdges - stats.bareRefs;
 	const adjustedResolutionRate =
 		adjustedDenominator > 0 ? stats.resolvedEdges / adjustedDenominator : 0;
+
+	// In-scope rate excludes concept, bare refs, package, and url edges
+	const inScopeDenominator =
+		stats.totalEdges - stats.conceptEdges - stats.bareRefs - stats.packageEdges - stats.urlEdges;
+	const inScopeResolutionRate =
+		inScopeDenominator > 0 ? stats.resolvedEdges / inScopeDenominator : 0;
 
 	// Build chunk → sourceType map for cross-source analysis
 	const chunkSourceType = new Map<string, string>();
@@ -156,8 +171,11 @@ export async function evaluateEdgeResolution(
 			bareRefs: stats.bareRefs,
 			unresolvedEdges: stats.unresolvedEdges,
 			conceptEdges: stats.conceptEdges,
+			packageEdges: stats.packageEdges,
+			urlEdges: stats.urlEdges,
 			resolutionRate,
 			adjustedResolutionRate,
+			inScopeResolutionRate,
 			bareRefRate,
 			crossSourceEdgeDensity,
 			sourceTypePairs,

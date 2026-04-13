@@ -27,5 +27,11 @@ export function normalizeRepoSource(source: string): string {
 		s = s.slice(0, -4);
 	}
 
-	return s.toLowerCase();
+	s = s.toLowerCase();
+
+	// Strip leading "./" so chunk sources stored as "./packages/foo.ts"
+	// normalize to "packages/foo.ts" and match root-relative edge targetIds.
+	if (s.startsWith("./")) s = s.slice(2);
+
+	return s;
 }

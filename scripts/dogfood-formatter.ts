@@ -28,7 +28,7 @@ function stageKeyMetrics(stage: EvalStageResult): string {
 		case "edge-extraction":
 			return `F1=${fmtNum(m.gatedF1)}, survival=${fmtPct(m.goldSurvivalRate)}, coverage=${fmtPct(m.coverageRate)}`;
 		case "edge-resolution":
-			return `resolved=${fmtPct(m.resolutionRate)}, cross-source=${fmtPct(m.crossSourceEdgeDensity)}`;
+			return `resolved=${fmtPct(m.resolutionRate)}, in-scope=${fmtPct(m.inScopeResolutionRate)}, cross-source=${fmtPct(m.crossSourceEdgeDensity)}`;
 		case "storage":
 			return `segments=${m.segmentCount}, chunks=${m.totalChunks}, dangling=${m.derivedLayerDanglingRefs ?? 0}`;
 		case "themes":
