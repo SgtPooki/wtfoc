@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { Semaphore } from "../../edges/semaphore.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -97,14 +98,18 @@ export async function getFilesLastCommits(
 	concurrency = 20,
 ): Promise<Map<string, FileCommitInfo>> {
 	const results = new Map<string, FileCommitInfo>();
-	for (let i = 0; i < filePaths.length; i += concurrency) {
-		const batch = filePaths.slice(i, i + concurrency);
-		const promises = batch.map(async (fp) => {
-			const info = await getFileLastCommit(repoPath, fp);
-			if (info) results.set(fp, info);
-		});
-		await Promise.all(promises);
-	}
+	const semaphore = new Semaphore(concurrency);
+	await Promise.all(
+		filePaths.map(async (fp) => {
+			const release = await semaphore.acquire();
+			try {
+				const info = await getFileLastCommit(repoPath, fp);
+				if (info) results.set(fp, info);
+			} finally {
+				release();
+			}
+		}),
+	);
 	return results;
 }
 
