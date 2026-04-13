@@ -1,3 +1,6 @@
+---
+status: completed
+---
 # Rewrite README positioning and onboarding
 
 **Increment**: 0056G-rewrite-readme-positioning-and-onboarding

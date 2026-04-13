@@ -1,0 +1,107 @@
+{
+  "version": "1.1",
+  "scope": "PR #237 — docs: rewrite README; positioning and onboarding (increment 0056G)",
+  "date": "2026-04-12",
+  "reviewers": ["logic", "spec-compliance", "comments"],
+  "gateCheck": { "passed": true, "reason": null },
+  "summary": {
+    "total": 5,
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 4,
+    "info": 1
+  },
+  "validation": {
+    "performed": true,
+    "preValidation": { "critical": 0, "high": 0 },
+    "postValidation": { "critical": 0, "high": 0 },
+    "rejected": 0
+  },
+  "findings": [
+    {
+      "id": "F-001",
+      "severity": "LOW",
+      "validated": true,
+      "reviewer": "logic",
+      "file": "README.md:55",
+      "category": "Install command accuracy",
+      "description": "The CLI install command changed from `npm install -g wtfoc` to `npm install -g @wtfoc/cli`. The `wtfoc` npm package exists as a convenience wrapper (packages/wtfoc/) that depends on @wtfoc/cli. Both commands should work, but the old command (`npm install -g wtfoc`) is simpler and was the established convention. The new command installs the inner package directly, which works but may confuse users who see `wtfoc` elsewhere (e.g. the packages table still says `npm i -g @wtfoc/cli`). This is internally consistent in the new README but diverges from the published convenience package name.",
+      "impact": "Users familiar with the old install command may be confused. The `npx @wtfoc/cli` hint on the same line is correct either way.",
+      "recommendation": "Decide on one canonical install command. If `wtfoc` is the convenience wrapper, prefer `npm install -g wtfoc` for simplicity. If @wtfoc/cli is preferred, consider noting that `wtfoc` also works."
+    },
+    {
+      "id": "F-002",
+      "severity": "LOW",
+      "validated": true,
+      "reviewer": "logic",
+      "file": "README.md:122-135",
+      "category": "Information architecture — MCP server section placement",
+      "description": "The 'Run Your Own MCP Server' section (stdio mode) appears after 'Example Trace' and 'What Works Today', separated from the other three adoption paths (Hosted MCP, CLI, Self-Host) in 'Choose Your Path'. A reader following the 'Choose Your Path' flow might miss that there is a fourth option (local stdio MCP) because it is placed far below, after unrelated sections. The old README had the same section, but it appeared earlier in the document flow.",
+      "impact": "Users wanting a local MCP server for Claude may not discover the stdio option since it is disconnected from the other adoption paths.",
+      "recommendation": "Consider either (a) folding the stdio MCP config into the CLI or Self-Host subsections of 'Choose Your Path', or (b) adding a brief mention under 'Choose Your Path' that links to the later section."
+    },
+    {
+      "id": "F-003",
+      "severity": "LOW",
+      "validated": true,
+      "reviewer": "comments",
+      "file": "README.md:83",
+      "category": "Doc accuracy — MCP endpoint description",
+      "description": "The Self-Host section says the MCP endpoint is 'read-only: query/trace only'. The Hosted MCP note (line 43) says the same about the hosted endpoint. This is accurate for the hosted endpoint, but for the self-hosted container, it is unclear whether the MCP endpoint is actually read-only or whether this is a configuration choice. If the self-hosted MCP can also support ingest, stating it is read-only may be misleading.",
+      "impact": "Minor. Users self-hosting may not realize they can configure write access if available.",
+      "recommendation": "Verify whether the self-hosted MCP endpoint is inherently read-only or configurable. If configurable, adjust the parenthetical."
+    },
+    {
+      "id": "F-004",
+      "severity": "LOW",
+      "validated": true,
+      "reviewer": "logic",
+      "file": "README.md:85",
+      "category": "Removed content — web UI and agent skills adoption paths",
+      "description": "The old README had two additional try-it-now paths: 'Browse the web UI' (visit wtfoc.xyz) and 'Install agent skills' (npx skills add SgtPooki/wtfoc). The new README preserves a brief web UI mention (line 85: 'You can also browse the hosted UI at wtfoc.xyz') but removes the agent skills path entirely. The agent skills install was a distinct adoption path for Claude Code, Cursor, Codex, etc.",
+      "impact": "Users who discover wtfoc through agent skill ecosystems lose a visible entry point. This may be intentional if the skills install is not yet stable.",
+      "recommendation": "If agent skills are a supported adoption path, consider restoring a brief mention. If intentionally removed, no action needed."
+    },
+    {
+      "id": "F-005",
+      "severity": "INFO",
+      "validated": true,
+      "reviewer": "spec-compliance",
+      "file": "README.md",
+      "category": "Spec alignment — differentiators surface well",
+      "description": "The spec requires surfacing differentiators from docs/why.md without copying the entire essay. The new README does this effectively: 'Evidence-Backed Edges', 'Portable Shareable Collections', 'Living Knowledge', and 'Pluggable by Design' all map cleanly to corresponding sections in why.md (Search vs Trace, Immutable Content-Addressed Knowledge, Every Component is Replaceable, etc.). The README avoids duplicating the competitive comparison section from why.md, which is appropriate.",
+      "impact": "Positive finding. No action needed.",
+      "recommendation": "None."
+    }
+  ],
+  "specCompliance": {
+    "results": [
+      {
+        "ac": "AC-US1-01",
+        "description": "The rewritten README clearly states user, problem, and differentiation",
+        "status": "PASS",
+        "evidence": "Lines 5-8 state the user (teams and agents), problem (answering why across sources), and differentiation (evidence-backed links vs keyword matches). Lines 87-103 expand on what makes wtfoc different."
+      },
+      {
+        "ac": "AC-US1-02",
+        "description": "The rewritten README keeps current capabilities and longer-term vision appropriately separated",
+        "status": "PASS",
+        "evidence": "Lines 107-114 ('What Works Today') explicitly scope current capabilities. Line 114 directs readers to docs/vision.md for north-star direction. No untracked vision items are claimed as available."
+      },
+      {
+        "ac": "AC-US1-03",
+        "description": "The rewritten README preserves concrete onboarding paths and links to deeper docs",
+        "status": "PASS",
+        "evidence": "Three paths preserved: Hosted MCP (lines 29-47), CLI (lines 49-64), Self-Host (lines 67-85). Deeper docs linked at lines 9, 114, 163-171."
+      }
+    ],
+    "scopeCreep": [],
+    "misinterpretations": []
+  },
+  "reviewerNotes": {
+    "logic": "5 files changed, only README.md contains substantive content changes. The other 4 files are increment metadata (spec, plan, tasks, metadata.json). The README rewrite is well-structured, follows the proposed shape from the spec, and maintains honesty about current vs future capabilities. Two medium findings relate to install command consistency and information architecture.",
+    "spec-compliance": "All 3 acceptance criteria pass. The spec's proposed shape (7-section flow) is closely followed: hero/value prop, problem framing, search vs trace, quick start paths, differentiators, example section, packages/docs. No scope creep or misinterpretations detected.",
+    "comments": "Minimal comment-like content in a README. One finding about the MCP read-only claim that may need verification. All doc links verified as existing on disk."
+  }
+}
