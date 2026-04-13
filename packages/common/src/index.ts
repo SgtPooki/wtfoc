@@ -56,6 +56,7 @@ export type {
 } from "./interfaces/clusterer.js";
 export type { EdgeExtractor } from "./interfaces/edge-extractor.js";
 export type { Embedder } from "./interfaces/embedder.js";
+export type { RerankCandidate, Reranker, RerankResult } from "./interfaces/reranker.js";
 export type { ManifestStore, StoredHead } from "./interfaces/manifest-store.js";
 export type { SourceAdapter } from "./interfaces/source-adapter.js";
 export type { StorageBackend, StorageResult } from "./interfaces/storage-backend.js";

@@ -1,4 +1,4 @@
-import type { Embedder, VectorIndex } from "@wtfoc/common";
+import type { Embedder, Reranker, VectorIndex } from "@wtfoc/common";
 
 export interface QueryOptions {
 	topK?: number;
@@ -6,6 +6,8 @@ export interface QueryOptions {
 	signal?: AbortSignal;
 	/** When set, boost results that have high scores for this signal type */
 	signalFilter?: string;
+	/** Optional reranker applied after vector retrieval and before final slicing. */
+	reranker?: Reranker;
 }
 
 export interface QueryResult {
@@ -37,25 +39,47 @@ export async function query(
 	options?.signal?.throwIfAborted();
 
 	const signalFilter = options?.signalFilter;
+	const reranker = options?.reranker;
 
 	const queryVector = await embedder.embed(queryText, options?.signal);
-	// Fetch extra results when signal filtering so we have enough after re-ranking
-	const fetchK = signalFilter ? topK * 3 : topK;
+	// Fetch extra results when post-search ranking may discard or reorder candidates.
+	const fetchK = signalFilter || reranker ? topK * 3 : topK;
 	const matches = await vectorIndex.search(queryVector, fetchK);
+	let rerankedScores: Map<string, number> | undefined;
+
+	if (reranker && matches.length > 0) {
+		options?.signal?.throwIfAborted();
+		const reranked = await reranker.rerank(
+			queryText,
+			matches.map((match) => ({
+				id: match.entry.storageId,
+				text: match.entry.metadata.content ?? "",
+			})),
+			{ topN: topK, signal: options?.signal },
+		);
+		if (reranked.length > 0) {
+			rerankedScores = new Map(reranked.map((result) => [result.id, result.score]));
+		}
+	}
 
 	let results = matches
-		.filter((m) => m.score >= minScore)
+		.filter((m) => {
+			if (rerankedScores) {
+				return rerankedScores.has(m.entry.storageId);
+			}
+			return m.score >= minScore;
+		})
 		.map((m) => {
 			const signalScoresRaw = m.entry.metadata.signalScores;
 			const signalScores: Record<string, number> | undefined = signalScoresRaw
 				? (JSON.parse(signalScoresRaw) as Record<string, number>)
 				: undefined;
 
-			let boostedScore = m.score;
+			let boostedScore = rerankedScores?.get(m.entry.storageId) ?? m.score;
 			if (signalFilter && signalScores) {
 				const signalValue = signalScores[signalFilter] ?? 0;
 				// Boost: up to 20% increase for max signal score
-				boostedScore = m.score * (1 + (signalValue / 100) * 0.2);
+				boostedScore = boostedScore * (1 + (signalValue / 100) * 0.2);
 			}
 
 			return {
@@ -69,7 +93,7 @@ export async function query(
 			};
 		});
 
-	if (signalFilter) {
+	if (signalFilter || rerankedScores) {
 		results.sort((a, b) => b.score - a.score);
 	}
 	results = results.slice(0, topK);

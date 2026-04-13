@@ -130,9 +130,19 @@ export class AstHeuristicChunker implements Chunker {
 			const startLine = boundaries[i] as number;
 			const endLine = i + 1 < boundaries.length ? (boundaries[i + 1] as number) : lines.length;
 			const chunkLines = lines.slice(startLine, endLine);
-			const content = chunkLines.join("\n").trim();
+			// Compute offsets before trimming so we can adjust them to match trimmed content
+			const joined = chunkLines.join("\n");
+			const leadingTrimmed = joined.length - joined.trimStart().length;
+			const trailingTrimmed = joined.length - joined.trimEnd().length;
+			const content = joined.trim();
 
 			if (!content) continue;
+
+			// Byte offset of this chunk's raw start in the document (0-indexed)
+			const rawByteStart = lines.slice(0, startLine).join("\n").length + (startLine > 0 ? 1 : 0);
+			// Adjust for leading whitespace so offsets match the trimmed content
+			const byteOffsetStart = rawByteStart + leadingTrimmed + 1; // 1-indexed
+			const byteOffsetEnd = rawByteStart + joined.length - trailingTrimmed;
 
 			// If chunk is too large, split it further
 			if (content.length > maxChunkSize) {
@@ -141,6 +151,7 @@ export class AstHeuristicChunker implements Chunker {
 					document,
 					chunks.length,
 					startLine + 1,
+					byteOffsetStart,
 					maxChunkSize,
 				);
 				chunks.push(...subChunks);
@@ -173,8 +184,8 @@ export class AstHeuristicChunker implements Chunker {
 				documentId: document.documentId,
 				documentVersionId: document.documentVersionId,
 				contentFingerprint,
-				byteOffsetStart: lines.slice(0, startLine).join("\n").length + 1,
-				byteOffsetEnd: lines.slice(0, endLine).join("\n").length,
+				byteOffsetStart,
+				byteOffsetEnd,
 				lineStart: startLine + 1,
 				lineEnd: endLine,
 				chunkerName: this.name,
@@ -185,7 +196,11 @@ export class AstHeuristicChunker implements Chunker {
 
 		// Handle content before first boundary
 		if (boundaries.length > 0 && (boundaries[0] as number) > 0) {
-			const preamble = lines.slice(0, boundaries[0]).join("\n").trim();
+			const preambleLines = lines.slice(0, boundaries[0]);
+			const joined = preambleLines.join("\n");
+			const leadingTrimmed = joined.length - joined.trimStart().length;
+			const trailingTrimmed = joined.length - joined.trimEnd().length;
+			const preamble = joined.trim();
 			if (preamble) {
 				const contentFingerprint = sha256Hex(preamble);
 				const chunkId =
@@ -209,6 +224,8 @@ export class AstHeuristicChunker implements Chunker {
 					documentId: document.documentId,
 					documentVersionId: document.documentVersionId,
 					contentFingerprint,
+					byteOffsetStart: leadingTrimmed + 1, // 1-indexed
+					byteOffsetEnd: joined.length - trailingTrimmed,
 					lineStart: 1,
 					lineEnd: boundaries[0] as number,
 					chunkerName: this.name,
@@ -232,6 +249,7 @@ export class AstHeuristicChunker implements Chunker {
 		document: ChunkerDocument,
 		baseIndex: number,
 		lineOffset: number,
+		byteOffsetBase: number, // 1-indexed byte offset of content[0] in the document
 		maxSize: number,
 	): ChunkerOutput[] {
 		const pieces: ChunkerOutput[] = [];
@@ -247,6 +265,17 @@ export class AstHeuristicChunker implements Chunker {
 							`${document.documentId}:${document.documentVersionId}:${baseIndex + pieces.length}:${piece}`,
 						)
 					: sha256Hex(piece);
+
+			// Compute line span for this sub-piece by counting newlines in preceding content
+			const precedingContent = content.slice(0, offset);
+			const precedingLines = precedingContent.split("\n").length - 1;
+			const pieceLines = piece.split("\n").length - 1;
+			const pieceLineStart = lineOffset + precedingLines;
+			const pieceLineEnd = pieceLineStart + pieceLines;
+
+			// Byte offsets relative to document (byteOffsetBase is 1-indexed start of this symbol)
+			const pieceByteStart = byteOffsetBase + offset;
+			const pieceByteEnd = byteOffsetBase + end - 1;
 
 			pieces.push({
 				id: chunkId,
@@ -264,7 +293,10 @@ export class AstHeuristicChunker implements Chunker {
 				documentId: document.documentId,
 				documentVersionId: document.documentVersionId,
 				contentFingerprint,
-				lineStart: lineOffset,
+				byteOffsetStart: pieceByteStart,
+				byteOffsetEnd: pieceByteEnd,
+				lineStart: pieceLineStart,
+				lineEnd: pieceLineEnd,
 				chunkerName: this.name,
 				chunkerVersion: this.version,
 			});

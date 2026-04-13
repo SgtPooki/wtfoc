@@ -1,4 +1,4 @@
-import type { Embedder, Segment, VectorIndex } from "@wtfoc/common";
+import type { Embedder, Reranker, Segment, VectorIndex } from "@wtfoc/common";
 import { buildConclusion, type TraceConclusion } from "./conclusion.js";
 import { buildChunkIndexes, buildEdgeIndex } from "./indexing.js";
 import { detectInsights, type TraceInsight } from "./insights.js";
@@ -33,6 +33,8 @@ export interface TraceOptions {
 	 * Merged into the edge index alongside segment-embedded edges.
 	 */
 	overlayEdges?: import("@wtfoc/common").Edge[];
+	/** Optional reranker applied to initial seed candidates before traversal. */
+	reranker?: Reranker;
 }
 
 export interface TraceHop {
@@ -125,7 +127,31 @@ export async function trace(
 	const queryVector = await embedder.embed(query, options?.signal);
 
 	// Step 2: Find seed chunks via vector search
-	const seeds = await vectorIndex.search(queryVector, maxTotal);
+	const candidateCount = options?.reranker ? maxTotal * 2 : maxTotal;
+	const seeds = await vectorIndex.search(queryVector, candidateCount);
+	let effectiveSeeds = seeds;
+
+	if (options?.reranker && seeds.length > 0) {
+		options.signal?.throwIfAborted();
+		const reranked = await options.reranker.rerank(
+			query,
+			seeds.map((seed) => ({
+				id: seed.entry.id,
+				text: seed.entry.metadata.content ?? "",
+			})),
+			{ topN: maxTotal, signal: options.signal },
+		);
+		if (reranked.length > 0) {
+			const scoreMap = new Map<string, number>(reranked.map((r) => [r.id, r.score]));
+			effectiveSeeds = seeds
+				.filter((seed) => scoreMap.has(seed.entry.id))
+				.map((seed): import("@wtfoc/common").ScoredEntry => ({
+					entry: seed.entry,
+					score: scoreMap.get(seed.entry.id) ?? seed.score,
+				}))
+				.sort((a, b) => b.score - a.score);
+		}
+	}
 
 	// Build edge index from all segments + overlay edges
 	const edgeIndex = buildEdgeIndex(segments, options?.overlayEdges);
@@ -137,7 +163,7 @@ export async function trace(
 	// Build indexed chunk lookups for O(1) edge resolution
 	const indexes = buildChunkIndexes(segments);
 
-	for (const seed of seeds) {
+	for (const seed of effectiveSeeds) {
 		if (seed.score < minScore) continue;
 		if (visited.has(seed.entry.id)) continue;
 		const seedType = seed.entry.metadata.sourceType ?? "unknown";

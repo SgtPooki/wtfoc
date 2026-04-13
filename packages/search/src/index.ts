@@ -1,6 +1,7 @@
 // @wtfoc/search — Embedder + vector index + query + trace
 // See SPEC.md for search/trace architecture
 
+export type { RerankCandidate, Reranker, RerankResult } from "@wtfoc/common";
 export { centroid, dot, extractLabel, GreedyClusterer, normalize } from "./clustering/index.js";
 export type { EdgeResolutionStats, SourceIndex } from "./edge-resolution.js";
 export { analyzeEdgeResolution, buildSourceIndex, resolves } from "./edge-resolution.js";
@@ -22,6 +23,9 @@ export type { MountedCollection, MountOptions } from "./mount.js";
 export { mountCollection } from "./mount.js";
 export type { QueryOptions, QueryResult } from "./query.js";
 export { query } from "./query.js";
+export type { CohereRerankerOptions } from "./rerankers/cohere.js";
+export { CohereReranker } from "./rerankers/cohere.js";
+export { PassthroughReranker } from "./rerankers/passthrough.js";
 export type {
 	InsightKind,
 	LineageChain,
