@@ -6,7 +6,7 @@ import {
 	mergeOverlayEdges,
 	overlayFilePath,
 	readOverlayEdges,
-	type SegmentChunk,
+	storedChunkToSegmentChunk,
 	writeOverlayEdges,
 } from "@wtfoc/ingest";
 import type { Command } from "commander";
@@ -120,25 +120,7 @@ export function registerMaterializeEdgesCommand(program: Command): void {
 				totalEdgesMerged += relevantOverlay.length;
 
 				// Rebuild segment with merged edges
-				const segmentChunks: SegmentChunk[] = segment.chunks.map((c) => ({
-					chunk: {
-						id: c.id,
-						content: c.content,
-						sourceType: c.sourceType,
-						source: c.source,
-						sourceUrl: c.sourceUrl,
-						timestamp: c.timestamp,
-						chunkIndex: 0,
-						totalChunks: 0,
-						metadata: c.metadata,
-						documentId: c.documentId,
-						documentVersionId: c.documentVersionId,
-						contentFingerprint: c.contentFingerprint,
-					},
-					embedding: c.embedding,
-					terms: c.terms,
-					signalScores: c.signalScores,
-				}));
+				const segmentChunks = segment.chunks.map(storedChunkToSegmentChunk);
 
 				const newSegment = buildSegment(segmentChunks, mergedEdges, {
 					embeddingModel: segment.embeddingModel,

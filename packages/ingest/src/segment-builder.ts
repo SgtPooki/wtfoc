@@ -70,6 +70,33 @@ export function buildSegment(
  * Compute a deterministic ID for a segment (SHA-256 of serialized JSON).
  * Useful for dedup — same chunks + edges = same segment ID.
  */
+/**
+ * Convert a stored segment chunk entry back to a SegmentChunk for rebuilding.
+ * Single source of truth — prevents field-dropping bugs when new optional
+ * fields are added to Chunk (see #233).
+ */
+export function storedChunkToSegmentChunk(c: Segment["chunks"][number]): SegmentChunk {
+	return {
+		chunk: {
+			id: c.id,
+			content: c.content,
+			sourceType: c.sourceType,
+			source: c.source,
+			sourceUrl: c.sourceUrl,
+			timestamp: c.timestamp,
+			chunkIndex: 0,
+			totalChunks: 0,
+			metadata: c.metadata,
+			documentId: c.documentId,
+			documentVersionId: c.documentVersionId,
+			contentFingerprint: c.contentFingerprint,
+		},
+		embedding: c.embedding,
+		terms: c.terms,
+		signalScores: c.signalScores,
+	};
+}
+
 export function segmentId(segment: Segment): string {
 	const serialized = JSON.stringify(segment);
 	return createHash("sha256").update(serialized).digest("hex");
