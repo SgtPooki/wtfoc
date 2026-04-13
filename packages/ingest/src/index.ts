@@ -156,6 +156,7 @@ export {
 	type SegmentBuilderOptions,
 	type SegmentChunk,
 	segmentId,
+	storedChunkToSegmentChunk,
 } from "./segment-builder.js";
 export { replayFromArchive } from "./source-replay.js";
 export {

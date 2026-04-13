@@ -12,6 +12,7 @@ import {
 	mergeEdges,
 	RegexEdgeExtractor,
 	rechunkOversized,
+	storedChunkToSegmentChunk,
 	TreeSitterEdgeExtractor,
 } from "@wtfoc/ingest";
 import { generateCollectionId } from "@wtfoc/store";
@@ -112,20 +113,7 @@ export function registerReingestCommand(program: Command): void {
 						continue;
 					}
 
-					allChunks.push({
-						id: c.id,
-						content: c.content,
-						sourceType: c.sourceType,
-						source: c.source,
-						sourceUrl: c.sourceUrl,
-						timestamp: c.timestamp,
-						chunkIndex: 0,
-						totalChunks: 0,
-						metadata: c.metadata,
-						documentId: c.documentId,
-						documentVersionId: c.documentVersionId,
-						contentFingerprint: c.contentFingerprint,
-					});
+					allChunks.push(storedChunkToSegmentChunk(c).chunk);
 				}
 			}
 

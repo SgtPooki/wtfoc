@@ -1,10 +1,11 @@
-import type { Chunk, Edge } from "@wtfoc/common";
+import type { Chunk, Edge, Segment } from "@wtfoc/common";
 import { describe, expect, it } from "vitest";
 import {
 	buildSegment,
 	extractSegmentMetadata,
 	type SegmentChunk,
 	segmentId,
+	storedChunkToSegmentChunk,
 } from "./segment-builder.js";
 
 const defaultOptions = {
@@ -243,5 +244,64 @@ describe("extractSegmentMetadata", () => {
 			to: "2025-03-15T00:00:00Z",
 		});
 		expect(result.repoIds).toEqual(["FilOzone/synapse-sdk"]);
+	});
+});
+
+describe("storedChunkToSegmentChunk", () => {
+	const stored: Segment["chunks"][number] = {
+		id: "chunk-1",
+		storageId: "chunk-1",
+		content: "test content",
+		embedding: [0.1, 0.2, 0.3],
+		terms: ["test", "content"],
+		source: "owner/repo/file.ts",
+		sourceType: "code",
+		sourceUrl: "https://github.com/owner/repo/blob/main/file.ts",
+		timestamp: "2026-04-12T00:00:00Z",
+		metadata: { filePath: "file.ts", language: "typescript" },
+		signalScores: { pain: 20 },
+		documentId: "owner/repo/file.ts",
+		documentVersionId: "abc123hash",
+		contentFingerprint: "def456hash",
+	};
+
+	it("preserves documentId, documentVersionId, contentFingerprint", () => {
+		const result = storedChunkToSegmentChunk(stored);
+		expect(result.chunk.documentId).toBe("owner/repo/file.ts");
+		expect(result.chunk.documentVersionId).toBe("abc123hash");
+		expect(result.chunk.contentFingerprint).toBe("def456hash");
+	});
+
+	it("preserves embedding, terms, signalScores", () => {
+		const result = storedChunkToSegmentChunk(stored);
+		expect(result.embedding).toEqual([0.1, 0.2, 0.3]);
+		expect(result.terms).toEqual(["test", "content"]);
+		expect(result.signalScores).toEqual({ pain: 20 });
+	});
+
+	it("preserves all required Chunk fields", () => {
+		const result = storedChunkToSegmentChunk(stored);
+		expect(result.chunk.id).toBe("chunk-1");
+		expect(result.chunk.content).toBe("test content");
+		expect(result.chunk.sourceType).toBe("code");
+		expect(result.chunk.source).toBe("owner/repo/file.ts");
+		expect(result.chunk.sourceUrl).toBe("https://github.com/owner/repo/blob/main/file.ts");
+		expect(result.chunk.timestamp).toBe("2026-04-12T00:00:00Z");
+		expect(result.chunk.metadata).toEqual({ filePath: "file.ts", language: "typescript" });
+	});
+
+	it("handles undefined optional fields gracefully", () => {
+		const minimal: Segment["chunks"][number] = {
+			...stored,
+			documentId: undefined,
+			documentVersionId: undefined,
+			contentFingerprint: undefined,
+			signalScores: undefined,
+		};
+		const result = storedChunkToSegmentChunk(minimal);
+		expect(result.chunk.documentId).toBeUndefined();
+		expect(result.chunk.documentVersionId).toBeUndefined();
+		expect(result.chunk.contentFingerprint).toBeUndefined();
+		expect(result.signalScores).toBeUndefined();
 	});
 });
