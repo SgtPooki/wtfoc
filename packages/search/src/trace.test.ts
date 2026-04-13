@@ -1,43 +1,21 @@
-import type { Edge, Embedder, Segment, VectorEntry, VectorIndex } from "@wtfoc/common";
+import type { Edge, Segment, VectorEntry } from "@wtfoc/common";
 import { describe, expect, it } from "vitest";
+import { InMemoryVectorIndex } from "./index/in-memory.js";
+import { hashEmbedder } from "./test-helpers.js";
 import { trace } from "./trace/index.js";
 import { buildEdgeIndex } from "./trace/indexing.js";
 
-// ─── Mock embedder ───────────────────────────────────────────────────────────
-const mockEmbedder: Embedder = {
-	dimensions: 3,
-	async embed(): Promise<Float32Array> {
-		return new Float32Array([1.0, 0.0, 0.0]);
-	},
-	async embedBatch(texts: string[]): Promise<Float32Array[]> {
-		return texts.map(() => new Float32Array([1.0, 0.0, 0.0]));
-	},
-};
+// ─── Embedder — deterministic hash-based for consistent but non-trivial vectors ──
+const embedder = hashEmbedder(3);
 
-// ─── Mock vector index ───────────────────────────────────────────────────────
-function createMockIndex(entries: VectorEntry[]): VectorIndex {
-	return {
-		size: entries.length,
-		async add(newEntries: VectorEntry[]): Promise<void> {
-			entries.push(...newEntries);
-		},
-		async search(_query: Float32Array, topK: number) {
-			// Return all entries with decreasing scores
-			return entries.slice(0, topK).map((entry, i) => ({
-				entry,
-				score: 1.0 - i * 0.1,
-			}));
-		},
-		async delete(ids: string[]): Promise<void> {
-			for (const id of ids) {
-				const idx = entries.findIndex((e) => e.id === id);
-				if (idx !== -1) entries.splice(idx, 1);
-			}
-		},
-	};
+// ─── Helpers ────────────────────────────────────────────────────────────────────
+async function seedIndex(...entries: VectorEntry[]): Promise<InMemoryVectorIndex> {
+	const index = new InMemoryVectorIndex();
+	await index.add(entries);
+	return index;
 }
 
-// ─── Test fixtures ───────────────────────────────────────────────────────────
+// ─── Test fixtures ──────────────────────────────────────────────────────────────
 const slackChunk: VectorEntry = {
 	id: "slack-msg-1",
 	vector: new Float32Array([1.0, 0.0, 0.0]),
@@ -144,12 +122,12 @@ const testSegment: Segment = {
 	],
 };
 
-// ─── Tests ───────────────────────────────────────────────────────────────────
+// ─── Tests ──────────────────────────────────────────────────────────────────────
 
 describe("trace", () => {
 	it("returns results grouped by sourceType", async () => {
-		const index = createMockIndex([slackChunk, issueChunk, prChunk, codeChunk]);
-		const result = await trace("upload failures", mockEmbedder, index, [testSegment]);
+		const index = await seedIndex(slackChunk, issueChunk, prChunk, codeChunk);
+		const result = await trace("upload failures", embedder, index, [testSegment]);
 
 		expect(result.groups).toBeDefined();
 		expect(result.stats.sourceTypes.length).toBeGreaterThan(0);
@@ -159,8 +137,8 @@ describe("trace", () => {
 	});
 
 	it("produces insights in analytical mode", async () => {
-		const index = createMockIndex([slackChunk, issueChunk, prChunk, codeChunk]);
-		const result = await trace("upload failures", mockEmbedder, index, [testSegment], {
+		const index = await seedIndex(slackChunk, issueChunk, prChunk, codeChunk);
+		const result = await trace("upload failures", embedder, index, [testSegment], {
 			mode: "analytical",
 		});
 
@@ -183,8 +161,8 @@ describe("trace", () => {
 	});
 
 	it("follows explicit edges from seed chunks", async () => {
-		const index = createMockIndex([slackChunk]);
-		const result = await trace("upload failures", mockEmbedder, index, [testSegment]);
+		const index = await seedIndex(slackChunk);
+		const result = await trace("upload failures", embedder, index, [testSegment]);
 
 		const edgeHops = result.hops.filter((h) => h.connection.method === "edge");
 		expect(edgeHops.length).toBeGreaterThan(0);
@@ -192,8 +170,8 @@ describe("trace", () => {
 	});
 
 	it("annotates edge hops with evidence", async () => {
-		const index = createMockIndex([slackChunk]);
-		const result = await trace("upload failures", mockEmbedder, index, [testSegment]);
+		const index = await seedIndex(slackChunk);
+		const result = await trace("upload failures", embedder, index, [testSegment]);
 
 		const edgeHop = result.hops.find((h) => h.connection.method === "edge");
 		expect(edgeHop?.connection.evidence).toBeTruthy();
@@ -202,16 +180,16 @@ describe("trace", () => {
 	});
 
 	it("includes semantic search results as fallback", async () => {
-		const index = createMockIndex([slackChunk, codeChunk]);
-		const result = await trace("upload failures", mockEmbedder, index, [testSegment]);
+		const index = await seedIndex(slackChunk, codeChunk);
+		const result = await trace("upload failures", embedder, index, [testSegment]);
 
 		const semanticHops = result.hops.filter((h) => h.connection.method === "semantic");
 		expect(semanticHops.length).toBeGreaterThan(0);
 	});
 
 	it("detects cycles — does not visit same chunk twice", async () => {
-		const index = createMockIndex([slackChunk, issueChunk]);
-		const result = await trace("upload failures", mockEmbedder, index, [testSegment]);
+		const index = await seedIndex(slackChunk, issueChunk);
+		const result = await trace("upload failures", embedder, index, [testSegment]);
 
 		const ids = result.hops.map((h) => h.storageId);
 		const uniqueIds = new Set(ids);
@@ -219,8 +197,8 @@ describe("trace", () => {
 	});
 
 	it("respects maxTotal limit", async () => {
-		const index = createMockIndex([slackChunk, issueChunk, prChunk, codeChunk]);
-		const result = await trace("upload failures", mockEmbedder, index, [testSegment], {
+		const index = await seedIndex(slackChunk, issueChunk, prChunk, codeChunk);
+		const result = await trace("upload failures", embedder, index, [testSegment], {
 			maxTotal: 2,
 		});
 
@@ -228,16 +206,16 @@ describe("trace", () => {
 	});
 
 	it("returns empty results for no matches", async () => {
-		const index = createMockIndex([]);
-		const result = await trace("nonexistent query", mockEmbedder, index, [testSegment]);
+		const index = new InMemoryVectorIndex();
+		const result = await trace("nonexistent query", embedder, index, [testSegment]);
 
 		expect(result.hops).toHaveLength(0);
 		expect(result.stats.totalHops).toBe(0);
 	});
 
 	it("includes the query in results", async () => {
-		const index = createMockIndex([slackChunk]);
-		const result = await trace("upload failures", mockEmbedder, index, [testSegment]);
+		const index = await seedIndex(slackChunk);
+		const result = await trace("upload failures", embedder, index, [testSegment]);
 
 		expect(result.query).toBe("upload failures");
 	});
@@ -245,8 +223,8 @@ describe("trace", () => {
 	it("follows multi-hop chains: slack → issue → PR via edges", async () => {
 		// Only seed with the Slack chunk — the issue and PR should be discovered
 		// purely via edge traversal: slack-msg-1 → issue-142 → pr-156
-		const index = createMockIndex([slackChunk]);
-		const result = await trace("upload failures", mockEmbedder, index, [testSegment]);
+		const index = await seedIndex(slackChunk);
+		const result = await trace("upload failures", embedder, index, [testSegment]);
 
 		// Should find the slack seed + at least issue via edge
 		const edgeHops = result.hops.filter((h) => h.connection.method === "edge");
@@ -287,8 +265,8 @@ describe("trace", () => {
 			edges: testSegment.edges,
 		};
 
-		const index = createMockIndex([slackChunk]);
-		const result = await trace("upload failures", mockEmbedder, index, [largeSegment]);
+		const index = await seedIndex(slackChunk);
+		const result = await trace("upload failures", embedder, index, [largeSegment]);
 
 		// Should still resolve the edge to issue-142
 		const issueHop = result.hops.find((h) => h.sourceType === "github-issue");
@@ -328,10 +306,9 @@ describe("trace", () => {
 			],
 		};
 
-		// Index returns slack first, then code — but code won't be in initial seeds
-		// because maxTotal defaults to 15 and slack+edges fill the initial pass
-		const index = createMockIndex([slackChunk, codeEntry]);
-		const result = await trace("upload failures", mockEmbedder, index, [segmentWithCode], {
+		// Index has slack + code; edges lead to issue and PR from the segment
+		const index = await seedIndex(slackChunk, codeEntry);
+		const result = await trace("upload failures", embedder, index, [segmentWithCode], {
 			maxPerSource: 1,
 		});
 
@@ -348,9 +325,9 @@ describe("trace", () => {
 		const controller = new AbortController();
 		controller.abort();
 
-		const index = createMockIndex([slackChunk]);
+		const index = await seedIndex(slackChunk);
 		await expect(
-			trace("upload failures", mockEmbedder, index, [testSegment], {
+			trace("upload failures", embedder, index, [testSegment], {
 				signal: controller.signal,
 			}),
 		).rejects.toThrow();
@@ -376,8 +353,8 @@ describe("trace", () => {
 			},
 		];
 
-		const index = createMockIndex([slackChunk]);
-		const result = await trace("upload failures", mockEmbedder, index, [segmentNoEdges], {
+		const index = await seedIndex(slackChunk);
+		const result = await trace("upload failures", embedder, index, [segmentNoEdges], {
 			overlayEdges,
 		});
 
@@ -433,8 +410,8 @@ describe("trace", () => {
 			],
 		};
 
-		const index = createMockIndex([slackChunk]);
-		const result = await trace("upload failures", mockEmbedder, index, [timestampedSegment]);
+		const index = await seedIndex(slackChunk);
+		const result = await trace("upload failures", embedder, index, [timestampedSegment]);
 
 		// Seed hop should carry timestamp
 		const slackHop = result.hops.find((h) => h.sourceType === "slack-message");
@@ -446,8 +423,8 @@ describe("trace", () => {
 	});
 
 	it("leaves timestamp undefined when chunk has no timestamp", async () => {
-		const index = createMockIndex([slackChunk]);
-		const result = await trace("upload failures", mockEmbedder, index, [testSegment]);
+		const index = await seedIndex(slackChunk);
+		const result = await trace("upload failures", embedder, index, [testSegment]);
 
 		// testSegment chunks have no timestamp field
 		for (const hop of result.hops) {

@@ -1,30 +1,12 @@
-import type { Chunk, Edge, EdgeExtractor } from "@wtfoc/common";
+/**
+ * Ownership: CompositeEdgeExtractor orchestration tests.
+ * Tests: registration, disabled extractors, fail-open, abort, signal propagation, edge cap, merge delegation.
+ * Delegates to: merge.test.ts for merge algorithm assertions (dedup, confidence boost, evidence concatenation).
+ */
+import type { Edge, EdgeExtractor } from "@wtfoc/common";
 import { describe, expect, it, vi } from "vitest";
+import { makeChunk, makeEdge } from "./__test-helpers.js";
 import { CompositeEdgeExtractor } from "./composite.js";
-
-function makeChunk(id = "chunk-1"): Chunk {
-	return {
-		id,
-		content: "Fixes #42 in the codebase",
-		sourceType: "github-pr",
-		source: "owner/repo#10",
-		chunkIndex: 0,
-		totalChunks: 1,
-		metadata: {},
-	};
-}
-
-function makeEdge(overrides: Partial<Edge> = {}): Edge {
-	return {
-		type: "references",
-		sourceId: "chunk-1",
-		targetType: "issue",
-		targetId: "owner/repo#42",
-		evidence: "found #42",
-		confidence: 1.0,
-		...overrides,
-	};
-}
 
 function mockExtractor(edges: Edge[]): EdgeExtractor {
 	return { extract: vi.fn(async () => edges) };
@@ -55,7 +37,7 @@ describe("CompositeEdgeExtractor", () => {
 		expect(result[0]?.provenance).toEqual(["regex"]);
 	});
 
-	it("merges and deduplicates edges from multiple extractors", async () => {
+	it("delegates merge to mergeEdges when multiple extractors return the same edge", async () => {
 		const composite = new CompositeEdgeExtractor();
 		const edge = makeEdge();
 		composite.register({
@@ -68,10 +50,10 @@ describe("CompositeEdgeExtractor", () => {
 		});
 
 		const result = await composite.extract([makeChunk()]);
+		// Verify merge was invoked (dedup occurred) — merge algorithm details tested in merge.test.ts
 		expect(result).toHaveLength(1);
-		expect(result[0]?.evidence).toContain("regex evidence");
-		expect(result[0]?.evidence).toContain("heuristic evidence");
-		expect(result[0]?.provenance).toEqual(expect.arrayContaining(["regex", "heuristic"]));
+		expect(result[0]?.provenance).toBeDefined();
+		expect(result[0]?.provenance?.length).toBeGreaterThanOrEqual(2);
 	});
 
 	it("skips disabled extractors", async () => {

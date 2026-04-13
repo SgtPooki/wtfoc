@@ -1,3 +1,8 @@
+/**
+ * Ownership: Tree-sitter HTTP client tests.
+ * Tests: treeSitterParse/treeSitterHealth transport — success, fail-open, timeout, abort, listener leaks.
+ * Delegates to: tree-sitter.test.ts for TreeSitterEdgeExtractor integration (language mapping, filtering, concurrency).
+ */
 import { createServer, type Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { treeSitterHealth, treeSitterParse } from "./tree-sitter-client.js";

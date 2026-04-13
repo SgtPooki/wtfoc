@@ -46,15 +46,19 @@ function parseQuery(url: string): URLSearchParams {
 	return idx === -1 ? new URLSearchParams() : new URLSearchParams(url.slice(idx + 1));
 }
 
-export async function startServer(options: ServeOptions): Promise<void> {
+export interface ServerHandle {
+	server: import("node:http").Server;
+	state: LoadedState;
+}
+
+export async function startServer(options: ServeOptions): Promise<ServerHandle> {
 	const { store, collection, embedder, port } = options;
 
 	// Load collection once at startup
 	console.error("⏳ Loading collection...");
 	const head = await store.manifests.getHead(collection);
 	if (!head) {
-		console.error(`Error: collection "${collection}" not found`);
-		process.exit(1);
+		throw new Error(`collection "${collection}" not found`);
 	}
 
 	const rawBackend = process.env.WTFOC_VECTOR_BACKEND ?? "inmemory";
@@ -213,10 +217,17 @@ export async function startServer(options: ServeOptions): Promise<void> {
 		}
 	});
 
-	server.listen(port, () => {
-		console.error(`\n🌐 wtfoc serve running at http://localhost:${port}`);
-		console.error(`   Collection: ${collection} (${state.manifest.totalChunks} chunks)`);
-		console.error(`   API: http://localhost:${port}/api/status`);
-		console.error(`   UI:  http://localhost:${port}/`);
+	return new Promise<ServerHandle>((resolve, reject) => {
+		server.once("error", reject);
+		server.listen(port, () => {
+			server.removeListener("error", reject);
+			const addr = server.address();
+			const boundPort = typeof addr === "object" && addr ? addr.port : port;
+			console.error(`\n🌐 wtfoc serve running at http://localhost:${boundPort}`);
+			console.error(`   Collection: ${collection} (${state.manifest.totalChunks} chunks)`);
+			console.error(`   API: http://localhost:${boundPort}/api/status`);
+			console.error(`   UI:  http://localhost:${boundPort}/`);
+			resolve({ server, state });
+		});
 	});
 }

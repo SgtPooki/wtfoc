@@ -1,19 +1,12 @@
-import type { Chunk } from "@wtfoc/common";
+/**
+ * Ownership: LlmEdgeExtractor orchestration tests.
+ * Tests batching, abort handling, fenced JSON orchestration path, and prompt overhead.
+ * Delegates: JSON parsing details to llm-client.test.ts; shared factories to __test-helpers.ts.
+ */
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { makeChunk } from "./__test-helpers.js";
 import { LlmEdgeExtractor } from "./llm.js";
 import { estimatePromptOverhead } from "./llm-prompt.js";
-
-function makeChunk(content: string, id = "chunk-1"): Chunk {
-	return {
-		id,
-		content,
-		sourceType: "github-pr",
-		source: "owner/repo#42",
-		chunkIndex: 0,
-		totalChunks: 1,
-		metadata: {},
-	};
-}
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -217,7 +210,10 @@ describe("LlmEdgeExtractor", () => {
 		mockLlmResponse([]);
 		mockLlmResponse([]);
 
-		await extractor.extract([makeChunk(bigContent, "c1"), makeChunk(bigContent, "c2")]);
+		await extractor.extract([
+			makeChunk(bigContent, { id: "c1" }),
+			makeChunk(bigContent, { id: "c2" }),
+		]);
 
 		// Without the fix, both chunks would fit in one batch (< 4000 raw tokens).
 		// With the fix, prompt overhead is subtracted so each chunk gets its own batch.

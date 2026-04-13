@@ -27,13 +27,18 @@ export function registerServeCommand(program: Command): void {
 		const uiHtml = await readFile(join(__dirname, "..", "ui.html"), "utf-8");
 
 		const { startServer } = await import("../serve.js");
-		await startServer({
-			store,
-			collection: opts.collection,
-			embedder,
-			port: Number.parseInt(opts.port, 10),
-			html: uiHtml,
-			manifestDir: getManifestDir(store),
-		});
+		try {
+			await startServer({
+				store,
+				collection: opts.collection,
+				embedder,
+				port: Number.parseInt(opts.port, 10),
+				html: uiHtml,
+				manifestDir: getManifestDir(store),
+			});
+		} catch (err) {
+			console.error(`Error: ${err instanceof Error ? err.message : err}`);
+			process.exit(1);
+		}
 	});
 }
