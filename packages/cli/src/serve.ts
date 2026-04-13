@@ -58,7 +58,7 @@ export async function startServer(options: ServeOptions): Promise<ServerHandle> 
 	console.error("⏳ Loading collection...");
 	const head = await store.manifests.getHead(collection);
 	if (!head) {
-		throw new Error(`Collection "${collection}" not found`);
+		throw new Error(`collection "${collection}" not found`);
 	}
 
 	const rawBackend = process.env.WTFOC_VECTOR_BACKEND ?? "inmemory";
@@ -221,10 +221,12 @@ export async function startServer(options: ServeOptions): Promise<ServerHandle> 
 		server.once("error", reject);
 		server.listen(port, () => {
 			server.removeListener("error", reject);
-			console.error(`\n🌐 wtfoc serve running at http://localhost:${port}`);
+			const addr = server.address();
+			const boundPort = typeof addr === "object" && addr ? addr.port : port;
+			console.error(`\n🌐 wtfoc serve running at http://localhost:${boundPort}`);
 			console.error(`   Collection: ${collection} (${state.manifest.totalChunks} chunks)`);
-			console.error(`   API: http://localhost:${port}/api/status`);
-			console.error(`   UI:  http://localhost:${port}/`);
+			console.error(`   API: http://localhost:${boundPort}/api/status`);
+			console.error(`   UI:  http://localhost:${boundPort}/`);
 			resolve({ server, state });
 		});
 	});

@@ -108,8 +108,8 @@ afterAll(async () => {
 	if (handle?.server) {
 		await new Promise<void>((resolve) => handle.server.close(() => resolve()));
 	}
-	await rm(dataDir, { recursive: true, force: true });
-	await rm(manifestDir, { recursive: true, force: true });
+	if (dataDir) await rm(dataDir, { recursive: true, force: true });
+	if (manifestDir) await rm(manifestDir, { recursive: true, force: true });
 });
 
 describe("serve HTTP endpoints", () => {

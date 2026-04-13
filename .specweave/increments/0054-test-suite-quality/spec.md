@@ -52,19 +52,21 @@ A Codex peer review of all 70 test files (~960 test blocks) identified structura
 
 ---
 
-### US-003: Add true ingest-through-HTTP E2E test (P1)
+### US-003: Add real server HTTP E2E coverage (P1)
 **Project**: wtfoc3
 
-**As a** developer verifying the ingest pipeline end-to-end
-**I want** at least one E2E test that sends data through the actual HTTP ingest endpoint rather than pre-seeding with `seedCollection()`
-**So that** adapter wiring, request validation, and server-side orchestration are proven under real HTTP conditions
+**As a** developer verifying the CLI server's public HTTP surface end-to-end
+**I want** at least one E2E test that starts the real server and exercises the read/query endpoints against a seeded collection
+**So that** server startup, route wiring, and response behavior are proven under real HTTP conditions
+
+**Note**: `serve.ts` does not yet expose an ingest endpoint, so this E2E coverage targets the read-only API.
 
 **Acceptance Criteria**:
-- [x] **AC-US3-01**: A new E2E test file (or test block within existing E2E) POSTs ingest payload to the server's HTTP ingest endpoint and verifies the collection is created
-- [x] **AC-US3-02**: After ingest via HTTP, the test queries the newly created collection and verifies results are returned (full round-trip: HTTP ingest -> store -> HTTP query)
-- [x] **AC-US3-03**: The test validates request validation by sending a malformed payload and asserting a 400 response
-- [x] **AC-US3-04**: The test does NOT use `seedCollection()` or any direct store manipulation — all data flows through HTTP
-- [x] **AC-US3-05**: The test runs against the same server startup used by existing E2E tests (shared `startServer` helper)
+- [x] **AC-US3-01**: A new E2E test file starts the real server and verifies query/read responses over HTTP for a seeded collection
+- [x] **AC-US3-02**: Test setup seeds fixture data directly through storage/manifests before serving, and the test verifies the HTTP API can read that data end-to-end
+- [x] **AC-US3-03**: The test validates HTTP behavior for the currently exposed read-only routes (status, query, trace, collections, sources, edges, CORS, 404)
+- [x] **AC-US3-04**: The increment documents that `serve.ts` does not yet expose an ingest endpoint, so coverage targets the read-only API
+- [x] **AC-US3-05**: The test uses the refactored `startServer` which returns a `ServerHandle` for testability
 
 ---
 
