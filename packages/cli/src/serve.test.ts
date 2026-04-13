@@ -54,7 +54,7 @@ beforeAll(async () => {
 		"# Upload Guide\n\nHow to upload files using the SDK.",
 		"# Troubleshooting\n\nIf uploads timeout, check your network connection.",
 	].join("\n\n---\n\n");
-	const chunks = chunkMarkdown(markdown, { sourceType: "markdown", source: "docs/upload.md" });
+	const chunks = chunkMarkdown(markdown, { source: "docs/upload.md" });
 	const embeddings = await embedder.embedBatch(chunks.map((c) => c.content));
 	const extractor = new RegexEdgeExtractor();
 	const edges = await extractor.extract(chunks);

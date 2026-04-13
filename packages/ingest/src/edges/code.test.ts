@@ -3,6 +3,7 @@
  * Tests: multi-language import extraction, manifest routing/delegation, multi-chunk reconstruction, abort.
  * Delegates to: dependency-parser.test.ts for package.json/requirements.txt parsing details.
  */
+import type { Chunk } from "@wtfoc/common";
 import { describe, expect, it } from "vitest";
 import { makeCodeChunk } from "./__test-helpers.js";
 import { CodeEdgeExtractor } from "./code.js";

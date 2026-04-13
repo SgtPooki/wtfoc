@@ -43,7 +43,8 @@ function hashToVector(text: string, dimensions: number): Float32Array {
 	const vec = new Float32Array(dimensions);
 	// Simple deterministic hash → vector using character codes
 	for (let i = 0; i < text.length; i++) {
-		vec[i % dimensions] += text.charCodeAt(i);
+		const idx = i % dimensions;
+		vec[idx] = (vec[idx] ?? 0) + text.charCodeAt(i);
 	}
 	// Normalize to unit vector
 	let magnitude = 0;
