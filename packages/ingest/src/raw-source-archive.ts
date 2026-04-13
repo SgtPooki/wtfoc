@@ -24,6 +24,8 @@ export interface RawSourceEntry {
 	sourceType: string;
 	/** Original source URL if available */
 	sourceUrl?: string;
+	/** Source key for cross-collection lookup (e.g. "github:owner/repo") */
+	sourceKey?: string;
 }
 
 /**
@@ -104,6 +106,16 @@ export function archiveKey(documentId: string, documentVersionId: string): strin
 }
 
 /**
+ * Find all archive entries matching the given sourceKey (exact equality).
+ * Entries without a sourceKey field are excluded.
+ */
+export function findEntriesBySourceKey(index: RawSourceIndex, sourceKey: string): RawSourceEntry[] {
+	return Object.values(index.entries).filter(
+		(entry) => entry.sourceKey !== undefined && entry.sourceKey === sourceKey,
+	);
+}
+
+/**
  * Check if a specific document version is already archived.
  */
 export function isArchived(
@@ -169,6 +181,7 @@ export async function archiveRawSource(
 	options: {
 		sourceType: string;
 		sourceUrl?: string;
+		sourceKey?: string;
 		filePath?: string;
 		upload: (data: Uint8Array) => Promise<string>;
 	},
@@ -180,7 +193,7 @@ export async function archiveRawSource(
 	const checksum = createHash("sha256").update(bytes).digest("hex");
 	const storageId = await options.upload(bytes);
 
-	index.entries[key] = {
+	const entry: RawSourceEntry = {
 		documentId,
 		documentVersionId,
 		mediaType: inferMediaType(options.filePath, options.sourceType),
@@ -191,6 +204,10 @@ export async function archiveRawSource(
 		sourceType: options.sourceType,
 		sourceUrl: options.sourceUrl,
 	};
+	if (options.sourceKey) {
+		entry.sourceKey = options.sourceKey;
+	}
+	index.entries[key] = entry;
 
 	return storageId;
 }

@@ -28,6 +28,8 @@ import {
 	readCursors,
 	rechunkOversized,
 	renameDocument,
+	replayFromArchive,
+	scanForReusableSources,
 	segmentId,
 	TreeSitterEdgeExtractor,
 	updateDocument,
@@ -98,6 +100,10 @@ export function registerIngestCommand(program: Command): void {
 					.option(
 						"--changed-since <iso>",
 						"Only process documents updated after this ISO timestamp",
+					)
+					.option(
+						"--no-source-reuse",
+						"Disable cross-collection source reuse (skip scanning other collections for cached sources)",
 					),
 			),
 		),
@@ -119,6 +125,7 @@ export function registerIngestCommand(program: Command): void {
 				documentIds?: string[];
 				sourcePaths?: string[];
 				changedSince?: string;
+				sourceReuse?: boolean;
 			} & EmbedderOpts &
 				ExtractorCliOpts,
 		) => {
@@ -476,6 +483,73 @@ export function registerIngestCommand(program: Command): void {
 				totalChunksIngested += batchChunks.length;
 			}
 
+			// Cross-collection source reuse: pre-populate archive and dedup sets from donors.
+			// Donor content is archived locally and fingerprints added to knownFingerprints,
+			// so when the adapter fetches the same content, archiving is a no-op and embedding
+			// is skipped by dedup. The adapter still runs with the recipient's own cursor to
+			// ensure correct catalog versioning and adapter-specific chunking.
+			let totalReusedFromDonors = 0;
+			let donorCollectionNames: string[] = [];
+			if (opts.sourceReuse !== false && !isPartialRun) {
+				const scanResult = await scanForReusableSources(
+					manifestDir,
+					sourceKey,
+					opts.collection,
+					() => store.manifests.listProjects(),
+				);
+				if (scanResult.matches.length > 0) {
+					donorCollectionNames = scanResult.matches.map((m) => m.collectionName);
+					if (format === "human") {
+						console.error(
+							`   🔄 Found source material in ${donorCollectionNames.length} donor collection(s): ${donorCollectionNames.join(", ")}`,
+						);
+					}
+					for (const match of scanResult.matches) {
+						for await (const replayedChunk of replayFromArchive(
+							match.archiveEntries,
+							store.storage,
+						)) {
+							// Archive donor content into recipient collection (pre-cache)
+							if (
+								replayedChunk.rawContent &&
+								replayedChunk.documentId &&
+								replayedChunk.documentVersionId &&
+								!isArchived(archiveIndex, replayedChunk.documentId, replayedChunk.documentVersionId)
+							) {
+								await archiveRawSource(
+									archiveIndex,
+									replayedChunk.documentId,
+									replayedChunk.documentVersionId,
+									replayedChunk.rawContent,
+									{
+										sourceType: replayedChunk.sourceType,
+										sourceUrl: replayedChunk.sourceUrl,
+										sourceKey,
+										filePath: replayedChunk.metadata.filePath,
+										upload: async (data) => {
+											const result = await store.storage.upload(data);
+											return result.id;
+										},
+									},
+								);
+								totalArchived++;
+							}
+
+							// Add fingerprint to dedup set so adapter duplicates skip embedding
+							if (replayedChunk.contentFingerprint) {
+								knownFingerprints.add(replayedChunk.contentFingerprint);
+							}
+							totalReusedFromDonors++;
+						}
+					}
+					if (format === "human" && totalReusedFromDonors > 0) {
+						console.error(
+							`   🔄 Pre-cached ${totalReusedFromDonors} source entries from donor collections`,
+						);
+					}
+				}
+			}
+
 			// Stream chunks from adapter, rechunk oversized ones, then dedup
 			let rechunkedCount = 0;
 			let maxTimestamp = "";
@@ -500,6 +574,7 @@ export function registerIngestCommand(program: Command): void {
 						{
 							sourceType: rawChunk.sourceType,
 							sourceUrl: rawChunk.sourceUrl,
+							sourceKey,
 							filePath: rawChunk.metadata.filePath,
 							upload: async (data) => {
 								const result = await store.storage.upload(data);
@@ -647,6 +722,8 @@ export function registerIngestCommand(program: Command): void {
 				if (totalChunksSkipped > 0) parts.push(`${totalChunksSkipped} skipped as duplicates`);
 				if (totalFiltered > 0) parts.push(`${totalFiltered} filtered out`);
 				if (totalDocsSuperseded > 0) parts.push(`${totalDocsSuperseded} documents superseded`);
+				if (totalReusedFromDonors > 0)
+					parts.push(`${totalReusedFromDonors} pre-cached from ${donorCollectionNames.join(", ")}`);
 				console.error(
 					`✅ Ingested ${parts.join(", ")} from ${sourceArg} into "${opts.collection}"`,
 				);
