@@ -1,4 +1,11 @@
-import type { Embedder, EvalCheck, EvalStageResult, Segment, VectorIndex } from "@wtfoc/common";
+import type {
+	Edge,
+	Embedder,
+	EvalCheck,
+	EvalStageResult,
+	Segment,
+	VectorIndex,
+} from "@wtfoc/common";
 import { query } from "../query.js";
 import { trace } from "../trace/trace.js";
 import { FIXTURE_QUERIES } from "./search-eval-fixtures.js";
@@ -11,6 +18,7 @@ export async function evaluateSearch(
 	vectorIndex: VectorIndex,
 	segments: Segment[],
 	signal?: AbortSignal,
+	overlayEdges: Edge[] = [],
 ): Promise<EvalStageResult> {
 	// Compute total source types in collection for coverage ratio (AC-US7-06)
 	const collectionSourceTypes = new Set<string>();
@@ -71,12 +79,20 @@ export async function evaluateSearch(
 					)
 				: true;
 
+			// Source identity matching (AC-US7-03)
+			const expectedIdentityFound = fixture.expectedSourceIdentity
+				? fixture.expectedSourceIdentity.some((id) =>
+						resultSources.some((src) => src.toLowerCase().includes(id.toLowerCase())),
+					)
+				: true;
+
 			queryResults.push({
 				query: fixture.queryText,
 				resultCount,
 				topScore,
 				expectedSourceTypeFound: expectedFound,
 				expectedSubstringFound,
+				expectedIdentityFound,
 				reciprocalRank: rr,
 			});
 		} catch {
@@ -95,6 +111,7 @@ export async function evaluateSearch(
 			const tResult = await trace(fixture.queryText, embedder, vectorIndex, segments, {
 				mode: "analytical",
 				signal,
+				overlayEdges: overlayEdges.length > 0 ? overlayEdges : undefined,
 			});
 
 			totalHops += tResult.stats.totalHops;
@@ -111,6 +128,11 @@ export async function evaluateSearch(
 				}
 			}
 
+			// Evidence quality check per fixture (AC-US7-04)
+			const hasTraceEvidence = tResult.hops.some(
+				(hop) => hop.connection.method === "edge" && hop.connection.evidence,
+			);
+
 			traceResults.push({
 				query: fixture.queryText,
 				totalHops: tResult.stats.totalHops,
@@ -118,6 +140,8 @@ export async function evaluateSearch(
 				semanticHops: tResult.stats.semanticHops,
 				sourceTypesReached: tResult.stats.sourceTypes.length,
 				insightCount: tResult.stats.insightCount,
+				hasTraceEvidence,
+				requireTraceEvidence: fixture.requireTraceEvidence ?? false,
 			});
 		} catch {
 			traceResults.push({
@@ -179,6 +203,32 @@ export async function evaluateSearch(
 			actual: Math.round(provenanceQualityRate * 100),
 			expected: ">= 50%",
 			detail: `Only ${Math.round(provenanceQualityRate * 100)}% of edge hops have evidence + edgeType`,
+		});
+	}
+
+	// Source identity check
+	const identityMissCount = (queryResults as Array<Record<string, unknown>>).filter(
+		(qr) => qr.expectedIdentityFound === false,
+	).length;
+	if (identityMissCount > 0) {
+		checks.push({
+			name: "query:identity-miss",
+			passed: false,
+			actual: identityMissCount,
+			detail: `${identityMissCount} queries failed source identity matching`,
+		});
+	}
+
+	// Evidence requirement check
+	const evidenceMissCount = (traceResults as Array<Record<string, unknown>>).filter(
+		(tr) => tr.requireTraceEvidence === true && tr.hasTraceEvidence === false,
+	).length;
+	if (evidenceMissCount > 0) {
+		checks.push({
+			name: "trace:evidence-miss",
+			passed: false,
+			actual: evidenceMissCount,
+			detail: `${evidenceMissCount} queries required trace evidence but had none`,
 		});
 	}
 

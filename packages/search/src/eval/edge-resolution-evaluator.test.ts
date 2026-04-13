@@ -275,6 +275,50 @@ describe("evaluateEdgeResolution", () => {
 		});
 	});
 
+	it("reports per-source-type resolution breakdown", async () => {
+		const segments = [
+			makeSegment(
+				[
+					{ id: "c1", source: "owner/repo#1", sourceType: "github-issue" },
+					{ id: "c2", source: "owner/repo#2", sourceType: "github-pr" },
+					{ id: "c3", source: "#general", sourceType: "slack-message" },
+				],
+				[
+					// github-issue edges: 1 resolved, 1 unresolved
+					{ sourceId: "c1", targetId: "owner/repo#2", type: "references" }, // resolves
+					{ sourceId: "c1", targetId: "nonexistent/repo#99", type: "closes" }, // unresolved
+					// github-pr edges: 1 resolved
+					{ sourceId: "c2", targetId: "c1", type: "references" }, // resolves (direct ID)
+					// slack-message edges: 0 resolved, 1 unresolved
+					{ sourceId: "c3", targetId: "missing/thing#5", type: "references" }, // unresolved
+				],
+			),
+		];
+
+		const result = await evaluateEdgeResolution(segments);
+		const breakdown = result.metrics.perSourceTypeBreakdown as Record<
+			string,
+			{ total: number; resolved: number; resolutionRate: number }
+		>;
+
+		expect(breakdown).toBeDefined();
+		expect(breakdown["github-issue"]).toEqual({
+			total: 2,
+			resolved: 1,
+			resolutionRate: 0.5,
+		});
+		expect(breakdown["github-pr"]).toEqual({
+			total: 1,
+			resolved: 1,
+			resolutionRate: 1,
+		});
+		expect(breakdown["slack-message"]).toEqual({
+			total: 1,
+			resolved: 0,
+			resolutionRate: 0,
+		});
+	});
+
 	it("resolves edges when source uses GitHub URL format", async () => {
 		const segments = [
 			makeSegment(

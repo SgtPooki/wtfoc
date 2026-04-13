@@ -37,6 +37,8 @@ function stageKeyMetrics(stage: EvalStageResult): string {
 			return `coverage=${fmtPct(m.signalCoverage)}, scored=${m.chunksWithSignal}/${m.totalChunks}`;
 		case "search":
 			return `MRR=${fmtNum(m.meanReciprocalRank)}, edge-hop=${fmtPct(m.edgeHopRatio)}, provenance=${fmtPct(m.provenanceQualityRate)}`;
+		case "quality-queries":
+			return `pass-rate=${fmtPct(m.passRate)}, passed=${m.passCount}/${m.totalQueries}`;
 		default:
 			return stage.summary;
 	}
@@ -85,6 +87,23 @@ export function formatDogfoodReport(report: DogfoodReport): string {
 		const metrics = skipped ? stage.summary : stageKeyMetrics(stage);
 
 		lines.push(`  ${stageLabel} ${verdictLabel} ${timeLabel} ${DIM}${metrics}${RESET}`);
+	}
+
+	// Per-source-type breakdown for edge-resolution stage
+	const resolutionStage = report.stages.find((s) => s.stage === "edge-resolution");
+	if (resolutionStage) {
+		const breakdown = resolutionStage.metrics.perSourceTypeBreakdown as
+			| Record<string, { total: number; resolved: number; resolutionRate: number }>
+			| undefined;
+		if (breakdown && Object.keys(breakdown).length > 0) {
+			lines.push("");
+			lines.push(`  ${BOLD}Edge resolution by source type${RESET}`);
+			const sorted = Object.entries(breakdown).sort((a, b) => b[1].total - a[1].total);
+			for (const [st, b] of sorted) {
+				const rate = fmtPct(b.resolutionRate);
+				lines.push(`    ${st.padEnd(20)} ${String(b.resolved).padStart(4)}/${String(b.total).padStart(4)}  ${rate}`);
+			}
+		}
 	}
 
 	lines.push("");

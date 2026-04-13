@@ -1,17 +1,66 @@
-import type { EvalCheck, EvalStageResult, Segment } from "@wtfoc/common";
+import type { EvalCheck, EvalStageResult, Segment, ThemeSnapshot } from "@wtfoc/common";
 import { GreedyClusterer } from "../clustering/greedy-clusterer.js";
+
+interface ManifestWithThemes {
+	themes?: ThemeSnapshot;
+}
+
+/**
+ * Validate that a ThemeSnapshot is well-formed.
+ */
+function isValidThemeSnapshot(themes: ThemeSnapshot): boolean {
+	return (
+		typeof themes.threshold === "number" &&
+		Array.isArray(themes.clusters) &&
+		themes.clusters.length > 0 &&
+		typeof themes.computedAt === "string" &&
+		typeof themes.totalProcessed === "number" &&
+		themes.totalProcessed > 0
+	);
+}
 
 /**
  * Evaluate themes/clustering quality: cluster metrics, source-type diversity.
+ *
+ * When a manifest with persisted themes is provided, validates those first
+ * before recomputing as a diagnostic comparison.
  */
 export async function evaluateThemes(
 	segments: Segment[],
 	_signal?: AbortSignal,
+	manifest?: ManifestWithThemes,
 ): Promise<EvalStageResult> {
 	const startedAt = new Date().toISOString();
 	const t0 = performance.now();
 
 	const checks: EvalCheck[] = [];
+
+	// Validate persisted themes if manifest provided
+	let persistedThemesValid = false;
+	let persistedClusterCount: number | undefined;
+	if (manifest?.themes) {
+		persistedThemesValid = isValidThemeSnapshot(manifest.themes);
+		persistedClusterCount = manifest.themes.clusters.length;
+		if (!persistedThemesValid) {
+			checks.push({
+				name: "themes:persisted-invalid",
+				passed: false,
+				actual: JSON.stringify({
+					clusters: manifest.themes.clusters.length,
+					totalProcessed: manifest.themes.totalProcessed,
+				}),
+				detail: "Persisted themes exist but are malformed (empty clusters or missing fields)",
+			});
+		}
+	} else if (manifest) {
+		// Manifest provided but no themes field
+		checks.push({
+			name: "themes:no-persisted",
+			passed: false,
+			actual: "missing",
+			detail: "manifest.themes is missing — run the themes command first",
+		});
+	}
 
 	// Flatten chunks with embeddings
 	const chunks = segments.flatMap((s) => s.chunks);
@@ -23,8 +72,8 @@ export async function evaluateThemes(
 			durationMs: Math.round(performance.now() - t0),
 			verdict: "pass",
 			summary: "No chunks to cluster",
-			metrics: { clusterCount: 0, noiseCount: 0 },
-			checks: [],
+			metrics: { persistedThemesValid, clusterCount: 0, noiseCount: 0 },
+			checks,
 		};
 	}
 
@@ -37,8 +86,8 @@ export async function evaluateThemes(
 			durationMs: Math.round(performance.now() - t0),
 			verdict: "warn",
 			summary: "No chunks with embeddings to cluster",
-			metrics: { clusterCount: 0, noiseCount: 0 },
-			checks: [],
+			metrics: { persistedThemesValid, clusterCount: 0, noiseCount: 0 },
+			checks,
 		};
 	}
 	const clusterRequest = {
@@ -98,6 +147,9 @@ export async function evaluateThemes(
 		verdict,
 		summary: `${clusterCount} clusters, ${noiseCount} noise chunks, mean diversity ${meanDiversity.toFixed(1)}`,
 		metrics: {
+			persistedThemesValid,
+			...(persistedClusterCount !== undefined ? { persistedClusterCount } : {}),
+			recomputedClusterCount: clusterCount,
 			clusterCount,
 			noiseCount,
 			clusterSizes: { min: minSize, max: maxSize, mean: meanSize },

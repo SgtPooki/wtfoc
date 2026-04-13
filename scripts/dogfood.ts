@@ -18,6 +18,7 @@ import {
 import { evaluateIngest, evaluateEdgeExtraction, evaluateSignals, readCatalog, catalogFilePath, loadAllOverlayEdges } from "@wtfoc/ingest";
 import {
 	evaluateEdgeResolution,
+	evaluateQualityQueries,
 	evaluateThemes,
 	evaluateSearch,
 	OpenAIEmbedder,
@@ -34,6 +35,7 @@ const VALID_STAGES = [
 	"themes",
 	"signals",
 	"search",
+	"quality-queries",
 ] as const;
 type StageName = (typeof VALID_STAGES)[number];
 
@@ -46,6 +48,7 @@ const STAGE_ID: Record<StageName, string> = {
 	themes: "themes",
 	signals: "signals",
 	search: "search",
+	"quality-queries": "quality-queries",
 };
 
 const { values } = parseArgs({
@@ -138,7 +141,7 @@ async function main() {
 	const stageResults: EvalStageResult[] = [];
 
 	for (const stage of stagesToRun) {
-		if (skipLlm && (stage === "edges" || stage === "search")) {
+		if (skipLlm && (stage === "edges" || stage === "search" || stage === "quality-queries")) {
 			stageResults.push({
 				stage: STAGE_ID[stage],
 				startedAt: new Date().toISOString(),
@@ -204,7 +207,7 @@ async function main() {
 				}
 
 				case "themes":
-					result = await evaluateThemes(segments);
+					result = await evaluateThemes(segments, undefined, head.manifest);
 					break;
 
 				case "signals":
@@ -253,7 +256,61 @@ async function main() {
 								await vectorIndex.add(entries);
 							}
 						}
-						result = await evaluateSearch(embedder, vectorIndex, segments);
+						// Load overlay edges for search — same pattern as resolution stage
+					const searchManifestDir =
+						(store.manifests as { dir?: string }).dir ??
+						`${process.env.HOME ?? "."}.wtfoc/projects`;
+					const searchOverlayEdges = await loadAllOverlayEdges(searchManifestDir, values.collection!);
+					result = await evaluateSearch(embedder, vectorIndex, segments, undefined, searchOverlayEdges);
+					}
+					break;
+				}
+
+				case "quality-queries": {
+					if (!values["embedder-url"] || !values["embedder-model"]) {
+						result = {
+							stage: STAGE_ID[stage],
+							startedAt: new Date().toISOString(),
+							durationMs: 0,
+							verdict: "pass",
+							summary: "skipped: no embedder configured (requires --embedder-url and --embedder-model)",
+							metrics: {},
+							checks: [],
+						};
+					} else {
+						const embedder = new OpenAIEmbedder({
+							apiKey: values["embedder-key"] || values["extractor-key"] || "no-key",
+							baseUrl: values["embedder-url"],
+							model: values["embedder-model"],
+						});
+						const vectorIndex = new InMemoryVectorIndex();
+						for (const seg of segments) {
+							const entries = seg.chunks
+								.filter((c: { embedding?: number[] }) => c.embedding && c.embedding.length > 0)
+								.map((c: { id: string; storageId: string; content: string; sourceType: string; source: string; sourceUrl?: string; embedding: number[]; metadata?: Record<string, string>; signalScores?: Record<string, number> }) => ({
+									id: c.id,
+									vector: new Float32Array(c.embedding),
+									storageId: c.storageId || c.id,
+									metadata: {
+										sourceType: c.sourceType,
+										source: c.source,
+										sourceUrl: c.sourceUrl ?? "",
+										content: c.content,
+										...(c.metadata ?? {}),
+										...(c.signalScores && Object.keys(c.signalScores).length > 0
+											? { signalScores: JSON.stringify(c.signalScores) }
+											: {}),
+									},
+								}));
+							if (entries.length > 0) {
+								await vectorIndex.add(entries);
+							}
+						}
+						const qqManifestDir =
+							(store.manifests as { dir?: string }).dir ??
+							`${process.env.HOME ?? "."}.wtfoc/projects`;
+						const qqOverlayEdges = await loadAllOverlayEdges(qqManifestDir, values.collection!);
+						result = await evaluateQualityQueries(embedder, vectorIndex, segments, undefined, qqOverlayEdges);
 					}
 					break;
 				}

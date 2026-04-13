@@ -10,6 +10,7 @@ export type { TransformersEmbedderOptions } from "./embedders/transformers.js";
 export { TransformersEmbedder } from "./embedders/transformers.js";
 // Eval evaluators
 export { evaluateEdgeResolution } from "./eval/edge-resolution-evaluator.js";
+export { evaluateQualityQueries } from "./eval/quality-queries-evaluator.js";
 export { evaluateSearch } from "./eval/search-evaluator.js";
 export { evaluateThemes } from "./eval/themes-evaluator.js";
 export type { VectorBackend, VectorIndexConfig } from "./index/factory.js";

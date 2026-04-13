@@ -122,6 +122,53 @@ describe("evaluateSearch", () => {
 		expect(result.metrics.provenanceQualityRate).toBe(0.5);
 	});
 
+	it("passes overlay edges to trace for edge-hop resolution", async () => {
+		mockTrace.mockClear();
+		mockQuery.mockResolvedValue(makeQueryResult([]));
+		mockTrace.mockResolvedValue(
+			makeTraceResult([{ method: "edge", evidence: "overlay edge", edgeType: "references" }]),
+		);
+
+		const overlayEdges = [
+			{
+				sourceId: "c1",
+				targetId: "c2",
+				targetType: "issue",
+				type: "references",
+				evidence: "overlay",
+				confidence: 0.7,
+			},
+		];
+
+		await evaluateSearch(mockEmbedder, mockVectorIndex, mockSegments, undefined, overlayEdges);
+
+		// Verify trace was called with overlayEdges in options
+		expect(mockTrace).toHaveBeenCalled();
+		const calls = mockTrace.mock.calls as unknown as Array<unknown[]>;
+		const lastCall = calls[calls.length - 1];
+		const traceOptions = lastCall?.[4] as { overlayEdges?: unknown } | undefined;
+		expect(traceOptions?.overlayEdges).toBe(overlayEdges);
+	});
+
+	it("reports source identity match and trace evidence per query", async () => {
+		mockQuery.mockResolvedValue(makeQueryResult([{ sourceType: "code", score: 0.9 }]));
+		mockTrace.mockResolvedValue(
+			makeTraceResult([
+				{ method: "edge", evidence: "references issue #5", edgeType: "references" },
+			]),
+		);
+
+		const result = await evaluateSearch(mockEmbedder, mockVectorIndex, mockSegments);
+		const qr = result.metrics.queryResults as Array<Record<string, unknown>>;
+		const tr = result.metrics.traceResults as Array<Record<string, unknown>>;
+
+		// All fixtures define expectedSourceIdentity, check the field exists
+		expect(qr[0]).toHaveProperty("expectedIdentityFound");
+		// All fixtures define requireTraceEvidence=true
+		expect(tr[0]).toHaveProperty("hasTraceEvidence", true);
+		expect(tr[0]).toHaveProperty("requireTraceEvidence", true);
+	});
+
 	it("verdict 'fail' when all queries return 0 results", async () => {
 		mockQuery.mockResolvedValue(makeQueryResult([]));
 		mockTrace.mockResolvedValue(makeTraceResult([]));

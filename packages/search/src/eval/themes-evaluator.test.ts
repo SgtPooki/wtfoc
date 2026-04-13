@@ -37,6 +37,89 @@ function makeSegmentWithEmbeddings(
 }
 
 describe("evaluateThemes", () => {
+	it("validates persisted themes from manifest before recomputing", async () => {
+		mockCluster.mockResolvedValue({
+			clusters: [
+				{ id: "c0", label: "Topic A", exemplarIds: ["c1"], memberIds: ["c1", "c2"], size: 2 },
+			],
+			noise: ["c3"],
+			totalProcessed: 3,
+		});
+
+		const segments = [
+			makeSegmentWithEmbeddings([
+				{ id: "c1", sourceType: "code", embedding: [1, 0, 0] },
+				{ id: "c2", sourceType: "code", embedding: [0.9, 0.1, 0] },
+				{ id: "c3", sourceType: "github-issue", embedding: [0, 1, 0] },
+			]),
+		];
+
+		const manifest = {
+			themes: {
+				threshold: 0.75,
+				clusters: [
+					{ id: "c0", label: "Topic A", exemplarIds: ["c1"], memberIds: ["c1", "c2"], size: 2 },
+				],
+				noise: ["c3"],
+				noiseCategories: [],
+				totalProcessed: 3,
+				filteredConfigChunks: 0,
+				llmLabeled: false,
+				computedAt: "2026-04-01T00:00:00Z",
+			},
+		};
+
+		const result = await evaluateThemes(segments, undefined, manifest);
+		expect(result.metrics.persistedThemesValid).toBe(true);
+		expect(result.metrics.persistedClusterCount).toBe(1);
+		expect(result.metrics.recomputedClusterCount).toBe(1);
+	});
+
+	it("reports invalid when manifest.themes is missing", async () => {
+		mockCluster.mockResolvedValue({
+			clusters: [{ id: "c0", label: "Topic A", exemplarIds: ["c1"], memberIds: ["c1"], size: 1 }],
+			noise: [],
+			totalProcessed: 1,
+		});
+
+		const segments = [
+			makeSegmentWithEmbeddings([{ id: "c1", sourceType: "code", embedding: [1, 0, 0] }]),
+		];
+
+		const result = await evaluateThemes(segments, undefined, {});
+		expect(result.metrics.persistedThemesValid).toBe(false);
+		const check = result.checks.find((c: { name: string }) => c.name === "themes:no-persisted");
+		expect(check).toBeDefined();
+	});
+
+	it("reports invalid when persisted themes have empty clusters", async () => {
+		mockCluster.mockResolvedValue({
+			clusters: [{ id: "c0", label: "Topic A", exemplarIds: ["c1"], memberIds: ["c1"], size: 1 }],
+			noise: [],
+			totalProcessed: 1,
+		});
+
+		const segments = [
+			makeSegmentWithEmbeddings([{ id: "c1", sourceType: "code", embedding: [1, 0, 0] }]),
+		];
+
+		const manifest = {
+			themes: {
+				threshold: 0.75,
+				clusters: [],
+				noise: [],
+				noiseCategories: [],
+				totalProcessed: 0,
+				filteredConfigChunks: 0,
+				llmLabeled: false,
+				computedAt: "2026-04-01T00:00:00Z",
+			},
+		};
+
+		const result = await evaluateThemes(segments, undefined, manifest);
+		expect(result.metrics.persistedThemesValid).toBe(false);
+	});
+
 	it("reports correct cluster count and sizes", async () => {
 		mockCluster.mockResolvedValue({
 			clusters: [

@@ -106,17 +106,46 @@ export async function evaluateEdgeResolution(
 		}
 	}
 
+	// Collect all edges for cross-source and per-source-type analysis
+	const allEdgesFlat: Edge[] = [];
+	for (const seg of segments) {
+		for (const edge of seg.edges) allEdgesFlat.push(edge);
+	}
+	for (const edge of overlayEdges) allEdgesFlat.push(edge);
+
+	// Per-source-type resolution breakdown
+	const perSourceTypeStats = new Map<string, { total: number; resolved: number }>();
+	for (const edge of allEdgesFlat) {
+		const st = chunkSourceType.get(edge.sourceId);
+		if (!st) continue;
+		const entry = perSourceTypeStats.get(st) ?? { total: 0, resolved: 0 };
+		entry.total++;
+		if (
+			!/^#\d+$/.test(edge.targetId) &&
+			edge.targetType !== "concept" &&
+			resolveTarget(edge.targetId, index)
+		) {
+			entry.resolved++;
+		}
+		perSourceTypeStats.set(st, entry);
+	}
+	const perSourceTypeBreakdown: Record<
+		string,
+		{ total: number; resolved: number; resolutionRate: number }
+	> = {};
+	for (const [st, entry] of perSourceTypeStats) {
+		perSourceTypeBreakdown[st] = {
+			total: entry.total,
+			resolved: entry.resolved,
+			resolutionRate: entry.total > 0 ? entry.resolved / entry.total : 0,
+		};
+	}
+
 	// Cross-source density + source-type pairs
 	let crossSourceEdges = 0;
 	const sourceTypePairs: Record<string, number> = {};
 
-	const allEdgesForCrossSource: Edge[] = [];
-	for (const seg of segments) {
-		for (const edge of seg.edges) allEdgesForCrossSource.push(edge);
-	}
-	for (const edge of overlayEdges) allEdgesForCrossSource.push(edge);
-
-	for (const edge of allEdgesForCrossSource) {
+	for (const edge of allEdgesFlat) {
 		if (/^#\d+$/.test(edge.targetId)) continue; // skip bare refs
 
 		const resolvedChunkId = resolveTarget(edge.targetId, index);
@@ -179,6 +208,7 @@ export async function evaluateEdgeResolution(
 			bareRefRate,
 			crossSourceEdgeDensity,
 			sourceTypePairs,
+			perSourceTypeBreakdown,
 			topUnresolvedRepos,
 		},
 		checks,
