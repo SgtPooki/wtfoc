@@ -1,16 +1,21 @@
 #!/usr/bin/env node
 /**
  * Minimal OpenAI-compatible proxy that reads Claude Code's OAuth token
- * from ~/.claude/.credentials.json and forwards requests directly to
- * the Anthropic API. No subprocess spawning — just HTTP proxying.
+ * from ~/.claude/.credentials.json (or the macOS keychain as a fallback)
+ * and forwards requests directly to the Anthropic API. No subprocess
+ * spawning for requests — just HTTP proxying.
  *
  * Usage: node scripts/claude-direct-proxy.mjs [--port 4523]
  */
 
+import { execFile } from "node:child_process";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
+import { homedir, platform } from "node:os";
 import { join } from "node:path";
-import { homedir } from "node:os";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 const PORT = (() => {
 	const idx = process.argv.indexOf("--port");
@@ -29,6 +34,64 @@ const CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 
 let cachedToken = null;
 let tokenExpiresAt = 0;
+/** Remembers which credential source worked so we write refreshed tokens back to the same place. */
+let credentialSource = null; // "file" | "keychain"
+
+/**
+ * Read raw credentials JSON, preferring the on-disk file, falling back to
+ * the macOS keychain ("Claude Code-credentials" generic password). Sets
+ * `credentialSource` so `refreshToken()` can persist back to the same store.
+ */
+async function readCredentials() {
+	try {
+		const text = await readFile(CREDENTIALS_PATH, "utf-8");
+		credentialSource = "file";
+		return JSON.parse(text);
+	} catch (err) {
+		if (err?.code !== "ENOENT") throw err;
+	}
+
+	if (platform() === "darwin") {
+		try {
+			const { stdout } = await execFileAsync("security", [
+				"find-generic-password",
+				"-s",
+				"Claude Code-credentials",
+				"-w",
+			]);
+			credentialSource = "keychain";
+			return JSON.parse(stdout.trim());
+		} catch (err) {
+			throw new Error(
+				`No credentials in ${CREDENTIALS_PATH} and macOS keychain lookup failed: ${err.message}`,
+			);
+		}
+	}
+
+	throw new Error(`No credentials file at ${CREDENTIALS_PATH} (and no keychain on this platform)`);
+}
+
+/**
+ * Persist refreshed credentials back to whichever source we loaded from.
+ * Keeps keychain-backed installations keychain-only (no tokens on disk).
+ */
+async function writeCredentials(creds) {
+	if (credentialSource === "keychain" && platform() === "darwin") {
+		await execFileAsync("security", [
+			"add-generic-password",
+			"-U", // update if exists
+			"-s",
+			"Claude Code-credentials",
+			"-a",
+			process.env.USER ?? "",
+			"-w",
+			JSON.stringify(creds),
+		]);
+		return;
+	}
+	const { writeFile } = await import("node:fs/promises");
+	await writeFile(CREDENTIALS_PATH, JSON.stringify(creds, null, 2));
+}
 
 async function getToken() {
 	// Return cached if still valid (with 5 min buffer)
@@ -36,9 +99,12 @@ async function getToken() {
 		return cachedToken;
 	}
 
-	const creds = JSON.parse(await readFile(CREDENTIALS_PATH, "utf-8"));
+	const creds = await readCredentials();
 	const oauth = creds.claudeAiOauth;
-	if (!oauth?.accessToken) throw new Error("No OAuth token found in ~/.claude/.credentials.json");
+	if (!oauth?.accessToken)
+		throw new Error(
+			`No OAuth token found (source=${credentialSource ?? "unknown"}). Run any 'claude' command to refresh.`,
+		);
 
 	// If token is expired, try to refresh
 	if (Date.now() >= oauth.expiresAt) {
@@ -73,14 +139,13 @@ async function refreshToken(refreshToken) {
 			return null;
 		}
 		const data = await res.json();
-		// Write refreshed tokens back to credentials file
-		const creds = JSON.parse(await readFile(CREDENTIALS_PATH, "utf-8"));
+		// Write refreshed tokens back to the same source we loaded from (file or keychain).
+		const creds = await readCredentials();
 		creds.claudeAiOauth.accessToken = data.access_token;
 		creds.claudeAiOauth.refreshToken = data.refresh_token ?? creds.claudeAiOauth.refreshToken;
 		creds.claudeAiOauth.expiresAt = Date.now() + (data.expires_in ?? 28800) * 1000;
-		const { writeFile } = await import("node:fs/promises");
-		await writeFile(CREDENTIALS_PATH, JSON.stringify(creds, null, 2));
-		console.error("[proxy] Token refreshed successfully");
+		await writeCredentials(creds);
+		console.error(`[proxy] Token refreshed successfully (source=${credentialSource})`);
 		return {
 			accessToken: data.access_token,
 			expiresAt: creds.claudeAiOauth.expiresAt,
