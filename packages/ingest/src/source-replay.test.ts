@@ -118,3 +118,66 @@ describe("replayFromArchive", () => {
 		expect(storage.download).not.toHaveBeenCalled();
 	});
 });
+
+describe("replayRawDocuments", () => {
+	it("yields { entry, content } pairs preserving full entry metadata", async () => {
+		const { replayRawDocuments } = await import("./source-replay.js");
+		const content = "# Title\n\nbody";
+		const storage = {
+			upload: vi.fn(),
+			download: vi.fn().mockResolvedValue(new TextEncoder().encode(content)),
+		};
+
+		const entries = [
+			makeEntry({
+				storageId: "blob-1",
+				documentId: "owner/repo#42",
+				documentVersionId: "2024-01-01",
+				sourceType: "github-issue",
+				sourceUrl: "https://github.com/owner/repo/issues/42",
+				metadata: { number: "42", labels: "bug", author: "alice" },
+			}),
+		];
+
+		const docs = [];
+		for await (const doc of replayRawDocuments(entries, storage)) {
+			docs.push(doc);
+		}
+
+		expect(docs).toHaveLength(1);
+		expect(docs[0]?.entry.documentId).toBe("owner/repo#42");
+		expect(docs[0]?.entry.metadata).toEqual({
+			number: "42",
+			labels: "bug",
+			author: "alice",
+		});
+		expect(docs[0]?.content).toBe(content);
+	});
+
+	it("skips failed downloads and continues yielding others", async () => {
+		const { replayRawDocuments } = await import("./source-replay.js");
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const storage = {
+			upload: vi.fn(),
+			download: vi.fn().mockImplementation(async (id: string) => {
+				if (id === "blob-bad") throw new Error("blob not found");
+				return new TextEncoder().encode(`content-${id}`);
+			}),
+		};
+
+		const entries = [
+			makeEntry({ storageId: "blob-1", documentId: "a" }),
+			makeEntry({ storageId: "blob-bad", documentId: "b" }),
+			makeEntry({ storageId: "blob-2", documentId: "c" }),
+		];
+
+		const docs = [];
+		for await (const doc of replayRawDocuments(entries, storage)) {
+			docs.push(doc);
+		}
+
+		expect(docs).toHaveLength(2);
+		expect(docs.map((d) => d.entry.documentId)).toEqual(["a", "c"]);
+		warnSpy.mockRestore();
+	});
+});

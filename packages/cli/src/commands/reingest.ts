@@ -1,7 +1,8 @@
-import type { Segment } from "@wtfoc/common";
+import type { ChunkerDocument, Segment } from "@wtfoc/common";
 import { type Chunk, type CollectionHead, CURRENT_SCHEMA_VERSION } from "@wtfoc/common";
 import { createIgnoreFilter } from "@wtfoc/config";
 import {
+	archiveIndexPath,
 	buildSegment,
 	CodeEdgeExtractor,
 	CompositeEdgeExtractor,
@@ -11,9 +12,13 @@ import {
 	HeuristicEdgeExtractor,
 	mergeEdges,
 	RegexEdgeExtractor,
+	readArchiveIndex,
 	rechunkOversized,
+	replayRawDocuments,
+	selectChunker,
 	storedChunkToSegmentChunk,
 	TreeSitterEdgeExtractor,
+	writeArchiveIndex,
 } from "@wtfoc/ingest";
 import { generateCollectionId } from "@wtfoc/store";
 import type { Command } from "commander";
@@ -22,6 +27,7 @@ import {
 	createEmbedder,
 	type EmbedderOpts,
 	getFormat,
+	getManifestDir,
 	getStore,
 	resolveTreeSitterUrl,
 	withEmbedderOptions,
@@ -52,6 +58,14 @@ export function registerReingestCommand(program: Command): void {
 					"--max-chunk-chars <number>",
 					`Max chars per chunk when rechunking (default: ${DEFAULT_MAX_CHUNK_CHARS})`,
 				)
+				.option(
+					"--replay-raw",
+					"Replay archived raw source through current chunkers (applies new chunker logic like GithubIssueChunker identity headers and AstHeuristicChunker structural overlap). Falls back to scanning source segments to backfill missing adapter metadata (labels/author/state).",
+				)
+				.option(
+					"--skip-missing-raw",
+					"When --replay-raw: warn and skip docs that lack a raw archive entry instead of erroring",
+				)
 				.option("--ignore <pattern...>", "Additional gitignore-style patterns to exclude"),
 		),
 	).action(
@@ -61,6 +75,8 @@ export function registerReingestCommand(program: Command): void {
 				target?: string;
 				batchSize: string;
 				rechunk?: boolean;
+				replayRaw?: boolean;
+				skipMissingRaw?: boolean;
 				maxChunkChars?: string;
 				ignore?: string[];
 				treeSitterUrl?: string;
@@ -97,30 +113,153 @@ export function registerReingestCommand(program: Command): void {
 				console.error(`   Model: ${modelName} (${embedder.dimensions}d)`);
 			}
 
-			// Phase 1: Read all chunks from existing segments, apply ignore filter
+			// Phase 1: Build chunk stream. Two modes:
+			//   Default: read already-chunked segments from storage.
+			//   --replay-raw: replay archived raw source through current chunkers
+			//     (applies new chunker logic like GithubIssueChunker identity headers).
 			const allChunks: Chunk[] = [];
 			let filteredCount = 0;
+			const maxCharsForChunking = opts.maxChunkChars
+				? Number.parseInt(opts.maxChunkChars, 10)
+				: (embedder.maxInputChars ?? DEFAULT_MAX_CHUNK_CHARS);
 
-			for (const segSummary of head.manifest.segments) {
-				const segBytes = await store.storage.download(segSummary.id);
-				const segment = JSON.parse(new TextDecoder().decode(segBytes)) as Segment;
+			if (opts.replayRaw) {
+				// Load archive index — raw source is required for replay
+				const manifestDir = getManifestDir(store);
+				const archivePath = archiveIndexPath(manifestDir, opts.collection);
+				const archiveIndex = await readArchiveIndex(archivePath);
+				if (!archiveIndex) {
+					console.error(
+						`Error: no raw source archive found at ${archivePath} — cannot --replay-raw. Re-ingest from source first.`,
+					);
+					process.exit(1);
+				}
 
-				for (const c of segment.chunks) {
-					// Apply ignore filter to chunks that have file paths
-					const filePath = c.metadata.filePath;
+				// Backfill: scan source segments once to (1) collect all known documentIds
+				// and (2) build a documentId → metadata map so entries archived before
+				// the metadata schema existed can still carry full adapter metadata
+				// (labels, author, state) into the replayed ChunkerDocument.
+				const metadataBackfill = new Map<string, Record<string, string>>();
+				const docIdsInSegments = new Set<string>();
+				for (const segSummary of head.manifest.segments) {
+					const segBytes = await store.storage.download(segSummary.id);
+					const segment = JSON.parse(new TextDecoder().decode(segBytes)) as Segment;
+					for (const c of segment.chunks) {
+						if (!c.documentId) continue;
+						docIdsInSegments.add(c.documentId);
+						if (metadataBackfill.has(c.documentId)) continue;
+						const pruned: Record<string, string> = {};
+						for (const [k, v] of Object.entries(c.metadata)) {
+							if (k === "filePath" || k === "language" || k === "repo") continue;
+							if (v === undefined || v === null) continue;
+							pruned[k] = String(v);
+						}
+						if (Object.keys(pruned).length > 0) metadataBackfill.set(c.documentId, pruned);
+					}
+				}
+
+				const allEntries = Object.values(archiveIndex.entries);
+				if (format === "human") {
+					console.error(
+						`   --replay-raw: ${allEntries.length} raw source entries, ${metadataBackfill.size} documents with metadata backfill available`,
+					);
+				}
+
+				let indexDirty = false;
+				let replayedCount = 0;
+
+				for await (const { entry, content } of replayRawDocuments(allEntries, store.storage)) {
+					// Apply ignore filter based on archived filePath, if any.
+					const filePath = deriveFilePath(entry.documentId, entry.sourceType);
 					if (filePath && !ignoreFilter(filePath)) {
 						filteredCount++;
 						continue;
 					}
 
-					allChunks.push(storedChunkToSegmentChunk(c).chunk);
-				}
-			}
+					// Resolve metadata: entry.metadata (fresh ingests) → segment backfill (older collections)
+					let metadata = entry.metadata;
+					if (!metadata) {
+						const backfilled = metadataBackfill.get(entry.documentId);
+						if (backfilled) {
+							metadata = backfilled;
+							// Write-through: persist recovered metadata so future --replay-raw runs are faster.
+							entry.metadata = backfilled;
+							indexDirty = true;
+						}
+					}
 
-			if (format === "human") {
-				console.error(
-					`   Loaded ${allChunks.length} chunks (${filteredCount} filtered by ignore patterns)`,
-				);
+					const doc: ChunkerDocument = {
+						documentId: entry.documentId,
+						documentVersionId: entry.documentVersionId,
+						content,
+						sourceType: entry.sourceType,
+						source: entry.documentId,
+						sourceUrl: entry.sourceUrl,
+						metadata: metadata ?? {},
+					};
+
+					const chunker = selectChunker(entry.sourceType, filePath);
+					const chunkOutputs = chunker.chunk(doc, { maxChunkChars: maxCharsForChunking });
+					for (const co of chunkOutputs) {
+						allChunks.push(co as Chunk);
+					}
+					replayedCount++;
+				}
+
+				// Detect docs that exist in segments but have no raw archive entry.
+				const archivedDocIds = new Set(allEntries.map((e) => e.documentId));
+				const missingFromArchive = [...docIdsInSegments].filter((d) => !archivedDocIds.has(d));
+				const missingRawDocs = missingFromArchive.length;
+
+				if (missingRawDocs > 0) {
+					if (!opts.skipMissingRaw) {
+						console.error(
+							`Error: ${missingRawDocs} document(s) have no raw archive entry (can't --replay-raw). ` +
+								`Re-ingest from source, or pass --skip-missing-raw to warn and skip.`,
+						);
+						console.error(`   First missing: ${missingFromArchive.slice(0, 3).join(", ")}`);
+						process.exit(1);
+					}
+					console.error(
+						`⚠️  ${missingRawDocs} document(s) lack raw archive entries — skipped (--skip-missing-raw).`,
+					);
+				}
+
+				// Write-through: persist any backfilled metadata we recovered.
+				if (indexDirty) {
+					await writeArchiveIndex(archivePath, archiveIndex);
+					if (format === "human") {
+						console.error("   ✍️  backfilled adapter metadata written to archive index");
+					}
+				}
+
+				if (format === "human") {
+					console.error(
+						`   Replayed ${replayedCount} raw documents → ${allChunks.length} chunks (${filteredCount} filtered by ignore)`,
+					);
+				}
+			} else {
+				// Default path: read stored chunks from segments
+				for (const segSummary of head.manifest.segments) {
+					const segBytes = await store.storage.download(segSummary.id);
+					const segment = JSON.parse(new TextDecoder().decode(segBytes)) as Segment;
+
+					for (const c of segment.chunks) {
+						const filePath = c.metadata.filePath;
+						if (filePath && !ignoreFilter(filePath)) {
+							filteredCount++;
+							continue;
+						}
+
+						allChunks.push(storedChunkToSegmentChunk(c).chunk);
+					}
+				}
+
+				if (format === "human") {
+					console.error(
+						`   Loaded ${allChunks.length} chunks (${filteredCount} filtered by ignore patterns)`,
+					);
+				}
 			}
 
 			if (allChunks.length === 0) {
@@ -273,4 +412,24 @@ export function registerReingestCommand(program: Command): void {
 			}
 		},
 	);
+}
+
+/**
+ * Derive a filePath from a raw source documentId for ignore-filter and
+ * chunker-selection purposes. Repo docs use `owner/repo/path/to/file.ts`,
+ * so we strip the first two segments. GitHub issue/PR/discussion ids
+ * (`owner/repo#N`, `owner/repo/discussions/N`) don't have a file path.
+ */
+function deriveFilePath(documentId: string, sourceType: string): string | undefined {
+	if (
+		sourceType === "github-issue" ||
+		sourceType === "github-pr" ||
+		sourceType === "github-discussion" ||
+		sourceType === "github-pr-comment"
+	) {
+		return undefined;
+	}
+	const parts = documentId.split("/");
+	if (parts.length <= 2) return undefined;
+	return parts.slice(2).join("/");
 }

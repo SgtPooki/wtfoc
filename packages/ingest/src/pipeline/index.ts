@@ -11,7 +11,7 @@ export { orchestrate } from "./orchestrate.js";
 export type { CursorDecision, CursorDecisionInput } from "./persist-cursor.js";
 export { decideCursorValue } from "./persist-cursor.js";
 export type { ProcessStreamDeps } from "./process-stream.js";
-export { processStream, shouldIncludeChunk } from "./process-stream.js";
+export { pickArchiveMetadata, processStream, shouldIncludeChunk } from "./process-stream.js";
 export type {
 	CreateEdgeExtractorFn,
 	DocumentFilters,

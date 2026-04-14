@@ -13,6 +13,44 @@ function sha256Hex(content: string): string {
  *
  * Failed downloads are logged and skipped — they never abort the replay.
  */
+/**
+ * A raw source document pulled from the archive, paired with its metadata
+ * entry and decoded content. The caller owns how to turn this into a
+ * ChunkerDocument and route through `selectChunker()`.
+ */
+export interface RawSourceDocument {
+	entry: RawSourceEntry;
+	content: string;
+}
+
+/**
+ * Replay raw source documents from archive entries, yielding
+ * { entry, content } pairs. Unlike `replayFromArchive`, this does NOT
+ * synthesize a Chunk — the caller is responsible for constructing a
+ * ChunkerDocument (with full metadata from `entry.metadata`) and routing
+ * through the chunker registry. This is the primitive used by reingest
+ * --replay-raw to feed fresh chunkers on existing raw source data.
+ *
+ * Failed downloads are logged and skipped — they never abort the stream.
+ */
+export async function* replayRawDocuments(
+	entries: RawSourceEntry[],
+	storage: StorageBackend,
+): AsyncIterable<RawSourceDocument> {
+	for (const entry of entries) {
+		try {
+			const bytes = await storage.download(entry.storageId);
+			const content = new TextDecoder().decode(bytes);
+			yield { entry, content };
+		} catch (err: unknown) {
+			const message = err instanceof Error ? err.message : String(err);
+			console.warn(
+				`[wtfoc] Warning: failed to download raw source blob ${entry.storageId} for ${entry.documentId}: ${message}`,
+			);
+		}
+	}
+}
+
 export async function* replayFromArchive(
 	entries: RawSourceEntry[],
 	storage: StorageBackend,

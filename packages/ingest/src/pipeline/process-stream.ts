@@ -4,6 +4,30 @@ import type { RawSourceIndex } from "../raw-source-archive.js";
 import type { DocumentFilters, LogSink, PipelineState } from "./types.js";
 
 /**
+ * Fields that are either derived (filePath, language, repo) or used internally
+ * by the archive entry itself — they don't need to be duplicated into the
+ * metadata payload.
+ */
+const ARCHIVE_METADATA_SKIP_FIELDS = new Set(["filePath", "language", "repo"]);
+
+/**
+ * Extract adapter-supplied metadata from a chunk for persisting in the raw
+ * source archive. Coerces non-string values to strings so the archive schema
+ * stays `Record<string, string>`. Returns undefined if nothing remains.
+ */
+export function pickArchiveMetadata(
+	chunkMetadata: Record<string, string | number | boolean>,
+): Record<string, string> | undefined {
+	const out: Record<string, string> = {};
+	for (const [key, value] of Object.entries(chunkMetadata)) {
+		if (ARCHIVE_METADATA_SKIP_FIELDS.has(key)) continue;
+		if (value === undefined || value === null) continue;
+		out[key] = String(value);
+	}
+	return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/**
  * Pure filter: determines whether a chunk passes document-level filters.
  * Extracted from ingest.ts shouldIncludeChunk closure.
  */
@@ -46,6 +70,7 @@ export interface ProcessStreamDeps {
 			sourceUrl?: string;
 			sourceKey: string;
 			filePath?: string;
+			metadata?: Record<string, string>;
 			upload: (data: Uint8Array) => Promise<string>;
 		},
 	) => Promise<void>;
@@ -85,7 +110,9 @@ export async function processStream(deps: ProcessStreamDeps): Promise<void> {
 					sourceType: rawChunk.sourceType,
 					sourceUrl: rawChunk.sourceUrl,
 					sourceKey: deps.sourceKey,
-					filePath: rawChunk.metadata.filePath,
+					filePath:
+						typeof rawChunk.metadata.filePath === "string" ? rawChunk.metadata.filePath : undefined,
+					metadata: pickArchiveMetadata(rawChunk.metadata),
 					upload: deps.uploadData,
 				},
 			);

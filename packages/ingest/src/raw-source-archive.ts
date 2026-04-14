@@ -26,6 +26,12 @@ export interface RawSourceEntry {
 	sourceUrl?: string;
 	/** Source key for cross-collection lookup (e.g. "github:owner/repo") */
 	sourceKey?: string;
+	/**
+	 * Adapter-level metadata needed to reconstruct full ChunkerDocument on replay
+	 * (e.g. GitHub issue labels/state/author/timestamps). Omitted when empty or
+	 * absent so older entries remain byte-identical after a no-op rewrite.
+	 */
+	metadata?: Record<string, string>;
 }
 
 /**
@@ -183,6 +189,11 @@ export async function archiveRawSource(
 		sourceUrl?: string;
 		sourceKey?: string;
 		filePath?: string;
+		/**
+		 * Adapter metadata to persist (labels, author, state, etc.) so that
+		 * --replay-raw can reconstruct full ChunkerDocument fidelity.
+		 */
+		metadata?: Record<string, string>;
 		upload: (data: Uint8Array) => Promise<string>;
 	},
 ): Promise<string | null> {
@@ -206,6 +217,9 @@ export async function archiveRawSource(
 	};
 	if (options.sourceKey) {
 		entry.sourceKey = options.sourceKey;
+	}
+	if (options.metadata && Object.keys(options.metadata).length > 0) {
+		entry.metadata = { ...options.metadata };
 	}
 	index.entries[key] = entry;
 

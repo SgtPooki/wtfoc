@@ -169,6 +169,7 @@ export {
 	flushBatch,
 	handleRenames,
 	orchestrate,
+	pickArchiveMetadata,
 	processStream,
 	reuseDonorSources,
 	shouldIncludeChunk,
@@ -196,7 +197,11 @@ export {
 	segmentId,
 	storedChunkToSegmentChunk,
 } from "./segment-builder.js";
-export { replayFromArchive } from "./source-replay.js";
+export {
+	type RawSourceDocument,
+	replayFromArchive,
+	replayRawDocuments,
+} from "./source-replay.js";
 export {
 	type ScanResult,
 	type SourceMatch,

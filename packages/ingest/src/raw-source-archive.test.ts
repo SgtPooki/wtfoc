@@ -107,3 +107,58 @@ describe("archiveRawSource persists sourceKey", () => {
 		expect(entry?.sourceKey).toBeUndefined();
 	});
 });
+
+describe("archiveRawSource persists adapter metadata", () => {
+	it("stores metadata in the archive entry when provided", async () => {
+		const { archiveRawSource, createEmptyArchiveIndex } = await import("./raw-source-archive.js");
+
+		const index = createEmptyArchiveIndex("test-coll");
+		await archiveRawSource(index, "owner/repo#42", "2024-01-01", "# Title\n\nbody", {
+			sourceType: "github-issue",
+			metadata: {
+				number: "42",
+				labels: "bug,priority:high",
+				author: "alice",
+				state: "open",
+			},
+			upload: async () => "stored-id-3",
+		});
+
+		const entry = index.entries["owner/repo#42@2024-01-01"];
+		expect(entry).toBeDefined();
+		expect(entry?.metadata).toEqual({
+			number: "42",
+			labels: "bug,priority:high",
+			author: "alice",
+			state: "open",
+		});
+	});
+
+	it("omits metadata from entry when not provided", async () => {
+		const { archiveRawSource, createEmptyArchiveIndex } = await import("./raw-source-archive.js");
+
+		const index = createEmptyArchiveIndex("test-coll");
+		await archiveRawSource(index, "owner/repo/file.ts", "v1", "file content", {
+			sourceType: "github",
+			upload: async () => "stored-id-4",
+		});
+
+		const entry = index.entries["owner/repo/file.ts@v1"];
+		expect(entry).toBeDefined();
+		expect(entry?.metadata).toBeUndefined();
+	});
+
+	it("ignores empty metadata object (treats as absent)", async () => {
+		const { archiveRawSource, createEmptyArchiveIndex } = await import("./raw-source-archive.js");
+
+		const index = createEmptyArchiveIndex("test-coll");
+		await archiveRawSource(index, "owner/repo/file.ts", "v1", "file content", {
+			sourceType: "github",
+			metadata: {},
+			upload: async () => "stored-id-5",
+		});
+
+		const entry = index.entries["owner/repo/file.ts@v1"];
+		expect(entry?.metadata).toBeUndefined();
+	});
+});
