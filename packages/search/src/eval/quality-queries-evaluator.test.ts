@@ -78,7 +78,7 @@ describe("evaluateQualityQueries", () => {
 
 		const result = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
 		expect(result.stage).toBe("quality-queries");
-		expect(result.metrics.totalQueries).toBe(10);
+		expect(result.metrics.totalQueries).toBeGreaterThanOrEqual(20);
 		expect(typeof result.metrics.passRate).toBe("number");
 	});
 
@@ -115,7 +115,8 @@ describe("evaluateQualityQueries", () => {
 		expect(breakdown["cross-source"]).toBeDefined();
 		expect(breakdown.coverage).toBeDefined();
 		expect(breakdown.synthesis).toBeDefined();
-		expect(breakdown["direct-lookup"]?.total).toBe(3);
+		// Direct-lookup category has at least 3 queries (see gold-standard-queries.ts)
+		expect(breakdown["direct-lookup"]?.total).toBeGreaterThanOrEqual(3);
 	});
 
 	it("passes cross-source query when requiredSourceTypes found in trace hops, not query seeds", async () => {

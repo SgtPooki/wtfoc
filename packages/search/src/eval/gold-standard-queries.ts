@@ -97,6 +97,58 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 	},
 
+	{
+		id: "dl-4",
+		queryText: "How are chunks stored and indexed for vector search?",
+		category: "direct-lookup",
+		requiredSourceTypes: ["code"],
+		expectedSourceSubstrings: ["chunk", "index"],
+		minResults: 1,
+	},
+	{
+		id: "dl-5",
+		queryText: "What are the configuration options for the project?",
+		category: "direct-lookup",
+		requiredSourceTypes: ["markdown", "code"],
+		expectedSourceSubstrings: ["config"],
+		minResults: 1,
+	},
+
+	// ── Cross-source tracing ──────────────────────────────────
+	{
+		id: "cs-4",
+		queryText: "What PRs fix bugs in the chunking code and which files did they touch?",
+		category: "cross-source",
+		requiredSourceTypes: ["github-pr"],
+		minResults: 2,
+		requireEdgeHop: true,
+		requireCrossSourceHops: true,
+	},
+	{
+		id: "cs-5",
+		queryText: "Which issues discuss dependency updates and their resolution?",
+		category: "cross-source",
+		requiredSourceTypes: ["github-issue", "github-pr"],
+		minResults: 1,
+		requireEdgeHop: true,
+	},
+
+	// ── Coverage ──────────────────────────────────────────────
+	{
+		id: "cov-3",
+		queryText: "Where is test coverage documented or configured?",
+		category: "coverage",
+		requiredSourceTypes: ["markdown", "code"],
+		minResults: 1,
+	},
+	{
+		id: "cov-4",
+		queryText: "What licenses apply to the code in this collection?",
+		category: "coverage",
+		requiredSourceTypes: ["markdown"],
+		minResults: 1,
+	},
+
 	// ── Synthesis ─────────────────────────────────────────────
 	{
 		id: "syn-1",
@@ -112,5 +164,55 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "synthesis",
 		requiredSourceTypes: ["markdown"],
 		minResults: 3,
+	},
+	{
+		id: "syn-3",
+		queryText: "How do edges connect content across different sources?",
+		category: "synthesis",
+		requiredSourceTypes: ["code", "markdown"],
+		minResults: 2,
+		requireEdgeHop: true,
+		requireCrossSourceHops: true,
+	},
+	{
+		id: "syn-4",
+		queryText: "What is the release process and how are versions tagged?",
+		category: "synthesis",
+		requiredSourceTypes: ["markdown", "github-pr"],
+		minResults: 2,
+	},
+	{
+		id: "syn-5",
+		queryText: "How does the system handle errors and failures?",
+		category: "synthesis",
+		requiredSourceTypes: ["code"],
+		minResults: 2,
+	},
+
+	// ── Coverage extras ───────────────────────────────────────
+	{
+		id: "cov-5",
+		queryText: "What CI or GitHub Actions workflows exist?",
+		category: "coverage",
+		requiredSourceTypes: ["code", "markdown"],
+		minResults: 1,
+	},
+
+	// ── Direct lookup extras ──────────────────────────────────
+	{
+		id: "dl-6",
+		queryText: "What does the README describe?",
+		category: "direct-lookup",
+		requiredSourceTypes: ["markdown"],
+		expectedSourceSubstrings: ["README"],
+		minResults: 1,
+	},
+	{
+		id: "dl-7",
+		queryText: "What are the main dependencies used?",
+		category: "direct-lookup",
+		requiredSourceTypes: ["code", "markdown"],
+		expectedSourceSubstrings: ["package.json", "dependencies"],
+		minResults: 1,
 	},
 ];
