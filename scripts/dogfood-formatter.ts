@@ -38,7 +38,7 @@ function stageKeyMetrics(stage: EvalStageResult): string {
 		case "search":
 			return `MRR=${fmtNum(m.meanReciprocalRank)}, edge-hop=${fmtPct(m.edgeHopRatio)}, provenance=${fmtPct(m.provenanceQualityRate)}`;
 		case "quality-queries":
-			return `pass-rate=${fmtPct(m.passRate)}, passed=${m.passCount}/${m.totalQueries}`;
+			return `pass-rate=${fmtPct(m.passRate)} (query-only=${fmtPct(m.queryOnlyPassRate)}), passed=${m.passCount}/${m.totalQueries}`;
 		default:
 			return stage.summary;
 	}

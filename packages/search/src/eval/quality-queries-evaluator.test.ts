@@ -170,4 +170,74 @@ describe("evaluateQualityQueries", () => {
 		expect(csQuery?.crossSourceFound).toBe(false);
 		expect(csQuery?.passed).toBe(false);
 	});
+
+	describe("query-only vs trace-assisted metric split (#261)", () => {
+		it("emits separate passed and passedQueryOnly on each score", async () => {
+			mockQuery.mockResolvedValue(
+				makeQueryResult([
+					{ sourceType: "code", source: "/src/ingest/pipeline.ts", score: 0.9 },
+					{ sourceType: "code", source: "/src/ingest/chunker.ts", score: 0.8 },
+				]),
+			);
+			mockTrace.mockResolvedValue(
+				makeTraceResult([
+					{ method: "edge", sourceType: "code" },
+					{ method: "edge", sourceType: "github-issue" },
+				]),
+			);
+
+			const result = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
+			const scores = result.metrics.scores as Array<{
+				id: string;
+				passed: boolean;
+				passedQueryOnly: boolean;
+				requiredTypesFound: boolean;
+				requiredTypesFoundQueryOnly: boolean;
+			}>;
+			// Every score must have the query-only variants populated so dogfood
+			// can track retrieval regressions independently of trace rescue.
+			for (const s of scores) {
+				expect(typeof s.passedQueryOnly).toBe("boolean");
+				expect(typeof s.requiredTypesFoundQueryOnly).toBe("boolean");
+			}
+		});
+
+		it("emits aggregate queryOnlyPassRate alongside passRate", async () => {
+			mockQuery.mockResolvedValue(makeQueryResult([]));
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+
+			const result = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
+			expect(typeof result.metrics.queryOnlyPassRate).toBe("number");
+			expect(typeof result.metrics.queryOnlyPassCount).toBe("number");
+		});
+
+		it("a cross-source query that only passes via trace has passed=true but passedQueryOnly=false", async () => {
+			// query returns only github-pr; cs-1 requires github-issue AND code.
+			// Trace rescues by reaching github-issue and code via edge hops.
+			mockQuery.mockResolvedValue(
+				makeQueryResult([
+					{ sourceType: "github-pr", source: "owner/repo#10", score: 0.9 },
+					{ sourceType: "markdown", source: "docs/readme.md", score: 0.8 },
+				]),
+			);
+			mockTrace.mockResolvedValue(
+				makeTraceResult([
+					{ method: "edge", sourceType: "github-issue" },
+					{ method: "edge", sourceType: "code" },
+					{ method: "semantic", sourceType: "github-pr" },
+				]),
+			);
+
+			const result = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
+			const scores = result.metrics.scores as Array<{
+				id: string;
+				passed: boolean;
+				passedQueryOnly: boolean;
+			}>;
+			const cs = scores.find((s) => s.id === "cs-1");
+			expect(cs).toBeDefined();
+			expect(cs?.passed).toBe(true); // trace rescued it
+			expect(cs?.passedQueryOnly).toBe(false); // query alone missed required types
+		});
+	});
 });

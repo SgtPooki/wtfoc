@@ -16,8 +16,16 @@ interface QueryScore {
 	category: string;
 	queryText: string;
 	passed: boolean;
+	/**
+	 * #261 — whether the query would pass using ONLY the semantic search stage
+	 * (no trace). Lets dogfood detect retrieval regressions that are being
+	 * hidden by trace-hop rescue.
+	 */
+	passedQueryOnly: boolean;
 	resultCount: number;
 	requiredTypesFound: boolean;
+	/** #261 — requiredTypesFound computed against query results only (no trace). */
+	requiredTypesFoundQueryOnly: boolean;
 	substringFound: boolean;
 	edgeHopFound: boolean;
 	crossSourceFound: boolean;
@@ -42,6 +50,7 @@ export async function evaluateQualityQueries(
 
 	const scores: QueryScore[] = [];
 	let passCount = 0;
+	let queryOnlyPassCount = 0;
 
 	for (const gq of GOLD_STANDARD_QUERIES) {
 		signal?.throwIfAborted();
@@ -56,9 +65,12 @@ export async function evaluateQualityQueries(
 		);
 		scores.push(score);
 		if (score.passed) passCount++;
+		if (score.passedQueryOnly) queryOnlyPassCount++;
 	}
 
 	const passRate = GOLD_STANDARD_QUERIES.length > 0 ? passCount / GOLD_STANDARD_QUERIES.length : 0;
+	const queryOnlyPassRate =
+		GOLD_STANDARD_QUERIES.length > 0 ? queryOnlyPassCount / GOLD_STANDARD_QUERIES.length : 0;
 
 	// Category breakdown
 	const categories = ["direct-lookup", "cross-source", "coverage", "synthesis"] as const;
@@ -123,6 +135,10 @@ export async function evaluateQualityQueries(
 		metrics: {
 			passRate,
 			passCount,
+			// #261 — query-only metrics exposed alongside trace-assisted ones
+			// so retrieval regressions don't hide behind trace rescue.
+			queryOnlyPassRate,
+			queryOnlyPassCount,
 			totalQueries: GOLD_STANDARD_QUERIES.length,
 			categoryBreakdown,
 			scores,
@@ -142,6 +158,9 @@ async function scoreQuery(
 ): Promise<QueryScore> {
 	let resultCount = 0;
 	let requiredTypesFound = false;
+	// #261 — captured before trace rescue so we can report retrieval quality
+	// independently of the graph-assisted pass rate.
+	let requiredTypesFoundQueryOnly = false;
 	let substringFound = true; // default true if no substrings specified
 	let edgeHopFound = true; // default true if not required
 	let crossSourceFound = true; // default true if not required
@@ -157,7 +176,8 @@ async function scoreQuery(
 		resultCount = qResult.results.length;
 
 		const resultSourceTypes = new Set(qResult.results.map((r) => r.sourceType));
-		requiredTypesFound = gq.requiredSourceTypes.every((st) => resultSourceTypes.has(st));
+		requiredTypesFoundQueryOnly = gq.requiredSourceTypes.every((st) => resultSourceTypes.has(st));
+		requiredTypesFound = requiredTypesFoundQueryOnly;
 
 		if (gq.expectedSourceSubstrings) {
 			const resultSources = qResult.results.map((r) => r.source);
@@ -199,13 +219,20 @@ async function scoreQuery(
 		edgeHopFound &&
 		crossSourceFound;
 
+	// Query-only pass: same criteria EXCEPT use the pre-trace requiredTypes check
+	// and ignore edge-hop/cross-source requirements (those are inherently trace-assisted).
+	const passedQueryOnly =
+		resultCount >= gq.minResults && requiredTypesFoundQueryOnly && substringFound;
+
 	return {
 		id: gq.id,
 		category: gq.category,
 		queryText: gq.queryText,
 		passed,
+		passedQueryOnly,
 		resultCount,
 		requiredTypesFound,
+		requiredTypesFoundQueryOnly,
 		substringFound,
 		edgeHopFound,
 		crossSourceFound,
