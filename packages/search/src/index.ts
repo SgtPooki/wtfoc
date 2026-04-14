@@ -21,6 +21,8 @@ export type { QdrantVectorIndexOptions } from "./index/qdrant.js";
 export { QdrantCollectionGc, QdrantVectorIndex } from "./index/qdrant.js";
 export type { MountedCollection, MountOptions } from "./mount.js";
 export { mountCollection } from "./mount.js";
+export type { PersonaClassification, QueryPersona } from "./persona/classify-query.js";
+export { classifyQueryPersona } from "./persona/classify-query.js";
 export type { QueryOptions, QueryResult } from "./query.js";
 export { query } from "./query.js";
 export type { BgeRerankerOptions } from "./rerankers/bge.js";

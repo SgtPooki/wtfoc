@@ -4,7 +4,7 @@ import {
 	getSupersededChunkIds,
 	readCatalog,
 } from "@wtfoc/ingest";
-import { query } from "@wtfoc/search";
+import { classifyQueryPersona, query } from "@wtfoc/search";
 import type { Command } from "commander";
 import { getProjectConfig } from "../cli.js";
 import {
@@ -32,6 +32,10 @@ export function registerQueryCommand(program: Command): void {
 			.option(
 				"--exclude-types <types...>",
 				"Exclude these source types (e.g. doc-page github-pr-comment)",
+			)
+			.option(
+				"--auto-route",
+				"Auto-classify the query into a persona (technical/discussion/changes/docs/open-ended) and apply matching source-type filters. Manual --include-types / --exclude-types take precedence.",
 			),
 	).action(
 		async (
@@ -41,6 +45,7 @@ export function registerQueryCommand(program: Command): void {
 				topK: string;
 				includeTypes?: string[];
 				excludeTypes?: string[];
+				autoRoute?: boolean;
 			} & EmbedderOpts,
 		) => {
 			const store = getStore(program);
@@ -87,11 +92,23 @@ export function registerQueryCommand(program: Command): void {
 				process.exit(1);
 			}
 
+			// Resolve filters: explicit flags win over auto-route classification.
+			let includeSourceTypes = opts.includeTypes;
+			let excludeSourceTypes = opts.excludeTypes;
+			if (opts.autoRoute && !includeSourceTypes && !excludeSourceTypes) {
+				const classification = classifyQueryPersona(queryText);
+				includeSourceTypes = classification.includeSourceTypes;
+				excludeSourceTypes = classification.excludeSourceTypes;
+				if (format === "human") {
+					console.error(`   🧭 persona=${classification.persona} (${classification.reason})`);
+				}
+			}
+
 			try {
 				const result = await query(queryText, embedder, vectorIndex, {
 					topK: Number.parseInt(opts.topK, 10),
-					includeSourceTypes: opts.includeTypes,
-					excludeSourceTypes: opts.excludeTypes,
+					includeSourceTypes,
+					excludeSourceTypes,
 				});
 				console.log(formatQuery(result, format));
 			} catch (err) {
