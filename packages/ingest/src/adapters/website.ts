@@ -6,6 +6,50 @@ import { CheerioCrawler, Configuration } from "crawlee";
 import TurndownService from "turndown";
 import { chunkMarkdown, sha256Hex } from "../chunker.js";
 
+/**
+ * Canonical `chunk.source` for a website document (#257).
+ *
+ * Two crawled domains (e.g. `filecoin.io` and `docs.filecoin.io`) can share
+ * identical paths; using only pathname as the source string collapsed both
+ * sites into the same edge-resolution bucket. Including the host prevents
+ * that while staying URL-ish and human-readable.
+ *
+ * Rules:
+ *   - lowercase the host (authority is case-insensitive per RFC 3986)
+ *   - preserve pathname case (paths are case-sensitive)
+ *   - drop query and fragment (not part of page identity for retrieval)
+ */
+export function deriveSourceFromUrl(url: string): string {
+	const parsed = new URL(url);
+	return `${parsed.hostname.toLowerCase()}${parsed.pathname}`;
+}
+
+/**
+ * Tags whose entire subtree is stripped before HTML → markdown conversion.
+ * Conservative first pass at #257: no role/class-based heuristics yet, just
+ * the obvious structural-chrome tags every modern site has. Expanding this
+ * list further risks stripping meaningful content on docs sites that abuse
+ * `<aside>` for callouts — better to grow the set once we have dogfood data.
+ */
+const BOILERPLATE_TAGS = ["nav", "footer", "aside", "script", "style", "noscript"] as const;
+
+/**
+ * Remove boilerplate tag subtrees from an HTML string using a tolerant regex.
+ * Not a full parser — intentionally conservative and string-based so the
+ * ingest path doesn't grow a new dependency. Handles nested attributes,
+ * mixed case, and repeated blocks. Does NOT handle deeply nested instances
+ * of the same boilerplate tag inside itself (rare in practice).
+ */
+export function stripBoilerplateHtml(html: string): string {
+	let out = html;
+	for (const tag of BOILERPLATE_TAGS) {
+		// Non-greedy match from opening tag (with optional attributes) through closing tag.
+		const re = new RegExp(`<${tag}(?:\\s[^>]*)?>[\\s\\S]*?</${tag}>`, "gi");
+		out = out.replace(re, "");
+	}
+	return out;
+}
+
 export interface WebsiteAdapterConfig {
 	/** The URL to crawl (e.g., "https://docs.filecoin.io") */
 	source: string;
@@ -66,7 +110,7 @@ export class WebsiteAdapter implements SourceAdapter<WebsiteAdapterConfig> {
 			const documentVersionId = sha256Hex(page.markdown);
 
 			const chunks = chunkMarkdown(page.markdown, {
-				source: new URL(page.url).pathname,
+				source: deriveSourceFromUrl(page.url),
 				sourceUrl: page.url,
 				metadata: {
 					url: page.url,
@@ -159,12 +203,16 @@ export class WebsiteAdapter implements SourceAdapter<WebsiteAdapterConfig> {
 						const title = $("title").text().trim();
 
 						// Extract main content — try common selectors first
-						const content =
+						const rawContent =
 							$("main").html() ??
 							$("article").html() ??
 							$("[role='main']").html() ??
 							$("body").html() ??
 							"";
+
+						// Strip nav/footer/aside/script/style before markdown conversion
+						// so boilerplate doesn't pollute retrieval (#257).
+						const content = stripBoilerplateHtml(rawContent);
 
 						const markdown = turndown.turndown(content);
 						pages.push({ url: request.url, title, markdown });

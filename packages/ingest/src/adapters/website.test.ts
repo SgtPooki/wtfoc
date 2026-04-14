@@ -215,3 +215,97 @@ describe("WebsiteAdapter", () => {
 	// - Long pages are split using chunkMarkdown()
 	// - Metadata includes url and title
 });
+
+describe("deriveSourceFromUrl (#257)", () => {
+	it("includes the hostname so two domains with identical paths don't collide", async () => {
+		const { deriveSourceFromUrl } = await import("./website.js");
+		const a = deriveSourceFromUrl("https://docs.filecoin.io/about");
+		const b = deriveSourceFromUrl("https://filecoin.io/about");
+		expect(a).not.toBe(b);
+	});
+
+	it("uses host + pathname as the canonical form", async () => {
+		const { deriveSourceFromUrl } = await import("./website.js");
+		expect(deriveSourceFromUrl("https://docs.filecoin.io/basics")).toBe("docs.filecoin.io/basics");
+		expect(deriveSourceFromUrl("https://example.com/")).toBe("example.com/");
+	});
+
+	it("lowercases the host (RFC 3986 case-insensitive authority)", async () => {
+		const { deriveSourceFromUrl } = await import("./website.js");
+		expect(deriveSourceFromUrl("https://DOCS.FILECOIN.IO/x")).toBe("docs.filecoin.io/x");
+	});
+
+	it("preserves pathname case (paths are case-sensitive per RFC)", async () => {
+		const { deriveSourceFromUrl } = await import("./website.js");
+		expect(deriveSourceFromUrl("https://example.com/Path/To/Page")).toBe(
+			"example.com/Path/To/Page",
+		);
+	});
+
+	it("drops query string and fragment (they're not part of the canonical page identity)", async () => {
+		const { deriveSourceFromUrl } = await import("./website.js");
+		expect(deriveSourceFromUrl("https://example.com/page?q=1&x=2#frag")).toBe("example.com/page");
+	});
+});
+
+describe("stripBoilerplateHtml (#257)", () => {
+	it("removes <nav> blocks", async () => {
+		const { stripBoilerplateHtml } = await import("./website.js");
+		const html = "<p>keep</p><nav>menu links</nav><p>also keep</p>";
+		const out = stripBoilerplateHtml(html);
+		expect(out).not.toContain("menu links");
+		expect(out).toContain("keep");
+		expect(out).toContain("also keep");
+	});
+
+	it("removes <footer> blocks", async () => {
+		const { stripBoilerplateHtml } = await import("./website.js");
+		const html = "<main>content</main><footer>copyright 2026</footer>";
+		expect(stripBoilerplateHtml(html)).not.toContain("copyright 2026");
+	});
+
+	it("removes <aside> blocks", async () => {
+		const { stripBoilerplateHtml } = await import("./website.js");
+		const html = "<article>body</article><aside>related: x, y, z</aside>";
+		expect(stripBoilerplateHtml(html)).not.toContain("related: x");
+	});
+
+	it("removes <script> and <style> blocks", async () => {
+		const { stripBoilerplateHtml } = await import("./website.js");
+		const html = "<p>keep</p><script>alert(1)</script><style>.x{}</style>";
+		const out = stripBoilerplateHtml(html);
+		expect(out).not.toContain("alert(1)");
+		expect(out).not.toContain(".x{}");
+		expect(out).toContain("keep");
+	});
+
+	it('handles attributes on boilerplate tags (e.g. <nav class="main">)', async () => {
+		const { stripBoilerplateHtml } = await import("./website.js");
+		const html = '<p>keep</p><nav class="main" id="site-nav">menu</nav>';
+		expect(stripBoilerplateHtml(html)).not.toContain("menu");
+	});
+
+	it("is case-insensitive on tag names", async () => {
+		const { stripBoilerplateHtml } = await import("./website.js");
+		const html = "<p>keep</p><NAV>menu</NAV><Footer>c</Footer>";
+		const out = stripBoilerplateHtml(html);
+		expect(out).not.toContain("menu");
+		expect(out).not.toContain(">c<");
+	});
+
+	it("handles multiple nav/footer blocks in the same document", async () => {
+		const { stripBoilerplateHtml } = await import("./website.js");
+		const html = "<nav>top</nav><p>body</p><nav>side</nav><footer>bottom</footer>";
+		const out = stripBoilerplateHtml(html);
+		expect(out).not.toContain("top");
+		expect(out).not.toContain("side");
+		expect(out).not.toContain("bottom");
+		expect(out).toContain("body");
+	});
+
+	it("is a no-op for HTML with no boilerplate tags", async () => {
+		const { stripBoilerplateHtml } = await import("./website.js");
+		const html = "<article><h1>Title</h1><p>paragraph</p></article>";
+		expect(stripBoilerplateHtml(html)).toBe(html);
+	});
+});
