@@ -109,4 +109,70 @@ describe("query", () => {
 		const index = await seedIndex(makeEntry("1", [1, 0, 0]));
 		await expect(query("upload", embedder, index, { signal: controller.signal })).rejects.toThrow();
 	});
+
+	describe("source-type filtering (#256)", () => {
+		it("includeSourceTypes keeps only results whose sourceType is in the set", async () => {
+			const index = await seedIndex(
+				makeEntry("code-1", [1, 0, 0], { sourceType: "code", source: "file.ts" }),
+				makeEntry("md-1", [0.9, 0.1, 0], { sourceType: "markdown", source: "README.md" }),
+				makeEntry("pr-1", [0.8, 0.2, 0], { sourceType: "github-pr", source: "owner/repo#1" }),
+			);
+			const result = await query("upload", embedder, index, {
+				includeSourceTypes: ["code", "markdown"],
+			});
+			expect(result.results).toHaveLength(2);
+			expect(result.results.map((r) => r.sourceType).sort()).toEqual(["code", "markdown"]);
+		});
+
+		it("excludeSourceTypes drops results whose sourceType is in the set", async () => {
+			const index = await seedIndex(
+				makeEntry("code-1", [1, 0, 0], { sourceType: "code", source: "file.ts" }),
+				makeEntry("doc-1", [0.9, 0.1, 0], { sourceType: "doc-page", source: "/docs/x" }),
+				makeEntry("md-1", [0.8, 0.2, 0], { sourceType: "markdown", source: "README.md" }),
+			);
+			const result = await query("upload", embedder, index, {
+				excludeSourceTypes: ["doc-page"],
+			});
+			expect(result.results).toHaveLength(2);
+			expect(result.results.some((r) => r.sourceType === "doc-page")).toBe(false);
+		});
+
+		it("include and exclude combine — include wins for overlap, exclude applied after include", async () => {
+			const index = await seedIndex(
+				makeEntry("code-1", [1, 0, 0], { sourceType: "code" }),
+				makeEntry("md-1", [0.9, 0.1, 0], { sourceType: "markdown" }),
+				makeEntry("doc-1", [0.8, 0.2, 0], { sourceType: "doc-page" }),
+			);
+			const result = await query("upload", embedder, index, {
+				includeSourceTypes: ["code", "markdown", "doc-page"],
+				excludeSourceTypes: ["doc-page"],
+			});
+			expect(result.results.map((r) => r.sourceType).sort()).toEqual(["code", "markdown"]);
+		});
+
+		it("empty includeSourceTypes behaves like no filter", async () => {
+			const index = await seedIndex(
+				makeEntry("code-1", [1, 0, 0], { sourceType: "code" }),
+				makeEntry("md-1", [0.9, 0.1, 0], { sourceType: "markdown" }),
+			);
+			const result = await query("upload", embedder, index, { includeSourceTypes: [] });
+			expect(result.results).toHaveLength(2);
+		});
+
+		it("filters apply before topK so the final slice honors both", async () => {
+			const index = await seedIndex(
+				makeEntry("doc-1", [1, 0, 0], { sourceType: "doc-page" }),
+				makeEntry("code-1", [0.9, 0.1, 0], { sourceType: "code" }),
+				makeEntry("md-1", [0.8, 0.2, 0], { sourceType: "markdown" }),
+			);
+			const result = await query("upload", embedder, index, {
+				excludeSourceTypes: ["doc-page"],
+				topK: 2,
+			});
+			expect(result.results).toHaveLength(2);
+			expect(result.results.some((r) => r.sourceType === "doc-page")).toBe(false);
+			// With doc-page excluded, top 2 should be code (highest remaining) then markdown
+			expect(result.results[0]?.sourceType).toBe("code");
+		});
+	});
 });

@@ -8,6 +8,18 @@ export interface QueryOptions {
 	signalFilter?: string;
 	/** Optional reranker applied after vector retrieval and before final slicing. */
 	reranker?: Reranker;
+	/**
+	 * When set, restrict results to chunks whose sourceType is in this list.
+	 * Empty array is treated as "no filter" (same as undefined). Applied after
+	 * vector retrieval, before topK slicing, so topK reflects the filtered set.
+	 * (#256)
+	 */
+	includeSourceTypes?: string[];
+	/**
+	 * When set, drop results whose sourceType is in this list. Applied after
+	 * includeSourceTypes so a type in both sets is excluded. (#256)
+	 */
+	excludeSourceTypes?: string[];
 }
 
 export interface QueryResult {
@@ -41,10 +53,32 @@ export async function query(
 	const signalFilter = options?.signalFilter;
 	const reranker = options?.reranker;
 
+	// Source-type filters (#256) — build sets once, applied after vector retrieval
+	// but before reranking so we don't pay reranker cost on excluded candidates.
+	const includeSet =
+		options?.includeSourceTypes && options.includeSourceTypes.length > 0
+			? new Set(options.includeSourceTypes)
+			: null;
+	const excludeSet =
+		options?.excludeSourceTypes && options.excludeSourceTypes.length > 0
+			? new Set(options.excludeSourceTypes)
+			: null;
+	const passesSourceFilter = (sourceType: string): boolean => {
+		if (includeSet && !includeSet.has(sourceType)) return false;
+		if (excludeSet?.has(sourceType)) return false;
+		return true;
+	};
+
 	const queryVector = await embedder.embed(queryText, options?.signal);
-	// Fetch extra results when post-search ranking may discard or reorder candidates.
-	const fetchK = signalFilter || reranker ? topK * 3 : topK;
-	const matches = await vectorIndex.search(queryVector, fetchK);
+	// Fetch extra results when post-search ranking may discard or reorder candidates,
+	// or when source-type filters may drop matches.
+	const fetchK = signalFilter || reranker || includeSet || excludeSet ? topK * 3 : topK;
+	const rawMatches = await vectorIndex.search(queryVector, fetchK);
+	// Apply source-type filters before reranker runs (save compute) and before topK slicing.
+	const matches =
+		includeSet || excludeSet
+			? rawMatches.filter((m) => passesSourceFilter(m.entry.metadata.sourceType ?? "unknown"))
+			: rawMatches;
 	let rerankedScores: Map<string, number> | undefined;
 
 	if (reranker && matches.length > 0) {
