@@ -22,10 +22,22 @@ export interface SearchFixtureQuery {
 	topK: number;
 }
 
+/**
+ * Note on expectedSourceTypes: values MUST match the sourceType strings
+ * actually emitted by ingest adapters. Drift here silently produces
+ * MRR=0 in dogfood runs and hides retrieval regressions (#255).
+ *
+ * Current emitted source types (keep this list in sync with adapters):
+ *   Repo/file: code, markdown, tombstone
+ *   GitHub:    github-issue, github-pr, github-pr-comment, github-discussion
+ *   Chat:      slack-message, discord-message
+ *   Web:       doc-page
+ *   News:      hn-story, hn-comment
+ */
 export const FIXTURE_QUERIES: SearchFixtureQuery[] = [
 	{
 		queryText: "What changes were made recently?",
-		expectedSourceTypes: ["github-pr", "github-issue", "code"],
+		expectedSourceTypes: ["github-pr", "github-pr-comment", "github-issue", "code", "markdown"],
 		expectedSourceSubstrings: ["#", "github"],
 		expectedSourceIdentity: ["#"],
 		requireTraceEvidence: true,
@@ -33,7 +45,14 @@ export const FIXTURE_QUERIES: SearchFixtureQuery[] = [
 	},
 	{
 		queryText: "What discussions happened about this project?",
-		expectedSourceTypes: ["slack-message", "github-issue", "discord"],
+		expectedSourceTypes: [
+			"github-issue",
+			"github-pr",
+			"github-pr-comment",
+			"github-discussion",
+			"slack-message",
+			"discord-message",
+		],
 		expectedSourceSubstrings: ["#", "slack", "discord"],
 		expectedSourceIdentity: ["#", "slack", "discord"],
 		requireTraceEvidence: true,
@@ -41,7 +60,7 @@ export const FIXTURE_QUERIES: SearchFixtureQuery[] = [
 	},
 	{
 		queryText: "How does the code work?",
-		expectedSourceTypes: ["code", "markdown", "doc"],
+		expectedSourceTypes: ["code", "markdown", "doc-page"],
 		expectedSourceSubstrings: [".ts", ".js", ".md", "/src/"],
 		expectedSourceIdentity: ["/src/", ".ts"],
 		requireTraceEvidence: true,

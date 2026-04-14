@@ -86,7 +86,8 @@ describe("evaluateSearch", () => {
 		mockTrace.mockResolvedValue(makeTraceResult([]));
 
 		const result = await evaluateSearch(mockEmbedder, mockVectorIndex, mockSegments);
-		// Default fixture queries all expect github-issue, so MRR should be high
+		// All fixture queries accept github-issue as an expected source type
+		// (along with others — see search-eval-fixtures.ts), so MRR should be high
 		expect(typeof result.metrics.meanReciprocalRank).toBe("number");
 	});
 

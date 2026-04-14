@@ -27,6 +27,22 @@ export async function evaluateSearch(
 			if (chunk.sourceType) collectionSourceTypes.add(chunk.sourceType);
 		}
 	}
+
+	// Sanity-check fixtures against the actual collection (#255). Warn if any
+	// fixture's expectedSourceTypes are ALL absent from the collection — that
+	// fixture can't score MRR > 0 no matter how good retrieval is.
+	for (const fixture of FIXTURE_QUERIES) {
+		const present = fixture.expectedSourceTypes.some((t) => collectionSourceTypes.has(t));
+		if (!present && collectionSourceTypes.size > 0) {
+			console.warn(
+				`[search-eval] Fixture "${fixture.queryText}" expects sourceTypes ` +
+					`[${fixture.expectedSourceTypes.join(", ")}] but none are present in the ` +
+					`collection (has: ${[...collectionSourceTypes].join(", ")}). ` +
+					`This fixture will always score MRR=0 — update fixtures or ingest the missing source types.`,
+			);
+		}
+	}
+
 	const startedAt = new Date().toISOString();
 	const t0 = performance.now();
 
