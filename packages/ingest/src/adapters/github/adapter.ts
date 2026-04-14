@@ -267,9 +267,12 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 			const documentId = `${repo}#${prNumber}/comment/${commentId}`;
 			const documentVersionId = String(rec.updated_at ?? rec.created_at ?? "");
 
+			// #258: source must be distinct from the parent PR so edge-resolution
+			// indexes each comment separately and substring/sourceType checks
+			// in retrieval can tell comments apart from the PR body.
 			const chunks = chunkMarkdown(body, {
 				chunkSize: GITHUB_CHUNK_SIZE,
-				source: `${repo}#${prNumber}`,
+				source: documentId,
 				sourceUrl: String(rec.html_url ?? ""),
 				timestamp: String(rec.updated_at ?? rec.created_at ?? ""),
 				metadata,

@@ -179,7 +179,10 @@ describe("GitHubAdapter: PR comment ingestion", () => {
 
 		const commentChunks = chunks.filter((c) => c.sourceType === "github-pr-comment");
 		expect(commentChunks.length).toBe(1);
-		expect(commentChunks[0]?.source).toBe("test/repo#3");
+		// #258: source must be distinct from parent PR so retrieval can tell
+		// "PR body" and "PR comment" chunks apart and edge-resolution indexes
+		// per-comment instead of collapsing all comments onto the parent PR.
+		expect(commentChunks[0]?.source).toBe("test/repo#3/comment/100");
 		expect(commentChunks[0]?.metadata.parentPr).toBe("3");
 		expect(commentChunks[0]?.metadata.commentId).toBe("100");
 	});

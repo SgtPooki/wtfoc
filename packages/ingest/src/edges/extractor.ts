@@ -20,7 +20,8 @@ const GITHUB_URL_PATTERN =
 	/https?:\/\/github\.com\/([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)\/(?:issues|pull)\/(\d+)/g;
 
 const GITHUB_SOURCE_TYPES = new Set(["github-pr", "github-issue", "github-pr-comment"]);
-const SOURCE_REPO_PATTERN = /^([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)#\d+$/;
+// Accepts both `owner/repo#N` (issue/PR) and `owner/repo#N/comment/M` (#258)
+const SOURCE_REPO_PATTERN = /^([a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+)#\d+(?:\/comment\/\w+)?$/;
 
 /**
  * Extract repo context from a GitHub chunk's `source` field (e.g. "owner/repo#10" → "owner/repo").
