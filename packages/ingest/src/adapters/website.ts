@@ -25,6 +25,49 @@ export function deriveSourceFromUrl(url: string): string {
 }
 
 /**
+ * Minimum content length (chars) for a web chunk to be a credible edge source (#257).
+ * Chunks below this are typically nav/footer remnants, breadcrumbs, or menu lists
+ * that produce low-signal "references" edges that just pollute trace. 100 chars is
+ * intentionally conservative — a single meaningful sentence is typically >= 60 chars
+ * and a useful paragraph is >= 200.
+ */
+const MIN_WEB_CHUNK_CHARS = 100;
+
+/**
+ * Upper bound on link-density (links ÷ non-link-text ratio approximation).
+ * Chunks above this threshold are almost always navigation lists, TOCs, or
+ * link farms — not prose worth extracting edges from.
+ */
+const MAX_LINK_DENSITY = 0.5;
+
+/**
+ * Heuristic: is this web chunk too low-signal to be a credible edge source?
+ *
+ * A chunk is flagged when EITHER:
+ *   - content length is below `MIN_WEB_CHUNK_CHARS`, OR
+ *   - link density (total chars inside `[text](url)` tokens / total chars) is
+ *     above `MAX_LINK_DENSITY`.
+ *
+ * Used by `extractEdges` to skip edge emission from pages like nav/footer
+ * remnants, breadcrumb strips, and TOC pages. Orthogonal to `#257` chunking
+ * — we keep the chunk in the index (it may still help retrieval), we just
+ * don't let it pollute the edge graph.
+ */
+export function isLowQualityWebChunk(content: string): boolean {
+	const trimmed = content.trim();
+	if (trimmed.length < MIN_WEB_CHUNK_CHARS) return true;
+
+	// Approximate link density: total chars inside markdown link tokens
+	// `[text](url)` divided by total chunk chars. Not perfect (doesn't
+	// handle bare URLs or HTML links), but cheap and directional.
+	const linkMatches = trimmed.matchAll(/\[([^\]]+)\]\([^)]+\)/g);
+	let linkChars = 0;
+	for (const m of linkMatches) linkChars += m[0].length;
+	const density = linkChars / trimmed.length;
+	return density > MAX_LINK_DENSITY;
+}
+
+/**
  * Tags whose entire subtree is stripped before HTML → markdown conversion.
  * Conservative first pass at #257: no role/class-based heuristics yet, just
  * the obvious structural-chrome tags every modern site has. Expanding this
@@ -133,6 +176,11 @@ export class WebsiteAdapter implements SourceAdapter<WebsiteAdapterConfig> {
 		const edges: Edge[] = [];
 
 		for (const chunk of chunks) {
+			// Skip edge extraction from low-signal web chunks (nav/footer remnants,
+			// TOC pages, link farms). Keeps the chunk searchable but prevents it
+			// from polluting the edge graph. (#257 web-edge suppression)
+			if (isLowQualityWebChunk(chunk.content)) continue;
+
 			// Extract markdown link references
 			const mdLinks = chunk.content.matchAll(/\[([^\]]+)\]\(([^)]+)\)/g);
 			for (const match of mdLinks) {

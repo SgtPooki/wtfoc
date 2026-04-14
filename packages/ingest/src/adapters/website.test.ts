@@ -101,7 +101,8 @@ describe("WebsiteAdapter", () => {
 			const chunks: Chunk[] = [
 				{
 					id: "abc123",
-					content: "Check the [API docs](https://api.example.com/v1) for details.",
+					content:
+						"The platform provides a set of documented endpoints for building integrations. Check the [API docs](https://api.example.com/v1) for details on authentication, rate limiting, and versioning policies.",
 					sourceType: "doc-page",
 					source: "/docs/intro",
 					sourceUrl: "https://example.com/docs/intro",
@@ -127,7 +128,8 @@ describe("WebsiteAdapter", () => {
 			const chunks: Chunk[] = [
 				{
 					id: "def456",
-					content: "See https://github.com/filecoin-project/lotus/issues/42 for the upstream bug.",
+					content:
+						"The integration layer inherits an upstream defect when decoding deal proposals under specific network conditions. See https://github.com/filecoin-project/lotus/issues/42 for the upstream bug — the patch is tracked against release 1.30.",
 					sourceType: "doc-page",
 					source: "/docs/bugs",
 					sourceUrl: "https://example.com/docs/bugs",
@@ -154,7 +156,7 @@ describe("WebsiteAdapter", () => {
 				{
 					id: "ghi789",
 					content:
-						"Read the [guide](https://docs.example.com/guide). Related: https://github.com/org/repo/pull/10",
+						"Before starting, review the setup checklist and make sure your environment satisfies the prerequisites. Read the [guide](https://docs.example.com/guide) for the step-by-step walkthrough. Related: https://github.com/org/repo/pull/10 which landed the final migration.",
 					sourceType: "doc-page",
 					source: "/docs/mixed",
 					sourceUrl: "https://example.com/docs/mixed",
@@ -245,6 +247,44 @@ describe("deriveSourceFromUrl (#257)", () => {
 	it("drops query string and fragment (they're not part of the canonical page identity)", async () => {
 		const { deriveSourceFromUrl } = await import("./website.js");
 		expect(deriveSourceFromUrl("https://example.com/page?q=1&x=2#frag")).toBe("example.com/page");
+	});
+});
+
+describe("isLowQualityWebChunk (#257 edge suppression)", () => {
+	it("flags chunks below the minimum content length", async () => {
+		const { isLowQualityWebChunk } = await import("./website.js");
+		expect(isLowQualityWebChunk("")).toBe(true);
+		expect(isLowQualityWebChunk("short")).toBe(true);
+		expect(isLowQualityWebChunk("x".repeat(99))).toBe(true);
+	});
+
+	it("accepts chunks with sufficient content (>= 100 chars of real text)", async () => {
+		const { isLowQualityWebChunk } = await import("./website.js");
+		const longProse =
+			"Filecoin is a peer-to-peer storage network. Users pay storage providers to store their data for a configurable duration. ";
+		expect(isLowQualityWebChunk(longProse)).toBe(false);
+	});
+
+	it("flags link-heavy chunks (nav / TOC / link list)", async () => {
+		const { isLowQualityWebChunk } = await import("./website.js");
+		// 10 links, minimal prose — classic TOC pattern
+		const linkList = Array.from({ length: 10 }, (_, i) => `[Page ${i}](/p/${i})`).join(" ");
+		expect(isLowQualityWebChunk(linkList)).toBe(true);
+	});
+
+	it("accepts mixed content with some inline links", async () => {
+		const { isLowQualityWebChunk } = await import("./website.js");
+		const mixed =
+			"Storage providers must commit to the terms outlined in the [Filecoin Improvement Proposal](/fip-001) and pass validation checks defined by the network consensus rules. Violations result in slashing as described in the protocol documentation. ";
+		expect(isLowQualityWebChunk(mixed)).toBe(false);
+	});
+
+	it("is a pure function (no side effects)", async () => {
+		const { isLowQualityWebChunk } = await import("./website.js");
+		const input = "a".repeat(200);
+		const r1 = isLowQualityWebChunk(input);
+		const r2 = isLowQualityWebChunk(input);
+		expect(r1).toBe(r2);
 	});
 });
 
