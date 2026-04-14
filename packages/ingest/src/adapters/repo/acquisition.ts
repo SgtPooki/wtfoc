@@ -17,19 +17,39 @@ async function isValidGitClone(dir: string): Promise<boolean> {
 	}
 }
 
+/**
+ * Refresh an existing shallow clone to the remote's default branch. Uses
+ * `fetch --depth=1` + `reset --hard FETCH_HEAD` instead of `git pull` because
+ * shallow clones and detached HEADs can confuse pull, and pull doesn't
+ * overwrite local divergence that would prevent fast-forwards.
+ *
+ * Returns true on success, false if any git command failed — the caller
+ * should then nuke + re-clone.
+ */
+async function refreshClone(dir: string): Promise<boolean> {
+	try {
+		await execFileAsync("git", ["fetch", "--depth=1", "origin", "HEAD"], { cwd: dir });
+		await execFileAsync("git", ["reset", "--hard", "FETCH_HEAD"], { cwd: dir });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 export async function acquireRepo(source: string): Promise<string> {
 	if (source.match(/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/)) {
 		const tmpDir = `/tmp/wtfoc-repo-${source.replace("/", "-")}`;
 
-		// If the cache dir exists but isn't a valid git clone (e.g. broken from
-		// a prior failed run, or wiped contents), remove it so we re-clone fresh.
+		// If the cache dir exists and is a valid clone, update it to the remote's
+		// current HEAD. If the update fails (diverged, corrupt, stale refs) OR the
+		// dir isn't a valid clone to begin with, remove and re-clone fresh.
 		// Previously `git pull` silently failed via .catch(() => {}), leaving the
-		// caller with an empty dir and zero chunks produced — a silent corruption.
+		// caller with stale or empty content and zero chunks produced.
 		try {
 			await stat(tmpDir);
 			if (await isValidGitClone(tmpDir)) {
-				await execFileAsync("git", ["pull", "--ff-only"], { cwd: tmpDir }).catch(() => {});
-				return tmpDir;
+				if (await refreshClone(tmpDir)) return tmpDir;
+				console.error(`[wtfoc] Clone refresh failed for ${tmpDir}, re-cloning`);
 			}
 			await rm(tmpDir, { recursive: true, force: true });
 		} catch {
