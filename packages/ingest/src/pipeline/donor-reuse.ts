@@ -6,6 +6,15 @@ import type { LogSink, PipelineState } from "./types.js";
 /** All I/O dependencies for donor reuse — fully injected, no globals. */
 export interface DonorReuseDeps {
 	sourceReuse: boolean;
+	/**
+	 * When true, also copy donor's chunk fingerprints and chunk IDs into the
+	 * recipient's dedup sets so identical content is skipped. Default `false`
+	 * because this silently defeats chunker changes — if the donor was chunked
+	 * with an older chunker, identical raw content will still match its old
+	 * fingerprints and the new chunker's improved output is discarded. Opt in
+	 * only when you know the donor and recipient use the same chunker version.
+	 */
+	reuseDonorChunks?: boolean;
 	isPartialRun: boolean;
 	sourceKey: string;
 	collectionName: string;
@@ -63,7 +72,26 @@ export async function reuseDonorSources(state: PipelineState, deps: DonorReuseDe
 	});
 
 	for (const match of scanResult.matches) {
-		const donorCatalog = await deps.readDonorCatalog(match.collectionName);
+		const donorCatalog = deps.reuseDonorChunks
+			? await deps.readDonorCatalog(match.collectionName)
+			: null;
+
+		// Staleness signal: warn if donor archive entries lack the `metadata` field
+		// added by the new adapter-metadata schema. Chunks replayed from these
+		// entries (via --replay-raw) will lack GitHub labels/author/state unless the
+		// recipient rebuilds that metadata from segments.
+		const entriesMissingMetadata = match.archiveEntries.filter((e) => !e.metadata);
+		if (entriesMissingMetadata.length > 0) {
+			deps.log({
+				level: "warn",
+				phase: "donor-reuse",
+				message:
+					`Donor "${match.collectionName}" has ${entriesMissingMetadata.length} archive ` +
+					`entries missing adapter metadata (pre-schema). Chunks replayed from these ` +
+					`will lack labels/author/state. Consider re-ingesting the donor or using ` +
+					`--no-source-reuse for full fidelity.`,
+			});
+		}
 
 		for await (const replayedChunk of deps.replayFromArchive(match.archiveEntries, deps.storage)) {
 			// Archive donor content into recipient collection (pre-cache)
@@ -93,7 +121,10 @@ export async function reuseDonorSources(state: PipelineState, deps: DonorReuseDe
 				state.stats.archivedCount++;
 			}
 
-			// Add per-chunk fingerprints from donor catalog for accurate dedup
+			// Add per-chunk fingerprints from donor catalog for accurate dedup — ONLY
+			// when explicitly opted in via reuseDonorChunks. Default behavior leaves
+			// dedup sets untouched so the new chunker can re-emit fresh chunks even
+			// when raw content is identical.
 			if (donorCatalog && replayedChunk.documentId) {
 				const donorDoc = donorCatalog.documents[replayedChunk.documentId];
 				if (donorDoc) {

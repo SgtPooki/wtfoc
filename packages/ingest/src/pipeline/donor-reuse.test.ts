@@ -69,7 +69,7 @@ describe("reuseDonorSources", () => {
 		expect(state.stats.reusedFromDonors).toBe(0);
 	});
 
-	it("scans donors, replays archives, and merges fingerprints", async () => {
+	it("by default does NOT pre-load donor chunk fingerprints (prevents chunker regressions)", async () => {
 		const state = makeState();
 		const donorCatalog: DocumentCatalog = {
 			schemaVersion: 1,
@@ -128,10 +128,170 @@ describe("reuseDonorSources", () => {
 			log: vi.fn(),
 		});
 
+		// Raw archive entries still pre-cached (the useful half of reuse)
 		expect(state.stats.reusedFromDonors).toBe(1);
-		expect(state.stats.donorCollectionNames).toContain("donor-col");
+		// BUT donor fingerprints/chunkIds NOT loaded — new chunker can re-emit
+		expect(state.knownFingerprints.has("donor-fp1")).toBe(false);
+		expect(state.knownChunkIds.has("donor-c1")).toBe(false);
+	});
+
+	it("when reuseDonorChunks=true, loads donor chunk fingerprints for dedup", async () => {
+		const state = makeState();
+		const donorCatalog: DocumentCatalog = {
+			schemaVersion: 1,
+			collectionId: "donor-col",
+			documents: {
+				"owner/repo/src/foo.ts": {
+					documentId: "owner/repo/src/foo.ts",
+					currentVersionId: "v1",
+					previousVersionIds: [],
+					chunkIds: ["donor-c1"],
+					supersededChunkIds: [],
+					contentFingerprints: ["donor-fp1"],
+					state: "active",
+					mutability: "mutable-state",
+					sourceType: "code",
+					updatedAt: new Date().toISOString(),
+				},
+			},
+		};
+
+		const donorChunk = makeDonorChunk();
+		async function* fakeReplay() {
+			yield donorChunk;
+		}
+
+		await reuseDonorSources(state, {
+			sourceReuse: true,
+			reuseDonorChunks: true,
+			isPartialRun: false,
+			sourceKey: "repo:owner/repo",
+			collectionName: "test-col",
+			manifestDir: "/tmp",
+			scanForReusable: vi.fn().mockResolvedValue({
+				matches: [
+					{
+						collectionName: "donor-col",
+						archiveEntries: [
+							{
+								documentId: "owner/repo/src/foo.ts",
+								storageId: "s1",
+								sourceKey: "repo:owner/repo",
+							},
+						],
+					},
+				],
+			}),
+			replayFromArchive: vi.fn().mockReturnValue(fakeReplay()),
+			readDonorCatalog: vi.fn().mockResolvedValue(donorCatalog),
+			archiveRawSource: vi.fn(),
+			isArchived: vi.fn().mockReturnValue(false),
+			listProjects: vi.fn().mockResolvedValue([]),
+			storage: {
+				download: vi.fn().mockResolvedValue(new Uint8Array()),
+				upload: vi.fn().mockResolvedValue({ id: "test" }),
+			},
+			uploadData: vi.fn().mockResolvedValue("uploaded-id"),
+			log: vi.fn(),
+		});
+
 		expect(state.knownFingerprints.has("donor-fp1")).toBe(true);
 		expect(state.knownChunkIds.has("donor-c1")).toBe(true);
+	});
+
+	it("warns when donor archive entries lack metadata (staleness signal)", async () => {
+		const state = makeState();
+		const donorChunk = makeDonorChunk();
+		async function* fakeReplay() {
+			yield donorChunk;
+		}
+		const log = vi.fn();
+		await reuseDonorSources(state, {
+			sourceReuse: true,
+			isPartialRun: false,
+			sourceKey: "github:owner/repo",
+			collectionName: "test-col",
+			manifestDir: "/tmp",
+			scanForReusable: vi.fn().mockResolvedValue({
+				matches: [
+					{
+						collectionName: "donor-col",
+						archiveEntries: [
+							{
+								documentId: "owner/repo#1",
+								documentVersionId: "v1",
+								sourceType: "github-issue",
+								storageId: "s1",
+								sourceKey: "github:owner/repo",
+								// NO metadata field — stale pre-schema entry
+							},
+						],
+					},
+				],
+			}),
+			replayFromArchive: vi.fn().mockReturnValue(fakeReplay()),
+			readDonorCatalog: vi.fn().mockResolvedValue(null),
+			archiveRawSource: vi.fn(),
+			isArchived: vi.fn().mockReturnValue(false),
+			listProjects: vi.fn().mockResolvedValue([]),
+			storage: {
+				download: vi.fn().mockResolvedValue(new Uint8Array()),
+				upload: vi.fn().mockResolvedValue({ id: "test" }),
+			},
+			uploadData: vi.fn().mockResolvedValue("uploaded-id"),
+			log,
+		});
+
+		// Should have fired a warning about stale (metadata-less) archive entries
+		const calls = log.mock.calls.map((c) => c[0]);
+		const warning = calls.find(
+			(e) => e.level === "warn" && String(e.message ?? "").includes("missing adapter metadata"),
+		);
+		expect(warning).toBeDefined();
+	});
+
+	it("always pre-caches raw archive entries from donors (reusedFromDonors counter)", async () => {
+		const state = makeState();
+		const donorChunk = makeDonorChunk();
+		async function* fakeReplay() {
+			yield donorChunk;
+		}
+
+		await reuseDonorSources(state, {
+			sourceReuse: true,
+			isPartialRun: false,
+			sourceKey: "repo:owner/repo",
+			collectionName: "test-col",
+			manifestDir: "/tmp",
+			scanForReusable: vi.fn().mockResolvedValue({
+				matches: [
+					{
+						collectionName: "donor-col",
+						archiveEntries: [
+							{
+								documentId: "owner/repo/src/foo.ts",
+								storageId: "s1",
+								sourceKey: "repo:owner/repo",
+							},
+						],
+					},
+				],
+			}),
+			replayFromArchive: vi.fn().mockReturnValue(fakeReplay()),
+			readDonorCatalog: vi.fn().mockResolvedValue(null),
+			archiveRawSource: vi.fn(),
+			isArchived: vi.fn().mockReturnValue(false),
+			listProjects: vi.fn().mockResolvedValue([]),
+			storage: {
+				download: vi.fn().mockResolvedValue(new Uint8Array()),
+				upload: vi.fn().mockResolvedValue({ id: "test" }),
+			},
+			uploadData: vi.fn().mockResolvedValue("uploaded-id"),
+			log: vi.fn(),
+		});
+
+		expect(state.stats.reusedFromDonors).toBe(1);
+		expect(state.stats.donorCollectionNames).toContain("donor-col");
 	});
 
 	it("skips when isPartialRun is true", async () => {

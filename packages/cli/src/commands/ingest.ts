@@ -64,7 +64,11 @@ export function registerIngestCommand(program: Command): void {
 					.option("--document-ids <ids...>", "Only re-process these document IDs")
 					.option("--source-paths <paths...>", "[repo] Only process matching paths")
 					.option("--changed-since <iso>", "Only process documents after this timestamp")
-					.option("--no-source-reuse", "Disable cross-collection source reuse"),
+					.option("--no-source-reuse", "Disable cross-collection source reuse")
+					.option(
+						"--reuse-donor-chunks",
+						"Opt-in: copy donor chunk fingerprints into dedup sets. Speeds up repeat ingests of identical content but silently discards chunker improvements when donor was chunked with an older chunker.",
+					),
 			),
 		),
 	).action(
@@ -86,6 +90,7 @@ export function registerIngestCommand(program: Command): void {
 				sourcePaths?: string[];
 				changedSince?: string;
 				sourceReuse?: boolean;
+				reuseDonorChunks?: boolean;
 			} & EmbedderOpts &
 				ExtractorCliOpts,
 		) => {
@@ -188,6 +193,7 @@ export function registerIngestCommand(program: Command): void {
 				changedSince: opts.changedSince,
 				modelName,
 				sourceReuse: opts.sourceReuse !== false,
+				reuseDonorChunks: opts.reuseDonorChunks === true,
 				sourceArg,
 				extractorConfig: extractorConfig.enabled ? extractorConfig : null,
 				treeSitterUrl: treeSitterUrl ?? null,

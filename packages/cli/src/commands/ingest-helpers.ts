@@ -126,6 +126,7 @@ export function buildIngestOptions(params: {
 	changedSince: string | undefined;
 	modelName: string;
 	sourceReuse: boolean;
+	reuseDonorChunks: boolean;
 	sourceArg: string;
 	extractorConfig: IngestOptions["extractorConfig"];
 	treeSitterUrl: string | null;
@@ -155,6 +156,7 @@ export function buildIngestOptions(params: {
 		},
 		modelName: p.modelName,
 		sourceReuse: p.sourceReuse,
+		reuseDonorChunks: p.reuseDonorChunks,
 		repoArg: p.sourceType === "repo" ? p.sourceArg : undefined,
 		appendOnlyTypes: new Set(["hn-story", "hn-comment"]),
 		extractorConfig: p.extractorConfig,

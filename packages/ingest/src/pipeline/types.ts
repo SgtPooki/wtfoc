@@ -104,6 +104,12 @@ export interface IngestOptions {
 	modelName: string;
 	/** Whether source reuse is enabled. */
 	sourceReuse: boolean;
+	/**
+	 * When true (default false), copy donor's chunk fingerprints/chunkIds into
+	 * the recipient's dedup sets. Opt-in because it silently defeats chunker
+	 * upgrades when donor was chunked by an older chunker version.
+	 */
+	reuseDonorChunks?: boolean;
 	/** Repo source arg (e.g. "owner/repo") for repo adapters. */
 	repoArg?: string;
 	/** Append-only source types (e.g. "hn-story", "hn-comment"). */

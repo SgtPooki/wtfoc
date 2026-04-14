@@ -82,6 +82,7 @@ export async function orchestrate(
 	if (options.manifestDir) {
 		await reuseDonorSources(state, {
 			sourceReuse: options.sourceReuse,
+			reuseDonorChunks: options.reuseDonorChunks ?? false,
 			isPartialRun: options.isPartialRun,
 			sourceKey: options.sourceKey,
 			collectionName: options.collectionName,
