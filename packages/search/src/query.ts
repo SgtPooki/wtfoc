@@ -20,6 +20,17 @@ export interface QueryOptions {
 	 * includeSourceTypes so a type in both sets is excluded. (#256)
 	 */
 	excludeSourceTypes?: string[];
+	/**
+	 * Per-source-type score multipliers. Applied AFTER vector similarity and
+	 * reranker, BEFORE the final topK slice. Unlike include/exclude filters,
+	 * boosting never drops results — it just reorders the top-k. Missing
+	 * source types default to 1.0. (#265)
+	 *
+	 * Example: `{ "code": 1.3, "doc-page": 0.5 }` pushes code up and doc-page
+	 * down without ever removing a genuinely-great doc-page result if its
+	 * raw score is high enough to survive the multiplier.
+	 */
+	sourceTypeBoosts?: Record<string, number>;
 }
 
 export interface QueryResult {
@@ -77,6 +88,12 @@ export async function query(
 	// 15 for a "discussions" query and the include filter dropped everything.
 	let fetchK = topK;
 	if (signalFilter || reranker) fetchK = Math.max(fetchK, topK * 3);
+	// Source-type boost needs a wider fan-out because a dominant source type can
+	// fill the raw top-k entirely — without more candidates, the boost just
+	// uniformly scales a single-type result set and re-sort does nothing (#265).
+	if (options?.sourceTypeBoosts && Object.keys(options.sourceTypeBoosts).length > 0) {
+		fetchK = Math.max(fetchK, topK * 10);
+	}
 	if (includeSet || excludeSet) fetchK = Math.max(fetchK, topK * 10);
 	const rawMatches = await vectorIndex.search(queryVector, fetchK);
 	// Apply source-type filters before reranker runs (save compute) and before topK slicing.
@@ -120,6 +137,12 @@ export async function query(
 				// Boost: up to 20% increase for max signal score
 				boostedScore = boostedScore * (1 + (signalValue / 100) * 0.2);
 			}
+			// Source-type boost (#265) — soft routing, never drops
+			if (options?.sourceTypeBoosts) {
+				const sourceType = m.entry.metadata.sourceType ?? "unknown";
+				const typeBoost = options.sourceTypeBoosts[sourceType] ?? 1.0;
+				if (typeBoost !== 1.0) boostedScore = boostedScore * typeBoost;
+			}
 
 			return {
 				content: m.entry.metadata.content ?? "",
@@ -132,7 +155,7 @@ export async function query(
 			};
 		});
 
-	if (signalFilter || rerankedScores) {
+	if (signalFilter || rerankedScores || options?.sourceTypeBoosts) {
 		results.sort((a, b) => b.score - a.score);
 	}
 	results = results.slice(0, topK);

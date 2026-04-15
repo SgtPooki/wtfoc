@@ -18,10 +18,19 @@ export type QueryPersona = "technical" | "discussion" | "changes" | "docs" | "op
 
 export interface PersonaClassification {
 	persona: QueryPersona;
-	/** Preferred source types (passed as includeSourceTypes). */
+	/**
+	 * Legacy hard-filter — kept for back-compat and explicit opt-in. Callers
+	 * that want never-drop soft routing should use `sourceTypeBoosts` instead.
+	 */
 	includeSourceTypes?: string[];
-	/** Source types to exclude (passed as excludeSourceTypes). */
+	/** Legacy hard-filter (see includeSourceTypes note). */
 	excludeSourceTypes?: string[];
+	/**
+	 * Soft-routing multipliers per source type (#265). Passed to `query()` /
+	 * `trace()` as `sourceTypeBoosts`. Results are never dropped — boosts
+	 * just reorder the top-k. Missing source types default to 1.0.
+	 */
+	sourceTypeBoosts?: Record<string, number>;
 	/** Short human-readable rationale for observability. */
 	reason: string;
 }
@@ -35,6 +44,8 @@ const RULES: Array<{
 	matchers: RegExp[];
 	includeSourceTypes?: string[];
 	excludeSourceTypes?: string[];
+	/** #265 — soft routing multipliers (preferred path). */
+	sourceTypeBoosts?: Record<string, number>;
 }> = [
 	{
 		persona: "docs",
@@ -46,6 +57,7 @@ const RULES: Array<{
 			/\brefer(?:ence)? docs?\b/i,
 		],
 		includeSourceTypes: ["doc-page", "markdown"],
+		sourceTypeBoosts: { "doc-page": 1.3, markdown: 1.2 },
 	},
 	{
 		persona: "discussion",
@@ -66,6 +78,14 @@ const RULES: Array<{
 			"slack-message",
 			"discord-message",
 		],
+		sourceTypeBoosts: {
+			"github-pr-comment": 1.4,
+			"github-issue": 1.3,
+			"github-discussion": 1.3,
+			"slack-message": 1.2,
+			"discord-message": 1.2,
+			"doc-page": 0.7,
+		},
 	},
 	{
 		persona: "changes",
@@ -80,6 +100,12 @@ const RULES: Array<{
 			/\bchangelog\b/i,
 		],
 		includeSourceTypes: ["github-pr", "github-issue", "markdown", "code"],
+		sourceTypeBoosts: {
+			"github-pr": 1.3,
+			"github-pr-comment": 1.1,
+			markdown: 1.1,
+			"doc-page": 0.8,
+		},
 	},
 	{
 		persona: "technical",
@@ -95,6 +121,7 @@ const RULES: Array<{
 		],
 		includeSourceTypes: ["code", "markdown"],
 		excludeSourceTypes: ["doc-page"],
+		sourceTypeBoosts: { code: 1.3, markdown: 1.1, "doc-page": 0.6 },
 	},
 ];
 
@@ -109,6 +136,7 @@ export function classifyQueryPersona(queryText: string): PersonaClassification {
 				};
 				if (rule.includeSourceTypes) out.includeSourceTypes = [...rule.includeSourceTypes];
 				if (rule.excludeSourceTypes) out.excludeSourceTypes = [...rule.excludeSourceTypes];
+				if (rule.sourceTypeBoosts) out.sourceTypeBoosts = { ...rule.sourceTypeBoosts };
 				return out;
 			}
 		}

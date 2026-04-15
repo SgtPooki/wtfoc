@@ -70,6 +70,32 @@ describe("classifyQueryPersona (#259)", () => {
 		expect(result.excludeSourceTypes).toBeUndefined();
 	});
 
+	it("returns sourceTypeBoosts for soft routing (#265)", () => {
+		// Technical persona should boost code/markdown, suppress doc-page
+		const tech = classifyQueryPersona("How does trace work?");
+		expect(tech.sourceTypeBoosts).toBeDefined();
+		const boosts = tech.sourceTypeBoosts as Record<string, number>;
+		expect(boosts.code).toBeGreaterThan(1.0);
+		expect(boosts["doc-page"]).toBeLessThan(1.0);
+	});
+
+	it("discussion persona boosts comment/issue/discussion types", () => {
+		const d = classifyQueryPersona("What was discussed?");
+		const boosts = d.sourceTypeBoosts as Record<string, number>;
+		expect(boosts["github-pr-comment"]).toBeGreaterThan(1.0);
+		expect(boosts["github-issue"]).toBeGreaterThan(1.0);
+		expect(boosts["github-discussion"]).toBeGreaterThan(1.0);
+	});
+
+	it("open-ended returns empty boosts (no multiplier ≠ 1.0)", () => {
+		const result = classifyQueryPersona("nothing in particular");
+		// Either undefined or empty object — callers should treat both as no-op
+		const boosts = result.sourceTypeBoosts;
+		if (boosts) {
+			for (const v of Object.values(boosts)) expect(v).toBe(1.0);
+		}
+	});
+
 	it("returns a stable persona name and filter set (deterministic)", () => {
 		const q = "how does the pipeline work";
 		const a = classifyQueryPersona(q);

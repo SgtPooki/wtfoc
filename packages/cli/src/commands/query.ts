@@ -92,13 +92,12 @@ export function registerQueryCommand(program: Command): void {
 				process.exit(1);
 			}
 
-			// Resolve filters: explicit flags win over auto-route classification.
-			let includeSourceTypes = opts.includeTypes;
-			let excludeSourceTypes = opts.excludeTypes;
-			if (opts.autoRoute && !includeSourceTypes && !excludeSourceTypes) {
+			// Explicit include/exclude flags always apply (hard filter — opt-in).
+			// Auto-route uses soft boosts (#265): never drops results, just reorders.
+			let sourceTypeBoosts: Record<string, number> | undefined;
+			if (opts.autoRoute) {
 				const classification = classifyQueryPersona(queryText);
-				includeSourceTypes = classification.includeSourceTypes;
-				excludeSourceTypes = classification.excludeSourceTypes;
+				sourceTypeBoosts = classification.sourceTypeBoosts;
 				if (format === "human") {
 					console.error(`   🧭 persona=${classification.persona} (${classification.reason})`);
 				}
@@ -107,8 +106,9 @@ export function registerQueryCommand(program: Command): void {
 			try {
 				const result = await query(queryText, embedder, vectorIndex, {
 					topK: Number.parseInt(opts.topK, 10),
-					includeSourceTypes,
-					excludeSourceTypes,
+					includeSourceTypes: opts.includeTypes,
+					excludeSourceTypes: opts.excludeTypes,
+					sourceTypeBoosts,
 				});
 				console.log(formatQuery(result, format));
 			} catch (err) {

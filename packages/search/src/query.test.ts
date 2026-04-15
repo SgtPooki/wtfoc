@@ -110,6 +110,80 @@ describe("query", () => {
 		await expect(query("upload", embedder, index, { signal: controller.signal })).rejects.toThrow();
 	});
 
+	describe("source-type boosting (#265) — never-drop soft routing", () => {
+		it("sourceTypeBoosts multiplies scores by per-type weight", async () => {
+			const index = await seedIndex(
+				makeEntry("doc", [0.95, 0.05, 0], { sourceType: "doc-page" }),
+				makeEntry("code", [0.9, 0.1, 0], { sourceType: "code" }),
+			);
+			const boosted = await query("upload", embedder, index, {
+				sourceTypeBoosts: { "doc-page": 0.5, code: 1.5 },
+			});
+			// Without boost, doc would rank first (higher raw cosine)
+			// With boost: doc*0.5 vs code*1.5 → code should rank first
+			expect(boosted.results[0]?.sourceType).toBe("code");
+			expect(boosted.results[1]?.sourceType).toBe("doc-page");
+		});
+
+		it("missing boost key defaults to 1.0 (identity, no change)", async () => {
+			const index = await seedIndex(
+				makeEntry("doc", [0.95, 0.05, 0], { sourceType: "doc-page" }),
+				makeEntry("code", [0.9, 0.1, 0], { sourceType: "code" }),
+			);
+			// Only specify boost for 'markdown' which isn't in the index — should be no-op
+			const result = await query("upload", embedder, index, {
+				sourceTypeBoosts: { markdown: 2.0 },
+			});
+			// Order preserved: doc (higher raw) first
+			expect(result.results[0]?.sourceType).toBe("doc-page");
+			expect(result.results[1]?.sourceType).toBe("code");
+		});
+
+		it("never drops results — all candidates included in the final topK", async () => {
+			const index = await seedIndex(
+				makeEntry("doc-1", [1, 0, 0], { sourceType: "doc-page" }),
+				makeEntry("doc-2", [0.9, 0.1, 0], { sourceType: "doc-page" }),
+				makeEntry("code-1", [0.5, 0.5, 0], { sourceType: "code" }),
+			);
+			// Even with near-zero boost for doc-page, results are NOT dropped
+			const result = await query("upload", embedder, index, {
+				sourceTypeBoosts: { "doc-page": 0.01 },
+				topK: 10,
+			});
+			expect(result.results).toHaveLength(3);
+			// code wins because its raw 0.5 * default 1.0 > doc's 1.0 * 0.01
+			expect(result.results[0]?.sourceType).toBe("code");
+		});
+
+		it("empty sourceTypeBoosts behaves identically to undefined", async () => {
+			const index = await seedIndex(
+				makeEntry("doc", [0.95, 0.05, 0], { sourceType: "doc-page" }),
+				makeEntry("code", [0.9, 0.1, 0], { sourceType: "code" }),
+			);
+			const withEmpty = await query("upload", embedder, index, {
+				sourceTypeBoosts: {},
+			});
+			const withUndefined = await query("upload", embedder, index, {});
+			expect(withEmpty.results.map((r) => r.sourceType)).toEqual(
+				withUndefined.results.map((r) => r.sourceType),
+			);
+		});
+
+		it("boost combines additively with excludeSourceTypes (filter wins)", async () => {
+			const index = await seedIndex(
+				makeEntry("doc", [0.95, 0.05, 0], { sourceType: "doc-page" }),
+				makeEntry("code", [0.9, 0.1, 0], { sourceType: "code" }),
+			);
+			// exclude doc-page entirely, even though it'd be boosted
+			const result = await query("upload", embedder, index, {
+				sourceTypeBoosts: { "doc-page": 2.0 },
+				excludeSourceTypes: ["doc-page"],
+			});
+			expect(result.results).toHaveLength(1);
+			expect(result.results[0]?.sourceType).toBe("code");
+		});
+	});
+
 	describe("source-type filtering (#256)", () => {
 		it("includeSourceTypes keeps only results whose sourceType is in the set", async () => {
 			const index = await seedIndex(
