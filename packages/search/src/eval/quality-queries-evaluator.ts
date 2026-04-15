@@ -7,6 +7,7 @@ import type {
 	Segment,
 	VectorIndex,
 } from "@wtfoc/common";
+import { classifyQueryPersona } from "../persona/classify-query.js";
 import { query } from "../query.js";
 import { trace } from "../trace/trace.js";
 import { GOLD_STANDARD_QUERIES, type GoldStandardQuery } from "./gold-standard-queries.js";
@@ -43,6 +44,7 @@ export async function evaluateQualityQueries(
 	signal?: AbortSignal,
 	overlayEdges: Edge[] = [],
 	reranker?: Reranker,
+	autoRoute = false,
 ): Promise<EvalStageResult> {
 	const startedAt = new Date().toISOString();
 	const t0 = performance.now();
@@ -62,6 +64,7 @@ export async function evaluateQualityQueries(
 			signal,
 			overlayEdges,
 			reranker,
+			autoRoute,
 		);
 		scores.push(score);
 		if (score.passed) passCount++;
@@ -155,6 +158,7 @@ async function scoreQuery(
 	signal?: AbortSignal,
 	overlayEdges: Edge[] = [],
 	reranker?: Reranker,
+	autoRoute = false,
 ): Promise<QueryScore> {
 	let resultCount = 0;
 	let requiredTypesFound = false;
@@ -167,11 +171,14 @@ async function scoreQuery(
 	const sourceTypesReached: string[] = [];
 
 	try {
+		const boosts = autoRoute ? classifyQueryPersona(gq.queryText).sourceTypeBoosts : undefined;
+
 		// Query phase
 		const qResult = await query(gq.queryText, embedder, vectorIndex, {
 			topK: 10,
 			signal,
 			reranker,
+			sourceTypeBoosts: boosts,
 		});
 		resultCount = qResult.results.length;
 
@@ -192,6 +199,7 @@ async function scoreQuery(
 			signal,
 			overlayEdges: overlayEdges.length > 0 ? overlayEdges : undefined,
 			reranker,
+			sourceTypeBoosts: boosts,
 		});
 
 		for (const st of tResult.stats.sourceTypes) sourceTypesReached.push(st);

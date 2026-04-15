@@ -70,6 +70,7 @@ const { values } = parseArgs({
 		"reranker-type": { type: "string" }, // "llm" | "bge" (bge not yet implemented)
 		"reranker-url": { type: "string" },  // base URL for llm or bge reranker
 		"reranker-model": { type: "string" }, // model name for llm reranker
+		"auto-route": { type: "boolean", default: false }, // enable persona-based boost routing (#265)
 		help: { type: "boolean", short: "h", default: false },
 	},
 	strict: true,
@@ -283,7 +284,14 @@ async function main() {
 						(store.manifests as { dir?: string }).dir ??
 						`${process.env.HOME ?? "."}.wtfoc/projects`;
 					const searchOverlayEdges = await loadAllOverlayEdges(searchManifestDir, values.collection!);
-					result = await evaluateSearch(embedder, vectorIndex, segments, undefined, searchOverlayEdges);
+					result = await evaluateSearch(
+						embedder,
+						vectorIndex,
+						segments,
+						undefined,
+						searchOverlayEdges,
+						values["auto-route"] ?? false,
+					);
 					}
 					break;
 				}
@@ -332,7 +340,15 @@ async function main() {
 							(store.manifests as { dir?: string }).dir ??
 							`${process.env.HOME ?? "."}.wtfoc/projects`;
 						const qqOverlayEdges = await loadAllOverlayEdges(qqManifestDir, values.collection!);
-						result = await evaluateQualityQueries(embedder, vectorIndex, segments, undefined, qqOverlayEdges, reranker);
+						result = await evaluateQualityQueries(
+						embedder,
+						vectorIndex,
+						segments,
+						undefined,
+						qqOverlayEdges,
+						reranker,
+						values["auto-route"] ?? false,
+					);
 					}
 					break;
 				}

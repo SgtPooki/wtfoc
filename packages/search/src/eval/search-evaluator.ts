@@ -6,12 +6,17 @@ import type {
 	Segment,
 	VectorIndex,
 } from "@wtfoc/common";
+import { classifyQueryPersona } from "../persona/classify-query.js";
 import { query } from "../query.js";
 import { trace } from "../trace/trace.js";
 import { FIXTURE_QUERIES } from "./search-eval-fixtures.js";
 
 /**
  * Evaluate search and trace quality using canned test queries.
+ *
+ * `autoRoute`: when true, each query is classified through the persona
+ * classifier and its boosts are applied. Use to measure whether soft
+ * routing improves MRR on a real corpus (#265).
  */
 export async function evaluateSearch(
 	embedder: Embedder,
@@ -19,6 +24,7 @@ export async function evaluateSearch(
 	segments: Segment[],
 	signal?: AbortSignal,
 	overlayEdges: Edge[] = [],
+	autoRoute = false,
 ): Promise<EvalStageResult> {
 	// Compute total source types in collection for coverage ratio (AC-US7-06)
 	const collectionSourceTypes = new Set<string>();
@@ -63,9 +69,13 @@ export async function evaluateSearch(
 
 		// Query eval
 		try {
+			const boosts = autoRoute
+				? classifyQueryPersona(fixture.queryText).sourceTypeBoosts
+				: undefined;
 			const qResult = await query(fixture.queryText, embedder, vectorIndex, {
 				topK: fixture.topK,
 				signal,
+				sourceTypeBoosts: boosts,
 			});
 
 			const resultCount = qResult.results.length;
