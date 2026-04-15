@@ -250,6 +250,47 @@ describe("deriveSourceFromUrl (#257)", () => {
 	});
 });
 
+describe("isPathDenied (#257 URL pattern filter)", () => {
+	it("returns false when no patterns are provided", async () => {
+		const { isPathDenied } = await import("./website.js");
+		expect(isPathDenied("https://example.com/docs/x", [])).toBe(false);
+		expect(isPathDenied("https://example.com/docs/x", undefined)).toBe(false);
+	});
+
+	it("matches a pattern against the URL pathname", async () => {
+		const { isPathDenied } = await import("./website.js");
+		expect(isPathDenied("https://example.com/blog/some-post", ["/blog"])).toBe(true);
+		expect(isPathDenied("https://example.com/docs/x", ["/blog"])).toBe(false);
+	});
+
+	it("matches any pattern in the list (logical OR)", async () => {
+		const { isPathDenied } = await import("./website.js");
+		const patterns = ["/blog", "/tag", "/archive"];
+		expect(isPathDenied("https://example.com/tag/ipfs", patterns)).toBe(true);
+		expect(isPathDenied("https://example.com/archive/2024", patterns)).toBe(true);
+		expect(isPathDenied("https://example.com/docs/intro", patterns)).toBe(false);
+	});
+
+	it("does not match on hostname, only pathname", async () => {
+		const { isPathDenied } = await import("./website.js");
+		// "/blog" should not match "blog.example.com" hostname
+		expect(isPathDenied("https://blog.example.com/docs", ["/blog"])).toBe(false);
+	});
+
+	it("pattern matching is case-sensitive on path (per RFC)", async () => {
+		const { isPathDenied } = await import("./website.js");
+		expect(isPathDenied("https://example.com/Blog/post", ["/blog"])).toBe(false);
+		expect(isPathDenied("https://example.com/blog/post", ["/blog"])).toBe(true);
+	});
+
+	it("is a pure function (same input → same output)", async () => {
+		const { isPathDenied } = await import("./website.js");
+		const url = "https://example.com/blog/x";
+		const patterns = ["/blog", "/tag"];
+		expect(isPathDenied(url, patterns)).toBe(isPathDenied(url, patterns));
+	});
+});
+
 describe("isLowQualityWebChunk (#257 edge suppression)", () => {
 	it("flags chunks below the minimum content length", async () => {
 		const { isLowQualityWebChunk } = await import("./website.js");

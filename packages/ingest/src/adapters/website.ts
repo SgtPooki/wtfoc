@@ -93,6 +93,27 @@ export function stripBoilerplateHtml(html: string): string {
 	return out;
 }
 
+/**
+ * True when `url`'s pathname contains any of the given deny patterns (#257).
+ *
+ * Used to skip crawling categories that reliably produce low-signal content
+ * (marketing blog, tag/archive pages, legal, search results). Simple
+ * substring match on the pathname — not a regex or glob, so callers can
+ * pass intuitive values like `/blog`, `/tag/`, `/legal/privacy`.
+ *
+ * Only pathname is matched — hostname is not consulted. Matching is
+ * case-sensitive per RFC 3986 (paths are case-sensitive; authority is not).
+ */
+export function isPathDenied(url: string, patterns?: string[]): boolean {
+	if (!patterns || patterns.length === 0) return false;
+	try {
+		const path = new URL(url).pathname;
+		return patterns.some((p) => path.includes(p));
+	} catch {
+		return false;
+	}
+}
+
 export interface WebsiteAdapterConfig {
 	/** The URL to crawl (e.g., "https://docs.filecoin.io") */
 	source: string;
@@ -102,6 +123,13 @@ export interface WebsiteAdapterConfig {
 	depth?: number;
 	/** Glob pattern to stay within (e.g., "https://docs.filecoin.io/**") */
 	urlPattern?: string;
+	/**
+	 * Path substrings that skip a URL from being processed (#257).
+	 * Matches any pattern (logical OR). Case-sensitive on the URL pathname.
+	 * Example: ["/blog", "/tag/", "/archive", "/legal"] — excludes marketing
+	 * blog, tag aggregation pages, archive listings, and legal pages.
+	 */
+	denyPathPatterns?: string[];
 	/** Suppress progress logging (default: false) */
 	quiet?: boolean;
 }
@@ -139,6 +167,9 @@ export class WebsiteAdapter implements SourceAdapter<WebsiteAdapterConfig> {
 			maxPages: isFiniteInt(raw.maxPages) ? raw.maxPages : 100,
 			depth: isNonNegativeInt(raw.depth) ? raw.depth : undefined,
 			urlPattern: typeof raw.urlPattern === "string" ? raw.urlPattern : undefined,
+			denyPathPatterns: Array.isArray(raw.denyPathPatterns)
+				? raw.denyPathPatterns.filter((p): p is string => typeof p === "string")
+				: undefined,
 			quiet: raw.quiet === true,
 		};
 	}
@@ -247,6 +278,16 @@ export class WebsiteAdapter implements SourceAdapter<WebsiteAdapterConfig> {
 					maxRequestsPerCrawl: crawleeMaxRequests,
 					async requestHandler({ request, $, enqueueLinks }) {
 						signal?.throwIfAborted();
+
+						// Skip URLs whose path matches a deny pattern (#257). Applied
+						// here (not just at enqueue time) so the seed URL itself is
+						// also respected.
+						if (isPathDenied(request.url, config.denyPathPatterns)) {
+							if (!config.quiet) {
+								console.error(`   ⊘ skipped (deny pattern): ${request.url}`);
+							}
+							return;
+						}
 
 						const title = $("title").text().trim();
 

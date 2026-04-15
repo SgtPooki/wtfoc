@@ -61,6 +61,10 @@ export function registerIngestCommand(program: Command): void {
 					.option("--max-pages <number>", "[website] Limit pages to crawl (default: 100)")
 					.option("--depth <number>", "[website] Limit link-following depth")
 					.option("--url-pattern <glob>", "[website] Glob pattern to restrict URLs")
+					.option(
+						"--deny-path <patterns...>",
+						"[website] Path substrings to skip (e.g. /blog /tag /archive /legal). Matches any — logical OR.",
+					)
 					.option("--document-ids <ids...>", "Only re-process these document IDs")
 					.option("--source-paths <paths...>", "[repo] Only process matching paths")
 					.option("--changed-since <iso>", "Only process documents after this timestamp")
@@ -85,6 +89,7 @@ export function registerIngestCommand(program: Command): void {
 				maxPages?: string;
 				depth?: string;
 				urlPattern?: string;
+				denyPath?: string[];
 				treeSitterUrl?: string;
 				documentIds?: string[];
 				sourcePaths?: string[];

@@ -21,7 +21,7 @@ import {
 /** Validate and apply website-specific options to raw config. */
 export function applyWebsiteOptions(
 	rawConfig: Record<string, unknown>,
-	opts: { maxPages?: string; depth?: string; urlPattern?: string },
+	opts: { maxPages?: string; depth?: string; urlPattern?: string; denyPath?: string[] },
 	quiet: boolean,
 ): void {
 	if (opts.maxPages != null) {
@@ -43,6 +43,7 @@ export function applyWebsiteOptions(
 		rawConfig.depth = depth;
 	}
 	if (opts.urlPattern) rawConfig.urlPattern = opts.urlPattern;
+	if (opts.denyPath && opts.denyPath.length > 0) rawConfig.denyPathPatterns = opts.denyPath;
 	if (quiet) rawConfig.quiet = true;
 }
 
