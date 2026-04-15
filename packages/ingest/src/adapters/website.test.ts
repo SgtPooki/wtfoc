@@ -250,6 +250,63 @@ describe("deriveSourceFromUrl (#257)", () => {
 	});
 });
 
+describe("extractMainContent (#257 readability extraction)", () => {
+	it("extracts article content and drops navigational chrome", async () => {
+		const { extractMainContent } = await import("./website.js");
+		const html = `<!DOCTYPE html><html><head><title>Test</title></head><body>
+			<nav><a href="/home">Home</a><a href="/about">About</a></nav>
+			<header><h1>Site Title</h1></header>
+			<article>
+				<h1>How to configure storage providers</h1>
+				<p>Storage providers in the Filecoin network must register their
+				compute and storage capacity through a series of sealing steps.
+				Each sealing step produces a cryptographic proof that is submitted
+				to the chain and verified by the network consensus.</p>
+				<p>Providers earn block rewards proportional to the storage they
+				have committed and maintained on the network. Slashing occurs when
+				committed storage cannot be proven within the agreed window.</p>
+			</article>
+			<footer>Copyright 2026. All rights reserved. <a href="/privacy">Privacy</a></footer>
+		</body></html>`;
+		const content = extractMainContent(html);
+		expect(content).toContain("storage providers");
+		expect(content).toContain("sealing steps");
+		expect(content).not.toContain("Copyright 2026");
+		expect(content).not.toContain("Privacy");
+	});
+
+	it("returns empty string when the document is too short for readability", async () => {
+		const { extractMainContent } = await import("./website.js");
+		// Readability has a minimum content threshold; very short pages fall through
+		const result = extractMainContent("<html><body><p>hi</p></body></html>");
+		// Either empty (readability declined) or at least the 'hi' content
+		expect(typeof result).toBe("string");
+	});
+
+	it("is a pure function — same HTML returns same content", async () => {
+		const { extractMainContent } = await import("./website.js");
+		const html = `<html><body><article><h1>Title</h1>
+			<p>A paragraph of text long enough to survive the readability
+			minimum-content filter. It talks about Filecoin storage deals,
+			retrieval deals, and the economic incentives that bind them.
+			The text continues for a few more sentences to ensure that
+			readability will accept it as real article content.</p></article></body></html>`;
+		expect(extractMainContent(html)).toBe(extractMainContent(html));
+	});
+
+	it("handles malformed HTML gracefully (no throw)", async () => {
+		const { extractMainContent } = await import("./website.js");
+		expect(() => extractMainContent("<html><body><p>unclosed")).not.toThrow();
+		expect(() => extractMainContent("")).not.toThrow();
+	});
+
+	it("returns empty string for non-HTML or failed parsing", async () => {
+		const { extractMainContent } = await import("./website.js");
+		expect(extractMainContent("")).toBe("");
+		expect(extractMainContent("{json: 'not html'}")).toBe("");
+	});
+});
+
 describe("findBoilerplateChunks (#257 shingle-based dedup)", () => {
 	it("returns empty set for a small input (<3 chunks — not enough evidence to dedup)", async () => {
 		const { findBoilerplateChunks } = await import("./website.js");

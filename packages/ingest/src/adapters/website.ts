@@ -1,8 +1,10 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Readability } from "@mozilla/readability";
 import type { Chunk, Edge, SourceAdapter } from "@wtfoc/common";
 import { CheerioCrawler, Configuration } from "crawlee";
+import { parseHTML } from "linkedom";
 import TurndownService from "turndown";
 import { chunkMarkdown, sha256Hex } from "../chunker.js";
 
@@ -75,6 +77,35 @@ export function isLowQualityWebChunk(content: string): boolean {
  * `<aside>` for callouts — better to grow the set once we have dogfood data.
  */
 const BOILERPLATE_TAGS = ["nav", "footer", "aside", "script", "style", "noscript"] as const;
+
+/**
+ * Extract the main article content from an HTML document using Mozilla's
+ * Readability (Apache-2.0) backed by linkedom for DOM parsing (#257 Phase C(a)).
+ *
+ * Handles graceful degradation:
+ *   - Returns "" for empty or non-HTML input.
+ *   - Returns "" when Readability declines the document (too short, no
+ *     semantic article content). Callers should fall back to the adapter's
+ *     existing selector-based extraction in that case.
+ *   - Never throws — any parse failure returns "".
+ *
+ * Uses linkedom (ISC) rather than jsdom to keep the install footprint small
+ * (~500KB vs ~50MB) and the crawl fast. linkedom implements a DOM subset
+ * sufficient for Readability's algorithm.
+ */
+export function extractMainContent(html: string): string {
+	if (!html || html.length < 10) return "";
+	try {
+		const { document } = parseHTML(html);
+		// linkedom's document is structurally compatible with what Readability
+		// uses; TypeScript infers this correctly without any cast.
+		const reader = new Readability(document);
+		const article = reader.parse();
+		return article?.content ?? "";
+	} catch {
+		return "";
+	}
+}
 
 /**
  * Remove boilerplate tag subtrees from an HTML string using a tolerant regex.
@@ -398,17 +429,25 @@ export class WebsiteAdapter implements SourceAdapter<WebsiteAdapterConfig> {
 
 						const title = $("title").text().trim();
 
-						// Extract main content — try common selectors first
-						const rawContent =
-							$("main").html() ??
-							$("article").html() ??
-							$("[role='main']").html() ??
-							$("body").html() ??
-							"";
-
-						// Strip nav/footer/aside/script/style before markdown conversion
-						// so boilerplate doesn't pollute retrieval (#257).
-						const content = stripBoilerplateHtml(rawContent);
+						// Prefer Readability's main-content extraction (#257 Phase C(a)).
+						// Falls back through cheerio selectors → stripBoilerplateHtml when
+						// Readability declines the document (too short, no article content).
+						const fullHtml = $.html();
+						const readable = extractMainContent(fullHtml);
+						let content: string;
+						if (readable) {
+							content = readable;
+						} else {
+							const rawContent =
+								$("main").html() ??
+								$("article").html() ??
+								$("[role='main']").html() ??
+								$("body").html() ??
+								"";
+							// Strip nav/footer/aside/script/style before markdown conversion
+							// so boilerplate doesn't pollute retrieval.
+							content = stripBoilerplateHtml(rawContent);
+						}
 
 						const markdown = turndown.turndown(content);
 						pages.push({ url: request.url, title, markdown });
