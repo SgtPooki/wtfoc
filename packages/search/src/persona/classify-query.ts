@@ -50,7 +50,7 @@ const RULES: Array<{
 	{
 		persona: "discussion",
 		matchers: [
-			/\bdiscuss(?:ed|es|ing)?\b/i,
+			/\bdiscuss(?:ed|es|ing|ion|ions)?\b/i,
 			/\bdebate(?:d|s)?\b/i,
 			/\bargu(?:e|ed|es|ing|ments?)\b/i,
 			/\bconversation\b/i,

@@ -71,8 +71,13 @@ export async function query(
 
 	const queryVector = await embedder.embed(queryText, options?.signal);
 	// Fetch extra results when post-search ranking may discard or reorder candidates,
-	// or when source-type filters may drop matches.
-	const fetchK = signalFilter || reranker || includeSet || excludeSet ? topK * 3 : topK;
+	// or when source-type filters may drop matches. Source-type filters need a
+	// larger fan-out than reranker because a dominant source type can occupy the
+	// entire shallow top-k — dogfood hit this when doc-page chunks filled the top
+	// 15 for a "discussions" query and the include filter dropped everything.
+	let fetchK = topK;
+	if (signalFilter || reranker) fetchK = Math.max(fetchK, topK * 3);
+	if (includeSet || excludeSet) fetchK = Math.max(fetchK, topK * 10);
 	const rawMatches = await vectorIndex.search(queryVector, fetchK);
 	// Apply source-type filters before reranker runs (save compute) and before topK slicing.
 	const matches =

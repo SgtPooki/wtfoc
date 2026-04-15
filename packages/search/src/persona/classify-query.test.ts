@@ -24,6 +24,17 @@ describe("classifyQueryPersona (#259)", () => {
 		expect(classifyQueryPersona("which issues debate the architecture").persona).toBe("discussion");
 	});
 
+	it("classifies 'discussions' (plural noun) as discussion too", () => {
+		// Caught in v6 dogfood: "What discussions happened about this project?"
+		// failed to route because the verb-only regex missed the plural noun.
+		expect(classifyQueryPersona("What discussions happened about this project?").persona).toBe(
+			"discussion",
+		);
+		expect(classifyQueryPersona("any interesting discussion in the repo").persona).toBe(
+			"discussion",
+		);
+	});
+
 	it("classifies 'what changed / what did they change / what fixed' as changes", () => {
 		expect(classifyQueryPersona("What changed recently?").persona).toBe("changes");
 		expect(classifyQueryPersona("What PRs fixed the chunker?").persona).toBe("changes");
