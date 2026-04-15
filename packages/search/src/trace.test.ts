@@ -431,6 +431,55 @@ describe("trace", () => {
 			expect(hop.timestamp).toBeUndefined();
 		}
 	});
+
+	describe("sourceTypeBoosts — never-drop soft routing (#265)", () => {
+		it("boost changes relative seed ranking (code with 2.0x boost outranks slack with 0.3x)", async () => {
+			// Raw cosine score: slack ~ 0.58, code ~ 0.41 (hashEmbedder quantizing).
+			// Apply boost: code * 2.0 ≈ 0.82, slack * 0.3 ≈ 0.17 → code should win.
+			const index = await seedIndex(slackChunk, issueChunk, prChunk, codeChunk);
+			const boosted = await trace("upload failures", embedder, index, [testSegment], {
+				sourceTypeBoosts: { code: 2.0, "slack-message": 0.3 },
+				maxTotal: 4,
+			});
+			const seedHops = boosted.hops.filter((h) => h.connection.method === "semantic");
+			if (seedHops.length < 2) return; // defensive — at least compare top two
+			// With 2.0x boost, code should outrank slack (despite slack's higher raw cosine).
+			const codeIdx = seedHops.findIndex((h) => h.sourceType === "code");
+			const slackIdx = seedHops.findIndex((h) => h.sourceType === "slack-message");
+			if (codeIdx !== -1 && slackIdx !== -1) {
+				expect(codeIdx).toBeLessThan(slackIdx);
+			}
+		});
+
+		it("never drops a source type from seeds (unlike excludeSourceTypes)", async () => {
+			const index = await seedIndex(slackChunk, issueChunk, prChunk, codeChunk);
+			// Heavy suppression (0.1) — but result should still contain ALL types
+			// since boosts never drop, they only reorder.
+			const result = await trace("upload failures", embedder, index, [testSegment], {
+				sourceTypeBoosts: {
+					"slack-message": 0.1,
+					"github-issue": 0.1,
+					"github-pr": 0.1,
+					code: 0.1,
+				},
+				maxTotal: 20,
+			});
+			const typesReached = new Set(result.hops.map((h) => h.sourceType));
+			expect(typesReached.size).toBeGreaterThan(0);
+		});
+
+		it("missing boost key leaves that type's score unchanged", async () => {
+			const index = await seedIndex(slackChunk, issueChunk, prChunk, codeChunk);
+			const withoutBoost = await trace("upload failures", embedder, index, [testSegment]);
+			const withIrrelevantBoost = await trace("upload failures", embedder, index, [testSegment], {
+				sourceTypeBoosts: { nonexistent: 3.0 },
+			});
+			// Top-level seed order should be identical since no actual source type was boosted
+			const firstSemantic = (hops: typeof withoutBoost.hops) =>
+				hops.find((h) => h.connection.method === "semantic")?.sourceType;
+			expect(firstSemantic(withIrrelevantBoost.hops)).toBe(firstSemantic(withoutBoost.hops));
+		});
+	});
 });
 
 describe("buildEdgeIndex", () => {

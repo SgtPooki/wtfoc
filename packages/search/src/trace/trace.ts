@@ -22,6 +22,13 @@ export interface TraceOptions {
 	/** Only include these source types in results */
 	includeSourceTypes?: string[];
 	/**
+	 * Per-source-type score multipliers applied to seed scores (#265).
+	 * Never drops — just reorders. Missing types default to 1.0. Prefer this
+	 * over include/exclude for soft routing; hard filter only when you
+	 * explicitly want to exclude a type.
+	 */
+	sourceTypeBoosts?: Record<string, number>;
+	/**
 	 * Trace mode:
 	 * - "discovery" (default): find connected results across sources
 	 * - "analytical": also detect cross-source insights (convergence, evidence chains, temporal patterns)
@@ -126,9 +133,31 @@ export async function trace(
 	// Step 1: Embed query
 	const queryVector = await embedder.embed(query, options?.signal);
 
-	// Step 2: Find seed chunks via vector search
-	const candidateCount = options?.reranker ? maxTotal * 2 : maxTotal;
-	const seeds = await vectorIndex.search(queryVector, candidateCount);
+	// Step 2: Find seed chunks via vector search.
+	// Fan out wider when boosts are set — a dominant source type can otherwise
+	// fill the entire raw top-k and a boost just uniformly scales a
+	// single-type result set, producing no effective reordering (#265).
+	const hasBoosts = options?.sourceTypeBoosts && Object.keys(options.sourceTypeBoosts).length > 0;
+	const candidateMultiplier = options?.reranker ? 2 : hasBoosts ? 5 : 1;
+	const candidateCount = maxTotal * candidateMultiplier;
+	const rawSeeds = await vectorIndex.search(queryVector, candidateCount);
+
+	// Apply source-type boosts (#265) — soft routing, never drops seeds.
+	const boostedSeeds = hasBoosts
+		? rawSeeds
+				.map((s): import("@wtfoc/common").ScoredEntry => ({
+					entry: s.entry,
+					score:
+						s.score *
+						((options?.sourceTypeBoosts as Record<string, number>)[
+							s.entry.metadata.sourceType ?? "unknown"
+						] ?? 1.0),
+				}))
+				.sort((a, b) => b.score - a.score)
+				.slice(0, maxTotal * (options?.reranker ? 2 : 1))
+		: rawSeeds;
+
+	const seeds = boostedSeeds;
 	let effectiveSeeds = seeds;
 
 	if (options?.reranker && seeds.length > 0) {

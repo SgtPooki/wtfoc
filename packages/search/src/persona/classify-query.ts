@@ -57,7 +57,9 @@ const RULES: Array<{
 			/\brefer(?:ence)? docs?\b/i,
 		],
 		includeSourceTypes: ["doc-page", "markdown"],
-		sourceTypeBoosts: { "doc-page": 1.3, markdown: 1.2 },
+		// Codex review: shrink initial cut to 1.2 max, 0.7 min. Too-aggressive
+		// boosts stack badly with other multiplicative signals (reranker, signals).
+		sourceTypeBoosts: { "doc-page": 1.2, markdown: 1.1 },
 	},
 	{
 		persona: "discussion",
@@ -79,11 +81,11 @@ const RULES: Array<{
 			"discord-message",
 		],
 		sourceTypeBoosts: {
-			"github-pr-comment": 1.4,
-			"github-issue": 1.3,
-			"github-discussion": 1.3,
-			"slack-message": 1.2,
-			"discord-message": 1.2,
+			"github-pr-comment": 1.2,
+			"github-issue": 1.2,
+			"github-discussion": 1.2,
+			"slack-message": 1.15,
+			"discord-message": 1.15,
 			"doc-page": 0.7,
 		},
 	},
@@ -101,7 +103,7 @@ const RULES: Array<{
 		],
 		includeSourceTypes: ["github-pr", "github-issue", "markdown", "code"],
 		sourceTypeBoosts: {
-			"github-pr": 1.3,
+			"github-pr": 1.2,
 			"github-pr-comment": 1.1,
 			markdown: 1.1,
 			"doc-page": 0.8,
@@ -121,7 +123,7 @@ const RULES: Array<{
 		],
 		includeSourceTypes: ["code", "markdown"],
 		excludeSourceTypes: ["doc-page"],
-		sourceTypeBoosts: { code: 1.3, markdown: 1.1, "doc-page": 0.6 },
+		sourceTypeBoosts: { code: 1.2, markdown: 1.1, "doc-page": 0.7 },
 	},
 ];
 
