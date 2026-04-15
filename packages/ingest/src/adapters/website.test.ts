@@ -250,6 +250,62 @@ describe("deriveSourceFromUrl (#257)", () => {
 	});
 });
 
+describe("findBoilerplateChunks (#257 shingle-based dedup)", () => {
+	it("returns empty set for a small input (<3 chunks — not enough evidence to dedup)", async () => {
+		const { findBoilerplateChunks } = await import("./website.js");
+		expect(findBoilerplateChunks(["a", "b"])).toEqual(new Set());
+	});
+
+	it("does NOT flag chunks with substantial unique content even if they share a header", async () => {
+		const { findBoilerplateChunks } = await import("./website.js");
+		// A short shared preamble (~10 words) + a long unique body (~60 words).
+		// Each chunk's shared fraction should be ~10/70 = 14% — well below threshold.
+		const header = "Welcome to the Filecoin documentation portal. ";
+		const bodies = [
+			"Getting started requires installing the Lotus daemon, configuring your wallet, and joining the network. The setup process includes downloading the chain snapshot, syncing with peers, and verifying block headers before you can submit transactions or retrieve stored data.",
+			"Architecture combines content-addressed storage with verifiable computation. The system uses IPLD for linked data, proofs of replication for storage verification, and proofs of spacetime for continuity guarantees across the full retention period of each deal.",
+			"Deployment involves provisioning hardware, configuring network access, tuning garbage collection, and setting up monitoring dashboards. Reliable operation requires careful capacity planning, redundant storage, and automated failover procedures that handle the most common failure modes.",
+			"Reference documentation lists every JSON-RPC method exposed by the node. Each method includes the parameter schema, return type, authorization level, and examples demonstrating correct invocation. Clients must handle rate limits and implement exponential backoff on transient errors.",
+			"Troubleshooting covers diagnosing sync issues, identifying slow peers, recovering from corrupt blockstore state, and rebuilding indexes when the chain head diverges. Common problems include port conflicts, disk exhaustion, and missing peer keys that block handshake negotiation.",
+		];
+		const chunks = bodies.map((b) => `${header}${b}`);
+		const boilerplate = findBoilerplateChunks(chunks);
+		// Shared fraction too small — each chunk is substantially unique content
+		expect(boilerplate.size).toBe(0);
+	});
+
+	it("flags chunks that are mostly boilerplate (nav repeated on many pages)", async () => {
+		const { findBoilerplateChunks } = await import("./website.js");
+		const nav =
+			"Home. Documentation. Blog. Contact. Legal. Careers. Privacy. Terms. Support. Community. Pricing. API. SDK. CLI. Docs. ";
+		// 6 chunks that are ~entirely nav with trivial page-specific suffix
+		const chunks = Array.from({ length: 6 }, (_, i) => `${nav} p${i}`);
+		const boilerplate = findBoilerplateChunks(chunks);
+		expect(boilerplate.size).toBe(6);
+	});
+
+	it("is deterministic (same input → same output)", async () => {
+		const { findBoilerplateChunks } = await import("./website.js");
+		const nav = "same repeated header text across all pages here. ".repeat(3);
+		const chunks = Array.from({ length: 5 }, (_, i) => `${nav} body${i}`);
+		const a = findBoilerplateChunks(chunks);
+		const b = findBoilerplateChunks(chunks);
+		expect([...a].sort()).toEqual([...b].sort());
+	});
+
+	it("returns indices, not content (callers filter on index)", async () => {
+		const { findBoilerplateChunks } = await import("./website.js");
+		const nav = "shared page chrome block repeated across many pages here. ".repeat(3);
+		const chunks = Array.from({ length: 6 }, (_, i) => `${nav} x${i}`);
+		const flagged = findBoilerplateChunks(chunks);
+		for (const idx of flagged) {
+			expect(typeof idx).toBe("number");
+			expect(idx).toBeGreaterThanOrEqual(0);
+			expect(idx).toBeLessThan(chunks.length);
+		}
+	});
+});
+
 describe("isPathDenied (#257 URL pattern filter)", () => {
 	it("returns false when no patterns are provided", async () => {
 		const { isPathDenied } = await import("./website.js");

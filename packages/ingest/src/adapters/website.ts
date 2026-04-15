@@ -114,6 +114,91 @@ export function isPathDenied(url: string, patterns?: string[]): boolean {
 	}
 }
 
+/** Word-count for a w-word shingle window. */
+const SHINGLE_SIZE = 5;
+/** Minimum batch size before dedup is meaningful. */
+const MIN_BATCH_SIZE = 3;
+/**
+ * A shingle is "common" if it appears in at least this fraction of chunks.
+ * 0.6 = shared by >= 60% of the batch. Set high enough that page-unique
+ * sentences don't get flagged across similar pages.
+ */
+const COMMON_SHINGLE_THRESHOLD = 0.6;
+/**
+ * A chunk is "boilerplate" when this fraction of its shingles are common
+ * across the batch. 0.6 = more than half of the chunk's content is shared
+ * chrome. Tight enough to avoid false positives on legitimately similar
+ * pages while still catching nav-dominated chunks.
+ */
+const CHUNK_BOILERPLATE_THRESHOLD = 0.6;
+
+/**
+ * Tokenize content into simple lowercase words for shingling. Deliberately
+ * minimal — strips markdown link targets and URLs so shared link lists don't
+ * dominate the shingle set (link TEXT still counts, just not the URLs).
+ */
+function tokenize(text: string): string[] {
+	return text
+		.toLowerCase()
+		.replace(/\]\([^)]+\)/g, "]") // strip `(url)` parts of markdown links
+		.replace(/https?:\/\/\S+/g, "") // strip bare URLs
+		.split(/\W+/)
+		.filter((t) => t.length > 0);
+}
+
+function shinglesOf(content: string): Set<string> {
+	const tokens = tokenize(content);
+	if (tokens.length < SHINGLE_SIZE) return new Set();
+	const shingles = new Set<string>();
+	for (let i = 0; i <= tokens.length - SHINGLE_SIZE; i++) {
+		shingles.add(tokens.slice(i, i + SHINGLE_SIZE).join(" "));
+	}
+	return shingles;
+}
+
+/**
+ * Identify chunk indices whose content is mostly boilerplate shared with
+ * other chunks in the batch. Two-pass:
+ *   1. Build a frequency map of all w-word shingles across the batch.
+ *   2. For each chunk, compute the fraction of its shingles that are
+ *      "common" (appear in >= COMMON_SHINGLE_THRESHOLD of the batch).
+ *      If that fraction > CHUNK_BOILERPLATE_THRESHOLD, flag it.
+ *
+ * Returns a Set of indices; the caller is expected to exclude those chunks
+ * from ingestion. Batches smaller than MIN_BATCH_SIZE get no flags (not
+ * enough data to decide what's boilerplate vs unique content).
+ */
+export function findBoilerplateChunks(contents: string[]): Set<number> {
+	const out = new Set<number>();
+	if (contents.length < MIN_BATCH_SIZE) return out;
+
+	const shinglesPerChunk = contents.map(shinglesOf);
+
+	// Count how many chunks each shingle appears in (chunk-frequency).
+	const shingleChunkCount = new Map<string, number>();
+	for (const shingles of shinglesPerChunk) {
+		for (const s of shingles) {
+			shingleChunkCount.set(s, (shingleChunkCount.get(s) ?? 0) + 1);
+		}
+	}
+
+	const commonThresholdCount = Math.ceil(contents.length * COMMON_SHINGLE_THRESHOLD);
+
+	for (let i = 0; i < shinglesPerChunk.length; i++) {
+		const shingles = shinglesPerChunk[i] as Set<string>;
+		if (shingles.size === 0) continue;
+		let commonCount = 0;
+		for (const s of shingles) {
+			if ((shingleChunkCount.get(s) ?? 0) >= commonThresholdCount) commonCount++;
+		}
+		if (commonCount / shingles.size > CHUNK_BOILERPLATE_THRESHOLD) {
+			out.add(i);
+		}
+	}
+
+	return out;
+}
+
 export interface WebsiteAdapterConfig {
 	/** The URL to crawl (e.g., "https://docs.filecoin.io") */
 	source: string;
@@ -177,13 +262,20 @@ export class WebsiteAdapter implements SourceAdapter<WebsiteAdapterConfig> {
 	async *ingest(config: WebsiteAdapterConfig, signal?: AbortSignal): AsyncIterable<Chunk> {
 		const pages = await this.#crawl(config, signal);
 
+		// Pre-compute all chunks for all pages so we can shingle-dedup across
+		// the entire crawl before yielding (#257 Phase C(c)). This memory-bound
+		// buffer is fine for typical crawls (a few thousand chunks); oversized
+		// crawls should switch to a streaming variant.
+		type PreparedChunk = {
+			chunk: ReturnType<typeof chunkMarkdown>[number];
+			pageUrl: string;
+		};
+		const prepared: PreparedChunk[] = [];
 		for (const page of pages) {
 			if (!page.markdown.trim()) continue;
-
 			const documentId = page.url;
 			const documentVersionId = sha256Hex(page.markdown);
-
-			const chunks = chunkMarkdown(page.markdown, {
+			const pageChunks = chunkMarkdown(page.markdown, {
 				source: deriveSourceFromUrl(page.url),
 				sourceUrl: page.url,
 				metadata: {
@@ -193,13 +285,28 @@ export class WebsiteAdapter implements SourceAdapter<WebsiteAdapterConfig> {
 				documentId,
 				documentVersionId,
 			});
-
-			for (const chunk of chunks) {
-				yield {
-					...chunk,
-					sourceType: "doc-page",
-				};
+			for (const chunk of pageChunks) {
+				prepared.push({ chunk, pageUrl: page.url });
 			}
+		}
+
+		// Find chunks that are mostly shared boilerplate across the crawl —
+		// typically nav/footer remnants that survived HTML stripping because
+		// they're rendered as text rather than inside a `<nav>` tag.
+		const boilerplateIndices = findBoilerplateChunks(prepared.map((p) => p.chunk.content));
+		if (boilerplateIndices.size > 0 && !config.quiet) {
+			console.error(
+				`   ⊘ dropping ${boilerplateIndices.size} boilerplate chunk(s) (shared across crawl)`,
+			);
+		}
+
+		for (let i = 0; i < prepared.length; i++) {
+			if (boilerplateIndices.has(i)) continue;
+			const entry = prepared[i] as PreparedChunk;
+			yield {
+				...entry.chunk,
+				sourceType: "doc-page",
+			};
 		}
 	}
 
