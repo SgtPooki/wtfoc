@@ -169,6 +169,31 @@ describe("query", () => {
 			);
 		});
 
+		it("populates diagnostics with candidate vs returned type counts when boosts are set", async () => {
+			const index = await seedIndex(
+				makeEntry("doc-1", [1, 0, 0], { sourceType: "doc-page" }),
+				makeEntry("doc-2", [0.99, 0.01, 0], { sourceType: "doc-page" }),
+				makeEntry("code-1", [0.5, 0.5, 0], { sourceType: "code" }),
+			);
+			const result = await query("upload", embedder, index, {
+				sourceTypeBoosts: { code: 3.0, "doc-page": 0.1 },
+				topK: 2,
+			});
+			expect(result.diagnostics).toBeDefined();
+			expect(result.diagnostics?.boostedTypes.sort()).toEqual(["code", "doc-page"]);
+			// candidate counts reflect the full fetched-and-boosted set
+			expect(result.diagnostics?.candidateTypeCounts.code).toBe(1);
+			expect(result.diagnostics?.candidateTypeCounts["doc-page"]).toBe(2);
+			// returned counts reflect the final topK
+			expect(result.diagnostics?.returnedTypeCounts.code).toBe(1);
+		});
+
+		it("does NOT populate diagnostics when no boosts are set", async () => {
+			const index = await seedIndex(makeEntry("1", [1, 0, 0], { sourceType: "code" }));
+			const result = await query("upload", embedder, index, {});
+			expect(result.diagnostics).toBeUndefined();
+		});
+
 		it("boost combines additively with excludeSourceTypes (filter wins)", async () => {
 			const index = await seedIndex(
 				makeEntry("doc", [0.95, 0.05, 0], { sourceType: "doc-page" }),

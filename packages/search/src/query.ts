@@ -44,6 +44,19 @@ export interface QueryResult {
 		score: number;
 		signalScores?: Record<string, number>;
 	}>;
+	/**
+	 * Observability (#265): populated only when sourceTypeBoosts is set.
+	 * Codex review flagged "type hijacking" and "silent misrouting" as risks
+	 * — this surfaces what actually happened so callers can detect drift.
+	 */
+	diagnostics?: {
+		/** source-type counts in the fetched candidate set (pre-boost, pre-topK) */
+		candidateTypeCounts: Record<string, number>;
+		/** source-type counts in the returned topK (post-boost, post-slice) */
+		returnedTypeCounts: Record<string, number>;
+		/** types boosted (value != 1.0) */
+		boostedTypes: string[];
+	};
 }
 
 /**
@@ -158,10 +171,33 @@ export async function query(
 	if (signalFilter || rerankedScores || options?.sourceTypeBoosts) {
 		results.sort((a, b) => b.score - a.score);
 	}
+
+	// Diagnostics (#265 telemetry) — compute counts BEFORE slicing so we can
+	// compare candidate distribution vs what actually made it into topK.
+	const hasBoosts = options?.sourceTypeBoosts && Object.keys(options.sourceTypeBoosts).length > 0;
+	const diagnostics = hasBoosts
+		? (() => {
+				const candidateTypeCounts: Record<string, number> = {};
+				for (const r of results) {
+					candidateTypeCounts[r.sourceType] = (candidateTypeCounts[r.sourceType] ?? 0) + 1;
+				}
+				const sliced = results.slice(0, topK);
+				const returnedTypeCounts: Record<string, number> = {};
+				for (const r of sliced) {
+					returnedTypeCounts[r.sourceType] = (returnedTypeCounts[r.sourceType] ?? 0) + 1;
+				}
+				const boostedTypes = Object.entries(options?.sourceTypeBoosts ?? {})
+					.filter(([, v]) => v !== 1.0)
+					.map(([k]) => k);
+				return { candidateTypeCounts, returnedTypeCounts, boostedTypes };
+			})()
+		: undefined;
+
 	results = results.slice(0, topK);
 
 	return {
 		query: queryText,
 		results,
+		...(diagnostics ? { diagnostics } : {}),
 	};
 }
