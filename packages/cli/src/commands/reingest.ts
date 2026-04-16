@@ -199,7 +199,9 @@ export function registerReingestCommand(program: Command): void {
 					};
 
 					const chunker = selectChunker(entry.sourceType, filePath);
-					const chunkOutputs = chunker.chunk(doc, { maxChunkChars: maxCharsForChunking });
+					const chunkOutputs = await chunker.chunk(doc, {
+						maxChunkChars: maxCharsForChunking,
+					});
 					for (const co of chunkOutputs) {
 						allChunks.push(co as Chunk);
 					}

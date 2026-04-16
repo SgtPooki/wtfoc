@@ -22,8 +22,37 @@ export interface TreeSitterEdge {
 	evidence: string;
 }
 
+/**
+ * Structural symbol emitted by the sidecar (#220). Used by AstChunker to
+ * align chunk boundaries with function/class/method scopes instead of
+ * regex heuristics.
+ */
+export interface TreeSitterSymbol {
+	/** Symbol identifier. "(anonymous)" when the AST has no name node. */
+	name: string;
+	/** Normalized kind: function | class | interface | type | enum | struct | trait | impl | method | module. */
+	kind: string;
+	/** Raw tree-sitter node type (e.g. "function_declaration"). */
+	nodeType: string;
+	/** 0-indexed inclusive byte offset of symbol start in the source. */
+	byteStart: number;
+	/** 0-indexed exclusive byte offset of symbol end. */
+	byteEnd: number;
+	/** 1-indexed first line. */
+	lineStart: number;
+	/** 1-indexed last line (inclusive). */
+	lineEnd: number;
+	/** Index in the `symbols` array of the enclosing symbol; -1 when top-level. */
+	parentIndex: number;
+}
+
 export interface TreeSitterParseResponse {
 	edges: TreeSitterEdge[];
+	/**
+	 * Structural symbols. Always present for sidecars >= 0.2, may be missing
+	 * from older sidecars — callers should default to `[]` on undefined.
+	 */
+	symbols?: TreeSitterSymbol[];
 	language: string;
 	nodeCount: number;
 }

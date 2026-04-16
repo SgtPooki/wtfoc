@@ -154,7 +154,7 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 				metadata,
 			};
 
-			const chunkOutputs = issueChunker.chunk(doc, { maxChunkChars: GITHUB_CHUNK_SIZE });
+			const chunkOutputs = await issueChunker.chunk(doc, { maxChunkChars: GITHUB_CHUNK_SIZE });
 
 			for (const chunkOutput of chunkOutputs) {
 				yield { ...chunkOutput, sourceType: "github-issue" } as Chunk;
@@ -209,7 +209,7 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 				metadata,
 			};
 
-			const chunkOutputs = issueChunker.chunk(doc, { maxChunkChars: GITHUB_CHUNK_SIZE });
+			const chunkOutputs = await issueChunker.chunk(doc, { maxChunkChars: GITHUB_CHUNK_SIZE });
 			for (const chunkOutput of chunkOutputs) {
 				yield { ...chunkOutput, sourceType: "github-pr" } as Chunk;
 			}
@@ -359,7 +359,7 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 					metadata,
 				};
 
-				const discussionChunks = issueChunker.chunk(discussionDoc, {
+				const discussionChunks = await issueChunker.chunk(discussionDoc, {
 					maxChunkChars: GITHUB_CHUNK_SIZE,
 				});
 				for (const chunkOutput of discussionChunks) {

@@ -63,8 +63,19 @@ export interface Chunker {
 	readonly name: string;
 	/** Semantic version of this chunker implementation */
 	readonly version: string;
-	/** Chunk a document into pieces with spans and provenance */
-	chunk(document: ChunkerDocument, options?: ChunkerOptions): ChunkerOutput[];
+	/**
+	 * Chunk a document into pieces with spans and provenance.
+	 *
+	 * Returns either a synchronous array (pure-local chunkers like markdown,
+	 * code-window, ast-heuristic) or a Promise (chunkers that consult an
+	 * external service — e.g. the tree-sitter sidecar for AST-aware
+	 * chunking, #220). Callers should always `await` the result so both
+	 * cases are handled uniformly.
+	 */
+	chunk(
+		document: ChunkerDocument,
+		options?: ChunkerOptions,
+	): ChunkerOutput[] | Promise<ChunkerOutput[]>;
 }
 
 export interface ChunkerOptions {

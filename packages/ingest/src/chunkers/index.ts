@@ -4,6 +4,8 @@ import { CodeWindowChunker } from "./code-chunker.js";
 import { GithubIssueChunker } from "./github-issue-chunker.js";
 import { MarkdownChunker } from "./markdown-chunker.js";
 
+export type { AstChunkerOptions } from "./ast-chunker.js";
+export { AstChunker } from "./ast-chunker.js";
 export { AstHeuristicChunker } from "./ast-heuristic-chunker.js";
 export { CodeWindowChunker } from "./code-chunker.js";
 export { GithubIssueChunker } from "./github-issue-chunker.js";
@@ -72,7 +74,10 @@ export function selectChunker(sourceType: string, filePath?: string): Chunker {
 		return registry.get("markdown") ?? new MarkdownChunker();
 	}
 	if (ext && AST_SUPPORTED_EXTS.has(ext)) {
-		return registry.get("ast-heuristic") ?? new AstHeuristicChunker();
+		// Prefer the AST chunker when it's been registered (caller-installed
+		// with a sidecar URL). Fall back to the regex heuristic otherwise —
+		// never force a sidecar dependency on callers that haven't opted in.
+		return registry.get("ast") ?? registry.get("ast-heuristic") ?? new AstHeuristicChunker();
 	}
 	return registry.get("code-window") ?? new CodeWindowChunker();
 }

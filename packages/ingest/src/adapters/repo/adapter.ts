@@ -223,7 +223,7 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 				},
 			};
 
-			const chunks = chunker.chunk(doc, opts.chunkerOptions);
+			const chunks = await chunker.chunk(doc, opts.chunkerOptions);
 			for (const chunk of chunks) {
 				const yieldChunk: Chunk = {
 					...chunk,

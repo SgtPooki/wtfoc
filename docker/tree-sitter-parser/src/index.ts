@@ -22,8 +22,42 @@ interface ParsedEdge {
 	evidence: string;
 }
 
+/**
+ * Structural symbol extracted from the AST — used by the ingest chunker to
+ * align chunks with semantic boundaries (functions, classes, methods, types)
+ * instead of fixed windows.
+ */
+interface ParsedSymbol {
+	/** Symbol name (function/class/method identifier); "(anonymous)" when absent. */
+	name: string;
+	/**
+	 * Broad kind string consistent across languages: "function" | "class" |
+	 * "interface" | "type" | "enum" | "struct" | "trait" | "impl" | "method" |
+	 * "module". Raw tree-sitter node type is in `nodeType` for callers that
+	 * need more detail.
+	 */
+	kind: string;
+	/** Raw tree-sitter node type (e.g. "function_declaration"). */
+	nodeType: string;
+	/** 0-indexed inclusive byte offset of symbol start. */
+	byteStart: number;
+	/** 0-indexed exclusive byte offset of symbol end. */
+	byteEnd: number;
+	/** 1-indexed line of first byte. */
+	lineStart: number;
+	/** 1-indexed line of last byte (inclusive). */
+	lineEnd: number;
+	/**
+	 * Index into `symbols` array of enclosing symbol, or -1 if top-level.
+	 * Only direct enclosure is recorded (a method's parent is its class).
+	 */
+	parentIndex: number;
+}
+
 interface ParseResponse {
 	edges: ParsedEdge[];
+	/** #220 — structural symbols for AST-aware chunking. Additive. */
+	symbols: ParsedSymbol[];
 	language: string;
 	nodeCount: number;
 }
@@ -308,6 +342,134 @@ const EXTRACTORS: Record<string, (tree: Tree) => ParsedEdge[]> = {
 	cpp: extractCIncludes,
 };
 
+// ── Structural symbol extraction (#220) ──────────────────────────────────────
+
+/**
+ * Per-language node types that declare a structural symbol.
+ * `kind` is a normalized label; node.type is preserved in the response for
+ * callers that want the raw tree-sitter category.
+ */
+const SYMBOL_NODE_KINDS: Record<string, Record<string, string>> = {
+	javascript: {
+		function_declaration: "function",
+		generator_function_declaration: "function",
+		class_declaration: "class",
+		method_definition: "method",
+	},
+	typescript: {
+		function_declaration: "function",
+		generator_function_declaration: "function",
+		class_declaration: "class",
+		abstract_class_declaration: "class",
+		interface_declaration: "interface",
+		type_alias_declaration: "type",
+		enum_declaration: "enum",
+		method_definition: "method",
+		method_signature: "method",
+		abstract_method_signature: "method",
+	},
+	tsx: {
+		function_declaration: "function",
+		class_declaration: "class",
+		interface_declaration: "interface",
+		type_alias_declaration: "type",
+		enum_declaration: "enum",
+		method_definition: "method",
+	},
+	python: {
+		function_definition: "function",
+		class_definition: "class",
+	},
+	go: {
+		function_declaration: "function",
+		method_declaration: "method",
+		type_declaration: "type",
+	},
+	rust: {
+		function_item: "function",
+		struct_item: "struct",
+		enum_item: "enum",
+		trait_item: "trait",
+		impl_item: "impl",
+		mod_item: "module",
+	},
+	ruby: {
+		method: "method",
+		singleton_method: "method",
+		class: "class",
+		module: "module",
+	},
+	java: {
+		class_declaration: "class",
+		interface_declaration: "interface",
+		enum_declaration: "enum",
+		method_declaration: "method",
+		constructor_declaration: "method",
+	},
+	c: {
+		function_definition: "function",
+		struct_specifier: "struct",
+	},
+	cpp: {
+		function_definition: "function",
+		class_specifier: "class",
+		struct_specifier: "struct",
+	},
+};
+
+/** Extract symbol name from an AST node, with language-specific fallbacks. */
+function getSymbolName(node: TreeNode): string {
+	// Most languages use a "name" field
+	const nameField = node.childForFieldName("name");
+	if (nameField) return nameField.text;
+	// Rust impl blocks: no name field, use type text
+	if (node.type === "impl_item") {
+		const typeField = node.childForFieldName("type");
+		if (typeField) return `impl ${typeField.text}`;
+	}
+	// Ruby singleton_method / regular method
+	if (node.type === "method" || node.type === "singleton_method") {
+		for (const child of node.namedChildren) {
+			if (child.type === "identifier" || child.type === "constant") return child.text;
+		}
+	}
+	return "(anonymous)";
+}
+
+/**
+ * Walk the tree once, emitting symbols for nodes whose type is in the
+ * language's SYMBOL_NODE_KINDS map. parentIndex chains direct enclosure
+ * so a class's methods are discoverable without re-walking.
+ */
+function extractSymbols(tree: Tree, language: string): ParsedSymbol[] {
+	const kindMap = SYMBOL_NODE_KINDS[language];
+	if (!kindMap) return [];
+
+	const symbols: ParsedSymbol[] = [];
+
+	function walk(node: TreeNode, parentIndex: number): void {
+		const kind = kindMap[node.type];
+		let nextParent = parentIndex;
+		if (kind) {
+			symbols.push({
+				name: getSymbolName(node),
+				kind,
+				nodeType: node.type,
+				byteStart: node.startIndex,
+				byteEnd: node.endIndex,
+				lineStart: node.startPosition.row + 1,
+				lineEnd: node.endPosition.row + 1,
+				parentIndex,
+			});
+			nextParent = symbols.length - 1;
+		}
+		for (const child of node.children) walk(child, nextParent);
+	}
+
+	walk(tree.rootNode, -1);
+	return symbols;
+}
+
 // ── Parse and extract ────────────────────────────────────────────────────────
 
 function parseAndExtract(langName: string, content: string): ParseResponse {
@@ -320,6 +482,7 @@ function parseAndExtract(langName: string, content: string): ParseResponse {
 
 	const extractor = EXTRACTORS[langName];
 	const edges = extractor ? extractor(tree) : [];
+	const symbols = extractSymbols(tree, langName);
 
 	// Count AST nodes
 	let nodeCount = 0;
@@ -329,7 +492,7 @@ function parseAndExtract(langName: string, content: string): ParseResponse {
 	}
 	countNodes(tree.rootNode);
 
-	return { edges, language: langName, nodeCount };
+	return { edges, symbols, language: langName, nodeCount };
 }
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────
