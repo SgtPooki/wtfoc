@@ -76,6 +76,20 @@ Rules:
 - Before pushing, verify that every completed issue has a commit with `fixes #N` — do not leave issues open when the work is done
 - When creating a new feature that has no issue, create the issue first, then reference it in your commit
 
+## Beads (local agent execution queue)
+
+GitHub Issues stays canonical for specs and `fixes #N` commit closure. Beads (`bd`) is the local claim/coordination layer for multi-agent parallel work. **Read [`docs/beads-agent-protocol.md`](docs/beads-agent-protocol.md) in full before using `bd` in this repo.**
+
+Critical rules (full rationale in the protocol doc):
+
+- **Set `BEADS_ACTOR`** before running `bd` — `<tool>-<hostname>` convention (e.g. `claude-$(hostname -s)`). Multiple agents sharing an actor defeats the claim mutex.
+- **Claim with `bd update <id> --claim`**. If it errors "already claimed by X", skip to the next `bd ready` item. Don't force-release.
+- **Implementation beads REQUIRE their own worktree**: `git worktree add ../wtfoc-<short-id> -b beads/<short-id>`. Skip only for review-only or tiny docs edits.
+- **`bd close` does NOT close the GitHub Issue.** `fixes #N` on the merge commit does. Never put a bead ID as a closure reference in commits.
+- **Force-release is exceptional repair.** Only when `started_at` > 4h (30min for review/dispatch beads), no recent git activity from the prior claimant, no active worktree with uncommitted changes — AND you record the reason via `bd audit record`.
+- **Mandatory `bd audit record` events**: force-release, claim abandonment, PR-review bead create, approve/changes-requested transitions, swarm/gate/merge-slot decisions, manual reconcile overrides. See the protocol doc for the full table.
+- **Sync before a long claiming session**: `bd github sync` to pick up GH-side changes.
+
 ## Edit Checklist
 
 Before editing:

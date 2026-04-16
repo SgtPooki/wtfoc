@@ -15,6 +15,8 @@ Available via `/skill-name` or `Skill({ skill: "name" })`:
 | `/judge-llm` | Deep independent validation of completed work |
 | `/debug` | Systematic root-cause debugging |
 
+**Next task**: `bd ready` (see [`docs/beads-agent-protocol.md`](docs/beads-agent-protocol.md) before claiming).
+
 **Parallel work**: Append "use subagents" to requests.
 
 ## Subagent Strategy
