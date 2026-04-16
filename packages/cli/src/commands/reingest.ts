@@ -117,7 +117,10 @@ export function registerReingestCommand(program: Command): void {
 					`   ${head.manifest.segments.length} segments, ${head.manifest.totalChunks} chunks`,
 				);
 				console.error(`   Model: ${modelName} (${embedder.dimensions}d)`);
-				if (astChunkerInstalled) {
+				// AST chunker only actually runs on the --replay-raw path (default
+				// reingest re-uses stored chunks without calling selectChunker).
+				// Only announce when it will actually be exercised.
+				if (astChunkerInstalled && opts.replayRaw) {
 					console.error(`   Chunker: ast (tree-sitter sidecar enabled)`);
 				}
 			}

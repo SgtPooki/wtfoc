@@ -101,6 +101,9 @@ export function resolveTreeSitterUrl(opts: { treeSitterUrl?: string }): string |
  *
  * Safe to call multiple times; re-registration overwrites the previous entry.
  * No-op when no sidecar URL is resolvable.
+ *
+ * @returns `true` when AstChunker was registered, `false` when the helper was
+ *          a no-op. Callers use this for user-facing status output.
  */
 export function registerAstChunkerIfAvailable(opts: { treeSitterUrl?: string }): boolean {
 	const url = resolveTreeSitterUrl(opts);
