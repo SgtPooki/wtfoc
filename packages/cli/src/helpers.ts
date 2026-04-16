@@ -6,6 +6,7 @@ import {
 	URL_SHORTCUTS,
 } from "@wtfoc/common";
 import { resolveUrlShortcut } from "@wtfoc/config";
+import { AstChunker, registerChunker } from "@wtfoc/ingest";
 import type { MountedCollection } from "@wtfoc/search";
 import {
 	InMemoryVectorIndex,
@@ -90,6 +91,22 @@ export function withTreeSitterOptions<T extends Command>(cmd: T): T {
  */
 export function resolveTreeSitterUrl(opts: { treeSitterUrl?: string }): string | undefined {
 	return opts.treeSitterUrl ?? process.env.WTFOC_TREE_SITTER_URL ?? undefined;
+}
+
+/**
+ * Install `AstChunker` into the chunker registry when a tree-sitter sidecar
+ * URL is available (#220 Session 2). Without this call the default registry
+ * only has `ast-heuristic` — selectChunker() prefers "ast" if registered,
+ * so this is the one line that flips ingest onto AST-aware chunking.
+ *
+ * Safe to call multiple times; re-registration overwrites the previous entry.
+ * No-op when no sidecar URL is resolvable.
+ */
+export function registerAstChunkerIfAvailable(opts: { treeSitterUrl?: string }): boolean {
+	const url = resolveTreeSitterUrl(opts);
+	if (!url) return false;
+	registerChunker(new AstChunker({ sidecarUrl: url }));
+	return true;
 }
 
 export function getStore(program: Command) {

@@ -27,6 +27,7 @@ import {
 	getManifestDir,
 	getStore,
 	parseSinceDuration,
+	registerAstChunkerIfAvailable,
 	resolveTreeSitterUrl,
 	withEmbedderOptions,
 	withExtractorOptions,
@@ -181,6 +182,9 @@ export function registerIngestCommand(program: Command): void {
 			const catPath = catalogFilePath(manifestDir, opts.collection);
 			const arcPath = archiveIndexPath(manifestDir, opts.collection);
 			const treeSitterUrl = resolveTreeSitterUrl(opts);
+			// #220 Session 2 — install AST chunker when a sidecar is configured
+			// so new ingest runs chunk code files along structural boundaries.
+			registerAstChunkerIfAvailable(opts);
 
 			const ingestOpts = buildIngestOptions({
 				collection: opts.collection,

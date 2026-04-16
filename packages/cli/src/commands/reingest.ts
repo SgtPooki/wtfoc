@@ -29,6 +29,7 @@ import {
 	getFormat,
 	getManifestDir,
 	getStore,
+	registerAstChunkerIfAvailable,
 	resolveTreeSitterUrl,
 	withEmbedderOptions,
 	withTreeSitterOptions,
@@ -88,6 +89,11 @@ export function registerReingestCommand(program: Command): void {
 			const targetName = opts.target ?? opts.collection;
 			const batchSize = Number.parseInt(opts.batchSize, 10) || 500;
 
+			// #220 Session 2 — install AST chunker when a sidecar is configured.
+			// selectChunker() will then pick "ast" over "ast-heuristic" for
+			// supported code files during --replay-raw or initial chunking.
+			const astChunkerInstalled = registerAstChunkerIfAvailable(opts);
+
 			// Load source collection
 			const head = await store.manifests.getHead(opts.collection);
 			if (!head) {
@@ -111,6 +117,9 @@ export function registerReingestCommand(program: Command): void {
 					`   ${head.manifest.segments.length} segments, ${head.manifest.totalChunks} chunks`,
 				);
 				console.error(`   Model: ${modelName} (${embedder.dimensions}d)`);
+				if (astChunkerInstalled) {
+					console.error(`   Chunker: ast (tree-sitter sidecar enabled)`);
+				}
 			}
 
 			// Phase 1: Build chunk stream. Two modes:

@@ -30,6 +30,21 @@ export function buildSegment(
 		embeddingModel: options.embeddingModel,
 		embeddingDimensions: options.embeddingDimensions,
 		chunks: chunks.map((c) => {
+			// #220 Session 2 — preserve chunker provenance in metadata so
+			// downstream tools (dogfood breakdowns, drift analysis) can tell
+			// which chunker produced a given chunk. These fields exist on
+			// ChunkerOutput but are not part of the Chunk base schema, so
+			// threading them through metadata keeps the segment schema stable.
+			const chunkerMeta: Record<string, string> = {};
+			const co = c.chunk as Chunk & {
+				chunkerName?: string;
+				chunkerVersion?: string;
+				symbolPath?: string;
+			};
+			if (co.chunkerName) chunkerMeta.chunkerName = co.chunkerName;
+			if (co.chunkerVersion) chunkerMeta.chunkerVersion = co.chunkerVersion;
+			if (co.symbolPath) chunkerMeta.symbolPath = co.symbolPath;
+
 			const entry: Segment["chunks"][number] = {
 				id: c.chunk.id,
 				storageId: c.chunk.id,
@@ -40,7 +55,7 @@ export function buildSegment(
 				sourceType: c.chunk.sourceType,
 				sourceUrl: c.chunk.sourceUrl,
 				timestamp: c.chunk.timestamp,
-				metadata: c.chunk.metadata,
+				metadata: { ...c.chunk.metadata, ...chunkerMeta },
 			};
 			if (c.signalScores && Object.keys(c.signalScores).length > 0) {
 				entry.signalScores = c.signalScores;

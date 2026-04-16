@@ -305,3 +305,34 @@ describe("storedChunkToSegmentChunk", () => {
 		expect(result.signalScores).toBeUndefined();
 	});
 });
+
+describe("buildSegment chunker provenance (#220 Session 2)", () => {
+	it("preserves chunkerName / chunkerVersion / symbolPath into metadata", () => {
+		const chunk = makeChunk({ metadata: { filePath: "src/foo.ts" } }) as Chunk & {
+			chunkerName?: string;
+			chunkerVersion?: string;
+			symbolPath?: string;
+		};
+		chunk.chunkerName = "ast";
+		chunk.chunkerVersion = "1.0.0";
+		chunk.symbolPath = "User.greet";
+		const segChunk: SegmentChunk = { chunk, embedding: [0.1, 0.2] };
+		const segment = buildSegment([segChunk], [], defaultOptions);
+		const stored = segment.chunks[0];
+		expect(stored?.metadata.chunkerName).toBe("ast");
+		expect(stored?.metadata.chunkerVersion).toBe("1.0.0");
+		expect(stored?.metadata.symbolPath).toBe("User.greet");
+		// Original metadata keys remain
+		expect(stored?.metadata.filePath).toBe("src/foo.ts");
+	});
+
+	it("omits chunker provenance when absent (backwards compatible)", () => {
+		const chunk = makeChunk({ metadata: { filePath: "README.md" } });
+		const segChunk: SegmentChunk = { chunk, embedding: [0.1] };
+		const segment = buildSegment([segChunk], [], defaultOptions);
+		const stored = segment.chunks[0];
+		expect(stored?.metadata.chunkerName).toBeUndefined();
+		expect(stored?.metadata.symbolPath).toBeUndefined();
+		expect(stored?.metadata.filePath).toBe("README.md");
+	});
+});

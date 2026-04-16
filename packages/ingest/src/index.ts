@@ -35,7 +35,9 @@ export {
 	rechunkOversized,
 	sha256Hex,
 } from "./chunker.js";
+export type { AstChunkerOptions } from "./chunkers/index.js";
 export {
+	AstChunker,
 	AstHeuristicChunker,
 	CodeWindowChunker,
 	getAvailableChunkers,
