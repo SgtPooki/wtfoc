@@ -230,7 +230,17 @@ export function toPublishedArtifactRef(
 				edgeCount: artifact.metadata.edgeCount,
 				byteLength,
 			};
-		case "raw-source-blob":
+		case "raw-source-blob": {
+			// Integrity gate: the raw-source-index sidecar records a per-entry
+			// checksum (`metadata.sha256`). The caller also computed sha256 from
+			// the actual bytes just promoted. If they disagree, the sidecar is
+			// stale/corrupt — fail loudly at promote time rather than publish a
+			// manifest that pull will later reject.
+			if (sha256 !== artifact.metadata.sha256) {
+				throw new Error(
+					`Raw-source blob ${artifact.id} checksum mismatch: sidecar says ${artifact.metadata.sha256}, actual bytes hash to ${sha256}. Re-ingest or repair the raw-source-index before promoting.`,
+				);
+			}
 			return {
 				kind: "raw-source-blob",
 				storageId: artifact.id,
@@ -238,8 +248,9 @@ export function toPublishedArtifactRef(
 				documentId: artifact.metadata.documentId,
 				documentVersionId: artifact.metadata.documentVersionId,
 				byteLength,
-				sha256: artifact.metadata.sha256,
+				sha256,
 			};
+		}
 		case "sidecar":
 			return {
 				kind: "sidecar",

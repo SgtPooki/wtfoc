@@ -1,3 +1,4 @@
+import type { CollectionHead } from "@wtfoc/common";
 import {
 	buildEnrichedCollectionHead,
 	enumeratePromotableArtifacts,
@@ -119,10 +120,17 @@ export function registerPromoteCommand(program: Command): void {
 
 			const existingBatches = head.manifest.batches ?? [];
 
+			// Capture the exact manifest built inside `buildManifest` — the one
+			// that gets uploaded inside the CAR — so the local manifest is
+			// byte-identical. Rebuilding after bundleAndUpload uses a different
+			// `batch.createdAt` (the bundler's internal timestamp) which would
+			// make the two manifests diverge.
+			let enrichedHead: CollectionHead | null = null;
+
 			const bundleResult = await bundleAndUpload(bundleArtifacts, focStore.storage, {
 				copies,
 				buildManifest({ artifactCids, pieceCid, carRootCid }) {
-					return buildEnrichedCollectionHead({
+					const built = buildEnrichedCollectionHead({
 						head: head.manifest,
 						enumerated,
 						artifactCids,
@@ -134,22 +142,19 @@ export function registerPromoteCommand(program: Command): void {
 						},
 						existingBatches,
 					});
+					enrichedHead = built;
+					return built;
 				},
 			});
 
 			const manifestCid = bundleResult.manifestCid;
+			if (!enrichedHead) {
+				throw new Error(
+					"BUG: bundleAndUpload did not invoke buildManifest — cannot write local manifest",
+				);
+			}
 
-			// Local manifest mirrors what went into the CAR. Both share the same
-			// pieceCid/carRootCid, so local + CAR manifests stay in sync.
-			const finalManifest = buildEnrichedCollectionHead({
-				head: head.manifest,
-				enumerated,
-				artifactCids: bundleResult.artifactCids,
-				newBatch: bundleResult.batch,
-				existingBatches,
-			});
-
-			await localStore.manifests.putHead(collectionName, finalManifest, head.headId);
+			await localStore.manifests.putHead(collectionName, enrichedHead, head.headId);
 
 			// IPNI indexing check — how many of the published CIDs have propagated
 			// to the IPNI (InterPlanetary Network Indexer)?

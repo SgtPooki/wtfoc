@@ -97,8 +97,9 @@ export function registerPullCommand(program: Command): void {
 
 					const seg = JSON.parse(new TextDecoder().decode(segBytes)) as Segment;
 					if (!seg.chunks || !Array.isArray(seg.chunks)) {
-						console.error(`⚠️  Skipping invalid segment ${segRef.id}`);
-						continue;
+						throw new Error(
+							`Pulled segment ${segRef.id} is not a valid Segment (missing chunks[]). Refusing to save corrupt collection.`,
+						);
 					}
 
 					const uploadResult = await store.storage.upload(segBytes);

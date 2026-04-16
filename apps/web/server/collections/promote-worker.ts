@@ -52,12 +52,19 @@ export async function startPromotion(
 
 		await repo.updateCollectionStatus(collectionId, "promoting");
 
-		const { createStore, bundleAndUpload, FocStorageBackend } = await import("@wtfoc/store");
+		const {
+			createStore,
+			bundleAndUpload,
+			FocStorageBackend,
+			getLocalManifestDir,
+			resolveCollectionByCid,
+		} = await import("@wtfoc/store");
 
 		// Load existing manifest from local store
 		const localStore = createStore({ storage: "local" });
 		const head = await localStore.manifests.getHead(col.name);
 		if (!head) throw new Error(`No manifest found for collection "${col.name}". Was ingestion completed?`);
+		const manifestDir = getLocalManifestDir(localStore);
 
 		// Determine resume point
 		const checkpoint = col.promoteCheckpoint;
@@ -79,17 +86,22 @@ export async function startPromotion(
 		let enrichedHead: CollectionHead | null = null;
 
 		if (checkpoint === "uploaded" && col.manifestCid && col.pieceCid && col.carRootCid) {
-			// Resume: upload already completed, skip to local manifest update
+			// Resume: upload already completed. Recover the enriched manifest from
+			// the published CID so the local head gets stamped with artifactRefs +
+			// per-artifact IPFS CIDs. Without this step, the DB would advance to
+			// `on_chain_written` while the local manifest still lacks the
+			// publication index — a pulled-vs-local divergence.
 			console.error(`[promote-worker] Resuming "${col.name}" from checkpoint "uploaded"`);
 			manifestCid = col.manifestCid;
 			pieceCid = col.pieceCid;
 			carRootCid = col.carRootCid;
 			segmentCount = col.segmentCount ?? head.manifest.segments.length;
+			const { manifest: publishedManifest } = await resolveCollectionByCid(manifestCid, signal);
+			enrichedHead = publishedManifest;
 		} else {
 			// Full flow: enumerate every promotable artifact, bundle, upload as
 			// a single CAR. Uses the same helper as the CLI `wtfoc promote`
 			// command so CLI and web paths stay in sync.
-			const manifestDir = (localStore as unknown as { manifestDir: string }).manifestDir;
 			const enumerated: Array<{ artifact: PromotableArtifact; bytes: Uint8Array }> = [];
 			for await (const artifact of enumeratePromotableArtifacts(
 				head.manifest,

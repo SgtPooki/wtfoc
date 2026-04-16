@@ -29,6 +29,7 @@ export { evaluateStorage, type StorageEvalOptions } from "./eval/storage-evaluat
 export type { Store, StoreConfig } from "./factory.js";
 export { createStore } from "./factory.js";
 export { LocalManifestStore, validateCollectionName } from "./manifest/local.js";
+export { getLocalManifestDir } from "./manifest-dir.js";
 export { deserializeRevision, serializeRevision } from "./revision.js";
 export {
 	MAX_SUPPORTED_SCHEMA_VERSION,
