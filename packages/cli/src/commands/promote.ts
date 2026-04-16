@@ -307,9 +307,11 @@ interface ArtifactCoverage {
  * - For sidecars, match on `role` + matching `sha256` against the current
  *   artifact bytes. A sidecar changes whenever its source JSON changes.
  *
- * Returns `fullyCovered: true` only when every single current artifact is
- * covered. Partial coverage still requires a full re-upload (we'd otherwise
- * leave the manifest with inconsistent artifactRefs).
+ * Returns `fullyCovered: true` only when every enumerated artifact is matched
+ * AND there are no stale refs in artifactRefs[] that don't correspond to a
+ * current artifact. Without the second check, a collection that shrinks
+ * (segment removed, sidecar deleted, etc.) would short-circuit incorrectly
+ * because old refs form a superset of the new artifact set.
  */
 function computeArtifactCoverage(
 	existingRefs: PublishedArtifactRef[] | undefined,
@@ -354,8 +356,14 @@ function computeArtifactCoverage(
 		}
 	}
 
+	// Exact-set coverage: every enumerated artifact is matched AND there are
+	// no extra refs in the existing manifest. Counts equal rules out the
+	// shrinking-set case where refs are a superset.
+	const fullyCovered =
+		partialCount === enumerated.length && existingRefs.length === enumerated.length;
+
 	return {
-		fullyCovered: partialCount === enumerated.length,
+		fullyCovered,
 		partialCount,
 	};
 }

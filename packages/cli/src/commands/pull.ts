@@ -147,20 +147,19 @@ async function pullArtifactRefs(args: {
 
 	progress.total = refs.length;
 
-	// Cross-reference check: every storageId referenced by the raw-source-index
-	// sidecar must have a matching raw-source-blob entry in artifactRefs.
-	// Otherwise the pulled collection would claim "these blobs exist" but the
-	// publication index wouldn't provide their CIDs. We hold pulled sidecar
-	// bytes until every blob ref has been seen so the check can run before
-	// any local writes commit.
-	const rawSourceBlobIds = new Set(
-		refs
-			.filter(
-				(r): r is Extract<PublishedArtifactRef, { kind: "raw-source-blob" }> =>
-					r.kind === "raw-source-blob",
-			)
-			.map((r) => r.storageId),
-	);
+	// Cross-reference scaffolding: every storageId referenced by the
+	// raw-source-index sidecar must have a matching raw-source-blob entry in
+	// artifactRefs[], AND the sidecar entry's `checksum`/`byteLength` must
+	// agree with the raw-source-blob ref's `sha256`/`byteLength`. Without the
+	// field-level check, a maliciously-crafted publication could point at a
+	// real blob CID while advertising wrong provenance metadata.
+	const rawSourceBlobIndex = new Map<
+		string,
+		Extract<PublishedArtifactRef, { kind: "raw-source-blob" }>
+	>();
+	for (const r of refs) {
+		if (r.kind === "raw-source-blob") rawSourceBlobIndex.set(r.storageId, r);
+	}
 
 	// Deferred sidecar writes: collect bytes during the integrity pass, apply
 	// to disk only after cross-reference validation passes.
@@ -212,7 +211,7 @@ async function pullArtifactRefs(args: {
 				}
 				validateSidecarJson(ref.role, bytes);
 				if (ref.role === "raw-source-index") {
-					crossCheckRawSourceIndex(bytes, rawSourceBlobIds);
+					crossCheckRawSourceIndex(bytes, rawSourceBlobIndex);
 				}
 				pendingSidecars.push({ role: ref.role, bytes });
 				progress.byKind.sidecar += 1;
@@ -261,16 +260,23 @@ async function pullLegacySegments(args: {
 			);
 		}
 
-		const actualSha = sha256Hex(segBytes);
-		if (actualSha !== segRef.id) {
-			throw new Error(
-				`Storage-id mismatch pulling segment ${segRef.id}: actual bytes hash to ${actualSha}.`,
-			);
+		// Content-addressed identity check — only meaningful when the segment id
+		// is a local SHA-256 hex id (64 lowercase hex chars). Pre-artifactRefs
+		// collections promoted from a FOC-backed store may have CID-shaped ids;
+		// for those, CID retrieval via verified-fetch already validates the
+		// content so a local sha check here would spuriously fail.
+		if (isLocalSha256HexId(segRef.id)) {
+			const actualSha = sha256Hex(segBytes);
+			if (actualSha !== segRef.id) {
+				throw new Error(
+					`Storage-id mismatch pulling segment ${segRef.id}: actual bytes hash to ${actualSha}.`,
+				);
+			}
 		}
 
 		if (!verifyOnly) {
 			const uploadResult = await store.storage.upload(segBytes);
-			if (uploadResult.id !== segRef.id) {
+			if (isLocalSha256HexId(segRef.id) && uploadResult.id !== segRef.id) {
 				throw new Error(
 					`Local storage produced id ${uploadResult.id} for segment ${segRef.id}, expected ${segRef.id}.`,
 				);
@@ -375,24 +381,50 @@ function validateSidecarJson(role: PublishedSidecarRole, bytes: Uint8Array): voi
 }
 
 /**
- * Cross-reference check: every `storageId` referenced by a raw-source-index
- * entry must also appear as a `raw-source-blob` ref in `artifactRefs[]`.
- * Without this, pull could succeed in writing an index that points at blobs
- * the publisher never actually included.
+ * Cross-reference check for the raw-source-index sidecar. Verifies:
+ *   1. Every `storageId` referenced by an index entry has a matching
+ *      `raw-source-blob` ref in `artifactRefs[]`.
+ *   2. The entry's `checksum` equals the blob ref's `sha256`.
+ *   3. The entry's `byteLength` equals the blob ref's `byteLength`.
+ *
+ * Without (2) + (3), a manifest could advertise wrong provenance metadata
+ * on the index side while pointing at a real blob CID — verify would pass
+ * but the written sidecar would carry lies about the blob's content.
  */
-function crossCheckRawSourceIndex(bytes: Uint8Array, blobIds: Set<string>): void {
+function crossCheckRawSourceIndex(
+	bytes: Uint8Array,
+	blobIndex: Map<string, Extract<PublishedArtifactRef, { kind: "raw-source-blob" }>>,
+): void {
 	const index = JSON.parse(new TextDecoder().decode(bytes)) as RawSourceIndex;
-	const missing: string[] = [];
+	const problems: string[] = [];
+
 	for (const entry of Object.values(index.entries)) {
-		if (!blobIds.has(entry.storageId)) {
-			missing.push(`${entry.documentId}@${entry.documentVersionId} (storageId=${entry.storageId})`);
+		const blobRef = blobIndex.get(entry.storageId);
+		const label = `${entry.documentId}@${entry.documentVersionId} (storageId=${entry.storageId})`;
+
+		if (!blobRef) {
+			problems.push(`${label}: no matching raw-source-blob ref`);
+			continue;
+		}
+
+		if (entry.checksum !== blobRef.sha256) {
+			problems.push(
+				`${label}: entry.checksum=${entry.checksum} disagrees with ref.sha256=${blobRef.sha256}`,
+			);
+		}
+
+		if (entry.byteLength !== blobRef.byteLength) {
+			problems.push(
+				`${label}: entry.byteLength=${entry.byteLength} disagrees with ref.byteLength=${blobRef.byteLength}`,
+			);
 		}
 	}
-	if (missing.length > 0) {
-		const listed = missing.slice(0, 5).join(", ");
-		const more = missing.length > 5 ? ` (+${missing.length - 5} more)` : "";
+
+	if (problems.length > 0) {
+		const listed = problems.slice(0, 5).join("\n  ");
+		const more = problems.length > 5 ? `\n  (+${problems.length - 5} more)` : "";
 		throw new Error(
-			`Raw-source-index references ${missing.length} blob(s) not present in artifactRefs[]: ${listed}${more}. Manifest is inconsistent — refusing to save.`,
+			`Raw-source-index cross-reference failed — ${problems.length} inconsistency(ies):\n  ${listed}${more}\nManifest is inconsistent — refusing to save.`,
 		);
 	}
 }
@@ -416,6 +448,15 @@ function describeRef(ref: PublishedArtifactRef): string {
 
 function sha256Hex(bytes: Uint8Array): string {
 	return createHash("sha256").update(bytes).digest("hex");
+}
+
+/**
+ * A local storage id is sha256 encoded as 64 lowercase hex chars. IPFS CIDs
+ * typically start with `b`/`Q`/`z` base32/base58 characters and are longer.
+ * This heuristic lets us gate the identity check to IDs we can recompute.
+ */
+function isLocalSha256HexId(id: string): boolean {
+	return /^[0-9a-f]{64}$/.test(id);
 }
 
 function emitResult(args: {
