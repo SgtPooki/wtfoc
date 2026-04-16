@@ -75,3 +75,6 @@ vskill.lock
 .dolt/
 *.db
 .beads-credential-key
+
+# beads auto-exported jsonl at working-tree root (worktree fallback; the .beads/issues.jsonl in main repo is the intended location)
+/issues.jsonl

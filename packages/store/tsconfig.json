@@ -6,6 +6,6 @@
 		"composite": true
 	},
 	"include": ["src"],
-	"exclude": ["src/**/*.test.ts", "src/test-helpers.ts"],
+	"exclude": ["src/**/*.test.ts", "src/test-helpers.ts", "src/test-utils/**"],
 	"references": [{ "path": "../common" }]
 }

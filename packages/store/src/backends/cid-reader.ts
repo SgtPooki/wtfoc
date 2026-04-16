@@ -3,6 +3,18 @@ import { StorageNotFoundError, StorageUnreachableError, WtfocError } from "@wtfo
 
 const IPFS_GATEWAYS = ["https://dweb.link/ipfs/", "https://trustless-gateway.link/ipfs/"];
 
+type VerifiedFetch = (url: string, init?: RequestInit) => Promise<Response>;
+
+/**
+ * Constructor options for `CidReadableStorage`. Tests pass a pre-built
+ * verified-fetch backed by an offline Helia node; production leaves this
+ * undefined so the default network-capable instance is lazily constructed.
+ */
+export interface CidReadableStorageOptions {
+	/** Preconfigured verified-fetch — skips the lazy default init. */
+	verifiedFetch?: VerifiedFetch;
+}
+
 /**
  * Read-only storage backend that fetches artifacts by CID via IPFS gateways.
  * Tries @helia/verified-fetch first (P2P + verified retrieval), falls back to
@@ -13,9 +25,13 @@ const IPFS_GATEWAYS = ["https://dweb.link/ipfs/", "https://trustless-gateway.lin
  * writes go through FOC via FocStorageBackend.
  */
 export class CidReadableStorage implements StorageBackend {
-	#verifiedFetch: ((url: string, init?: RequestInit) => Promise<Response>) | null = null;
+	#verifiedFetch: VerifiedFetch | null;
 	#initPromise: Promise<void> | null = null;
 	#useGatewayFallback = false;
+
+	constructor(options: CidReadableStorageOptions = {}) {
+		this.#verifiedFetch = options.verifiedFetch ?? null;
+	}
 
 	async #ensureReady(): Promise<void> {
 		if (this.#verifiedFetch || this.#useGatewayFallback) return;
