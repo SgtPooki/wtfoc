@@ -1,8 +1,21 @@
 {
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "BEADS_ACTOR": "claude-wtfoc"
   },
   "permissions": {
     "allow": []
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if command -v bd >/dev/null 2>&1 && [ -d .beads ]; then echo '=== bd ready (top 5) ==='; bd ready --limit 5 2>/dev/null || true; echo '---'; echo 'actor: '\"${BEADS_ACTOR:-unset}\"; echo 'protocol: docs/beads-agent-protocol.md'; else echo 'bd not installed or repo not initialized — see docs/beads-agent-protocol.md'; fi"
+          }
+        ]
+      }
+    ]
   }
 }

@@ -4,12 +4,35 @@
 
 Agent operating instructions for this repository.
 
-Read these first, in order:
+## Getting started (every session)
+
+Run this first — distinguishes your agent in the claim mutex and freshens the task queue:
+
+```bash
+export BEADS_ACTOR="<tool>-$(hostname -s)"         # claude-…, codex-…, cursor-…, gemini-…
+GITHUB_TOKEN=$(gh auth token) bd github sync --pull-only
+bd ready --limit 10                                # pick your next task
+```
+
+Then read, in order:
 1. [`SPEC.md`](SPEC.md) for project-wide invariants.
 2. [`docs/principles.md`](docs/principles.md) for design principles.
-3. The nearest nested `AGENTS.md` for the package or subtree you are editing.
+3. [`docs/beads-agent-protocol.md`](docs/beads-agent-protocol.md) before using `bd` for claim/worktree/PR-review rules.
+4. The nearest nested `AGENTS.md` for the package or subtree you are editing.
 
-**Claude Code users**: See [`CLAUDE.md`](CLAUDE.md) for available skills and workflow guidance.
+**Claude Code users**: See [`CLAUDE.md`](CLAUDE.md) for available skills and workflow guidance. `BEADS_ACTOR` is preset via `.claude/settings.json`; `bd ready` auto-prints at session start.
+
+## Session end
+
+Before stopping:
+
+```bash
+bd status                        # DB overview — anything still in_progress?
+git worktree list                # remove stale worktrees: git worktree remove <path>
+git log --oneline -5             # what landed; any unpushed commits?
+```
+
+If you claimed a bead but didn't finish, either `bd update <id> --status open` (returns it to the queue) or leave it claimed with a note via `bd note <id> "…"` so the next agent knows the state.
 
 ## Purpose
 
