@@ -11,6 +11,11 @@ import { classifyQueryPersona } from "../persona/classify-query.js";
 import { query } from "../query.js";
 import { trace } from "../trace/trace.js";
 import { GOLD_STANDARD_QUERIES, type GoldStandardQuery } from "./gold-standard-queries.js";
+import {
+	aggregateLineageMetrics,
+	computeLineageMetrics,
+	type LineageMetrics,
+} from "./lineage-metrics.js";
 
 interface QueryScore {
 	id: string;
@@ -31,6 +36,8 @@ interface QueryScore {
 	edgeHopFound: boolean;
 	crossSourceFound: boolean;
 	sourceTypesReached: string[];
+	/** #217 — per-query lineage metrics (null when trace failed). */
+	lineage: LineageMetrics | null;
 }
 
 /**
@@ -145,6 +152,12 @@ export async function evaluateQualityQueries(
 			totalQueries: GOLD_STANDARD_QUERIES.length,
 			categoryBreakdown,
 			scores,
+			// #217 — aggregate lineage trace quality (chain coverage, conclusion
+			// signal, timeline completeness, chain diversity) across all scored
+			// gold-standard traces. Per-query values are on each score.
+			lineage: aggregateLineageMetrics(
+				scores.map((s) => s.lineage).filter((m): m is LineageMetrics => m !== null),
+			),
 		},
 		checks,
 	};
@@ -169,6 +182,7 @@ async function scoreQuery(
 	let edgeHopFound = true; // default true if not required
 	let crossSourceFound = true; // default true if not required
 	const sourceTypesReached: string[] = [];
+	let lineage: LineageMetrics | null = null;
 
 	try {
 		const boosts = autoRoute ? classifyQueryPersona(gq.queryText).sourceTypeBoosts : undefined;
@@ -203,6 +217,8 @@ async function scoreQuery(
 		});
 
 		for (const st of tResult.stats.sourceTypes) sourceTypesReached.push(st);
+
+		lineage = computeLineageMetrics(tResult);
 
 		// Re-check requiredSourceTypes against combined query + trace source types
 		// Cross-source and synthesis queries often surface required types via trace, not query seeds
@@ -245,5 +261,6 @@ async function scoreQuery(
 		edgeHopFound,
 		crossSourceFound,
 		sourceTypesReached,
+		lineage,
 	};
 }

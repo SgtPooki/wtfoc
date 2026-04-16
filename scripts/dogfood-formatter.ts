@@ -89,6 +89,38 @@ export function formatDogfoodReport(report: DogfoodReport): string {
 		lines.push(`  ${stageLabel} ${verdictLabel} ${timeLabel} ${DIM}${metrics}${RESET}`);
 	}
 
+	// Lineage trace quality breakdown (#217) — shown when search or
+	// quality-queries emitted aggregate lineage metrics.
+	for (const stageName of ["search", "quality-queries"] as const) {
+		const stage = report.stages.find((s) => s.stage === stageName);
+		const lineage = stage?.metrics.lineage as
+			| {
+					traceCount: number;
+					avgChainCoverageRate: number;
+					avgMultiHopChainCount: number;
+					avgCrossSourceChainRate: number;
+					avgTimestampCoverageRate: number;
+					avgChainDiversity: number;
+					primaryArtifactRate: number;
+					timelineMonotonicRate: number;
+					totalCandidateFixes: number;
+					totalRecommendedNextReads: number;
+			  }
+			| undefined;
+		if (!lineage || lineage.traceCount === 0) continue;
+		lines.push("");
+		lines.push(`  ${BOLD}Lineage trace quality (${stageName})${RESET}`);
+		lines.push(
+			`    chain-coverage=${fmtPct(lineage.avgChainCoverageRate)}  multi-hop/trace=${fmtNum(lineage.avgMultiHopChainCount)}  cross-source-chains=${fmtPct(lineage.avgCrossSourceChainRate)}`,
+		);
+		lines.push(
+			`    primary-artifact=${fmtPct(lineage.primaryArtifactRate)}  candidate-fixes=${lineage.totalCandidateFixes}  next-reads=${lineage.totalRecommendedNextReads}`,
+		);
+		lines.push(
+			`    timestamps=${fmtPct(lineage.avgTimestampCoverageRate)}  monotonic=${fmtPct(lineage.timelineMonotonicRate)}  avg-diversity=${fmtNum(lineage.avgChainDiversity)}`,
+		);
+	}
+
 	// Per-source-type breakdown for edge-resolution stage
 	const resolutionStage = report.stages.find((s) => s.stage === "edge-resolution");
 	if (resolutionStage) {

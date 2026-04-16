@@ -9,6 +9,7 @@ import type {
 import { classifyQueryPersona } from "../persona/classify-query.js";
 import { query } from "../query.js";
 import { trace } from "../trace/trace.js";
+import { aggregateLineageMetrics, computeLineageMetrics } from "./lineage-metrics.js";
 import { FIXTURE_QUERIES } from "./search-eval-fixtures.js";
 
 /**
@@ -55,6 +56,7 @@ export async function evaluateSearch(
 	const checks: EvalCheck[] = [];
 	const queryResults: Array<Record<string, unknown>> = [];
 	const traceResults: Array<Record<string, unknown>> = [];
+	const perTraceLineage: ReturnType<typeof computeLineageMetrics>[] = [];
 
 	let totalQueryResults = 0;
 	let reciprocalRankSum = 0;
@@ -143,6 +145,8 @@ export async function evaluateSearch(
 			totalHops += tResult.stats.totalHops;
 			totalEdgeHops += tResult.stats.edgeHops;
 			for (const st of tResult.stats.sourceTypes) allTraceSourceTypes.add(st);
+
+			perTraceLineage.push(computeLineageMetrics(tResult));
 
 			// Provenance quality: edge hops with both evidence and edgeType
 			for (const hop of tResult.hops) {
@@ -260,6 +264,8 @@ export async function evaluateSearch(
 
 	const durationMs = Math.round(performance.now() - t0);
 
+	const lineage = aggregateLineageMetrics(perTraceLineage);
+
 	return {
 		stage: "search",
 		startedAt,
@@ -274,6 +280,8 @@ export async function evaluateSearch(
 			provenanceQualityRate,
 			sourceTypeCoverage:
 				collectionSourceTypes.size > 0 ? allTraceSourceTypes.size / collectionSourceTypes.size : 0,
+			lineage,
+			perTraceLineage,
 		},
 		checks,
 	};
