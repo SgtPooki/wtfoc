@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { QueryResult } from "../query.js";
 import type { TraceResult } from "../trace/trace.js";
+import { GOLD_STANDARD_QUERIES_VERSION } from "./gold-standard-queries.js";
 
 const mockQuery = vi.hoisted(() => vi.fn<() => Promise<QueryResult>>());
 const mockTrace = vi.hoisted(() => vi.fn<() => Promise<TraceResult>>());
@@ -243,20 +244,26 @@ describe("evaluateQualityQueries", () => {
 	});
 
 	describe("fixture versioning and determinism (#261)", () => {
-		it("emits the gold-queries fixture version in metrics", async () => {
+		it("emits the gold-queries fixture version in metrics (equals exported constant)", async () => {
 			mockQuery.mockResolvedValue(
 				makeQueryResult([{ sourceType: "code", source: "/src/x.ts", score: 0.9 }]),
 			);
 			mockTrace.mockResolvedValue(makeTraceResult([]));
 			const result = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
+			// Asserting equality against the exported constant — not just the
+			// shape — so stripping the version export or forking the evaluator
+			// to hardcode a different string is caught here.
+			expect(result.metrics.goldQueriesVersion).toBe(GOLD_STANDARD_QUERIES_VERSION);
 			expect(result.metrics.goldQueriesVersion).toMatch(/^\d+\.\d+\.\d+$/);
 		});
 
 		it("produces identical scores across back-to-back runs with identical mocks", async () => {
-			// Catch non-determinism in scoring: same mocked query+trace must
-			// yield byte-identical scores arrays. Anything time-dependent
-			// (startedAt, durationMs) is excluded — we only compare the
-			// deterministic slice of the report.
+			// Scope note: query() and trace() are mocked to return fixed data,
+			// so this catches non-determinism downstream of those calls —
+			// scoring, category breakdown, lineage aggregation, check ordering.
+			// It does NOT cover non-determinism inside the real vector index,
+			// reranker, or trace traversal; an integration-level fixture would
+			// be needed for that.
 			mockQuery.mockResolvedValue(
 				makeQueryResult([
 					{ sourceType: "code", source: "/src/ingest/pipeline.ts", score: 0.9 },

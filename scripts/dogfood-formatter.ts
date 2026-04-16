@@ -38,7 +38,10 @@ function stageKeyMetrics(stage: EvalStageResult): string {
 		case "search":
 			return `MRR=${fmtNum(m.meanReciprocalRank)}, edge-hop=${fmtPct(m.edgeHopRatio)}, provenance=${fmtPct(m.provenanceQualityRate)}`;
 		case "quality-queries": {
-			const ver = m.goldQueriesVersion ? ` v${m.goldQueriesVersion}` : "";
+			// Version rendered as its own `gold=vX.Y.Z` field (not appended to
+			// `passed=X/Y`) so informal parsers that key off the pass count
+			// don't trip on the suffix.
+			const ver = m.goldQueriesVersion ? `, gold=v${m.goldQueriesVersion}` : "";
 			return `pass-rate=${fmtPct(m.passRate)} (query-only=${fmtPct(m.queryOnlyPassRate)}), passed=${m.passCount}/${m.totalQueries}${ver}`;
 		}
 		default:
