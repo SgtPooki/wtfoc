@@ -43,7 +43,6 @@ Do not run `pnpm lint` by itself after edits. Run `pnpm lint:fix`, then fix any 
 - `packages/mcp-server`: MCP protocol server, tool definitions, shared `createMcpServer` factory
 - `packages/cli`: CLI wiring, output formatting, exit behavior
 - `apps/web`: Preact SPA frontend + HTTP/MCP backend server
-- `.specweave/increments`: feature specs, plans, and tasks
 - `scripts`: issue dispatch, agent loop, repo maintenance helpers
 - `.github`: CI and GitHub-specific agent instructions
 

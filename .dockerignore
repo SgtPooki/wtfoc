@@ -2,7 +2,6 @@ node_modules
 **/node_modules
 .git
 .claude
-.specweave
 docs
 **/*.test.ts
 **/*.test.js

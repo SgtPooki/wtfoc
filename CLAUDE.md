@@ -8,10 +8,12 @@ Available via `/skill-name` or `Skill({ skill: "name" })`:
 
 | Skill | When to use |
 |-------|-------------|
-| `sw:grill` | Adversarial review of a change — stress-test assumptions |
-| `sw:code-reviewer` | Structured code review before shipping |
+| `/grill` | Adversarial review of a change — stress-test assumptions |
+| `/code-reviewer` | Structured code review before shipping |
 | `/simplify` | Catch duplication, readability issues, dead code |
-| `sw:tdd-cycle` | TDD red→green→refactor discipline |
+| `/tdd-cycle` | TDD red→green→refactor discipline |
+| `/judge-llm` | Deep independent validation of completed work |
+| `/debug` | Systematic root-cause debugging |
 
 **Parallel work**: Append "use subagents" to requests.
 
@@ -28,7 +30,7 @@ Implement directly. No increment planning required.
 
 1. Read the relevant code before changing it
 2. Run `pnpm test` + `pnpm lint:fix` after changes
-3. Use `sw:grill` or `sw:code-reviewer` for anything non-trivial before pushing
+3. Use `/grill` or `/code-reviewer` for anything non-trivial before pushing
 4. Open a PR via `gh pr create` for changes
 
 **Large-scale changes**: `/batch` — decomposes into parallel agents with worktree isolation.

@@ -1,8 +1,0 @@
-{
-  "version": "1.0",
-  "incrementId": "0054-test-suite-quality",
-  "date": "2026-04-12",
-  "verdict": "WAIVED",
-  "reason": "No ANTHROPIC_API_KEY configured and externalModels not set in config.json",
-  "details": "Judge LLM validation requires an external API key for independent model evaluation. Waived per sw:done Step 5 rules."
-}

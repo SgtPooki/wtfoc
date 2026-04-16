@@ -1,8 +1,0 @@
-{
-  "version": "1.0",
-  "incrementId": "0057-temporal-code-chunks",
-  "timestamp": "2026-04-13T05:27:00.000Z",
-  "verdict": "WAIVED",
-  "consentStatus": "not-configured",
-  "reason": "External API consent not configured in .specweave/config.json. No ANTHROPIC_API_KEY usage without explicit consent."
-}
