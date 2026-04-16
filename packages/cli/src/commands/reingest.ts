@@ -196,6 +196,9 @@ export function registerReingestCommand(program: Command): void {
 						source: entry.documentId,
 						sourceUrl: entry.sourceUrl,
 						metadata: metadata ?? {},
+						// AST-aware chunkers key off filePath for language detection
+						// (#220) — without it, AstChunker silently falls back.
+						filePath,
 					};
 
 					const chunker = selectChunker(entry.sourceType, filePath);

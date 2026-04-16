@@ -162,6 +162,45 @@ describe("AstChunker", () => {
 	});
 
 	describe("span provenance", () => {
+		it("byteOffsets describe the EXACT trimmed chunk content (codex review)", async () => {
+			// The sidecar's byteStart/byteEnd often surround a symbol with
+			// leading/trailing whitespace (e.g. trailing blank line before next
+			// symbol). AstChunker must adjust offsets so the slice matches the
+			// emitted chunk content byte-for-byte, not just as a superset.
+			const src = `\n\n  function foo() {\n    return 1;\n  }\n\n\nfunction bar() { return 2; }\n`;
+			const fooRaw = "\n\n  function foo() {\n    return 1;\n  }\n\n\n";
+			const fooStart = 0;
+			const fooEnd = fooStart + fooRaw.length;
+			const barStart = src.indexOf("function bar");
+			const barEnd = src.length;
+			const symbols: TreeSitterSymbol[] = [
+				sym({
+					name: "foo",
+					byteStart: fooStart,
+					byteEnd: fooEnd,
+					lineStart: 3,
+					lineEnd: 5,
+				}),
+				sym({
+					name: "bar",
+					byteStart: barStart,
+					byteEnd: barEnd,
+					lineStart: 8,
+					lineEnd: 8,
+				}),
+			];
+			mockParse.mockResolvedValue({ edges: [], symbols, language: "typescript", nodeCount: 20 });
+
+			const chunker = new AstChunker({ sidecarUrl });
+			const chunks = await chunker.chunk(makeDoc(src));
+
+			for (const chunk of chunks) {
+				if (chunk.byteOffsetStart == null || chunk.byteOffsetEnd == null) continue;
+				const described = src.slice(chunk.byteOffsetStart - 1, chunk.byteOffsetEnd);
+				expect(described).toBe(chunk.content);
+			}
+		});
+
 		it("byteOffsets describe a region of the source that contains the chunk content", async () => {
 			const src = [
 				"import foo from 'bar';",

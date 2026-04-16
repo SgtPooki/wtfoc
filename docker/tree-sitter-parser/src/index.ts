@@ -433,7 +433,31 @@ function getSymbolName(node: TreeNode): string {
 			if (child.type === "identifier" || child.type === "constant") return child.text;
 		}
 	}
+	// Go type_declaration wraps one or more type_spec nodes; pull the first name.
+	if (node.type === "type_declaration") {
+		for (const child of node.namedChildren) {
+			if (child.type === "type_spec" || child.type === "type_alias") {
+				const nameChild = child.childForFieldName("name");
+				if (nameChild) return nameChild.text;
+			}
+		}
+	}
 	return "(anonymous)";
+}
+
+/**
+ * Post-process Python symbols to upgrade nested function_definitions to kind
+ * "method" when their parent is a class. Python uses the same node type for
+ * top-level functions and class methods; consumers that key off `kind`
+ * otherwise can't tell them apart.
+ */
+function normalizePythonSymbols(symbols: ParsedSymbol[]): void {
+	for (const sym of symbols) {
+		if (sym.kind !== "function" || sym.nodeType !== "function_definition") continue;
+		if (sym.parentIndex < 0) continue;
+		const parent = symbols[sym.parentIndex];
+		if (parent?.kind === "class") sym.kind = "method";
+	}
 }
 
 /**
@@ -467,6 +491,7 @@ function extractSymbols(tree: Tree, language: string): ParsedSymbol[] {
 	}
 
 	walk(tree.rootNode, -1);
+	if (language === "python") normalizePythonSymbols(symbols);
 	return symbols;
 }
 

@@ -142,19 +142,27 @@ export class AstChunker implements Chunker {
 		// Preamble: everything before the first leaf's start
 		const firstLeaf = symbols[leafIndices[0] ?? -1];
 		if (firstLeaf && firstLeaf.byteStart > 0) {
-			const preambleContent = content.slice(0, firstLeaf.byteStart).trim();
-			if (preambleContent) {
-				// Compute line span of preamble (how many newlines before first leaf)
-				const preambleLines = content.slice(0, firstLeaf.byteStart).split("\n").length;
+			const rawPreamble = content.slice(0, firstLeaf.byteStart);
+			const trimmed = rawPreamble.trim();
+			if (trimmed) {
+				// Adjust offsets to describe exactly the trimmed content, so the
+				// contract "byteOffsetStart..byteOffsetEnd describes chunk.content"
+				// stays honest even when the raw region has padding.
+				const leading = rawPreamble.length - rawPreamble.trimStart().length;
+				const trailing = rawPreamble.length - rawPreamble.trimEnd().length;
+				const byteStart = leading + 1; // 1-indexed
+				const byteEnd = firstLeaf.byteStart - trailing;
+				const linesBeforeTrimmed = content.slice(0, leading).split("\n").length;
+				const trimmedNewlines = trimmed.split("\n").length - 1;
 				chunks.push(
 					this.#buildChunk({
 						document,
-						content: preambleContent,
+						content: trimmed,
 						index: 0,
-						byteStart: 1,
-						byteEnd: firstLeaf.byteStart,
-						lineStart: 1,
-						lineEnd: Math.max(1, preambleLines - 1),
+						byteStart,
+						byteEnd,
+						lineStart: linesBeforeTrimmed,
+						lineEnd: linesBeforeTrimmed + trimmedNewlines,
 						symbolPath: "preamble",
 					}),
 				);
@@ -169,10 +177,14 @@ export class AstChunker implements Chunker {
 			if (!trimmed) continue;
 
 			const symbolPath = buildSymbolPath(symbols, leafIdx);
+			const leading = rawContent.length - rawContent.trimStart().length;
+			const trailing = rawContent.length - rawContent.trimEnd().length;
 
 			if (trimmed.length > maxChunkSize) {
 				// Large symbol (e.g. generated code, long test file). Window-split it
-				// while keeping symbolPath so provenance is preserved.
+				// while keeping symbolPath so provenance is preserved. Offsets are
+				// relative to the trimmed content, then shifted by leaf.byteStart +
+				// leading whitespace skipped by trim().
 				const pieces = windowSplit(trimmed, maxChunkSize);
 				for (const [i, piece] of pieces.entries()) {
 					chunks.push(
@@ -180,8 +192,8 @@ export class AstChunker implements Chunker {
 							document,
 							content: piece.content,
 							index: chunks.length,
-							byteStart: leaf.byteStart + piece.offset + 1, // 1-indexed
-							byteEnd: leaf.byteStart + piece.offset + piece.content.length,
+							byteStart: leaf.byteStart + leading + piece.offset + 1, // 1-indexed
+							byteEnd: leaf.byteStart + leading + piece.offset + piece.content.length,
 							lineStart: leaf.lineStart + piece.lineOffset,
 							lineEnd: leaf.lineStart + piece.lineOffset + piece.lineCount,
 							symbolPath: i === 0 ? symbolPath : `${symbolPath}#${i + 1}`,
@@ -194,8 +206,8 @@ export class AstChunker implements Chunker {
 						document,
 						content: trimmed,
 						index: chunks.length,
-						byteStart: leaf.byteStart + 1, // 1-indexed
-						byteEnd: leaf.byteEnd,
+						byteStart: leaf.byteStart + leading + 1, // 1-indexed
+						byteEnd: leaf.byteEnd - trailing,
 						lineStart: leaf.lineStart,
 						lineEnd: leaf.lineEnd,
 						symbolPath,
