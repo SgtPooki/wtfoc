@@ -51,9 +51,14 @@
 		}
 	},
 	"devDependencies": {
+		"@helia/verified-fetch": "^2.6.19",
 		"@types/turndown": "^5.0.6",
 		"@wtfoc/config": "workspace:*",
 		"@wtfoc/store": "workspace:*",
+		"blockstore-fs": "^3.0.3",
+		"datastore-fs": "^11.0.3",
+		"helia": "^6.1.3",
+		"multiformats": "^13.4.2",
 		"typescript": "^5.8.0"
 	}
 }

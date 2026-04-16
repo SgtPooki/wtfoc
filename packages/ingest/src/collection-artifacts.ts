@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { CollectionHead, PublishedArtifactRef, PublishedSidecarRole } from "@wtfoc/common";
-import { archiveIndexPath, catalogFilePath, readArchiveIndex, readCatalog } from "@wtfoc/ingest";
+import { catalogFilePath, readCatalog } from "./document-catalog.js";
+import { archiveIndexPath, readArchiveIndex } from "./raw-source-archive.js";
 
 /**
  * One artifact pulled together for promotion. `getBytes()` is lazy so the
@@ -152,9 +153,51 @@ export function sidecarId(role: PublishedSidecarRole): string {
 	return `sidecar:${role}`;
 }
 
-/** Compute the SHA-256 of a byte buffer as hex. */
-export function sha256Hex(bytes: Uint8Array): string {
+/** Compute the SHA-256 of a raw byte buffer as hex. (The `sha256Hex` exported
+ * from `chunker.js` takes a `string` and is UTF-8 based — distinct use case.) */
+export function sha256HexBytes(bytes: Uint8Array): string {
 	return createHash("sha256").update(bytes).digest("hex");
+}
+
+/**
+ * Build a `CollectionHead` with artifactRefs[], per-segment ipfsCid,
+ * per-derived-edge-layer ipfsCid, and a new batch record attached. Used by
+ * both the CLI promote command and the web-app promote worker so the two
+ * publishing paths produce byte-identical manifests for the same inputs.
+ */
+export function buildEnrichedCollectionHead(args: {
+	head: CollectionHead;
+	enumerated: Array<{ artifact: PromotableArtifact; bytes: Uint8Array }>;
+	artifactCids: Map<string, string>;
+	newBatch: NonNullable<CollectionHead["batches"]>[number];
+	existingBatches: NonNullable<CollectionHead["batches"]>;
+}): CollectionHead {
+	const { head, enumerated, artifactCids, newBatch, existingBatches } = args;
+
+	const artifactRefs: PublishedArtifactRef[] = enumerated.map(({ artifact, bytes }) => {
+		const ipfsCid = artifactCids.get(artifact.id);
+		if (!ipfsCid) {
+			throw new Error(
+				`BUG: bundleAndUpload did not return a CID for artifact ${artifact.id} (kind=${artifact.kind})`,
+			);
+		}
+		return toPublishedArtifactRef(artifact, ipfsCid, bytes.length, sha256HexBytes(bytes));
+	});
+
+	return {
+		...head,
+		segments: head.segments.map((seg) => {
+			const cid = artifactCids.get(seg.id);
+			return cid ? { ...seg, ipfsCid: cid } : seg;
+		}),
+		derivedEdgeLayers: head.derivedEdgeLayers?.map((layer) => {
+			const cid = artifactCids.get(layer.id);
+			return cid ? { ...layer, ipfsCid: cid } : layer;
+		}),
+		artifactRefs,
+		batches: [...existingBatches, newBatch],
+		updatedAt: newBatch.createdAt,
+	};
 }
 
 /**

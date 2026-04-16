@@ -8,6 +8,12 @@
  * 3. on_chain_written — manifestCid saved, promotion complete
  */
 import type { CollectionHead } from "@wtfoc/common";
+import {
+	buildEnrichedCollectionHead,
+	enumeratePromotableArtifacts,
+	type PromotableArtifact,
+} from "@wtfoc/ingest";
+import type { BundleArtifact } from "@wtfoc/store";
 import type { Repository } from "../db/index.js";
 
 /** Track active promotions so they can be cancelled on key revocation */
@@ -68,6 +74,9 @@ export async function startPromotion(
 		let pieceCid: string;
 		let carRootCid: string;
 		let segmentCount: number;
+		// enrichedHead is populated on a successful upload so we can write
+		// identical batch + artifactRefs to the local manifest below.
+		let enrichedHead: CollectionHead | null = null;
 
 		if (checkpoint === "uploaded" && col.manifestCid && col.pieceCid && col.carRootCid) {
 			// Resume: upload already completed, skip to local manifest update
@@ -77,47 +86,77 @@ export async function startPromotion(
 			carRootCid = col.carRootCid;
 			segmentCount = col.segmentCount ?? head.manifest.segments.length;
 		} else {
-			// Full flow: load segments, bundle, and upload
-			const segments = await Promise.all(
-				head.manifest.segments.map(async (seg) => {
-					const data = await localStore.storage.download(seg.id, signal);
-					return { id: seg.id, data };
-				}),
-			);
-			segmentCount = segments.length;
+			// Full flow: enumerate every promotable artifact, bundle, upload as
+			// a single CAR. Uses the same helper as the CLI `wtfoc promote`
+			// command so CLI and web paths stay in sync.
+			const manifestDir = (localStore as unknown as { manifestDir: string }).manifestDir;
+			const enumerated: Array<{ artifact: PromotableArtifact; bytes: Uint8Array }> = [];
+			for await (const artifact of enumeratePromotableArtifacts(
+				head.manifest,
+				col.name,
+				manifestDir,
+				(storageId) => localStore.storage.download(storageId, signal),
+			)) {
+				const bytes = await artifact.getBytes();
+				enumerated.push({ artifact, bytes });
+			}
+			segmentCount = enumerated.filter((e) => e.artifact.kind === "segment").length;
+
+			if (enumerated.length === 0) {
+				throw new Error(
+					`Collection "${col.name}" has no promotable artifacts — nothing to upload`,
+				);
+			}
+
+			const bundleArtifacts: BundleArtifact[] = enumerated.map(({ artifact, bytes }) => ({
+				id: artifact.id,
+				data: bytes,
+				path: artifact.carPath,
+				mediaType: artifact.kind === "sidecar" ? "application/json" : undefined,
+			}));
 
 			const focBackend = new FocStorageBackend({
 				sessionKey: sessionKeyDecrypted,
 				walletAddress,
 			});
 
-			const bundleResult = await bundleAndUpload(segments, focBackend, {
+			const existingBatches = head.manifest.batches ?? [];
+
+			const bundleResult = await bundleAndUpload(bundleArtifacts, focBackend, {
 				signal,
-				buildManifest: ({ segmentCids, pieceCid: bPieceCid, carRootCid: bCarRootCid }) => {
-					const updatedManifest: CollectionHead = {
-						...head.manifest,
-						updatedAt: new Date().toISOString(),
-						segments: head.manifest.segments.map((seg) => ({
-							...seg,
-							ipfsCid: segmentCids.get(seg.id),
-						})),
-						batches: [
-							...(head.manifest.batches ?? []),
-							{
-								pieceCid: bPieceCid,
-								carRootCid: bCarRootCid,
-								segmentIds: [...segmentCids.values()],
-								createdAt: new Date().toISOString(),
-							},
-						],
-					};
-					return updatedManifest;
+				buildManifest: ({ artifactCids, pieceCid: bPieceCid, carRootCid: bCarRootCid }) => {
+					const built = buildEnrichedCollectionHead({
+						head: head.manifest,
+						enumerated,
+						artifactCids,
+						newBatch: {
+							pieceCid: bPieceCid,
+							carRootCid: bCarRootCid,
+							segmentIds: bundleArtifacts.map((a) => artifactCids.get(a.id) ?? a.id),
+							createdAt: new Date().toISOString(),
+						},
+						existingBatches,
+					});
+					enrichedHead = built;
+					return built;
 				},
 			});
 
 			manifestCid = bundleResult.manifestCid ?? bundleResult.batch.carRootCid;
 			pieceCid = bundleResult.batch.pieceCid;
 			carRootCid = bundleResult.batch.carRootCid;
+
+			if (!enrichedHead) {
+				// bundleAndUpload should always call buildManifest when given one,
+				// so this is defensive — re-derive from the final result.
+				enrichedHead = buildEnrichedCollectionHead({
+					head: head.manifest,
+					enumerated,
+					artifactCids: bundleResult.artifactCids,
+					newBatch: bundleResult.batch,
+					existingBatches,
+				});
+			}
 
 			// Checkpoint: upload complete — retry from here skips re-bundle/re-upload
 			await repo.updateCollectionPromotion(collectionId, {
@@ -136,32 +175,15 @@ export async function startPromotion(
 
 		signal.throwIfAborted();
 
-		// Update local manifest with promotion results
-		// Avoid duplicate batch: buildManifest callback already appended the batch
-		// to the uploaded manifest. Here we just record the CIDs and batch if not
-		// already present (e.g. resume from checkpoint).
-		const existingBatches = head.manifest.batches ?? [];
-		const alreadyHasBatch = existingBatches.some((b) => b.carRootCid === carRootCid);
-		const updatedHead: CollectionHead = {
-			...head.manifest,
-			updatedAt: new Date().toISOString(),
-			segments: head.manifest.segments.map((seg) => ({
-				...seg,
-				ipfsCid: seg.ipfsCid,
-			})),
-			batches: alreadyHasBatch
-				? existingBatches
-				: [
-						...existingBatches,
-						{
-							pieceCid,
-							carRootCid,
-							segmentIds: head.manifest.segments.map((s) => s.id),
-							createdAt: new Date().toISOString(),
-						},
-					],
-		};
-		await localStore.manifests.putHead(col.name, updatedHead, head.headId);
+		// Update local manifest with promotion results. On a fresh upload,
+		// `enrichedHead` already contains the full batch + artifactRefs + per-
+		// segment/layer IPFS CIDs. On resume-from-checkpoint, enrichedHead is
+		// null (we never ran buildManifest), so we preserve whatever's in the
+		// existing local head — the remote side already wrote the definitive
+		// version of the manifest during the prior run.
+		if (enrichedHead) {
+			await localStore.manifests.putHead(col.name, enrichedHead, head.headId);
+		}
 
 		// Mark promotion complete
 		await repo.updateCollectionPromotion(collectionId, {

@@ -45,6 +45,16 @@ export {
 	selectChunker,
 } from "./chunkers/index.js";
 export {
+	buildEnrichedCollectionHead,
+	collectPromotableArtifacts,
+	enumeratePromotableArtifacts,
+	type PromotableArtifact,
+	type PromotableArtifactMetadata,
+	sha256HexBytes,
+	sidecarId,
+	toPublishedArtifactRef,
+} from "./collection-artifacts.js";
+export {
 	buildSourceKey,
 	type CursorData,
 	cursorFilePath,

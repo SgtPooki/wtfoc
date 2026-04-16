@@ -1,6 +1,15 @@
-import type { CollectionHead } from "@wtfoc/common";
-import { loadAllOverlayEdges } from "@wtfoc/ingest";
-import { bundleAndUpload, createStore, validateIpniIndexing } from "@wtfoc/store";
+import {
+	buildEnrichedCollectionHead,
+	enumeratePromotableArtifacts,
+	loadAllOverlayEdges,
+	type PromotableArtifact,
+} from "@wtfoc/ingest";
+import {
+	type BundleArtifact,
+	bundleAndUpload,
+	createStore,
+	validateIpniIndexing,
+} from "@wtfoc/store";
 import type { Command } from "commander";
 import { getFormat, getManifestDir } from "../helpers.js";
 
@@ -28,7 +37,8 @@ export function registerPromoteCommand(program: Command): void {
 				process.exit(1);
 			}
 
-			// Check for pending overlay edges that should be materialized before promote
+			// Overlay edges must be materialized before promote — otherwise they
+			// don't exist as a blob to ship.
 			const manifestDir = getManifestDir(localStore);
 			const allOverlayEdges = await loadAllOverlayEdges(manifestDir, collectionName);
 			if (allOverlayEdges.length > 0) {
@@ -44,91 +54,49 @@ export function registerPromoteCommand(program: Command): void {
 				console.error("");
 			}
 
-			// Check if already promoted (has batch records with PieceCIDs)
-			// Batch segmentIds may contain either local IDs or IPFS CIDs,
-			// so we check both when determining if a segment is already promoted.
-			const existingBatches = head.manifest.batches ?? [];
-			const alreadyPromotedIds = new Set<string>();
-			for (const batch of existingBatches) {
-				for (const segId of batch.segmentIds) {
-					alreadyPromotedIds.add(segId);
-				}
+			// Enumerate every artifact that must travel with the collection.
+			// Includes: segments, derived edge layers, raw-source-index sidecar,
+			// raw-source blobs, document-catalog sidecar. Enumeration is the
+			// single source of truth — same helper is used by the web promote
+			// worker.
+			const enumerated: Array<{ artifact: PromotableArtifact; bytes: Uint8Array }> = [];
+			let totalArtifactBytes = 0;
+			for await (const artifact of enumeratePromotableArtifacts(
+				head.manifest,
+				collectionName,
+				manifestDir,
+				(storageId) => localStore.storage.download(storageId),
+			)) {
+				const bytes = await artifact.getBytes();
+				totalArtifactBytes += bytes.length;
+				enumerated.push({ artifact, bytes });
 			}
 
-			// Find segments that haven't been promoted yet
-			const segmentsToPromote = head.manifest.segments.filter(
-				(s) => !alreadyPromotedIds.has(s.id) && (!s.ipfsCid || !alreadyPromotedIds.has(s.ipfsCid)),
-			);
-
-			if (segmentsToPromote.length === 0) {
-				// All segments already on Filecoin — just upload/re-upload the manifest
-				const privateKey = process.env.WTFOC_PRIVATE_KEY;
-				if (!privateKey) {
-					if (format === "human") {
-						console.error(`✅ Collection "${collectionName}" is already fully promoted to FOC.`);
-						console.error(
-							"   Set WTFOC_PRIVATE_KEY to re-upload the manifest and get a shareable CID.",
-						);
-					}
-					return;
-				}
-
-				if (format === "human") {
-					console.error(`✅ Segments already on Filecoin. Uploading manifest...`);
-				}
-
-				const focStore = createStore({ storage: "foc", privateKey });
-				const manifestJson = JSON.stringify(head.manifest);
-				const manifestBytes = new TextEncoder().encode(manifestJson);
-				const manifestResult = await focStore.storage.upload(manifestBytes);
-				const manifestCid = manifestResult.ipfsCid ?? manifestResult.id;
-
-				if (format === "json") {
-					console.log(
-						JSON.stringify({
-							collection: collectionName,
-							manifestCid,
-							pieceCid: existingBatches[existingBatches.length - 1]?.pieceCid,
-							carRootCid: existingBatches[existingBatches.length - 1]?.carRootCid,
-							segments: 0,
-							chunks: head.manifest.totalChunks,
-						}),
-					);
-				} else if (format === "human") {
-					console.error(`   Manifest CID: ${manifestCid}`);
-					if (existingBatches.length > 0) {
-						const lastBatch = existingBatches[existingBatches.length - 1];
-						if (lastBatch) {
-							console.error(`   PieceCID: ${lastBatch.pieceCid}`);
-							console.error(`   CAR root: ${lastBatch.carRootCid}`);
-						}
-					}
-					console.error(`\n   Share this CID to let anyone query your collection:`);
-					console.error(`   ${manifestCid}`);
-				}
-				// synapse-sdk keeps HTTP connections alive with no cleanup method
-				process.exit(0);
+			if (enumerated.length === 0) {
+				console.error(`Error: collection "${collectionName}" has no artifacts to promote`);
+				process.exit(1);
 			}
 
 			if (format === "human") {
+				const kindCounts = countKinds(enumerated.map((e) => e.artifact));
 				console.error(`📦 Promoting "${collectionName}" to FOC`);
 				console.error(
-					`   ${segmentsToPromote.length} segments to upload (${head.manifest.totalChunks} chunks)`,
+					`   ${enumerated.length} artifacts (${formatBytes(totalArtifactBytes)}): ${describeKindCounts(kindCounts)}`,
 				);
 				console.error(`   ${copies} storage copies for redundancy`);
 			}
 
 			if (opts.dryRun) {
 				console.error("   --dry-run: skipping upload");
-				for (const seg of segmentsToPromote) {
+				for (const { artifact, bytes } of enumerated) {
 					console.error(
-						`   → ${seg.id.slice(0, 16)}... (${seg.chunkCount} chunks, ${seg.sourceTypes.join(", ")})`,
+						`   → ${artifact.kind.padEnd(18)} ${artifact.id.slice(0, 24).padEnd(24)} (${formatBytes(bytes.length)}) [${artifact.carPath}]`,
 					);
 				}
 				return;
 			}
 
-			// Create FOC storage backend
+			// FOC credentials
 			const privateKey = process.env.WTFOC_PRIVATE_KEY;
 			if (!privateKey) {
 				console.error("Error: WTFOC_PRIVATE_KEY environment variable required for FOC upload.");
@@ -138,72 +106,53 @@ export function registerPromoteCommand(program: Command): void {
 
 			const focStore = createStore({ storage: "foc", privateKey });
 
-			// Download each segment from local storage and prepare for bundling
-			const bundleSegments: { id: string; data: Uint8Array }[] = [];
-
-			for (const seg of segmentsToPromote) {
-				if (format === "human") {
-					console.error(`   ⏳ Reading segment ${seg.id.slice(0, 16)}...`);
-				}
-				const data = await localStore.storage.download(seg.id);
-				bundleSegments.push({ id: seg.id, data });
-			}
+			const bundleArtifacts: BundleArtifact[] = enumerated.map(({ artifact, bytes }) => ({
+				id: artifact.id,
+				data: bytes,
+				path: artifact.carPath,
+				mediaType: artifact.kind === "sidecar" ? "application/json" : undefined,
+			}));
 
 			if (format === "human") {
-				console.error("   ⏳ Bundling segments + manifest into CAR and uploading to FOC...");
+				console.error("   ⏳ Bundling + uploading to FOC (single CAR)...");
 			}
 
-			const bundleResult = await bundleAndUpload(bundleSegments, focStore.storage, {
-				copies,
-				buildManifest({ segmentCids, pieceCid, carRootCid }) {
-					const updatedSegments = head.manifest.segments.map((seg) => {
-						const cid = segmentCids.get(seg.id);
-						if (cid) {
-							return { ...seg, ipfsCid: cid };
-						}
-						return seg;
-					});
+			const existingBatches = head.manifest.batches ?? [];
 
-					return {
-						...head.manifest,
-						segments: updatedSegments,
-						batches: [
-							...existingBatches,
-							{
-								pieceCid,
-								carRootCid,
-								segmentIds: bundleSegments.map((s) => {
-									const cid = segmentCids.get(s.id);
-									return cid ?? s.id;
-								}),
-								createdAt: new Date().toISOString(),
-							},
-						],
-						updatedAt: new Date().toISOString(),
-					};
+			const bundleResult = await bundleAndUpload(bundleArtifacts, focStore.storage, {
+				copies,
+				buildManifest({ artifactCids, pieceCid, carRootCid }) {
+					return buildEnrichedCollectionHead({
+						head: head.manifest,
+						enumerated,
+						artifactCids,
+						newBatch: {
+							pieceCid,
+							carRootCid,
+							segmentIds: bundleArtifacts.map((a) => artifactCids.get(a.id) ?? a.id),
+							createdAt: new Date().toISOString(),
+						},
+						existingBatches,
+					});
 				},
 			});
 
 			const manifestCid = bundleResult.manifestCid;
 
-			// Build local manifest using the same data as the CAR manifest.
-			// bundleResult.batch has the same pieceCid/carRootCid that
-			// buildManifest received, so local and CAR manifests stay in sync.
-			const finalManifest: CollectionHead = {
-				...head.manifest,
-				segments: head.manifest.segments.map((seg) => {
-					const cid = bundleResult.segmentCids.get(seg.id);
-					if (cid) return { ...seg, ipfsCid: cid };
-					return seg;
-				}),
-				batches: [...existingBatches, bundleResult.batch],
-				updatedAt: bundleResult.batch.createdAt,
-			};
+			// Local manifest mirrors what went into the CAR. Both share the same
+			// pieceCid/carRootCid, so local + CAR manifests stay in sync.
+			const finalManifest = buildEnrichedCollectionHead({
+				head: head.manifest,
+				enumerated,
+				artifactCids: bundleResult.artifactCids,
+				newBatch: bundleResult.batch,
+				existingBatches,
+			});
 
-			// Write updated manifest back to local store
 			await localStore.manifests.putHead(collectionName, finalManifest, head.headId);
 
-			// Post-upload IPNI validation
+			// IPNI indexing check — how many of the published CIDs have propagated
+			// to the IPNI (InterPlanetary Network Indexer)?
 			if (format === "human") {
 				console.error("   ⏳ Validating IPNI indexing...");
 			}
@@ -213,6 +162,8 @@ export function registerPromoteCommand(program: Command): void {
 			const indexed = ipniResults.filter((r) => r.indexed).length;
 			const notIndexed = ipniResults.filter((r) => !r.indexed);
 
+			const artifactKindCounts = countKinds(enumerated.map((e) => e.artifact));
+
 			if (format === "json") {
 				console.log(
 					JSON.stringify({
@@ -220,7 +171,9 @@ export function registerPromoteCommand(program: Command): void {
 						manifestCid,
 						pieceCid: bundleResult.batch.pieceCid,
 						carRootCid: bundleResult.batch.carRootCid,
-						segments: segmentsToPromote.length,
+						artifacts: enumerated.length,
+						artifactBytes: totalArtifactBytes,
+						artifactKinds: artifactKindCounts,
 						chunks: head.manifest.totalChunks,
 						copies,
 						ipniValidation: {
@@ -237,14 +190,16 @@ export function registerPromoteCommand(program: Command): void {
 				}
 				console.error(`   PieceCID: ${bundleResult.batch.pieceCid}`);
 				console.error(`   CAR root: ${bundleResult.batch.carRootCid}`);
-				console.error(`   ${segmentsToPromote.length} segments uploaded (${copies} copies)`);
+				console.error(
+					`   ${enumerated.length} artifacts uploaded (${describeKindCounts(artifactKindCounts)}, ${copies} copies)`,
+				);
 				console.error(`   IPNI: ${indexed}/${cidsToValidate.length} CIDs indexed`);
 				if (notIndexed.length > 0) {
 					console.error(
 						`   ⚠️  ${notIndexed.length} CIDs not yet indexed on IPNI (may take time to propagate)`,
 					);
 				}
-				console.error(`   Local manifest updated with IPFS CIDs`);
+				console.error(`   Local manifest updated with artifact refs + IPFS CIDs`);
 				if (manifestCid) {
 					console.error(`\n   Share this CID to let anyone query your collection:`);
 					console.error(`   ${manifestCid}`);
@@ -254,4 +209,28 @@ export function registerPromoteCommand(program: Command): void {
 			// synapse-sdk keeps HTTP connections alive with no cleanup method
 			process.exit(0);
 		});
+}
+
+function countKinds(artifacts: PromotableArtifact[]): Record<PromotableArtifact["kind"], number> {
+	const counts = {
+		segment: 0,
+		"derived-edge-layer": 0,
+		"raw-source-blob": 0,
+		sidecar: 0,
+	} as Record<PromotableArtifact["kind"], number>;
+	for (const a of artifacts) counts[a.kind] += 1;
+	return counts;
+}
+
+function describeKindCounts(counts: Record<string, number>): string {
+	return Object.entries(counts)
+		.filter(([, n]) => n > 0)
+		.map(([k, n]) => `${n} ${k}${n === 1 ? "" : "s"}`)
+		.join(", ");
+}
+
+function formatBytes(n: number): string {
+	if (n < 1024) return `${n}B`;
+	if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
+	return `${(n / 1024 / 1024).toFixed(1)}MB`;
 }

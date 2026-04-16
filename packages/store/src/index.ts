@@ -5,10 +5,12 @@ export { CidReadableStorage } from "./backends/cid-reader.js";
 export { FocStorageBackend, type FocStorageBackendOptions } from "./backends/foc.js";
 export { LocalStorageBackend } from "./backends/local.js";
 export {
+	type BundleArtifact,
 	type BundleOptions,
 	type BundleSegment,
 	type BundleUploadResult,
 	bundleAndUpload,
+	computeArtifactCids,
 	computeSegmentCids,
 	type IpniValidationResult,
 	validateIpniIndexing,

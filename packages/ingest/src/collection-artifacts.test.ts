@@ -8,8 +8,7 @@ import type {
 	PublishedArtifactRef,
 	PublishedSidecarRole,
 } from "@wtfoc/common";
-import { archiveIndexPath, catalogFilePath, writeArchiveIndex, writeCatalog } from "@wtfoc/ingest";
-import { CidReadableStorage, resolveCollectionByCid } from "@wtfoc/store";
+import { CidReadableStorage } from "@wtfoc/store";
 import { CID } from "multiformats/cid";
 import * as raw from "multiformats/codecs/raw";
 import { sha256 as sha256Digest } from "multiformats/hashes/sha2";
@@ -21,9 +20,11 @@ import { createOfflineHelia, type OfflineHelia } from "../../store/src/test-util
 import {
 	collectPromotableArtifacts,
 	enumeratePromotableArtifacts,
-	sha256Hex,
+	sha256HexBytes,
 	toPublishedArtifactRef,
 } from "./collection-artifacts.js";
+import { catalogFilePath, writeCatalog } from "./document-catalog.js";
+import { archiveIndexPath, writeArchiveIndex } from "./raw-source-archive.js";
 
 /**
  * Contract test for the collection self-containment pipeline.
@@ -90,11 +91,11 @@ describe("collection self-containment round-trip (store-layer)", () => {
 			schemaVersion: 1,
 			collectionId: "col-1",
 			entries: {
-				[`doc/v1`]: {
+				"doc/v1": {
 					documentId: "doc",
 					documentVersionId: "v1",
 					mediaType: "text/plain",
-					checksum: sha256Hex(rawBlobBytes),
+					checksum: sha256HexBytes(rawBlobBytes),
 					byteLength: rawBlobBytes.length,
 					fetchedAt: new Date().toISOString(),
 					storageId: rawBlobStorageId,
@@ -113,7 +114,7 @@ describe("collection self-containment round-trip (store-layer)", () => {
 					previousVersionIds: [],
 					chunkIds: ["chunk-1"],
 					supersededChunkIds: [],
-					contentFingerprints: [sha256Hex(rawBlobBytes)],
+					contentFingerprints: [sha256HexBytes(rawBlobBytes)],
 					state: "active",
 					mutability: "mutable-state",
 					sourceType: "test",
@@ -171,7 +172,12 @@ describe("collection self-containment round-trip (store-layer)", () => {
 			const bytes = await artifact.getBytes();
 			const publishedCid = await node.publishBytes(bytes);
 			artifactRefs.push(
-				toPublishedArtifactRef(artifact, publishedCid.toString(), bytes.length, sha256Hex(bytes)),
+				toPublishedArtifactRef(
+					artifact,
+					publishedCid.toString(),
+					bytes.length,
+					sha256HexBytes(bytes),
+				),
 			);
 		}
 
@@ -212,14 +218,14 @@ describe("collection self-containment round-trip (store-layer)", () => {
 				case "derived-edge-layer":
 				case "raw-source-blob": {
 					const original = artifactsById.get(ref.storageId);
-					expect(original, `no local artifact for ${ref.storageId}`).toBeDefined();
-					const originalBytes = await original!.getBytes();
+					if (!original) throw new Error(`no local artifact for ${ref.storageId}`);
+					const originalBytes = await original.getBytes();
 					expect(fetchedBytes).toEqual(originalBytes);
 					break;
 				}
 				case "sidecar": {
 					seenSidecarRoles.add(ref.role);
-					expect(sha256Hex(fetchedBytes)).toBe(ref.sha256);
+					expect(sha256HexBytes(fetchedBytes)).toBe(ref.sha256);
 					break;
 				}
 				default: {
