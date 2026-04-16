@@ -4,7 +4,7 @@
 
 Decentralized knowledge tracing and recall on FOC (Filecoin Onchain Cloud).
 
-This document defines **project-wide invariants** — rules that apply to all features and all packages. Feature-specific specs live in `.specweave/increments/` and follow the [specweave](https://spec-weave.com) increment flow.
+This document defines **project-wide invariants** — rules that apply to all features and all packages. Feature-specific specs and decisions are tracked in GitHub issues.
 
 ## Foundational Rules
 
@@ -115,17 +115,14 @@ Manifests and segments include `schemaVersion`. Readers reject unknown versions.
 
 ## Development Discipline
 
-### Spec-first development (NON-NEGOTIABLE)
+### Issue-first development (NON-NEGOTIABLE)
 
-Every change requires a spec. No implementation without a ratified specification.
+Every non-trivial change has a GitHub issue. The issue is the spec; its acceptance criteria are the contract.
 
-1. `/sw:increment` — create the increment (spec + plan + tasks)
-2. **`/peer-review`** — spec cross-reviewed by a different agent. Address all feedback before ratifying.
-3. `/sw:do` — execute implementation task by task
-4. `/sw:grill` — comprehensive implementation audit
-5. `/sw:done` — close increment after quality validation
-
-Feature specs live in `.specweave/increments/`. See [specweave](https://spec-weave.com) for the full workflow.
+1. Open a GitHub issue capturing the problem, scope, and acceptance criteria
+2. Cross-review non-obvious designs with a second agent (Codex, Cursor, or another reviewer) before implementing
+3. Implement against the acceptance criteria; commit with `fixes #N` in the message body
+4. Audit with `/grill` or `/code-reviewer` before pushing for anything non-trivial
 
 ### Atomic commits
 
@@ -162,6 +159,6 @@ Deferred: `@wtfoc/memory` (agent memory), `@wtfoc/mcp` (MCP server) — scaffold
 
 ## Feature Specs
 
-Feature increments are tracked in `.specweave/increments/`. Historical specs are preserved in git history.
+Feature specs live in GitHub issues. Historical planning artifacts are preserved in git history.
 
 See also: [Issue #1](https://github.com/SgtPooki/wtfoc/issues/1) (architecture history), [Issue #2](https://github.com/SgtPooki/wtfoc/issues/2) (Slack webhook — future)

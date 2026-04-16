@@ -13,7 +13,6 @@ dist/
 # Project-specific skills (keep tracked)
 !.claude/skills/collection-setup/
 !.claude/skills/drift-check/
-!.claude/skills/next-task/
 !.claude/skills/skill-creator/
 !.claude/skills/trace-analyze/
 tests/e2e/test-results/

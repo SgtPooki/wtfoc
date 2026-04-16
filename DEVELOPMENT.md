@@ -55,20 +55,20 @@ apps/
 skills/         Distributable agent skills (npx skills add)
 ```
 
-## Spec-Driven Development
+## Issue-Driven Development
 
-Every non-trivial change requires a spec, cross-reviewed by a different AI agent before implementation. The project uses [specweave](https://spec-weave.com):
+Every non-trivial change starts as a GitHub issue — the issue is the spec and its acceptance criteria are the contract. Cross-review non-obvious designs with a second agent before implementing. Commit messages that complete an issue include `fixes #N` in the body so the issue closes on merge to `main`.
+
+Useful skills during implementation:
 
 ```
-/sw:increment          Create a new increment (spec + plan + tasks)
-/sw:do                 Manual task-by-task execution
-/sw:auto               Autonomous hands-free execution
-/sw:done               Close increment after quality validation
-/sw:validate           Rule-based validation
-/sw:grill              Comprehensive implementation audit
+/grill                 Adversarial review — stress-test assumptions
+/code-reviewer         Structured code review before shipping
+/judge-llm             Deep independent validation of completed work
+/simplify              Catch duplication, readability issues, dead code
+/tdd-cycle             TDD red → green → refactor discipline
+/debug                 Systematic root-cause debugging
 ```
-
-Increments live in `.specweave/increments/`.
 
 ## Key Files
 

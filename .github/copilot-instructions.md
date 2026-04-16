@@ -1,6 +1,6 @@
 Read `AGENTS.md`, `SPEC.md`, and `docs/principles.md` before making non-trivial changes.
 
-This repository is spec-first. Do not implement behavior changes without a specweave increment.
+This repository is issue-first. Every non-trivial change needs a GitHub issue; commits that complete work reference it with `fixes #N` in the message body (see `AGENTS.md`).
 
 Prefer the nearest nested `AGENTS.md` when editing package code. Package-local instructions override root-level generalities.
 

@@ -212,10 +212,4 @@ If this discussion is productive, likely next specs would be:
 
 ## Next Step
 
-After discussion, any architecture changes should go through the normal specweave increment flow:
-
-1. `/sw:increment` — create the increment (spec + plan + tasks)
-2. `/peer-review` — cross-review by different agent
-3. `/sw:do` — execute implementation
-
-Implementation should only happen after that process.
+After discussion, any architecture change gets its own GitHub issue with scope and acceptance criteria, cross-reviewed by a second agent before implementation. Commits that complete that work reference the issue with `fixes #N`.

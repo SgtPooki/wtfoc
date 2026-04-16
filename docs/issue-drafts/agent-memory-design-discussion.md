@@ -198,10 +198,4 @@ A strong outcome would be a future workflow where:
 
 ## Next Step After Discussion
 
-If this direction holds up, the next step should be a formal spec created through the normal specweave increment flow:
-
-1. `/sw:increment` — create the increment (spec + plan + tasks)
-2. `/peer-review` — cross-review by different agent
-3. `/sw:do` — execute implementation
-
-Implementation should only begin after that process is complete.
+If this direction holds up, the next step is a formal design issue on GitHub capturing scope, acceptance criteria, and open trade-offs — cross-reviewed by a second agent before any implementation work begins. Commits that complete that work reference the issue with `fixes #N`.
