@@ -1,4 +1,5 @@
-import type { CollectionHead } from "@wtfoc/common";
+import { createHash } from "node:crypto";
+import type { CollectionHead, PublishedArtifactRef } from "@wtfoc/common";
 import {
 	buildEnrichedCollectionHead,
 	enumeratePromotableArtifacts,
@@ -16,13 +17,23 @@ import { getFormat, getManifestDir } from "../helpers.js";
 
 const DEFAULT_COPIES = 2;
 
+interface PromoteOptions {
+	dryRun?: boolean;
+	copies?: string;
+	force?: boolean;
+}
+
 export function registerPromoteCommand(program: Command): void {
 	program
 		.command("promote <collection>")
 		.description("Promote a local collection to FOC (Filecoin Onchain Cloud) storage")
 		.option("--dry-run", "Show what would be uploaded without uploading")
 		.option("--copies <n>", "Number of storage copies for redundancy", String(DEFAULT_COPIES))
-		.action(async (collectionName: string, opts: { dryRun?: boolean; copies?: string }) => {
+		.option(
+			"--force",
+			"Re-publish even when existing artifactRefs[] already cover every current artifact.",
+		)
+		.action(async (collectionName: string, opts: PromoteOptions) => {
 			const format = getFormat(program.opts());
 			const rawCopies = Number(opts.copies ?? DEFAULT_COPIES);
 			if (!Number.isFinite(rawCopies) || rawCopies < 1 || !Number.isInteger(rawCopies)) {
@@ -78,12 +89,49 @@ export function registerPromoteCommand(program: Command): void {
 				process.exit(1);
 			}
 
+			// Self-containment-aware short-circuit: if the local manifest already
+			// carries `artifactRefs[]` covering every currently-enumerated artifact
+			// with matching identity, skip upload entirely — we'd just re-publish
+			// the same bytes and bump a batch timestamp for no content change.
+			// User can still force a re-publish with --force.
+			const coverage = computeArtifactCoverage(head.manifest.artifactRefs, enumerated);
+			if (coverage.fullyCovered && !opts.force) {
+				const lastManifestCid = head.manifest.batches?.at(-1)?.carRootCid;
+				if (format === "human") {
+					console.error(`✅ Collection "${collectionName}" is already fully promoted.`);
+					console.error(
+						`   ${enumerated.length} artifacts covered by existing artifactRefs[] with matching content.`,
+					);
+					if (lastManifestCid) {
+						console.error(`   Last CAR root: ${lastManifestCid}`);
+					}
+					console.error(`   Re-run with --force to re-publish anyway.`);
+				}
+				if (format === "json") {
+					console.log(
+						JSON.stringify({
+							collection: collectionName,
+							skipped: true,
+							reason: "already-promoted",
+							artifacts: enumerated.length,
+							lastCarRootCid: lastManifestCid,
+						}),
+					);
+				}
+				return;
+			}
+
 			if (format === "human") {
 				const kindCounts = countKinds(enumerated.map((e) => e.artifact));
 				console.error(`📦 Promoting "${collectionName}" to FOC`);
 				console.error(
 					`   ${enumerated.length} artifacts (${formatBytes(totalArtifactBytes)}): ${describeKindCounts(kindCounts)}`,
 				);
+				if (coverage.partialCount > 0 && !coverage.fullyCovered) {
+					console.error(
+						`   ${coverage.partialCount}/${enumerated.length} already covered by existing artifactRefs — re-uploading full set (content-addressed, so identical blobs dedupe at the storage layer).`,
+					);
+				}
 				console.error(`   ${copies} storage copies for redundancy`);
 			}
 
@@ -238,4 +286,80 @@ function formatBytes(n: number): string {
 	if (n < 1024) return `${n}B`;
 	if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
 	return `${(n / 1024 / 1024).toFixed(1)}MB`;
+}
+
+interface ArtifactCoverage {
+	/** True when every currently-enumerated artifact is already in artifactRefs[] with matching identity. */
+	fullyCovered: boolean;
+	/** Number of enumerated artifacts that match an existing ref. */
+	partialCount: number;
+}
+
+/**
+ * Check whether the local manifest's existing `artifactRefs[]` (from a prior
+ * promote) already cover every artifact we'd publish now.
+ *
+ * Coverage rules:
+ * - For blob kinds (segment / derived-edge-layer / raw-source-blob), match on
+ *   `storageId` — if the same storageId is in artifactRefs[] as the same kind,
+ *   the blob is already published (content-addressed identity guarantees
+ *   bytes are the same).
+ * - For sidecars, match on `role` + matching `sha256` against the current
+ *   artifact bytes. A sidecar changes whenever its source JSON changes.
+ *
+ * Returns `fullyCovered: true` only when every single current artifact is
+ * covered. Partial coverage still requires a full re-upload (we'd otherwise
+ * leave the manifest with inconsistent artifactRefs).
+ */
+function computeArtifactCoverage(
+	existingRefs: PublishedArtifactRef[] | undefined,
+	enumerated: Array<{ artifact: PromotableArtifact; bytes: Uint8Array }>,
+): ArtifactCoverage {
+	if (!existingRefs || existingRefs.length === 0) {
+		return { fullyCovered: false, partialCount: 0 };
+	}
+
+	const blobStorageIdsByKind = new Map<
+		Exclude<PublishedArtifactRef["kind"], "sidecar">,
+		Set<string>
+	>();
+	const sidecarShaByRole = new Map<string, string>();
+
+	for (const ref of existingRefs) {
+		switch (ref.kind) {
+			case "segment":
+			case "derived-edge-layer":
+			case "raw-source-blob": {
+				const set = blobStorageIdsByKind.get(ref.kind) ?? new Set<string>();
+				set.add(ref.storageId);
+				blobStorageIdsByKind.set(ref.kind, set);
+				break;
+			}
+			case "sidecar":
+				sidecarShaByRole.set(ref.role, ref.sha256);
+				break;
+		}
+	}
+
+	let partialCount = 0;
+	for (const { artifact, bytes } of enumerated) {
+		if (artifact.kind === "sidecar") {
+			const role = artifact.metadata.kind === "sidecar" ? artifact.metadata.role : undefined;
+			if (!role) continue;
+			const expected = sidecarShaByRole.get(role);
+			if (expected && expected === sha256Hex(bytes)) partialCount += 1;
+		} else {
+			const ids = blobStorageIdsByKind.get(artifact.kind);
+			if (ids?.has(artifact.id)) partialCount += 1;
+		}
+	}
+
+	return {
+		fullyCovered: partialCount === enumerated.length,
+		partialCount,
+	};
+}
+
+function sha256Hex(bytes: Uint8Array): string {
+	return createHash("sha256").update(bytes).digest("hex");
 }
