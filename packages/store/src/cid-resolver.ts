@@ -1,4 +1,9 @@
-import type { CollectionHead, StorageBackend } from "@wtfoc/common";
+import type {
+	CollectionHead,
+	PublishedArtifactRef,
+	PublishedSidecarRole,
+	StorageBackend,
+} from "@wtfoc/common";
 import { WtfocError } from "@wtfoc/common";
 import { CID } from "multiformats/cid";
 import { CidReadableStorage } from "./backends/cid-reader.js";
@@ -6,8 +11,10 @@ import { validateManifestSchema } from "./schema.js";
 
 export interface CidResolvedCollection {
 	manifest: CollectionHead;
-	/** A storage backend that resolves segment IDs to their IPFS CIDs for download. */
+	/** Maps any local `storageId` (segment/derived-edge-layer/raw-source-blob) to its published IPFS CID for download. Falls through to treating the id as a CID directly when no mapping is known. */
 	storage: StorageBackend;
+	/** Look up the published CID for a sidecar role, if the manifest carries one. */
+	sidecarCid(role: PublishedSidecarRole): string | undefined;
 }
 
 /**
@@ -69,19 +76,54 @@ export async function resolveCollectionByCid(
 		);
 	}
 
-	// Build a storage backend that maps segment IDs → IPFS CIDs
-	// mountCollection() calls storage.download(segmentSummary.id), but IPFS
-	// needs the segment's ipfsCid. This wrapper does the translation.
-	const cidBySegmentId = new Map<string, string>();
+	// Build a storage-id → published-CID lookup covering every artifact kind.
+	// Priority order:
+	//   1. `artifactRefs[]` entries (canonical publication index — present on
+	//      collections promoted with self-containment support)
+	//   2. Individual `ipfsCid` fields on segments + derived-edge-layer summaries
+	//      (back-compat for older promoted collections)
+	// When both are absent the caller-supplied id is passed straight through to
+	// the IPFS reader, which matches today's behavior for pre-artifactRefs
+	// collections where segment ids happen to already be CIDs.
+	const cidByStorageId = new Map<string, string>();
+	const cidBySidecarRole = new Map<PublishedSidecarRole, string>();
+
+	const artifactRefs: PublishedArtifactRef[] = manifest.artifactRefs ?? [];
+	for (const ref of artifactRefs) {
+		switch (ref.kind) {
+			case "segment":
+			case "derived-edge-layer":
+			case "raw-source-blob":
+				cidByStorageId.set(ref.storageId, ref.ipfsCid);
+				break;
+			case "sidecar":
+				cidBySidecarRole.set(ref.role, ref.ipfsCid);
+				break;
+			default: {
+				const exhaustive: never = ref;
+				throw new WtfocError(
+					`Unhandled PublishedArtifactRef kind: ${JSON.stringify(exhaustive)}`,
+					"CID_RESOLVER_INTERNAL",
+				);
+			}
+		}
+	}
+
+	// Back-compat: fill any gaps from individual summary entries.
 	for (const seg of manifest.segments) {
-		if (seg.ipfsCid) {
-			cidBySegmentId.set(seg.id, seg.ipfsCid);
+		if (seg.ipfsCid && !cidByStorageId.has(seg.id)) {
+			cidByStorageId.set(seg.id, seg.ipfsCid);
+		}
+	}
+	for (const layer of manifest.derivedEdgeLayers ?? []) {
+		if (layer.ipfsCid && !cidByStorageId.has(layer.id)) {
+			cidByStorageId.set(layer.id, layer.ipfsCid);
 		}
 	}
 
 	const storage: StorageBackend = {
 		async download(id: string, sig?: AbortSignal): Promise<Uint8Array> {
-			const resolvedCid = cidBySegmentId.get(id) ?? id;
+			const resolvedCid = cidByStorageId.get(id) ?? id;
 			return reader.download(resolvedCid, sig);
 		},
 		async upload(): Promise<never> {
@@ -89,5 +131,9 @@ export async function resolveCollectionByCid(
 		},
 	};
 
-	return { manifest, storage };
+	return {
+		manifest,
+		storage,
+		sidecarCid: (role) => cidBySidecarRole.get(role),
+	};
 }

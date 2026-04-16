@@ -127,6 +127,8 @@ export interface ThemeSnapshot {
 export interface DerivedEdgeLayerSummary {
 	/** Storage ID of the layer blob */
 	id: string;
+	/** IPFS CID when the layer blob has been published to a CID-capable backend (FOC). */
+	ipfsCid?: string;
 	/** Identifier of the extractor(s) that produced this layer (e.g. "regex", "tree-sitter", "llm-<hash>") */
 	extractorId: string;
 	/** Number of edges in this layer */
@@ -136,6 +138,55 @@ export interface DerivedEdgeLayerSummary {
 	/** Contexts processed in this extraction run */
 	contextsProcessed: number;
 }
+
+/**
+ * Every publishable artifact that must travel with a collection for full-fidelity
+ * pull. This is the canonical publication index — once populated, pull can fully
+ * reconstruct the collection by walking this list. Adding a new collection artifact
+ * type without extending this union breaks `switch`+`assertNever` handlers in
+ * promote and pull.
+ *
+ * Design notes:
+ * - `storageId` is the local content-addressed id (reproducible from bytes).
+ * - `ipfsCid` is the CID returned by the target storage backend's upload.
+ * - Sidecars are JSON documents that live in `manifestDir`, not in storage —
+ *   modelled by role + the content-addressed `sha256` of their bytes.
+ * - `byteLength` is recorded for integrity checks on pull.
+ */
+export type PublishedArtifactRef =
+	| {
+			kind: "segment";
+			storageId: string;
+			ipfsCid: string;
+			byteLength: number;
+	  }
+	| {
+			kind: "derived-edge-layer";
+			storageId: string;
+			ipfsCid: string;
+			extractorId: string;
+			edgeCount: number;
+			byteLength: number;
+	  }
+	| {
+			kind: "raw-source-blob";
+			storageId: string;
+			ipfsCid: string;
+			documentId: string;
+			documentVersionId: string;
+			byteLength: number;
+			sha256: string;
+	  }
+	| {
+			kind: "sidecar";
+			role: PublishedSidecarRole;
+			ipfsCid: string;
+			byteLength: number;
+			sha256: string;
+	  };
+
+export type PublishedArtifactKind = PublishedArtifactRef["kind"];
+export type PublishedSidecarRole = "raw-source-index" | "document-catalog";
 
 export interface CollectionHead {
 	schemaVersion: number;
@@ -156,6 +207,16 @@ export interface CollectionHead {
 	themes?: ThemeSnapshot;
 	/** Immutable derived-edge layers from extract-edges runs. Each layer is a stored blob of Edge[]. */
 	derivedEdgeLayers?: DerivedEdgeLayerSummary[];
+	/**
+	 * Complete index of every artifact published alongside this manifest. Present
+	 * on collections that have been promoted to a CID-capable backend. Pull uses
+	 * this to retrieve every artifact required for a full-fidelity local copy
+	 * (segments, derived edge layers, raw-source blobs, raw-source index sidecar,
+	 * document-catalog sidecar). Absent on never-promoted local collections and
+	 * on collections promoted by older (pre-self-containment) code paths — pull
+	 * falls back to segments-only retrieval in that case.
+	 */
+	artifactRefs?: PublishedArtifactRef[];
 }
 
 /**

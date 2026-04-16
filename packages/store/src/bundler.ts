@@ -34,40 +34,66 @@ export async function validateIpniIndexing(
 }
 
 /**
- * Compute bare (raw content) CIDs for a set of segments.
+ * One logical artifact destined for a CAR bundle. `id` is the caller's
+ * logical key (returned in the per-artifact CID map); `path` is the file
+ * path inside the CAR (defaults to `segments/${id}.json` for back-compat);
+ * `mediaType` defaults to `application/json`.
+ */
+export interface BundleArtifact {
+	id: string;
+	data: Uint8Array;
+	/** File path inside the CAR — differentiates artifact kinds in the directory. */
+	path?: string;
+	/** Defaults to "application/json". */
+	mediaType?: string;
+}
+
+/** @deprecated Use `BundleArtifact`. */
+export type BundleSegment = BundleArtifact;
+
+function defaultPathFor(artifact: BundleArtifact): string {
+	return artifact.path ?? `segments/${artifact.id}.json`;
+}
+
+function defaultMediaTypeFor(artifact: BundleArtifact): string {
+	return artifact.mediaType ?? "application/json";
+}
+
+/**
+ * Compute bare (raw content) CIDs for a set of artifacts.
  * These CIDs match the actual blocks inside directory CARs.
  */
-export async function computeSegmentCids(
-	segments: BundleSegment[],
+export async function computeArtifactCids(
+	artifacts: BundleArtifact[],
 	signal?: AbortSignal,
 ): Promise<Map<string, string>> {
 	const fp = await import("filecoin-pin");
 	const cids = new Map<string, string>();
-	for (const seg of segments) {
+	for (const artifact of artifacts) {
 		signal?.throwIfAborted();
-		const file = new File([Buffer.from(seg.data)], `${seg.id}.json`, {
-			type: "application/json",
+		const file = new File([Buffer.from(artifact.data)], defaultPathFor(artifact), {
+			type: defaultMediaTypeFor(artifact),
 		});
 		const bareCar = await fp.createCarFromFile(file, { bare: true });
-		cids.set(seg.id, bareCar.rootCid.toString());
+		cids.set(artifact.id, bareCar.rootCid.toString());
 	}
 	return cids;
 }
 
-/** Input segment for bundling — id + serialized bytes */
-export interface BundleSegment {
-	id: string;
-	data: Uint8Array;
-}
+/** @deprecated Use `computeArtifactCids`. Computes per-segment bare CIDs. */
+export const computeSegmentCids = computeArtifactCids;
 
 /** Options for bundleAndUpload */
 export interface BundleOptions {
 	/**
-	 * Manifest builder: receives segment CIDs and the pre-computed PieceCID
-	 * of the segments-only CAR, returns a CollectionHead to include in the
-	 * final CAR. This lets the manifest contain the full batch record.
+	 * Manifest builder: receives per-artifact CIDs and the pre-computed PieceCID
+	 * of the artifacts-only CAR, returns a CollectionHead to include in the
+	 * final CAR. This lets the manifest contain the full batch record with
+	 * CIDs populated for every artifact kind.
 	 */
 	buildManifest?: (info: {
+		artifactCids: Map<string, string>;
+		/** @deprecated Alias for `artifactCids` — same Map, preserved for legacy callers. */
 		segmentCids: Map<string, string>;
 		pieceCid: string;
 		carRootCid: string;
@@ -81,39 +107,41 @@ export interface BundleOptions {
 export interface BundleUploadResult {
 	/** The batch record to add to the manifest */
 	batch: BatchRecord;
-	/** Per-segment CID map (segmentId → IPFS CID) */
+	/** Per-artifact CID map (artifact id → IPFS CID) */
+	artifactCids: Map<string, string>;
+	/** @deprecated Alias for `artifactCids`. */
 	segmentCids: Map<string, string>;
 	/** CID of the manifest within the CAR (if buildManifest was provided) */
 	manifestCid?: string;
-	/** Segment + manifest CIDs that should be validated on IPNI */
+	/** Artifact + manifest CIDs that should be validated on IPNI */
 	childBlockCids: string[];
 }
 
 /**
- * Bundle segments into a single CAR and upload once.
+ * Bundle artifacts into a single CAR and upload once.
  *
  * Flow:
- * 1. Compute per-segment bare CIDs (raw content, matches directory CAR blocks)
- * 2. Build segments-only CAR → stable bytes
- * 3. Compute PieceCID locally from segments-only CAR via @filoz/synapse-core
+ * 1. Compute per-artifact bare CIDs (raw content, matches directory CAR blocks)
+ * 2. Build artifacts-only CAR → stable bytes
+ * 3. Compute PieceCID locally from artifacts-only CAR via @filoz/synapse-core
  * 4. If buildManifest provided: build manifest with full batch record (incl PieceCID),
- *    then build final CAR with segments + manifest
- * 5. Validate all segment CIDs exist as blocks in the final CAR
+ *    then build final CAR with artifacts + manifest
+ * 5. Validate all artifact CIDs exist as blocks in the final CAR
  * 6. Upload once
  */
 export async function bundleAndUpload(
-	segments: BundleSegment[],
+	artifacts: BundleArtifact[],
 	storage: StorageBackend,
 	optionsOrSignal?: BundleOptions | AbortSignal,
 ): Promise<BundleUploadResult> {
-	// Support legacy signature: bundleAndUpload(segments, storage, signal?)
+	// Support legacy signature: bundleAndUpload(artifacts, storage, signal?)
 	const options: BundleOptions =
 		optionsOrSignal instanceof AbortSignal ? { signal: optionsOrSignal } : (optionsOrSignal ?? {});
 	const { signal, buildManifest, copies } = options;
 
-	if (segments.length === 0) {
+	if (artifacts.length === 0) {
 		throw new WtfocError(
-			"Cannot bundle zero segments — skip bundling for empty ingests",
+			"Cannot bundle zero artifacts — skip bundling for empty ingests",
 			"BUNDLE_EMPTY",
 		);
 	}
@@ -124,25 +152,25 @@ export async function bundleAndUpload(
 	const { CarBlockIterator } = await import("@ipld/car");
 	const Piece = await import("@filoz/synapse-core/piece");
 
-	// Step 1: Compute per-segment CIDs using bare mode (raw content CIDs).
+	// Step 1: Compute per-artifact CIDs using bare mode (raw content CIDs).
 	// Bare mode produces the same CID as the raw content block inside the
 	// directory CAR. Non-bare (wrapped) mode adds a directory wrapper node
 	// whose CID does NOT appear in the directory CAR — that's the bug (#139).
-	const segmentCids = await computeSegmentCids(segments, signal);
+	const artifactCids = await computeArtifactCids(artifacts, signal);
 
 	signal?.throwIfAborted();
 
-	// Step 2: Build segments-only CAR (stable bytes — content doesn't change)
-	const segmentFiles: File[] = segments.map(
-		(seg) =>
-			new File([Buffer.from(seg.data)], `segments/${seg.id}.json`, {
-				type: "application/json",
+	// Step 2: Build artifacts-only CAR (stable bytes — content doesn't change)
+	const artifactFiles: File[] = artifacts.map(
+		(artifact) =>
+			new File([Buffer.from(artifact.data)], defaultPathFor(artifact), {
+				type: defaultMediaTypeFor(artifact),
 			}),
 	);
 
-	let segmentsCar: { carBytes: Uint8Array; rootCid: { toString(): string } };
+	let artifactsCar: { carBytes: Uint8Array; rootCid: { toString(): string } };
 	try {
-		segmentsCar = await fp.createCarFromFiles(segmentFiles);
+		artifactsCar = await fp.createCarFromFiles(artifactFiles);
 	} catch (err) {
 		throw new WtfocError(
 			`CAR assembly failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -153,34 +181,38 @@ export async function bundleAndUpload(
 
 	signal?.throwIfAborted();
 
-	// Step 3: Compute PieceCID locally from the segments-only CAR.
+	// Step 3: Compute PieceCID locally from the artifacts-only CAR.
 	// This is deterministic and doesn't require a network call.
-	// The PieceCID is for the segments-only CAR, NOT the final CAR —
+	// The PieceCID is for the artifacts-only CAR, NOT the final CAR —
 	// this is intentional and avoids the chicken-and-egg problem.
-	const segmentsPieceCid = Piece.calculate(segmentsCar.carBytes).toString();
-	const segmentsCarRootCid = segmentsCar.rootCid.toString();
+	const artifactsPieceCid = Piece.calculate(artifactsCar.carBytes).toString();
+	const artifactsCarRootCid = artifactsCar.rootCid.toString();
 
-	// Step 4: Build batch record with the pre-computed PieceCID
+	// Step 4: Build batch record with the pre-computed PieceCID.
+	// BatchRecord.segmentIds is the legacy name but now holds CIDs for all
+	// artifacts in the batch — segments, derived edge layers, raw-source blobs,
+	// sidecars. Renaming is deferred to avoid churning existing persisted data.
 	const batch: BatchRecord = {
-		pieceCid: segmentsPieceCid,
-		carRootCid: segmentsCarRootCid,
-		segmentIds: segments.map((s) => {
-			const cid = segmentCids.get(s.id);
-			if (!cid) throw new WtfocError(`Missing CID for segment ${s.id}`, "BUNDLE_INTERNAL");
+		pieceCid: artifactsPieceCid,
+		carRootCid: artifactsCarRootCid,
+		segmentIds: artifacts.map((a) => {
+			const cid = artifactCids.get(a.id);
+			if (!cid) throw new WtfocError(`Missing CID for artifact ${a.id}`, "BUNDLE_INTERNAL");
 			return cid;
 		}),
 		createdAt: new Date().toISOString(),
 	};
 
-	// Step 5: Build the final CAR — segments + manifest (if provided)
-	let finalCar = segmentsCar;
+	// Step 5: Build the final CAR — artifacts + manifest (if provided)
+	let finalCar = artifactsCar;
 	let manifestCid: string | undefined;
 
 	if (buildManifest) {
 		const manifest = buildManifest({
-			segmentCids,
-			pieceCid: segmentsPieceCid,
-			carRootCid: segmentsCarRootCid,
+			artifactCids,
+			segmentCids: artifactCids,
+			pieceCid: artifactsPieceCid,
+			carRootCid: artifactsCarRootCid,
 		});
 
 		const manifestJson = JSON.stringify(manifest);
@@ -193,9 +225,9 @@ export async function bundleAndUpload(
 		const manifestCar = await fp.createCarFromFile(manifestFile, { bare: true });
 		manifestCid = manifestCar.rootCid.toString();
 
-		// Build final CAR with segments + manifest
+		// Build final CAR with artifacts + manifest
 		try {
-			finalCar = await fp.createCarFromFiles([...segmentFiles, manifestFile]);
+			finalCar = await fp.createCarFromFiles([...artifactFiles, manifestFile]);
 		} catch (err) {
 			throw new WtfocError(
 				`Final CAR assembly failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -208,7 +240,7 @@ export async function bundleAndUpload(
 	signal?.throwIfAborted();
 
 	// Step 6: Pre-upload validation — walk the final CAR and verify all
-	// segment CIDs (and manifest CID) exist as blocks
+	// artifact CIDs (and manifest CID) exist as blocks
 	const blockCidsInCar = new Set<string>();
 	const iterator = await CarBlockIterator.fromBytes(finalCar.carBytes);
 	for await (const block of iterator) {
@@ -216,9 +248,9 @@ export async function bundleAndUpload(
 	}
 
 	const missingCids: string[] = [];
-	for (const [segId, cid] of segmentCids) {
+	for (const [artifactId, cid] of artifactCids) {
 		if (!blockCidsInCar.has(cid)) {
-			missingCids.push(`segment ${segId}: ${cid}`);
+			missingCids.push(`artifact ${artifactId}: ${cid}`);
 		}
 	}
 	if (manifestCid && !blockCidsInCar.has(manifestCid)) {
@@ -231,10 +263,10 @@ export async function bundleAndUpload(
 		);
 	}
 
-	// Only pass segment + manifest CIDs for IPNI validation, not all
+	// Only pass artifact + manifest CIDs for IPNI validation, not all
 	// internal UnixFS/directory blocks (which can be huge and aren't
 	// user-relevant for retrieval)
-	const childBlockCids: string[] = [...segmentCids.values()];
+	const childBlockCids: string[] = [...artifactCids.values()];
 	if (manifestCid) childBlockCids.push(manifestCid);
 
 	const finalCarRootCid = finalCar.rootCid.toString();
@@ -258,5 +290,11 @@ export async function bundleAndUpload(
 		);
 	}
 
-	return { batch, segmentCids, manifestCid, childBlockCids };
+	return {
+		batch,
+		artifactCids,
+		segmentCids: artifactCids,
+		manifestCid,
+		childBlockCids,
+	};
 }
