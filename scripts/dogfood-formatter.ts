@@ -102,12 +102,17 @@ export function formatDogfoodReport(report: DogfoodReport): string {
 					avgTimestampCoverageRate: number;
 					avgChainDiversity: number;
 					primaryArtifactRate: number;
-					timelineMonotonicRate: number;
+					timelineMonotonicRate: number | null;
+					timelineMonotonicCandidateCount: number;
 					totalCandidateFixes: number;
 					totalRecommendedNextReads: number;
 			  }
 			| undefined;
 		if (!lineage || lineage.traceCount === 0) continue;
+		const monotonicDisplay =
+			lineage.timelineMonotonicRate === null
+				? "n/a"
+				: `${fmtPct(lineage.timelineMonotonicRate)} (${lineage.timelineMonotonicCandidateCount} traces)`;
 		lines.push("");
 		lines.push(`  ${BOLD}Lineage trace quality (${stageName})${RESET}`);
 		lines.push(
@@ -117,7 +122,7 @@ export function formatDogfoodReport(report: DogfoodReport): string {
 			`    primary-artifact=${fmtPct(lineage.primaryArtifactRate)}  candidate-fixes=${lineage.totalCandidateFixes}  next-reads=${lineage.totalRecommendedNextReads}`,
 		);
 		lines.push(
-			`    timestamps=${fmtPct(lineage.avgTimestampCoverageRate)}  monotonic=${fmtPct(lineage.timelineMonotonicRate)}  avg-diversity=${fmtNum(lineage.avgChainDiversity)}`,
+			`    timestamps=${fmtPct(lineage.avgTimestampCoverageRate)}  monotonic=${monotonicDisplay}  avg-diversity=${fmtNum(lineage.avgChainDiversity)}`,
 		);
 	}
 

@@ -28,7 +28,7 @@ export interface LineageMetrics {
 	recommendedNextReadCount: number;
 
 	// ── Timeline completeness ───────────────────────────────
-	/** Hops with a non-empty timestamp string. */
+	/** Hops with a valid, parseable timestamp. */
 	hopsWithTimestamp: number;
 	/** hopsWithTimestamp / totalHops. */
 	timestampCoverageRate: number;
@@ -58,7 +58,13 @@ export interface LineageMetrics {
 export interface AggregateLineageMetrics {
 	/** Traces scored (excludes traces with no hops). */
 	traceCount: number;
-	/** Raw trace count including empty ones (for context). */
+	/**
+	 * Non-empty traces that produced a LineageMetrics record.
+	 *
+	 * Does NOT include queries whose trace threw (those are filtered out before
+	 * aggregation by the evaluators). When reading the report, compare against
+	 * `totalQueries` / fixture count to tell how many attempts reached this stage.
+	 */
 	tracesObserved: number;
 	avgChainCoverageRate: number;
 	avgCrossSourceChainRate: number;
@@ -70,9 +76,13 @@ export interface AggregateLineageMetrics {
 	primaryArtifactRate: number;
 	/**
 	 * Fraction of non-empty traces whose timestamped hops are monotonically
-	 * non-decreasing. Traces with fewer than two timestamped hops are excluded.
+	 * non-decreasing. Traces with fewer than two timestamped hops are excluded
+	 * from both numerator and denominator. Null when no trace had enough
+	 * timestamp data to score — distinct from a true "0% monotonic" result.
 	 */
-	timelineMonotonicRate: number;
+	timelineMonotonicRate: number | null;
+	/** Traces that contributed to `timelineMonotonicRate` (>=2 timestamped hops). */
+	timelineMonotonicCandidateCount: number;
 	/** Summed candidate fixes across all traces. */
 	totalCandidateFixes: number;
 	/** Summed recommended-next-reads across all traces. */
@@ -168,7 +178,8 @@ export function aggregateLineageMetrics(metrics: LineageMetrics[]): AggregateLin
 			avgChainDiversity: 0,
 			avgMultiHopChainCount: 0,
 			primaryArtifactRate: 0,
-			timelineMonotonicRate: 0,
+			timelineMonotonicRate: null,
+			timelineMonotonicCandidateCount: 0,
 			totalCandidateFixes: 0,
 			totalRecommendedNextReads: 0,
 		};
@@ -182,7 +193,7 @@ export function aggregateLineageMetrics(metrics: LineageMetrics[]): AggregateLin
 		monotonicCandidates.length > 0
 			? monotonicCandidates.filter((m) => m.timelineMonotonic === true).length /
 				monotonicCandidates.length
-			: 0;
+			: null;
 
 	return {
 		traceCount: n,
@@ -194,6 +205,7 @@ export function aggregateLineageMetrics(metrics: LineageMetrics[]): AggregateLin
 		avgMultiHopChainCount: mean((m) => m.multiHopChainCount),
 		primaryArtifactRate: nonEmpty.filter((m) => m.hasPrimaryArtifact).length / n,
 		timelineMonotonicRate: monotonicRate,
+		timelineMonotonicCandidateCount: monotonicCandidates.length,
 		totalCandidateFixes: nonEmpty.reduce((s, m) => s + m.candidateFixCount, 0),
 		totalRecommendedNextReads: nonEmpty.reduce((s, m) => s + m.recommendedNextReadCount, 0),
 	};
