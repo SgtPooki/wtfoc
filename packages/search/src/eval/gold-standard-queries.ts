@@ -1,9 +1,17 @@
 /**
  * Gold standard queries for dogfood evaluation.
  * Spans: direct lookup, cross-source tracing, coverage analysis, and synthesis.
- * Designed to work across collections (wtfoc, filoz-ecosystem, etc.).
+ *
+ * Primary target: `filoz-ecosystem-*` collections (FilOzone + filecoin-project
+ * repos + docs.filecoin.io). Several queries are ecosystem-specific (PDP,
+ * PieceCID/CommP, Filecoin Pay, Curio ↔ Synapse). These pass on wtfoc-self
+ * collections only incidentally via generic substrings.
+ *
+ * Per-collection fixture splitting is tracked in the dogfood reliability epic
+ * (#247).
  *
  * @see https://github.com/SgtPooki/wtfoc/issues/232
+ * @see https://github.com/SgtPooki/wtfoc/issues/261
  */
 
 export interface GoldStandardQuery {
@@ -213,6 +221,93 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "direct-lookup",
 		requiredSourceTypes: ["code", "markdown"],
 		expectedSourceSubstrings: ["package.json", "dependencies"],
+		minResults: 1,
+	},
+
+	// ── Ecosystem-specific queries (filoz-ecosystem primary target) ──
+	// These exercise cross-repo tracing, decision/rationale retrieval from
+	// PR comments, temporal/recency intent, synonym coverage, and docs/code
+	// consistency — gaps the original 22-query set didn't cover.
+
+	{
+		id: "dl-8",
+		queryText: "What recent pull requests changed PDP, proof set, or proof verification behavior?",
+		category: "direct-lookup",
+		requiredSourceTypes: ["github-pr"],
+		expectedSourceSubstrings: ["PDP", "proof"],
+		minResults: 2,
+	},
+
+	{
+		id: "cs-6",
+		queryText:
+			"How does synapse-sdk integrate with filecoin-pin or delegated storage services when publishing data?",
+		category: "cross-source",
+		requiredSourceTypes: ["github-pr", "github-pr-comment"],
+		expectedSourceSubstrings: ["synapse-sdk", "filecoin-pin"],
+		minResults: 2,
+		requireCrossSourceHops: true,
+	},
+	{
+		id: "cs-7",
+		queryText:
+			"How is a storage provider or proof service configured in Synapse docs compared with the TypeScript implementation?",
+		category: "cross-source",
+		requiredSourceTypes: ["markdown", "code"],
+		expectedSourceSubstrings: ["synapse-sdk"],
+		minResults: 2,
+		requireCrossSourceHops: true,
+	},
+
+	{
+		id: "cov-6",
+		queryText:
+			"What problems or bugs were reported around Filecoin Pay payment flows in the ecosystem repos?",
+		category: "coverage",
+		requiredSourceTypes: ["github-issue", "github-pr-comment"],
+		expectedSourceSubstrings: ["filecoin-pay", "pay"],
+		minResults: 2,
+		requireCrossSourceHops: true,
+	},
+	{
+		id: "cov-7",
+		queryText:
+			"Where is piece commitment handled, including PieceCID, CommP, or piece CID terminology?",
+		category: "coverage",
+		requiredSourceTypes: ["code", "markdown"],
+		expectedSourceSubstrings: ["PieceCID", "CommP", "piece"],
+		minResults: 2,
+		requireCrossSourceHops: true,
+	},
+
+	{
+		id: "syn-6",
+		queryText:
+			"Why did the Filecoin services work settle on the current proof set or PDP service contract design?",
+		category: "synthesis",
+		requiredSourceTypes: ["github-pr-comment", "github-pr"],
+		expectedSourceSubstrings: ["filecoin-services", "PDP"],
+		minResults: 2,
+		requireEdgeHop: true,
+		requireCrossSourceHops: true,
+	},
+	{
+		id: "syn-7",
+		queryText:
+			"How do Curio sector or deal-storage concepts connect to the Synapse client storage workflow?",
+		category: "synthesis",
+		requiredSourceTypes: ["github-pr", "github-pr-comment", "code"],
+		expectedSourceSubstrings: ["curio", "synapse"],
+		minResults: 2,
+		requireCrossSourceHops: true,
+	},
+
+	{
+		id: "cov-8",
+		queryText: "What official Filecoin documentation pages describe storage providers?",
+		category: "coverage",
+		requiredSourceTypes: ["doc-page"],
+		expectedSourceSubstrings: ["docs.filecoin.io", "storage"],
 		minResults: 1,
 	},
 ];
