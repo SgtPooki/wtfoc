@@ -35,15 +35,21 @@ export function buildSegment(
 			// which chunker produced a given chunk. These fields exist on
 			// ChunkerOutput but are not part of the Chunk base schema, so
 			// threading them through metadata keeps the segment schema stable.
+			//
+			// Keys are prefixed with `_chunker` (#220 Session 3) to make them
+			// collision-safe against adapter-written metadata — every existing
+			// adapter uses unprefixed camelCase keys like `filePath`/`repo`, so
+			// the `_chunker` namespace reserves this slice of the metadata
+			// space for chunker provenance without risking silent overwrites.
 			const chunkerMeta: Record<string, string> = {};
 			const co = c.chunk as Chunk & {
 				chunkerName?: string;
 				chunkerVersion?: string;
 				symbolPath?: string;
 			};
-			if (co.chunkerName) chunkerMeta.chunkerName = co.chunkerName;
-			if (co.chunkerVersion) chunkerMeta.chunkerVersion = co.chunkerVersion;
-			if (co.symbolPath) chunkerMeta.symbolPath = co.symbolPath;
+			if (co.chunkerName) chunkerMeta._chunkerName = co.chunkerName;
+			if (co.chunkerVersion) chunkerMeta._chunkerVersion = co.chunkerVersion;
+			if (co.symbolPath) chunkerMeta._chunkerSymbolPath = co.symbolPath;
 
 			const entry: Segment["chunks"][number] = {
 				id: c.chunk.id,

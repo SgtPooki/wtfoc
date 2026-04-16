@@ -306,8 +306,8 @@ describe("storedChunkToSegmentChunk", () => {
 	});
 });
 
-describe("buildSegment chunker provenance (#220 Session 2)", () => {
-	it("preserves chunkerName / chunkerVersion / symbolPath into metadata", () => {
+describe("buildSegment chunker provenance (#220 Sessions 2-3)", () => {
+	it("preserves chunker provenance under _chunker-prefixed keys", () => {
 		const chunk = makeChunk({ metadata: { filePath: "src/foo.ts" } }) as Chunk & {
 			chunkerName?: string;
 			chunkerVersion?: string;
@@ -319,9 +319,9 @@ describe("buildSegment chunker provenance (#220 Session 2)", () => {
 		const segChunk: SegmentChunk = { chunk, embedding: [0.1, 0.2] };
 		const segment = buildSegment([segChunk], [], defaultOptions);
 		const stored = segment.chunks[0];
-		expect(stored?.metadata.chunkerName).toBe("ast");
-		expect(stored?.metadata.chunkerVersion).toBe("1.0.0");
-		expect(stored?.metadata.symbolPath).toBe("User.greet");
+		expect(stored?.metadata._chunkerName).toBe("ast");
+		expect(stored?.metadata._chunkerVersion).toBe("1.0.0");
+		expect(stored?.metadata._chunkerSymbolPath).toBe("User.greet");
 		// Original metadata keys remain
 		expect(stored?.metadata.filePath).toBe("src/foo.ts");
 	});
@@ -331,8 +331,26 @@ describe("buildSegment chunker provenance (#220 Session 2)", () => {
 		const segChunk: SegmentChunk = { chunk, embedding: [0.1] };
 		const segment = buildSegment([segChunk], [], defaultOptions);
 		const stored = segment.chunks[0];
-		expect(stored?.metadata.chunkerName).toBeUndefined();
-		expect(stored?.metadata.symbolPath).toBeUndefined();
+		expect(stored?.metadata._chunkerName).toBeUndefined();
+		expect(stored?.metadata._chunkerSymbolPath).toBeUndefined();
 		expect(stored?.metadata.filePath).toBe("README.md");
+	});
+
+	it("does not overwrite adapter metadata that happens to share an unprefixed name", () => {
+		// An adapter emitting `chunkerName` / `symbolPath` as its own metadata
+		// would previously have collided with chunker provenance. With the
+		// `_chunker` prefix the two live in disjoint slots.
+		const chunk = makeChunk({
+			metadata: { chunkerName: "legacy-adapter-value", symbolPath: "adapter-owned" },
+		}) as Chunk & { chunkerName?: string; symbolPath?: string };
+		chunk.chunkerName = "ast";
+		chunk.symbolPath = "User.greet";
+		const segChunk: SegmentChunk = { chunk, embedding: [0.1] };
+		const segment = buildSegment([segChunk], [], defaultOptions);
+		const stored = segment.chunks[0];
+		expect(stored?.metadata.chunkerName).toBe("legacy-adapter-value");
+		expect(stored?.metadata.symbolPath).toBe("adapter-owned");
+		expect(stored?.metadata._chunkerName).toBe("ast");
+		expect(stored?.metadata._chunkerSymbolPath).toBe("User.greet");
 	});
 });
