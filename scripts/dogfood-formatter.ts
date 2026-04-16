@@ -37,8 +37,10 @@ function stageKeyMetrics(stage: EvalStageResult): string {
 			return `coverage=${fmtPct(m.signalCoverage)}, scored=${m.chunksWithSignal}/${m.totalChunks}`;
 		case "search":
 			return `MRR=${fmtNum(m.meanReciprocalRank)}, edge-hop=${fmtPct(m.edgeHopRatio)}, provenance=${fmtPct(m.provenanceQualityRate)}`;
-		case "quality-queries":
-			return `pass-rate=${fmtPct(m.passRate)} (query-only=${fmtPct(m.queryOnlyPassRate)}), passed=${m.passCount}/${m.totalQueries}`;
+		case "quality-queries": {
+			const ver = m.goldQueriesVersion ? ` v${m.goldQueriesVersion}` : "";
+			return `pass-rate=${fmtPct(m.passRate)} (query-only=${fmtPct(m.queryOnlyPassRate)}), passed=${m.passCount}/${m.totalQueries}${ver}`;
+		}
 		default:
 			return stage.summary;
 	}

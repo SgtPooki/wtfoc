@@ -14,6 +14,22 @@
  * @see https://github.com/SgtPooki/wtfoc/issues/261
  */
 
+/**
+ * Version of the gold-standard query fixture set (#261).
+ *
+ * Bump policy:
+ * - **major**: shape change to `GoldStandardQuery` interface
+ * - **minor**: add, remove, or re-categorize a query
+ * - **patch**: copy edits to existing `queryText` / `expectedSourceSubstrings`
+ *   that preserve intent (typo fixes, rewording without changing what's asked)
+ *
+ * Surfaced in the quality-queries stage metrics as `goldQueriesVersion` so
+ * dogfood reports record which fixture revision scored what. Do not let two
+ * separate changes coincide on the same version — a new change always gets
+ * a fresh bump.
+ */
+export const GOLD_STANDARD_QUERIES_VERSION = "1.0.0";
+
 export interface GoldStandardQuery {
 	/** Unique identifier for this query */
 	id: string;

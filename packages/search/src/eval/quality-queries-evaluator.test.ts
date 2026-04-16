@@ -241,4 +241,60 @@ describe("evaluateQualityQueries", () => {
 			expect(cs?.passedQueryOnly).toBe(false); // query alone missed required types
 		});
 	});
+
+	describe("fixture versioning and determinism (#261)", () => {
+		it("emits the gold-queries fixture version in metrics", async () => {
+			mockQuery.mockResolvedValue(
+				makeQueryResult([{ sourceType: "code", source: "/src/x.ts", score: 0.9 }]),
+			);
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+			const result = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
+			expect(result.metrics.goldQueriesVersion).toMatch(/^\d+\.\d+\.\d+$/);
+		});
+
+		it("produces identical scores across back-to-back runs with identical mocks", async () => {
+			// Catch non-determinism in scoring: same mocked query+trace must
+			// yield byte-identical scores arrays. Anything time-dependent
+			// (startedAt, durationMs) is excluded — we only compare the
+			// deterministic slice of the report.
+			mockQuery.mockResolvedValue(
+				makeQueryResult([
+					{ sourceType: "code", source: "/src/ingest/pipeline.ts", score: 0.9 },
+					{ sourceType: "code", source: "/src/ingest/chunker.ts", score: 0.8 },
+					{ sourceType: "github-issue", source: "owner/repo#42", score: 0.7 },
+				]),
+			);
+			mockTrace.mockResolvedValue(
+				makeTraceResult([
+					{ method: "edge", sourceType: "code" },
+					{ method: "edge", sourceType: "github-issue" },
+					{ method: "semantic", sourceType: "doc-page" },
+				]),
+			);
+
+			const run1 = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
+			const run2 = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
+
+			// Deterministic slice: everything except wall-clock and duration.
+			const deterministic = (r: typeof run1) => ({
+				stage: r.stage,
+				verdict: r.verdict,
+				summary: r.summary,
+				checks: r.checks,
+				metrics: {
+					goldQueriesVersion: r.metrics.goldQueriesVersion,
+					passRate: r.metrics.passRate,
+					passCount: r.metrics.passCount,
+					queryOnlyPassRate: r.metrics.queryOnlyPassRate,
+					queryOnlyPassCount: r.metrics.queryOnlyPassCount,
+					totalQueries: r.metrics.totalQueries,
+					categoryBreakdown: r.metrics.categoryBreakdown,
+					scores: r.metrics.scores,
+					lineage: r.metrics.lineage,
+				},
+			});
+
+			expect(deterministic(run2)).toEqual(deterministic(run1));
+		});
+	});
 });

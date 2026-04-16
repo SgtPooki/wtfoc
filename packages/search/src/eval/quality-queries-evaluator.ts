@@ -10,7 +10,11 @@ import type {
 import { classifyQueryPersona } from "../persona/classify-query.js";
 import { query } from "../query.js";
 import { trace } from "../trace/trace.js";
-import { GOLD_STANDARD_QUERIES, type GoldStandardQuery } from "./gold-standard-queries.js";
+import {
+	GOLD_STANDARD_QUERIES,
+	GOLD_STANDARD_QUERIES_VERSION,
+	type GoldStandardQuery,
+} from "./gold-standard-queries.js";
 import {
 	aggregateLineageMetrics,
 	computeLineageMetrics,
@@ -143,6 +147,10 @@ export async function evaluateQualityQueries(
 		verdict,
 		summary: `${passCount}/${GOLD_STANDARD_QUERIES.length} gold queries passed (${Math.round(passRate * 100)}%)`,
 		metrics: {
+			// #261 — stamp the fixture version into every report so historical
+			// dogfood runs remain comparable only when the same gold queries
+			// scored them. Version bumps on add/remove/re-categorize.
+			goldQueriesVersion: GOLD_STANDARD_QUERIES_VERSION,
 			passRate,
 			passCount,
 			// #261 — query-only metrics exposed alongside trace-assisted ones
