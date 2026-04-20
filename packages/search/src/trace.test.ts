@@ -522,3 +522,148 @@ describe("buildEdgeIndex", () => {
 		expect(edges.some((e) => e.type === "references")).toBe(true);
 	});
 });
+
+describe("trace chronological projection (#274)", () => {
+	// Timestamped variant of the upload-timeout fixture, deliberately ordered
+	// so DFS traversal (slack → issue → pr) is NOT chronological: the slack
+	// seed is newest, the issue and PR referenced via edges are older, and
+	// between the two edge children the PR is older than the issue.
+	const slackSeed: VectorEntry = {
+		id: "slack-msg-1",
+		vector: new Float32Array([1.0, 0.0, 0.0]),
+		storageId: "storage-slack-1",
+		metadata: {
+			sourceType: "slack-message",
+			source: "#foc-support",
+			content: "users hitting timeouts — see #142",
+		},
+	};
+
+	const tsSegment: Segment = {
+		schemaVersion: 1,
+		embeddingModel: "test",
+		embeddingDimensions: 3,
+		chunks: [
+			{
+				id: "slack-msg-1",
+				storageId: "storage-slack-1",
+				content: "users hitting timeouts",
+				embedding: [1.0, 0.0, 0.0],
+				terms: ["upload", "timeout"],
+				source: "#foc-support",
+				sourceType: "slack-message",
+				timestamp: "2025-12-01T00:00:00Z",
+				metadata: {},
+			},
+			{
+				id: "issue-142",
+				storageId: "storage-issue-142",
+				content: "Upload timeout on large files",
+				embedding: [0.9, 0.1, 0.0],
+				terms: ["upload", "timeout"],
+				source: "FilOzone/synapse-sdk#142",
+				sourceType: "github-issue",
+				timestamp: "2025-10-15T00:00:00Z",
+				metadata: {},
+			},
+			{
+				id: "pr-156",
+				storageId: "storage-pr-156",
+				content: "Fix upload retry logic",
+				embedding: [0.8, 0.2, 0.0],
+				terms: ["upload", "retry"],
+				source: "FilOzone/synapse-sdk#156",
+				sourceType: "github-pr",
+				timestamp: "2025-10-14T00:00:00Z",
+				metadata: {},
+			},
+		],
+		edges: [
+			{
+				type: "references",
+				sourceId: "slack-msg-1",
+				targetType: "issue",
+				targetId: "FilOzone/synapse-sdk#142",
+				evidence: "#142 in message",
+				confidence: 1.0,
+			},
+			{
+				type: "closes",
+				sourceId: "pr-156",
+				targetType: "issue",
+				targetId: "FilOzone/synapse-sdk#142",
+				evidence: "Closes #142 in PR body",
+				confidence: 1.0,
+			},
+		],
+	};
+
+	it("populates chronologicalHopIndices as a permutation of hops", async () => {
+		const index = await seedIndex(slackSeed);
+		const result = await trace("upload failures", embedder, index, [tsSegment]);
+
+		expect(result.chronologicalHopIndices).toBeDefined();
+		expect(result.chronologicalHopIndices).toHaveLength(result.hops.length);
+		expect(new Set(result.chronologicalHopIndices).size).toBe(result.hops.length);
+	});
+
+	it("orders timestamped hops ascending; DFS hops stay in traversal order", async () => {
+		const index = await seedIndex(slackSeed);
+		const result = await trace("upload failures", embedder, index, [tsSegment]);
+
+		// Traversal order: slack seed first (newest), then edge children (older)
+		expect(result.hops[0]?.sourceType).toBe("slack-message");
+
+		// Chronological order: PR (2025-10-14) → issue (2025-10-15) → slack (2025-12-01)
+		const orderedTypes = result.chronologicalHopIndices.map((i) => result.hops[i]?.sourceType);
+		const firstThree = orderedTypes.slice(0, 3);
+		expect(firstThree).toEqual(["github-pr", "github-issue", "slack-message"]);
+	});
+
+	it("mirrors the permutation position onto each hop's chronologicalIndex", async () => {
+		const index = await seedIndex(slackSeed);
+		const result = await trace("upload failures", embedder, index, [tsSegment]);
+
+		for (let i = 0; i < result.chronologicalHopIndices.length; i++) {
+			const hopIdx = result.chronologicalHopIndices[i];
+			if (hopIdx === undefined) continue;
+			expect(result.hops[hopIdx]?.chronologicalIndex).toBe(i);
+		}
+	});
+
+	it("does not mutate DFS hop order or parent links", async () => {
+		const index = await seedIndex(slackSeed);
+		const result = await trace("upload failures", embedder, index, [tsSegment]);
+
+		// Seed is always at index 0 (semantic, no parent)
+		expect(result.hops[0]?.connection.method).toBe("semantic");
+		expect(result.hops[0]?.parentHopIndex).toBeUndefined();
+
+		// Every non-seed hop's parentHopIndex must point to an earlier index
+		for (let i = 1; i < result.hops.length; i++) {
+			const parent = result.hops[i]?.parentHopIndex;
+			if (parent !== undefined) {
+				expect(parent).toBeLessThan(i);
+			}
+		}
+	});
+
+	it("appends undated hops at the end of the chronological projection", async () => {
+		const undatedSegment: Segment = {
+			...tsSegment,
+			chunks: tsSegment.chunks.map((c) => (c.id === "pr-156" ? { ...c, timestamp: undefined } : c)),
+		};
+
+		const index = await seedIndex(slackSeed);
+		const result = await trace("upload failures", embedder, index, [undatedSegment]);
+		const undatedHopIdx = result.hops.findIndex((h) => h.sourceType === "github-pr");
+		if (undatedHopIdx === -1) return; // PR didn't make it into hops; skip
+
+		// Undated hop must appear after every dated hop in the projection
+		const posInChrono = result.chronologicalHopIndices.indexOf(undatedHopIdx);
+		const datedPositions = result.chronologicalHopIndices
+			.map((hopIdx, pos) => ({ hopIdx, pos, ts: result.hops[hopIdx]?.timestamp }))
+			.filter((x) => x.ts);
+		for (const d of datedPositions) expect(posInChrono).toBeGreaterThan(d.pos);
+	});
+});

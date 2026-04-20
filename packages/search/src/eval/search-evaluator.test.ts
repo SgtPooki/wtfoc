@@ -41,6 +41,7 @@ function makeTraceResult(
 				confidence: 0.8,
 			},
 		})),
+		chronologicalHopIndices: hops.map((_, i) => i),
 		insights: [{ type: "convergence" } as never],
 		lineageChains: [],
 		stats: {

@@ -23,6 +23,7 @@ function makeResult(
 		query: "q",
 		groups: {},
 		hops,
+		chronologicalHopIndices: hops.map((_, i) => i),
 		lineageChains: chains,
 		conclusion,
 		insights: [],
@@ -43,7 +44,7 @@ describe("computeLineageMetrics", () => {
 		expect(m.chainCoverageRate).toBe(0);
 		expect(m.multiHopChainCount).toBe(0);
 		expect(m.hasPrimaryArtifact).toBe(false);
-		expect(m.timelineMonotonic).toBeNull();
+		expect(m.traversalTimelineMonotonic).toBeNull();
 		expect(m.timelineSpanMs).toBeNull();
 	});
 
@@ -131,7 +132,7 @@ describe("computeLineageMetrics", () => {
 		const m = computeLineageMetrics(makeResult(hops, []));
 		expect(m.hopsWithTimestamp).toBe(3);
 		expect(m.timestampCoverageRate).toBeCloseTo(0.75);
-		expect(m.timelineMonotonic).toBe(true);
+		expect(m.traversalTimelineMonotonic).toBe(true);
 		expect(m.timelineSpanMs).toBe(2 * 24 * 60 * 60 * 1000);
 	});
 
@@ -141,7 +142,7 @@ describe("computeLineageMetrics", () => {
 			makeHop({ sourceType: "b", timestamp: "2024-01-01T00:00:00Z" }),
 		];
 		const m = computeLineageMetrics(makeResult(hops, []));
-		expect(m.timelineMonotonic).toBe(false);
+		expect(m.traversalTimelineMonotonic).toBe(false);
 		expect(m.timelineSpanMs).toBe(4 * 24 * 60 * 60 * 1000);
 	});
 
@@ -151,7 +152,7 @@ describe("computeLineageMetrics", () => {
 			makeHop({ sourceType: "b" }),
 		];
 		const m = computeLineageMetrics(makeResult(hops, []));
-		expect(m.timelineMonotonic).toBeNull();
+		expect(m.traversalTimelineMonotonic).toBeNull();
 		expect(m.timelineSpanMs).toBeNull();
 	});
 
@@ -162,7 +163,7 @@ describe("computeLineageMetrics", () => {
 		];
 		const m = computeLineageMetrics(makeResult(hops, []));
 		expect(m.hopsWithTimestamp).toBe(1);
-		expect(m.timelineMonotonic).toBeNull();
+		expect(m.traversalTimelineMonotonic).toBeNull();
 	});
 
 	it("counts cross-source chains and average diversity over multi-hop chains only", () => {
@@ -198,8 +199,8 @@ describe("aggregateLineageMetrics", () => {
 		expect(a.primaryArtifactRate).toBe(0);
 		// Null (not 0) when nothing could be scored — prevents the report from
 		// reading "0% monotonic" when the true state is "no measurable data".
-		expect(a.timelineMonotonicRate).toBeNull();
-		expect(a.timelineMonotonicCandidateCount).toBe(0);
+		expect(a.traversalTimelineMonotonicRate).toBeNull();
+		expect(a.traversalTimelineMonotonicCandidateCount).toBe(0);
 	});
 
 	it("excludes empty traces from rate averages", () => {
@@ -251,11 +252,11 @@ describe("aggregateLineageMetrics", () => {
 		const a = aggregateLineageMetrics([monotonic, reversed, noTs]);
 		expect(a.traceCount).toBe(3);
 		// 1 of 2 candidates (noTs excluded from denominator)
-		expect(a.timelineMonotonicRate).toBe(0.5);
-		expect(a.timelineMonotonicCandidateCount).toBe(2);
+		expect(a.traversalTimelineMonotonicRate).toBe(0.5);
+		expect(a.traversalTimelineMonotonicCandidateCount).toBe(2);
 	});
 
-	it("timelineMonotonicRate is null when no trace has enough timestamps", () => {
+	it("traversalTimelineMonotonicRate is null when no trace has enough timestamps", () => {
 		const noTs1 = computeLineageMetrics(
 			makeResult([makeHop({ sourceType: "a" }), makeHop({ sourceType: "b" })], []),
 		);
@@ -269,8 +270,8 @@ describe("aggregateLineageMetrics", () => {
 			),
 		);
 		const a = aggregateLineageMetrics([noTs1, noTs2]);
-		expect(a.timelineMonotonicRate).toBeNull();
-		expect(a.timelineMonotonicCandidateCount).toBe(0);
+		expect(a.traversalTimelineMonotonicRate).toBeNull();
+		expect(a.traversalTimelineMonotonicCandidateCount).toBe(0);
 	});
 
 	it("averages multi-hop chain counts and cross-source rates across traces", () => {

@@ -33,10 +33,14 @@ export interface LineageMetrics {
 	/** hopsWithTimestamp / totalHops. */
 	timestampCoverageRate: number;
 	/**
-	 * True when timestamped hops (in traversal order) are monotonically
+	 * Diagnostic: true when timestamped hops in *traversal* order are monotonically
 	 * non-decreasing. Null when fewer than two timestamped hops exist.
+	 *
+	 * Not a quality signal. DFS traversal order is not timeline order by design —
+	 * edges are walked in edge-index order, not chronologically. See #274.
+	 * Use `TraceResult.chronologicalHopIndices` for timeline consumption.
 	 */
-	timelineMonotonic: boolean | null;
+	traversalTimelineMonotonic: boolean | null;
 	/** Latest − earliest timestamp in ms; null when < 2 timestamped hops. */
 	timelineSpanMs: number | null;
 
@@ -75,14 +79,14 @@ export interface AggregateLineageMetrics {
 	/** Fraction of non-empty traces with a populated primaryArtifact. */
 	primaryArtifactRate: number;
 	/**
-	 * Fraction of non-empty traces whose timestamped hops are monotonically
-	 * non-decreasing. Traces with fewer than two timestamped hops are excluded
-	 * from both numerator and denominator. Null when no trace had enough
-	 * timestamp data to score — distinct from a true "0% monotonic" result.
+	 * Diagnostic aggregate of `traversalTimelineMonotonic`. Measures how often
+	 * DFS traversal order happens to be chronological, which is incidental — not
+	 * a quality target. Null when no trace had enough timestamp data to score
+	 * (distinct from a true "0% monotonic" result). See #274.
 	 */
-	timelineMonotonicRate: number | null;
-	/** Traces that contributed to `timelineMonotonicRate` (>=2 timestamped hops). */
-	timelineMonotonicCandidateCount: number;
+	traversalTimelineMonotonicRate: number | null;
+	/** Traces that contributed to `traversalTimelineMonotonicRate` (>=2 timestamped hops). */
+	traversalTimelineMonotonicCandidateCount: number;
 	/** Summed candidate fixes across all traces. */
 	totalCandidateFixes: number;
 	/** Summed recommended-next-reads across all traces. */
@@ -110,10 +114,10 @@ export function computeLineageMetrics(result: TraceResult): LineageMetrics {
 		}
 	}
 
-	let timelineMonotonic: boolean | null;
+	let traversalTimelineMonotonic: boolean | null;
 	let timelineSpanMs: number | null;
 	if (timestampedOrdered.length < 2) {
-		timelineMonotonic = null;
+		traversalTimelineMonotonic = null;
 		timelineSpanMs = null;
 	} else {
 		let monotonic = true;
@@ -126,7 +130,7 @@ export function computeLineageMetrics(result: TraceResult): LineageMetrics {
 				break;
 			}
 		}
-		timelineMonotonic = monotonic;
+		traversalTimelineMonotonic = monotonic;
 		const min = Math.min(...timestampedOrdered);
 		const max = Math.max(...timestampedOrdered);
 		timelineSpanMs = max - min;
@@ -154,7 +158,7 @@ export function computeLineageMetrics(result: TraceResult): LineageMetrics {
 
 		hopsWithTimestamp,
 		timestampCoverageRate: totalHops > 0 ? hopsWithTimestamp / totalHops : 0,
-		timelineMonotonic,
+		traversalTimelineMonotonic,
 		timelineSpanMs,
 
 		crossSourceChainCount: crossSourceChains.length,
@@ -178,8 +182,8 @@ export function aggregateLineageMetrics(metrics: LineageMetrics[]): AggregateLin
 			avgChainDiversity: 0,
 			avgMultiHopChainCount: 0,
 			primaryArtifactRate: 0,
-			timelineMonotonicRate: null,
-			timelineMonotonicCandidateCount: 0,
+			traversalTimelineMonotonicRate: null,
+			traversalTimelineMonotonicCandidateCount: 0,
 			totalCandidateFixes: 0,
 			totalRecommendedNextReads: 0,
 		};
@@ -188,10 +192,10 @@ export function aggregateLineageMetrics(metrics: LineageMetrics[]): AggregateLin
 	const mean = (fn: (m: LineageMetrics) => number): number =>
 		nonEmpty.reduce((sum, m) => sum + fn(m), 0) / n;
 
-	const monotonicCandidates = nonEmpty.filter((m) => m.timelineMonotonic !== null);
+	const monotonicCandidates = nonEmpty.filter((m) => m.traversalTimelineMonotonic !== null);
 	const monotonicRate =
 		monotonicCandidates.length > 0
-			? monotonicCandidates.filter((m) => m.timelineMonotonic === true).length /
+			? monotonicCandidates.filter((m) => m.traversalTimelineMonotonic === true).length /
 				monotonicCandidates.length
 			: null;
 
@@ -204,8 +208,8 @@ export function aggregateLineageMetrics(metrics: LineageMetrics[]): AggregateLin
 		avgChainDiversity: mean((m) => m.avgChainDiversity),
 		avgMultiHopChainCount: mean((m) => m.multiHopChainCount),
 		primaryArtifactRate: nonEmpty.filter((m) => m.hasPrimaryArtifact).length / n,
-		timelineMonotonicRate: monotonicRate,
-		timelineMonotonicCandidateCount: monotonicCandidates.length,
+		traversalTimelineMonotonicRate: monotonicRate,
+		traversalTimelineMonotonicCandidateCount: monotonicCandidates.length,
 		totalCandidateFixes: nonEmpty.reduce((s, m) => s + m.candidateFixCount, 0),
 		totalRecommendedNextReads: nonEmpty.reduce((s, m) => s + m.recommendedNextReadCount, 0),
 	};

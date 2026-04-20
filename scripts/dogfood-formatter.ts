@@ -107,17 +107,19 @@ export function formatDogfoodReport(report: DogfoodReport): string {
 					avgTimestampCoverageRate: number;
 					avgChainDiversity: number;
 					primaryArtifactRate: number;
-					timelineMonotonicRate: number | null;
-					timelineMonotonicCandidateCount: number;
+					traversalTimelineMonotonicRate: number | null;
+					traversalTimelineMonotonicCandidateCount: number;
 					totalCandidateFixes: number;
 					totalRecommendedNextReads: number;
 			  }
 			| undefined;
 		if (!lineage || lineage.traceCount === 0) continue;
-		const monotonicDisplay =
-			lineage.timelineMonotonicRate === null
+		// Diagnostic: DFS traversal order is not timeline order by design (#274).
+		// Use `chronologicalHopIndices` for the canonical chronological view.
+		const traversalMonotonicDisplay =
+			lineage.traversalTimelineMonotonicRate === null
 				? "n/a"
-				: `${fmtPct(lineage.timelineMonotonicRate)} (${lineage.timelineMonotonicCandidateCount} traces)`;
+				: `${fmtPct(lineage.traversalTimelineMonotonicRate)} (${lineage.traversalTimelineMonotonicCandidateCount} traces)`;
 		lines.push("");
 		lines.push(`  ${BOLD}Lineage trace quality (${stageName})${RESET}`);
 		lines.push(
@@ -127,7 +129,7 @@ export function formatDogfoodReport(report: DogfoodReport): string {
 			`    primary-artifact=${fmtPct(lineage.primaryArtifactRate)}  candidate-fixes=${lineage.totalCandidateFixes}  next-reads=${lineage.totalRecommendedNextReads}`,
 		);
 		lines.push(
-			`    timestamps=${fmtPct(lineage.avgTimestampCoverageRate)}  monotonic=${monotonicDisplay}  avg-diversity=${fmtNum(lineage.avgChainDiversity)}`,
+			`    timestamps=${fmtPct(lineage.avgTimestampCoverageRate)}  traversal-monotonic=${traversalMonotonicDisplay}  avg-diversity=${fmtNum(lineage.avgChainDiversity)}`,
 		);
 	}
 

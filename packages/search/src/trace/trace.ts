@@ -1,4 +1,5 @@
 import type { Embedder, Reranker, Segment, VectorIndex } from "@wtfoc/common";
+import { buildChronologicalHopIndices } from "./chronology.js";
 import { buildConclusion, type TraceConclusion } from "./conclusion.js";
 import { buildChunkIndexes, buildEdgeIndex } from "./indexing.js";
 import { detectInsights, type TraceInsight } from "./insights.js";
@@ -59,6 +60,11 @@ export interface TraceHop {
 	timestamp?: string;
 	/** Index of the hop that led to this one (undefined for seeds) */
 	parentHopIndex?: number;
+	/**
+	 * Convenience mirror of this hop's position in `TraceResult.chronologicalHopIndices`.
+	 * The permutation on `TraceResult` is canonical; this field is a lookup shortcut.
+	 */
+	chronologicalIndex?: number;
 	/** How this hop was found */
 	connection: {
 		/** 'edge' if found via explicit edge, 'semantic' if via similarity */
@@ -76,8 +82,18 @@ export interface TraceResult {
 	query: string;
 	/** Results grouped by source type */
 	groups: Record<string, TraceHop[]>;
-	/** Flat list of all hops in traversal order */
+	/** Flat list of all hops in traversal order (DFS edge walk + semantic fallback) */
 	hops: TraceHop[];
+	/**
+	 * Permutation of `hops` indices ordered by timestamp ascending. Hops with no
+	 * parseable timestamp are appended at the end in traversal order. Ties in
+	 * timestamp break stably by traversal index.
+	 *
+	 * The canonical chronological view. `hops` retains traversal (evidence)
+	 * order; this permutation lets timeline consumers (agents, `--view timeline`)
+	 * read events chronologically without mutating the evidence walk. See #274.
+	 */
+	chronologicalHopIndices: number[];
 	/** Lineage chains reconstructed from hop DFS tree (always populated) */
 	lineageChains: LineageChain[];
 	/** Agent-oriented conclusion block (only populated in analytical mode, omitted when no signal) */
@@ -306,6 +322,16 @@ export async function trace(
 	const sourceTypes = Object.keys(groups);
 	const edgeHops = hops.filter((h) => h.connection.method === "edge").length;
 
+	// Chronological projection over `hops`. Traversal order stays untouched;
+	// agents/timeline consumers read through this permutation instead. See #274.
+	const chronologicalHopIndices = buildChronologicalHopIndices(hops);
+	for (let i = 0; i < chronologicalHopIndices.length; i++) {
+		const hopIdx = chronologicalHopIndices[i];
+		if (hopIdx === undefined) continue;
+		const hop = hops[hopIdx];
+		if (hop) hop.chronologicalIndex = i;
+	}
+
 	// Build lineage chains from DFS tree (always, cheap)
 	const lineageChains = buildLineageChains(hops);
 
@@ -319,6 +345,7 @@ export async function trace(
 		query,
 		groups,
 		hops,
+		chronologicalHopIndices,
 		lineageChains,
 		conclusion,
 		insights,

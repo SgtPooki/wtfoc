@@ -8,10 +8,13 @@ import {
 } from "./output.js";
 
 function makeResult(overrides?: Partial<TraceResult>): TraceResult {
+	const hops = overrides?.hops ?? [];
 	return {
 		query: "test query",
 		groups: {},
-		hops: [],
+		hops,
+		// Default to traversal order; callers can override for timeline-specific tests.
+		chronologicalHopIndices: overrides?.chronologicalHopIndices ?? hops.map((_, i) => i),
 		lineageChains: [],
 		insights: [],
 		stats: { totalHops: 0, edgeHops: 0, semanticHops: 0, sourceTypes: [], insightCount: 0 },

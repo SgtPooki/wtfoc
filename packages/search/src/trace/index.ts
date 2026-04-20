@@ -1,3 +1,4 @@
+export { buildChronologicalHopIndices, parseHopTimestampMs } from "./chronology.js";
 export type { TraceConclusion } from "./conclusion.js";
 export { buildConclusion } from "./conclusion.js";
 export type { ChunkData, ChunkIndexes } from "./indexing.js";

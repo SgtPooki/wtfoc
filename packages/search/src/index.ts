@@ -44,4 +44,9 @@ export type {
 	TraceResult,
 	TraceView,
 } from "./trace/index.js";
-export { detectInsights, trace } from "./trace/index.js";
+export {
+	buildChronologicalHopIndices,
+	detectInsights,
+	parseHopTimestampMs,
+	trace,
+} from "./trace/index.js";

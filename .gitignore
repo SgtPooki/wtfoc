@@ -65,6 +65,7 @@ yarn-error.log*
 *.tmp
 .temp/
 tmp/
+scratch/
 
 .claude-plugin/
 plugins/

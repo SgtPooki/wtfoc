@@ -176,19 +176,12 @@ export function formatTraceTimeline(result: TraceResult): string {
 		return lines.join("\n");
 	}
 
-	// Sort hops: dated first by timestamp, undated at end. Stable sort by index for ties.
-	const indexed = result.hops.map((hop, i) => ({ hop, i }));
-	indexed.sort((a, b) => {
-		const aDate = parseTimestamp(a.hop.timestamp);
-		const bDate = parseTimestamp(b.hop.timestamp);
-		if (aDate && bDate) return aDate.getTime() - bDate.getTime() || a.i - b.i;
-		if (aDate && !bDate) return -1;
-		if (!aDate && bDate) return 1;
-		return a.i - b.i;
-	});
-
+	// Read the canonical chronological permutation from trace() — see #274.
+	// Traversal order (result.hops) stays untouched; this view iterates by time.
 	let currentDateHeader = "";
-	for (const { hop } of indexed) {
+	for (const hopIdx of result.chronologicalHopIndices) {
+		const hop = result.hops[hopIdx];
+		if (!hop) continue;
 		const ts = parseTimestamp(hop.timestamp);
 		const dateHeader = ts ? ts.toISOString().slice(0, 10) : "(no timestamp)";
 
