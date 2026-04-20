@@ -111,6 +111,14 @@ export function formatDogfoodReport(report: DogfoodReport): string {
 					traversalTimelineMonotonicCandidateCount: number;
 					totalCandidateFixes: number;
 					totalRecommendedNextReads: number;
+					chainTemporalCoherenceByEdgeType?: Array<{
+						edgeType: string;
+						pairCount: number;
+						childAfterParent: number;
+						childBeforeParent: number;
+						childEqualsParent: number;
+						forwardRate: number;
+					}>;
 			  }
 			| undefined;
 		if (!lineage || lineage.traceCount === 0) continue;
@@ -131,6 +139,17 @@ export function formatDogfoodReport(report: DogfoodReport): string {
 		lines.push(
 			`    timestamps=${fmtPct(lineage.avgTimestampCoverageRate)}  traversal-monotonic=${traversalMonotonicDisplay}  avg-diversity=${fmtNum(lineage.avgChainDiversity)}`,
 		);
+		// Per-edge-type parent→child timestamp direction (#280). Pair-weighted rate
+		// of child-after-parent. Not a quality target on its own — interpretation
+		// depends on each edge type's expected direction.
+		const coherence = lineage.chainTemporalCoherenceByEdgeType ?? [];
+		if (coherence.length > 0) {
+			const top = coherence.slice(0, 6);
+			const entries = top.map(
+				(c) => `${c.edgeType}=${fmtPct(c.forwardRate)}(${c.pairCount})`,
+			);
+			lines.push(`    chain-temporal-coherence: ${entries.join("  ")}`);
+		}
 	}
 
 	// Per-source-type breakdown for edge-resolution stage

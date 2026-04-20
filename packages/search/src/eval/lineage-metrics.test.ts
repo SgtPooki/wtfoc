@@ -166,6 +166,77 @@ describe("computeLineageMetrics", () => {
 		expect(m.traversalTimelineMonotonic).toBeNull();
 	});
 
+	it("buckets parent→child timestamp direction by edge type (#280)", () => {
+		// Three edge hops off seed 0: one `closes` child older, one `references`
+		// child younger, one `references` child younger.
+		const hops: TraceHop[] = [
+			makeHop({ sourceType: "a", timestamp: "2025-10-15T00:00:00Z" }),
+			makeHop({
+				sourceType: "b",
+				parentHopIndex: 0,
+				timestamp: "2025-10-10T00:00:00Z",
+				connection: { method: "edge", edgeType: "closes", confidence: 1 },
+			}),
+			makeHop({
+				sourceType: "c",
+				parentHopIndex: 0,
+				timestamp: "2025-10-20T00:00:00Z",
+				connection: { method: "edge", edgeType: "references", confidence: 1 },
+			}),
+			makeHop({
+				sourceType: "d",
+				parentHopIndex: 0,
+				timestamp: "2025-10-22T00:00:00Z",
+				connection: { method: "edge", edgeType: "references", confidence: 1 },
+			}),
+		];
+		const m = computeLineageMetrics(makeResult(hops, []));
+		expect(m.chainTemporalCoherenceByEdgeType).toHaveLength(2);
+		const refs = m.chainTemporalCoherenceByEdgeType.find((e) => e.edgeType === "references");
+		const closes = m.chainTemporalCoherenceByEdgeType.find((e) => e.edgeType === "closes");
+		expect(refs).toMatchObject({
+			pairCount: 2,
+			childAfterParent: 2,
+			childBeforeParent: 0,
+			forwardRate: 1,
+		});
+		expect(closes).toMatchObject({
+			pairCount: 1,
+			childAfterParent: 0,
+			childBeforeParent: 1,
+			forwardRate: 0,
+		});
+	});
+
+	it("ignores semantic hops and missing timestamps for coherence", () => {
+		const hops: TraceHop[] = [
+			makeHop({ sourceType: "a", timestamp: "2025-10-15T00:00:00Z" }),
+			// semantic: no edgeType — excluded
+			makeHop({ sourceType: "b", parentHopIndex: 0, timestamp: "2025-10-16T00:00:00Z" }),
+			// edge but parent undated — excluded
+			makeHop({
+				sourceType: "c",
+				timestamp: "2025-10-17T00:00:00Z",
+				connection: { method: "edge", edgeType: "references", confidence: 1 },
+			}),
+			// edge with both timestamps — counted
+			makeHop({
+				sourceType: "d",
+				parentHopIndex: 0,
+				timestamp: "2025-10-18T00:00:00Z",
+				connection: { method: "edge", edgeType: "references", confidence: 1 },
+			}),
+		];
+		const m = computeLineageMetrics(makeResult(hops, []));
+		expect(m.chainTemporalCoherenceByEdgeType).toHaveLength(1);
+		expect(m.chainTemporalCoherenceByEdgeType[0]).toMatchObject({
+			edgeType: "references",
+			pairCount: 1,
+			childAfterParent: 1,
+			forwardRate: 1,
+		});
+	});
+
 	it("counts cross-source chains and average diversity over multi-hop chains only", () => {
 		const hops: TraceHop[] = [
 			makeHop({ sourceType: "a" }),
@@ -201,6 +272,7 @@ describe("aggregateLineageMetrics", () => {
 		// reading "0% monotonic" when the true state is "no measurable data".
 		expect(a.traversalTimelineMonotonicRate).toBeNull();
 		expect(a.traversalTimelineMonotonicCandidateCount).toBe(0);
+		expect(a.chainTemporalCoherenceByEdgeType).toEqual([]);
 	});
 
 	it("excludes empty traces from rate averages", () => {
@@ -272,6 +344,45 @@ describe("aggregateLineageMetrics", () => {
 		const a = aggregateLineageMetrics([noTs1, noTs2]);
 		expect(a.traversalTimelineMonotonicRate).toBeNull();
 		expect(a.traversalTimelineMonotonicCandidateCount).toBe(0);
+	});
+
+	it("sums edge-type coherence pair counts across traces (pair-weighted, #280)", () => {
+		const mkTrace = (children: Array<{ edgeType: string; childMs: string }>) =>
+			computeLineageMetrics(
+				makeResult(
+					[
+						makeHop({ sourceType: "p", timestamp: "2025-10-10T00:00:00Z" }),
+						...children.map((c) =>
+							makeHop({
+								sourceType: "c",
+								parentHopIndex: 0,
+								timestamp: c.childMs,
+								connection: { method: "edge", edgeType: c.edgeType, confidence: 1 },
+							}),
+						),
+					],
+					[],
+				),
+			);
+		const t1 = mkTrace([
+			{ edgeType: "references", childMs: "2025-10-11T00:00:00Z" },
+			{ edgeType: "references", childMs: "2025-10-09T00:00:00Z" },
+		]);
+		const t2 = mkTrace([
+			{ edgeType: "references", childMs: "2025-10-12T00:00:00Z" },
+			{ edgeType: "closes", childMs: "2025-10-05T00:00:00Z" },
+		]);
+		const agg = aggregateLineageMetrics([t1, t2]);
+		const refs = agg.chainTemporalCoherenceByEdgeType.find((e) => e.edgeType === "references");
+		const closes = agg.chainTemporalCoherenceByEdgeType.find((e) => e.edgeType === "closes");
+		expect(refs).toMatchObject({ pairCount: 3, childAfterParent: 2, childBeforeParent: 1 });
+		expect(refs?.forwardRate).toBeCloseTo(2 / 3);
+		expect(closes).toMatchObject({
+			pairCount: 1,
+			childAfterParent: 0,
+			childBeforeParent: 1,
+			forwardRate: 0,
+		});
 	});
 
 	it("averages multi-hop chain counts and cross-source rates across traces", () => {

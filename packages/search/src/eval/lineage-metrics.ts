@@ -1,4 +1,47 @@
+import { parseHopTimestampMs } from "../trace/chronology.js";
 import type { TraceResult } from "../trace/trace.js";
+
+/**
+ * Parent→child timestamp direction over edges of a single type (#280).
+ *
+ * Neutral signal: reports how often `child.timestamp > parent.timestamp` for
+ * each edge type, without prescribing which direction is "right". Different
+ * edge types have different expected directions — e.g. `closes` typically
+ * runs child-before-parent (PR closes an older issue) when traversed source→
+ * target, but child-after-parent when the reverse edge is walked. A wildly
+ * unexpected rate for a specific edge type is the real quality signal.
+ */
+export interface EdgeTypeTemporalCoherence {
+	edgeType: string;
+	/** Parent→child hops where both parent and child have a parseable timestamp. */
+	pairCount: number;
+	/** Pairs where `child.ts > parent.ts`. */
+	childAfterParent: number;
+	/** Pairs where `child.ts < parent.ts`. */
+	childBeforeParent: number;
+	/** Pairs where `child.ts === parent.ts` to millisecond precision. */
+	childEqualsParent: number;
+	/** `childAfterParent / pairCount`. 0 when no pairs were scored. */
+	forwardRate: number;
+}
+
+function computeCoherence(
+	buckets: Map<string, { after: number; before: number; equal: number }>,
+): EdgeTypeTemporalCoherence[] {
+	return [...buckets.entries()]
+		.map(([edgeType, b]): EdgeTypeTemporalCoherence => {
+			const pairCount = b.after + b.before + b.equal;
+			return {
+				edgeType,
+				pairCount,
+				childAfterParent: b.after,
+				childBeforeParent: b.before,
+				childEqualsParent: b.equal,
+				forwardRate: pairCount > 0 ? b.after / pairCount : 0,
+			};
+		})
+		.sort((a, b) => b.pairCount - a.pairCount || a.edgeType.localeCompare(b.edgeType));
+}
 
 /**
  * Per-trace lineage quality metrics (#217 follow-up to #206).
@@ -51,6 +94,14 @@ export interface LineageMetrics {
 	crossSourceChainRate: number;
 	/** Mean sourceTypeDiversity across multi-hop chains; 0 when none. */
 	avgChainDiversity: number;
+
+	// ── Edge-type temporal coherence (#280) ─────────────────
+	/**
+	 * Per-edge-type parent→child timestamp direction breakdown for edge hops
+	 * whose parent and child both carry a parseable timestamp. See
+	 * `EdgeTypeTemporalCoherence`. Sorted by `pairCount` descending.
+	 */
+	chainTemporalCoherenceByEdgeType: EdgeTypeTemporalCoherence[];
 }
 
 /**
@@ -91,6 +142,13 @@ export interface AggregateLineageMetrics {
 	totalCandidateFixes: number;
 	/** Summed recommended-next-reads across all traces. */
 	totalRecommendedNextReads: number;
+	/**
+	 * Pair-weighted aggregate of per-trace `chainTemporalCoherenceByEdgeType`.
+	 * Pairs from every trace are summed per edge type before `forwardRate` is
+	 * recomputed, so a single heavy trace can't swamp the rate the way a
+	 * trace-mean would. Sorted by `pairCount` descending. See #280.
+	 */
+	chainTemporalCoherenceByEdgeType: EdgeTypeTemporalCoherence[];
 }
 
 /** Compute per-trace lineage metrics. Safe for empty traces. */
@@ -142,6 +200,28 @@ export function computeLineageMetrics(result: TraceResult): LineageMetrics {
 			? multiHop.reduce((sum, c) => sum + c.sourceTypeDiversity, 0) / multiHop.length
 			: 0;
 
+	// #280 — bucket parent→child timestamp direction by edge type. Only edge
+	// hops with a resolved parent qualify; semantic seeds and fallbacks carry no
+	// parent/edge relationship and are skipped.
+	const edgeBuckets = new Map<string, { after: number; before: number; equal: number }>();
+	for (const hop of hops) {
+		if (hop.connection.method !== "edge") continue;
+		if (hop.parentHopIndex === undefined) continue;
+		const edgeType = hop.connection.edgeType;
+		if (!edgeType) continue;
+		const parent = hops[hop.parentHopIndex];
+		if (!parent) continue;
+		const parentMs = parseHopTimestampMs(parent.timestamp);
+		const childMs = parseHopTimestampMs(hop.timestamp);
+		if (parentMs === null || childMs === null) continue;
+		const bucket = edgeBuckets.get(edgeType) ?? { after: 0, before: 0, equal: 0 };
+		if (childMs > parentMs) bucket.after++;
+		else if (childMs < parentMs) bucket.before++;
+		else bucket.equal++;
+		edgeBuckets.set(edgeType, bucket);
+	}
+	const chainTemporalCoherenceByEdgeType = computeCoherence(edgeBuckets);
+
 	const conclusion = result.conclusion;
 
 	return {
@@ -164,6 +244,8 @@ export function computeLineageMetrics(result: TraceResult): LineageMetrics {
 		crossSourceChainCount: crossSourceChains.length,
 		crossSourceChainRate: multiHop.length > 0 ? crossSourceChains.length / multiHop.length : 0,
 		avgChainDiversity: avgDiversity,
+
+		chainTemporalCoherenceByEdgeType,
 	};
 }
 
@@ -186,6 +268,7 @@ export function aggregateLineageMetrics(metrics: LineageMetrics[]): AggregateLin
 			traversalTimelineMonotonicCandidateCount: 0,
 			totalCandidateFixes: 0,
 			totalRecommendedNextReads: 0,
+			chainTemporalCoherenceByEdgeType: [],
 		};
 	}
 
@@ -198,6 +281,19 @@ export function aggregateLineageMetrics(metrics: LineageMetrics[]): AggregateLin
 			? monotonicCandidates.filter((m) => m.traversalTimelineMonotonic === true).length /
 				monotonicCandidates.length
 			: null;
+
+	// #280 — merge per-trace edge-type buckets into a single pair-weighted view.
+	const mergedBuckets = new Map<string, { after: number; before: number; equal: number }>();
+	for (const m of nonEmpty) {
+		for (const c of m.chainTemporalCoherenceByEdgeType) {
+			const b = mergedBuckets.get(c.edgeType) ?? { after: 0, before: 0, equal: 0 };
+			b.after += c.childAfterParent;
+			b.before += c.childBeforeParent;
+			b.equal += c.childEqualsParent;
+			mergedBuckets.set(c.edgeType, b);
+		}
+	}
+	const chainTemporalCoherenceByEdgeType = computeCoherence(mergedBuckets);
 
 	return {
 		traceCount: n,
@@ -212,5 +308,6 @@ export function aggregateLineageMetrics(metrics: LineageMetrics[]): AggregateLin
 		traversalTimelineMonotonicCandidateCount: monotonicCandidates.length,
 		totalCandidateFixes: nonEmpty.reduce((s, m) => s + m.candidateFixCount, 0),
 		totalRecommendedNextReads: nonEmpty.reduce((s, m) => s + m.recommendedNextReadCount, 0),
+		chainTemporalCoherenceByEdgeType,
 	};
 }
