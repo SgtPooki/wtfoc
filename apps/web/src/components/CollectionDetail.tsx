@@ -1,9 +1,12 @@
-import { useEffect, useState } from "preact/hooks";
+import { useCallback, useEffect, useState } from "preact/hooks";
 import {
 	addSourcesToCollection,
 	fetchCollectionDetail,
+	fetchJobs,
+	type JobView,
 	type WalletCollectionDetail,
 } from "../api.js";
+import { JobProgress } from "./JobProgress.js";
 import { PromoteButton } from "./PromoteButton.js";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -75,6 +78,43 @@ export function CollectionDetail({ collectionId }: CollectionDetailProps) {
 	const [detail, setDetail] = useState<WalletCollectionDetail | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [refreshKey, setRefreshKey] = useState(0);
+	const [activeJob, setActiveJob] = useState<JobView | null>(null);
+
+	// Poll for the most recent non-terminal job on this collection (#168 Phase 1).
+	// JobProgress takes over once we have an id; this loop just discovers it.
+	useEffect(() => {
+		let cancelled = false;
+		let timer: ReturnType<typeof setTimeout> | null = null;
+		const poll = async () => {
+			try {
+				const { jobs } = await fetchJobs({
+					collection: collectionId,
+					status: "queued,running",
+				});
+				if (cancelled) return;
+				setActiveJob(jobs[0] ?? null);
+				if (!jobs[0]) {
+					// Once nothing is active, stop discovery polling — JobProgress
+					// already polls its own state when an id is rendered.
+					timer = setTimeout(poll, 5000);
+				} else {
+					timer = setTimeout(poll, 3000);
+				}
+			} catch {
+				if (!cancelled) timer = setTimeout(poll, 5000);
+			}
+		};
+		poll();
+		return () => {
+			cancelled = true;
+			if (timer) clearTimeout(timer);
+		};
+	}, [collectionId, refreshKey]);
+
+	const onJobTerminal = useCallback(() => {
+		setActiveJob(null);
+		setRefreshKey((k) => k + 1);
+	}, []);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -137,6 +177,8 @@ export function CollectionDetail({ collectionId }: CollectionDetailProps) {
 					</span>
 				)}
 			</div>
+
+			{activeJob && <JobProgress jobId={activeJob.id} onTerminal={onJobTerminal} />}
 
 			<h4>Sources</h4>
 			<ul class="source-list">

@@ -204,6 +204,45 @@ export function promoteCollection(
 	});
 }
 
+// ─── Jobs (#168) ─────────────────────────────────────────────────────────────
+
+export interface JobView {
+	id: string;
+	type: string;
+	collectionId: string | null;
+	status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+	phase: string | null;
+	current: number;
+	total: number;
+	message?: string | null;
+	errorCode: string | null;
+	errorMessage?: string | null;
+	cancelRequestedAt: string | null;
+	startedAt: string | null;
+	finishedAt: string | null;
+	parentJobId: string | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export function fetchJob(id: string, signal?: AbortSignal): Promise<{ job: JobView }> {
+	return apiFetch(`/api/jobs/${id}`, undefined, signal);
+}
+
+export function fetchJobs(
+	filter?: { collection?: string; status?: string },
+	signal?: AbortSignal,
+): Promise<{ jobs: JobView[] }> {
+	const params: Record<string, string> = {};
+	if (filter?.collection) params.collection = filter.collection;
+	if (filter?.status) params.status = filter.status;
+	return apiFetch("/api/jobs", Object.keys(params).length > 0 ? params : undefined, signal);
+}
+
+export function cancelJob(id: string, signal?: AbortSignal): Promise<void> {
+	return apiFetch(`/api/jobs/${id}`, undefined, signal, { method: "DELETE" });
+}
+
 export function fetchPromoteStatus(
 	id: string,
 	signal?: AbortSignal,
