@@ -188,6 +188,7 @@ export class AstHeuristicChunker implements Chunker {
 				source: document.source,
 				sourceUrl: document.sourceUrl,
 				timestamp: document.timestamp,
+				timestampKind: document.timestampKind,
 				chunkIndex: chunks.length,
 				totalChunks: 0, // filled in after
 				metadata: {
@@ -228,6 +229,7 @@ export class AstHeuristicChunker implements Chunker {
 					source: document.source,
 					sourceUrl: document.sourceUrl,
 					timestamp: document.timestamp,
+				timestampKind: document.timestampKind,
 					chunkIndex: 0,
 					totalChunks: 0,
 					metadata: {
@@ -306,6 +308,7 @@ export class AstHeuristicChunker implements Chunker {
 				source: document.source,
 				sourceUrl: document.sourceUrl,
 				timestamp: document.timestamp,
+				timestampKind: document.timestampKind,
 				chunkIndex: baseIndex + pieces.length,
 				totalChunks: 0,
 				metadata: {

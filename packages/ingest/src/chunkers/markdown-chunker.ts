@@ -14,6 +14,7 @@ export class MarkdownChunker implements Chunker {
 			source: document.source,
 			sourceUrl: document.sourceUrl,
 			timestamp: document.timestamp,
+			timestampKind: document.timestampKind,
 			metadata: document.metadata,
 			documentId: document.documentId,
 			documentVersionId: document.documentVersionId,

@@ -250,6 +250,7 @@ export class AstChunker implements Chunker {
 			source: document.source,
 			sourceUrl: document.sourceUrl,
 			timestamp: document.timestamp,
+			timestampKind: document.timestampKind,
 			chunkIndex: index,
 			totalChunks: 0, // back-filled
 			metadata: {
