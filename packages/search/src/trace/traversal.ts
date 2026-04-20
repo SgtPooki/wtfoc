@@ -28,11 +28,14 @@ export function followEdges(
 		? (edgeIndex.get(chunkData.source) ?? edgeIndex.get(chunkData.source.toLowerCase()) ?? [])
 		: [];
 
-	// Merge, deduplicating by targetId
+	// Merge, deduplicating by (type, targetId, walkDirection). walkDirection in
+	// the key keeps both sides of a bidirectionally-walkable edge when the same
+	// type:target is reachable both ways — otherwise one direction silently
+	// drops out of the traversal population the coherence metric measures (#280).
 	const seen = new Set<string>();
 	const edges: TraversalEdge[] = [];
 	for (const e of [...edgesById, ...edgesBySource]) {
-		const key = `${e.type}:${e.targetId}`;
+		const key = `${e.walkDirection}:${e.type}:${e.targetId}`;
 		if (!seen.has(key)) {
 			seen.add(key);
 			edges.push(e);
