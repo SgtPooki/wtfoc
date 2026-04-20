@@ -27,12 +27,8 @@ describe("GOLD_STANDARD_QUERIES fixture integrity", () => {
 	});
 
 	it("every category has at least 3 queries", () => {
-		const cats: Array<"direct-lookup" | "cross-source" | "coverage" | "synthesis"> = [
-			"direct-lookup",
-			"cross-source",
-			"coverage",
-			"synthesis",
-		];
+		const cats: Array<"direct-lookup" | "cross-source" | "coverage" | "synthesis" | "file-level"> =
+			["direct-lookup", "cross-source", "coverage", "synthesis", "file-level"];
 		for (const cat of cats) {
 			const n = GOLD_STANDARD_QUERIES.filter((q) => q.category === cat).length;
 			expect(n, `category ${cat} underrepresented`).toBeGreaterThanOrEqual(3);

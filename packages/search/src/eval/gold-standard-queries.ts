@@ -28,15 +28,25 @@
  * separate changes coincide on the same version — a new change always gets
  * a fresh bump.
  */
-export const GOLD_STANDARD_QUERIES_VERSION = "1.0.0";
+export const GOLD_STANDARD_QUERIES_VERSION = "1.1.0";
 
 export interface GoldStandardQuery {
 	/** Unique identifier for this query */
 	id: string;
 	/** The query text to search/trace */
 	queryText: string;
-	/** Category: direct-lookup | cross-source | coverage | synthesis */
-	category: "direct-lookup" | "cross-source" | "coverage" | "synthesis";
+	/**
+	 * Query category:
+	 * - `direct-lookup` — ask about a specific thing; result should contain it
+	 * - `cross-source` — trace must span multiple source types
+	 * - `coverage` — positive-presence checks across the collection
+	 * - `synthesis` — open-ended; result quality matters more than exact match
+	 * - `file-level` — file-scoped questions that should surface file-summary
+	 *   chunks emitted by `HierarchicalCodeChunker` (#252). Uses the same
+	 *   pass/fail rubric as other categories — the separation exists so the
+	 *   dogfood report can measure file-summary retrieval independently.
+	 */
+	category: "direct-lookup" | "cross-source" | "coverage" | "synthesis" | "file-level";
 	/** Source types that MUST appear in query results OR trace hops for the query to pass */
 	requiredSourceTypes: string[];
 	/** Substrings that should appear in at least one result source */
@@ -324,6 +334,45 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "coverage",
 		requiredSourceTypes: ["doc-page"],
 		expectedSourceSubstrings: ["docs.filecoin.io", "storage"],
+		minResults: 1,
+	},
+
+	// ── File-level (#252 / #286) ──────────────────────────────
+	// These intentionally ask file-scoped questions so the file-level
+	// summary chunks emitted by HierarchicalCodeChunker have a reason to
+	// rank. Package-level wording ("what does X do") is avoided — docs/
+	// README usually answer those better. See #252 for rationale.
+
+	{
+		id: "fl-1",
+		queryText: "Which file defines the Synapse class or createSynapse factory?",
+		category: "file-level",
+		requiredSourceTypes: ["code"],
+		expectedSourceSubstrings: ["synapse.ts", "synapse-sdk"],
+		minResults: 1,
+	},
+	{
+		id: "fl-2",
+		queryText: "Which file defines PieceCID and the piece identity logic?",
+		category: "file-level",
+		requiredSourceTypes: ["code"],
+		expectedSourceSubstrings: ["piece"],
+		minResults: 1,
+	},
+	{
+		id: "fl-3",
+		queryText: "Which files import PieceCID in the synapse client?",
+		category: "file-level",
+		requiredSourceTypes: ["code"],
+		expectedSourceSubstrings: ["piece"],
+		minResults: 2,
+	},
+	{
+		id: "fl-4",
+		queryText: "Which file defines StorageContext in the synapse-sdk?",
+		category: "file-level",
+		requiredSourceTypes: ["code"],
+		expectedSourceSubstrings: ["context.ts", "storage"],
 		minResults: 1,
 	},
 ];

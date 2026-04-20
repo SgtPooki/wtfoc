@@ -87,7 +87,13 @@ export async function evaluateQualityQueries(
 		GOLD_STANDARD_QUERIES.length > 0 ? queryOnlyPassCount / GOLD_STANDARD_QUERIES.length : 0;
 
 	// Category breakdown
-	const categories = ["direct-lookup", "cross-source", "coverage", "synthesis"] as const;
+	const categories = [
+		"direct-lookup",
+		"cross-source",
+		"coverage",
+		"synthesis",
+		"file-level",
+	] as const;
 	const categoryBreakdown: Record<string, { total: number; passed: number; passRate: number }> = {};
 	for (const cat of categories) {
 		const catScores = scores.filter((s) => s.category === cat);
