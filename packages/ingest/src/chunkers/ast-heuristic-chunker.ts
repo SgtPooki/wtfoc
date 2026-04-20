@@ -158,8 +158,11 @@ export class AstHeuristicChunker implements Chunker {
 			prevSymbolHeader = overlapChars > 0 ? ownContent.slice(0, overlapChars) : undefined;
 
 			// If chunk is too large, split it further; pass header so first sub-chunk
-			// carries inter-symbol context even when the next symbol is oversized (#250)
+			// carries inter-symbol context even when the next symbol is oversized (#250).
+			// Pass symbolName so each sub-chunk keeps the symbol identity (#252 —
+			// otherwise hierarchical summaries miss oversized symbols).
 			if (ownContent.length > maxChunkSize) {
+				const oversizedSymbolName = extractSymbolName(chunkLines[0] ?? "");
 				const subChunks = this.#splitLargeChunk(
 					ownContent,
 					document,
@@ -169,6 +172,7 @@ export class AstHeuristicChunker implements Chunker {
 					maxChunkSize,
 					overlapChars,
 					header,
+					oversizedSymbolName,
 				);
 				chunks.push(...subChunks);
 				continue;
@@ -272,6 +276,8 @@ export class AstHeuristicChunker implements Chunker {
 		overlapChars = 0,
 		/** Prepended only to the first sub-chunk to carry inter-symbol context (#250 fix) */
 		firstPieceHeader = "",
+		/** Symbol name to stamp on every sub-chunk so downstream consumers can attribute oversized symbols (#252 fix) */
+		symbolName?: string,
 	): ChunkerOutput[] {
 		const pieces: ChunkerOutput[] = [];
 		let offset = 0;
@@ -327,6 +333,7 @@ export class AstHeuristicChunker implements Chunker {
 				lineEnd: pieceLineEnd,
 				chunkerName: this.name,
 				chunkerVersion: this.version,
+				...(symbolName ? { symbolPath: symbolName } : {}),
 			});
 
 			offset = effectiveOverlap > 0 ? end - effectiveOverlap : end;

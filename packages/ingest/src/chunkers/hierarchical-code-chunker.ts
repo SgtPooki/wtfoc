@@ -198,10 +198,11 @@ function extractImports(lines: string[], lang: string): string[] {
 }
 
 /**
- * Collect symbol names from the inner chunker's `symbolPath` field when
- * available, falling back to re-scanning content for boundary lines. The
- * fallback keeps the summary useful even when the inner chunker doesn't
- * populate `symbolPath` on every chunk (e.g. AST chunker variants).
+ * Collect symbol names from the inner chunker's `symbolPath` field AND from
+ * a boundary scan of the full content. Merging both covers gaps: AST variants
+ * that omit `symbolPath` on some sub-chunks (historically oversized symbols
+ * — see AstHeuristicChunker) and boundaries the inner chunker merged away.
+ * Dedupe preserves the order of first appearance, inner paths first.
  */
 function collectSymbolNames(
 	content: string,
@@ -211,22 +212,20 @@ function collectSymbolNames(
 	const fromInner = symbolChunks
 		.map((c) => c.symbolPath)
 		.filter((s): s is string => typeof s === "string" && s.length > 0 && s !== "preamble");
-	if (fromInner.length > 0) {
-		return dedupeStable(fromInner);
-	}
 
 	const lines = content.split("\n");
 	const boundaries = findBoundaryLines(lines, lang);
-	const names: string[] = [];
+	const fromScan: string[] = [];
 	for (const b of boundaries) {
 		const line = lines[b];
 		if (!line) continue;
 		const match = line.match(
 			/(?:function|class|interface|type|enum|struct|trait|impl|def|func|module)\s+(\w+)/,
 		);
-		if (match?.[1]) names.push(match[1]);
+		if (match?.[1]) fromScan.push(match[1]);
 	}
-	return dedupeStable(names);
+
+	return dedupeStable([...fromInner, ...fromScan]);
 }
 
 function dedupeStable<T>(items: T[]): T[] {

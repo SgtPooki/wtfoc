@@ -126,6 +126,51 @@ class Registry:
 		expect(summary?.content).toContain("- Registry");
 	});
 
+	it("includes oversized symbols in the summary symbol list (#252 oversized fix)", async () => {
+		// Build a file whose function body exceeds maxChunkChars so AstHeuristicChunker
+		// splits it via #splitLargeChunk. Summary must still mention the symbol.
+		const bigBody = "\tdoWork();\n".repeat(600); // ~6KB, > default 4000
+		const content = `import { dep } from "./dep.js";
+
+export function normal() {
+	return 1;
+}
+
+export function oversized() {
+${bigBody}}
+
+export function alsoNormal() {
+	return 2;
+}
+`;
+		const out = await chunker.chunk(doc({ content }));
+		const summary = out[0];
+		expect(summary?.symbolPath).toBe(FILE_SUMMARY_SYMBOL);
+		// All three symbols must appear in the summary despite `oversized` being split
+		expect(summary?.content).toContain("- normal");
+		expect(summary?.content).toContain("- oversized");
+		expect(summary?.content).toContain("- alsoNormal");
+	});
+
+	it("preserves symbolPath on split sub-chunks for oversized symbols (#252 fix)", async () => {
+		const bigBody = "\tdoWork();\n".repeat(600);
+		const content = `export function oversized() {
+${bigBody}}
+`;
+		const inner = new AstHeuristicChunker();
+		const rawChunks = inner.chunk(doc({ content }));
+		// Without the fix, only the first sub-chunk carried the symbolPath; sub-chunks
+		// produced by splitLargeChunk came out with undefined symbolPath. After the
+		// fix every sub-chunk of the same symbol carries the symbol name.
+		const splitSubChunks = rawChunks.filter((c) => c.symbolPath === "oversized");
+		expect(splitSubChunks.length).toBeGreaterThanOrEqual(1);
+		// Additional safety — no symbol sub-chunk ends up with undefined symbolPath
+		// (preamble is fine to have a preamble label; this file has no preamble).
+		for (const c of rawChunks) {
+			expect(c.symbolPath).toBeDefined();
+		}
+	});
+
 	it("summary chunk carries timestamp and timestampKind from the document", async () => {
 		const content = `import { a } from "./a.js";
 export function f() {}
