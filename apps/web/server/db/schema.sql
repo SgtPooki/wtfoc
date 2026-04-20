@@ -69,3 +69,41 @@ CREATE TABLE IF NOT EXISTS session_key_audit_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_wallet ON session_key_audit_log (wallet_address, created_at);
+
+-- Jobs: app-owned job records for the orchestration layer (#168).
+-- pg-boss owns execution durability via its own schema (auto-migrated on
+-- boss.start()). This table owns the user-facing fields the API exposes —
+-- wallet scoping, collection scoping, progress, cancellation intent, parent
+-- linkage, error surfacing. Never join to pg-boss schema from here.
+CREATE TABLE IF NOT EXISTS jobs (
+  id                    UUID PRIMARY KEY,
+  boss_job_id           TEXT,
+  type                  TEXT NOT NULL
+    CHECK (type IN ('ingest','extract-edges','materialize','cid-pull')),
+  wallet_address        TEXT NOT NULL,
+  collection_id         UUID REFERENCES collections(id) ON DELETE SET NULL,
+  status                TEXT NOT NULL DEFAULT 'queued'
+    CHECK (status IN ('queued','running','succeeded','failed','cancelled')),
+  phase                 TEXT,
+  current               INTEGER NOT NULL DEFAULT 0,
+  total                 INTEGER NOT NULL DEFAULT 0,
+  message               TEXT,
+  cancel_requested_at   TIMESTAMPTZ,
+  started_at            TIMESTAMPTZ,
+  finished_at           TIMESTAMPTZ,
+  error_code            TEXT,
+  error_message         TEXT,
+  parent_job_id         UUID REFERENCES jobs(id) ON DELETE SET NULL,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_jobs_wallet_created ON jobs (wallet_address, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_jobs_collection ON jobs (collection_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_parent ON jobs (parent_job_id);
+
+-- "One active mutating job per collection" invariant — partial unique index
+-- on the active states only, so terminal rows don't block re-enqueue (#168).
+CREATE UNIQUE INDEX IF NOT EXISTS jobs_collection_active_unique
+  ON jobs (collection_id)
+  WHERE status IN ('queued', 'running') AND collection_id IS NOT NULL;

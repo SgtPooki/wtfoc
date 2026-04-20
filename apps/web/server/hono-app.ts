@@ -9,6 +9,8 @@ import { csrf } from "hono/csrf";
 import type { Repository } from "./db/index.js";
 import { authRoutes } from "./auth/routes.js";
 import { collectionRoutes } from "./collections/routes.js";
+import { jobRoutes } from "./jobs/routes.js";
+import type { JobQueue } from "./jobs/queue.js";
 
 export type AppEnv = {
 	Variables: {
@@ -18,7 +20,7 @@ export type AppEnv = {
 	};
 };
 
-export function createHonoApp(repo: Repository): Hono<AppEnv> {
+export function createHonoApp(repo: Repository, getQueue?: () => JobQueue): Hono<AppEnv> {
 	const app = new Hono<AppEnv>();
 
 	// Middleware: CORS for all routes
@@ -50,6 +52,9 @@ export function createHonoApp(repo: Repository): Hono<AppEnv> {
 	// Mount routes
 	app.route("/api/auth", authRoutes);
 	app.route("/api/wallet-collections", collectionRoutes);
+	if (getQueue) {
+		app.route("/api/jobs", jobRoutes(getQueue));
+	}
 
 	// Global error handler
 	app.onError((err, c) => {
