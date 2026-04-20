@@ -75,6 +75,15 @@ export interface TraceHop {
 		evidence?: string;
 		/** Confidence score */
 		confidence: number;
+		/**
+		 * For `method === "edge"`: whether the indexed edge was walked in its
+		 * original `sourceId → targetId` orientation (`forward`) or its flipped
+		 * `targetId → sourceId` orientation (`reverse`). Lets consumers interpret
+		 * `edgeType` semantics correctly — e.g. a `closes` edge walked forward
+		 * (PR → issue) has opposite temporal expectations than the same edge
+		 * walked reverse (issue → PR). Undefined for semantic hops. See #280.
+		 */
+		walkDirection?: "forward" | "reverse";
 	};
 }
 

@@ -113,6 +113,7 @@ export function formatDogfoodReport(report: DogfoodReport): string {
 					totalRecommendedNextReads: number;
 					chainTemporalCoherenceByEdgeType?: Array<{
 						edgeType: string;
+						walkDirection: "forward" | "reverse";
 						pairCount: number;
 						childAfterParent: number;
 						childBeforeParent: number;
@@ -145,9 +146,10 @@ export function formatDogfoodReport(report: DogfoodReport): string {
 		const coherence = lineage.chainTemporalCoherenceByEdgeType ?? [];
 		if (coherence.length > 0) {
 			const top = coherence.slice(0, 6);
-			const entries = top.map(
-				(c) => `${c.edgeType}=${fmtPct(c.childAfterParentRate)}(${c.pairCount})`,
-			);
+			const entries = top.map((c) => {
+				const dir = c.walkDirection === "forward" ? "fwd" : "rev";
+				return `${c.edgeType}[${dir}]=${fmtPct(c.childAfterParentRate)}(${c.pairCount})`;
+			});
 			lines.push(`    chain-temporal-coherence: ${entries.join("  ")}`);
 		}
 	}

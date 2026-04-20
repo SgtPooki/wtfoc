@@ -1,11 +1,10 @@
-import type { Edge } from "@wtfoc/common";
-import type { ChunkIndexes } from "./indexing.js";
+import type { ChunkIndexes, TraversalEdge } from "./indexing.js";
 import { findChunksByTarget } from "./resolution.js";
 import type { TraceHop } from "./trace.js";
 
 export function followEdges(
 	chunkId: string,
-	edgeIndex: Map<string, Edge[]>,
+	edgeIndex: Map<string, TraversalEdge[]>,
 	indexes: ChunkIndexes,
 	visited: Set<string>,
 	hops: TraceHop[],
@@ -31,7 +30,7 @@ export function followEdges(
 
 	// Merge, deduplicating by targetId
 	const seen = new Set<string>();
-	const edges: Edge[] = [];
+	const edges: TraversalEdge[] = [];
 	for (const e of [...edgesById, ...edgesBySource]) {
 		const key = `${e.type}:${e.targetId}`;
 		if (!seen.has(key)) {
@@ -64,6 +63,7 @@ export function followEdges(
 					edgeType: edge.type,
 					evidence: edge.evidence,
 					confidence: edge.confidence,
+					walkDirection: edge.walkDirection,
 				},
 			});
 

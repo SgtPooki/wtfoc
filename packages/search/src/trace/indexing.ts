@@ -1,6 +1,19 @@
 import type { Edge, Segment } from "@wtfoc/common";
 import { normalizeRepoSource } from "../normalize-source.js";
 
+/**
+ * Edge tagged with the walk direction it was indexed under. `forward` entries
+ * preserve the original `sourceId → targetId` orientation; `reverse` entries
+ * swap `sourceId`/`targetId` so traversal can walk either way, while the
+ * direction tag preserves the fact that `type` still refers to the *original*
+ * edge. Consumers interpreting timestamps per edge type must bucket by
+ * direction to avoid conflating forward `closes` (newer→older PR→issue) with
+ * reverse `closes` (older→newer issue→PR). See #280.
+ */
+export interface TraversalEdge extends Edge {
+	walkDirection: "forward" | "reverse";
+}
+
 export interface ChunkData {
 	content: string;
 	sourceType: string;
@@ -64,13 +77,16 @@ export function buildChunkIndexes(segments: Segment[]): ChunkIndexes {
  * When overlayEdges are provided (e.g. from extract-edges LLM overlay),
  * they are indexed alongside segment-embedded edges.
  */
-export function buildEdgeIndex(segments: Segment[], overlayEdges?: Edge[]): Map<string, Edge[]> {
-	const index = new Map<string, Edge[]>();
+export function buildEdgeIndex(
+	segments: Segment[],
+	overlayEdges?: Edge[],
+): Map<string, TraversalEdge[]> {
+	const index = new Map<string, TraversalEdge[]>();
 
 	const addEdge = (edge: Edge) => {
 		// Forward: sourceId → target
 		const fwd = index.get(edge.sourceId) ?? [];
-		fwd.push(edge);
+		fwd.push({ ...edge, walkDirection: "forward" });
 		index.set(edge.sourceId, fwd);
 
 		// Reverse: targetId → source (for bidirectional traversal)
@@ -80,6 +96,7 @@ export function buildEdgeIndex(segments: Segment[], overlayEdges?: Edge[]): Map<
 			sourceId: edge.targetId,
 			targetId: edge.sourceId,
 			evidence: `← ${edge.evidence}`,
+			walkDirection: "reverse",
 		});
 		index.set(edge.targetId, rev);
 	};

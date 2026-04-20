@@ -199,13 +199,56 @@ describe("computeLineageMetrics", () => {
 			childAfterParent: 2,
 			childBeforeParent: 0,
 			childAfterParentRate: 1,
+			walkDirection: "forward",
 		});
 		expect(closes).toMatchObject({
 			pairCount: 1,
 			childAfterParent: 0,
 			childBeforeParent: 1,
 			childAfterParentRate: 0,
+			walkDirection: "forward",
 		});
+	});
+
+	it("splits coherence cells by walkDirection so forward/reverse walks don't conflate (#280)", () => {
+		// Same `closes` edge type, traversed both directions. Forward walks should
+		// be child-before-parent (PR → older issue). Reverse walks should be
+		// child-after-parent (issue → newer PR). Two separate cells.
+		const hops: TraceHop[] = [
+			makeHop({ sourceType: "pr", timestamp: "2025-10-15T00:00:00Z" }),
+			makeHop({
+				sourceType: "issue",
+				parentHopIndex: 0,
+				timestamp: "2025-10-10T00:00:00Z",
+				connection: {
+					method: "edge",
+					edgeType: "closes",
+					confidence: 1,
+					walkDirection: "forward",
+				},
+			}),
+			makeHop({ sourceType: "issue2", timestamp: "2025-10-01T00:00:00Z" }),
+			makeHop({
+				sourceType: "pr2",
+				parentHopIndex: 2,
+				timestamp: "2025-10-05T00:00:00Z",
+				connection: {
+					method: "edge",
+					edgeType: "closes",
+					confidence: 1,
+					walkDirection: "reverse",
+				},
+			}),
+		];
+		const m = computeLineageMetrics(makeResult(hops, []));
+		const fwd = m.chainTemporalCoherenceByEdgeType.find(
+			(e) => e.edgeType === "closes" && e.walkDirection === "forward",
+		);
+		const rev = m.chainTemporalCoherenceByEdgeType.find(
+			(e) => e.edgeType === "closes" && e.walkDirection === "reverse",
+		);
+		expect(fwd).toMatchObject({ pairCount: 1, childBeforeParent: 1, childAfterParentRate: 0 });
+		expect(rev).toMatchObject({ pairCount: 1, childAfterParent: 1, childAfterParentRate: 1 });
 	});
 
 	it("ignores semantic hops and missing timestamps for coherence", () => {
@@ -383,14 +426,68 @@ describe("aggregateLineageMetrics", () => {
 		const agg = aggregateLineageMetrics([t1, t2]);
 		const refs = agg.chainTemporalCoherenceByEdgeType.find((e) => e.edgeType === "references");
 		const closes = agg.chainTemporalCoherenceByEdgeType.find((e) => e.edgeType === "closes");
-		expect(refs).toMatchObject({ pairCount: 3, childAfterParent: 2, childBeforeParent: 1 });
+		expect(refs).toMatchObject({
+			pairCount: 3,
+			childAfterParent: 2,
+			childBeforeParent: 1,
+			walkDirection: "forward",
+		});
 		expect(refs?.childAfterParentRate).toBeCloseTo(2 / 3);
 		expect(closes).toMatchObject({
 			pairCount: 1,
 			childAfterParent: 0,
 			childBeforeParent: 1,
 			childAfterParentRate: 0,
+			walkDirection: "forward",
 		});
+	});
+
+	it("aggregates forward and reverse walks of the same edge type into separate cells", () => {
+		const t1 = computeLineageMetrics(
+			makeResult(
+				[
+					makeHop({ sourceType: "pr", timestamp: "2025-10-15T00:00:00Z" }),
+					makeHop({
+						sourceType: "issue",
+						parentHopIndex: 0,
+						timestamp: "2025-10-10T00:00:00Z",
+						connection: {
+							method: "edge",
+							edgeType: "closes",
+							confidence: 1,
+							walkDirection: "forward",
+						},
+					}),
+				],
+				[],
+			),
+		);
+		const t2 = computeLineageMetrics(
+			makeResult(
+				[
+					makeHop({ sourceType: "issue", timestamp: "2025-10-05T00:00:00Z" }),
+					makeHop({
+						sourceType: "pr",
+						parentHopIndex: 0,
+						timestamp: "2025-10-12T00:00:00Z",
+						connection: {
+							method: "edge",
+							edgeType: "closes",
+							confidence: 1,
+							walkDirection: "reverse",
+						},
+					}),
+				],
+				[],
+			),
+		);
+		const agg = aggregateLineageMetrics([t1, t2]);
+		const closes = agg.chainTemporalCoherenceByEdgeType.filter((e) => e.edgeType === "closes");
+		expect(closes).toHaveLength(2);
+		const fwd = closes.find((c) => c.walkDirection === "forward");
+		const rev = closes.find((c) => c.walkDirection === "reverse");
+		expect(fwd).toMatchObject({ pairCount: 1, childBeforeParent: 1, childAfterParentRate: 0 });
+		expect(rev).toMatchObject({ pairCount: 1, childAfterParent: 1, childAfterParentRate: 1 });
 	});
 
 	it("averages multi-hop chain counts and cross-source rates across traces", () => {

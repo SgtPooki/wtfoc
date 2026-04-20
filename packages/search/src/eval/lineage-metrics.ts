@@ -2,17 +2,19 @@ import { parseHopTimestampMs } from "../trace/chronology.js";
 import type { TraceResult } from "../trace/trace.js";
 
 /**
- * Parent→child timestamp direction over edges of a single type (#280).
+ * Parent→child timestamp direction over edges of one `(edgeType, walkDirection)`
+ * cell (#280).
  *
  * Neutral signal: reports how often `child.timestamp > parent.timestamp` for
- * each edge type, without prescribing which direction is "right". Different
- * edge types have different expected directions — e.g. `closes` typically
- * runs child-before-parent (PR closes an older issue) when traversed source→
- * target, but child-after-parent when the reverse edge is walked. A wildly
- * unexpected rate for a specific edge type is the real quality signal.
+ * each cell, without prescribing which direction is "right". A `closes` edge
+ * walked forward (PR → issue) has opposite temporal expectations than the same
+ * edge walked reverse (issue → PR), so the two are reported separately. A
+ * wildly unexpected rate for a specific cell is the real quality signal.
  */
 export interface EdgeTypeTemporalCoherence {
 	edgeType: string;
+	/** Which index orientation this cell aggregates — see `TraceHop.connection.walkDirection`. */
+	walkDirection: "forward" | "reverse";
 	/** Parent→child hops where both parent and child have a parseable timestamp. */
 	pairCount: number;
 	/** Pairs where `child.ts > parent.ts`. */
@@ -25,14 +27,22 @@ export interface EdgeTypeTemporalCoherence {
 	childAfterParentRate: number;
 }
 
+type CoherenceBucket = { after: number; before: number; equal: number };
+type CoherenceKey = { edgeType: string; walkDirection: "forward" | "reverse" };
+
+function coherenceKeyString(k: CoherenceKey): string {
+	return `${k.walkDirection}|${k.edgeType}`;
+}
+
 function computeCoherence(
-	buckets: Map<string, { after: number; before: number; equal: number }>,
+	buckets: Map<string, { key: CoherenceKey; bucket: CoherenceBucket }>,
 ): EdgeTypeTemporalCoherence[] {
-	return [...buckets.entries()]
-		.map(([edgeType, b]): EdgeTypeTemporalCoherence => {
+	return [...buckets.values()]
+		.map(({ key, bucket: b }): EdgeTypeTemporalCoherence => {
 			const pairCount = b.after + b.before + b.equal;
 			return {
-				edgeType,
+				edgeType: key.edgeType,
+				walkDirection: key.walkDirection,
 				pairCount,
 				childAfterParent: b.after,
 				childBeforeParent: b.before,
@@ -40,7 +50,12 @@ function computeCoherence(
 				childAfterParentRate: pairCount > 0 ? b.after / pairCount : 0,
 			};
 		})
-		.sort((a, b) => b.pairCount - a.pairCount || a.edgeType.localeCompare(b.edgeType));
+		.sort(
+			(a, b) =>
+				b.pairCount - a.pairCount ||
+				a.edgeType.localeCompare(b.edgeType) ||
+				a.walkDirection.localeCompare(b.walkDirection),
+		);
 }
 
 /**
@@ -204,25 +219,32 @@ export function computeLineageMetrics(result: TraceResult): LineageMetrics {
 			? multiHop.reduce((sum, c) => sum + c.sourceTypeDiversity, 0) / multiHop.length
 			: 0;
 
-	// #280 — bucket parent→child timestamp direction by edge type. Only edge
-	// hops with a resolved parent qualify; semantic seeds and fallbacks carry no
-	// parent/edge relationship and are skipped.
-	const edgeBuckets = new Map<string, { after: number; before: number; equal: number }>();
+	// #280 — bucket parent→child timestamp direction by (edgeType, walkDirection).
+	// Only edge hops with a resolved parent qualify; semantic seeds and fallbacks
+	// carry no parent/edge relationship and are skipped. Splitting by
+	// walkDirection prevents conflating forward vs reverse walks of the same
+	// edge type (see `TraversalEdge` in trace/indexing.ts).
+	const edgeBuckets = new Map<string, { key: CoherenceKey; bucket: CoherenceBucket }>();
 	for (const hop of hops) {
 		if (hop.connection.method !== "edge") continue;
 		if (hop.parentHopIndex === undefined) continue;
 		const edgeType = hop.connection.edgeType;
 		if (!edgeType) continue;
+		// Default reverse-index hops land with an explicit walkDirection; hops
+		// assembled in tests or older callers without one are treated as forward.
+		const walkDirection: "forward" | "reverse" = hop.connection.walkDirection ?? "forward";
 		const parent = hops[hop.parentHopIndex];
 		if (!parent) continue;
 		const parentMs = parseHopTimestampMs(parent.timestamp);
 		const childMs = parseHopTimestampMs(hop.timestamp);
 		if (parentMs === null || childMs === null) continue;
-		const bucket = edgeBuckets.get(edgeType) ?? { after: 0, before: 0, equal: 0 };
-		if (childMs > parentMs) bucket.after++;
-		else if (childMs < parentMs) bucket.before++;
-		else bucket.equal++;
-		edgeBuckets.set(edgeType, bucket);
+		const key: CoherenceKey = { edgeType, walkDirection };
+		const keyStr = coherenceKeyString(key);
+		const entry = edgeBuckets.get(keyStr) ?? { key, bucket: { after: 0, before: 0, equal: 0 } };
+		if (childMs > parentMs) entry.bucket.after++;
+		else if (childMs < parentMs) entry.bucket.before++;
+		else entry.bucket.equal++;
+		edgeBuckets.set(keyStr, entry);
 	}
 	const chainTemporalCoherenceByEdgeType = computeCoherence(edgeBuckets);
 
@@ -286,15 +308,21 @@ export function aggregateLineageMetrics(metrics: LineageMetrics[]): AggregateLin
 				monotonicCandidates.length
 			: null;
 
-	// #280 — merge per-trace edge-type buckets into a single pair-weighted view.
-	const mergedBuckets = new Map<string, { after: number; before: number; equal: number }>();
+	// #280 — merge per-trace (edgeType, walkDirection) buckets into a single
+	// pair-weighted view.
+	const mergedBuckets = new Map<string, { key: CoherenceKey; bucket: CoherenceBucket }>();
 	for (const m of nonEmpty) {
 		for (const c of m.chainTemporalCoherenceByEdgeType) {
-			const b = mergedBuckets.get(c.edgeType) ?? { after: 0, before: 0, equal: 0 };
-			b.after += c.childAfterParent;
-			b.before += c.childBeforeParent;
-			b.equal += c.childEqualsParent;
-			mergedBuckets.set(c.edgeType, b);
+			const key: CoherenceKey = { edgeType: c.edgeType, walkDirection: c.walkDirection };
+			const keyStr = coherenceKeyString(key);
+			const entry = mergedBuckets.get(keyStr) ?? {
+				key,
+				bucket: { after: 0, before: 0, equal: 0 },
+			};
+			entry.bucket.after += c.childAfterParent;
+			entry.bucket.before += c.childBeforeParent;
+			entry.bucket.equal += c.childEqualsParent;
+			mergedBuckets.set(keyStr, entry);
 		}
 	}
 	const chainTemporalCoherenceByEdgeType = computeCoherence(mergedBuckets);
