@@ -18,9 +18,11 @@ describe("RepoAdapter", () => {
 				chunks.push(chunk);
 			}
 
-			// Golden count: 4 chunks from fixtures/test-repo (3 .ts code + 1 .md)
-			// If test-repo fixture changes, update: run tests and capture new values
-			expect(chunks.length).toBe(4);
+			// Golden count: 6 chunks from fixtures/test-repo (5 .ts code + 1 .md).
+			// Hierarchical chunker (#252) emits a file-level summary chunk per .ts
+			// file in addition to symbol/preamble chunks. If test-repo fixture
+			// changes, update by running tests and capturing new values.
+			expect(chunks.length).toBe(6);
 		});
 
 		it("produces code chunks for .ts files", async () => {
@@ -34,7 +36,10 @@ describe("RepoAdapter", () => {
 			}
 
 			const codeChunks = chunks.filter((c) => c.sourceType === "code");
-			expect(codeChunks.length).toBe(3);
+			// 5 chunks: upload.ts → summary + preamble + function body; storage.ts
+			// → summary + class body. Hierarchical chunker adds one summary chunk
+			// per .ts file on top of the symbol-level chunks (#252).
+			expect(codeChunks.length).toBe(5);
 			const firstCode = codeChunks[0];
 			if (!firstCode) throw new Error("Expected at least one code chunk");
 			expect(firstCode.metadata.language).toBe("ts");
@@ -184,8 +189,12 @@ describe("RepoAdapter", () => {
 
 			const edges = await adapter.extractEdges(chunks);
 			const importEdges = edges.filter((e) => e.type === "references" && e.targetType === "file");
-			// Golden count: 1 import edge from test-repo .ts files
-			expect(importEdges.length).toBe(1);
+			// Golden count: 2 import edges after hierarchical chunker (#252) — the
+			// `import` in upload.ts appears in both the symbol chunk and the file
+			// summary chunk, so the regex extractor sees it twice. Deduping at
+			// edge-extraction time is tracked separately (see edge-resolution
+			// work). For now the count reflects the raw traversal population.
+			expect(importEdges.length).toBe(2);
 		});
 
 		it("extracts issue references from comments", async () => {

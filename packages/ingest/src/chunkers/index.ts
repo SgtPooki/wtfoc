@@ -2,6 +2,7 @@ import type { Chunker } from "@wtfoc/common";
 import { AstHeuristicChunker } from "./ast-heuristic-chunker.js";
 import { CodeWindowChunker } from "./code-chunker.js";
 import { GithubIssueChunker } from "./github-issue-chunker.js";
+import { HierarchicalCodeChunker } from "./hierarchical-code-chunker.js";
 import { MarkdownChunker } from "./markdown-chunker.js";
 
 export type { AstChunkerOptions } from "./ast-chunker.js";
@@ -9,6 +10,10 @@ export { AstChunker } from "./ast-chunker.js";
 export { AstHeuristicChunker } from "./ast-heuristic-chunker.js";
 export { CodeWindowChunker } from "./code-chunker.js";
 export { GithubIssueChunker } from "./github-issue-chunker.js";
+export {
+	FILE_SUMMARY_SYMBOL,
+	HierarchicalCodeChunker,
+} from "./hierarchical-code-chunker.js";
 export { MarkdownChunker } from "./markdown-chunker.js";
 
 const registry = new Map<string, Chunker>();
@@ -74,16 +79,30 @@ export function selectChunker(sourceType: string, filePath?: string): Chunker {
 		return registry.get("markdown") ?? new MarkdownChunker();
 	}
 	if (ext && AST_SUPPORTED_EXTS.has(ext)) {
-		// Prefer the AST chunker when it's been registered (caller-installed
-		// with a sidecar URL). Fall back to the regex heuristic otherwise —
-		// never force a sidecar dependency on callers that haven't opted in.
-		return registry.get("ast") ?? registry.get("ast-heuristic") ?? new AstHeuristicChunker();
+		// Prefer the hierarchical wrapper by default — wraps the best available
+		// symbol chunker (AST sidecar > ast-heuristic) so callers get file-level
+		// summary chunks alongside symbol-level chunks (#252). Callers can opt
+		// out by re-registering `hierarchical-code` to their own implementation
+		// or by picking a symbol chunker directly.
+		return (
+			registry.get("hierarchical-code") ??
+			registry.get("ast") ??
+			registry.get("ast-heuristic") ??
+			new AstHeuristicChunker()
+		);
 	}
 	return registry.get("code-window") ?? new CodeWindowChunker();
 }
 
-// Register built-in chunkers
+// Register built-in chunkers. `hierarchical-code` is registered after AST
+// variants so the wrapper can pick the best inner chunker available at
+// registration time; consumers can override via `registerChunker`.
 registerChunker(new MarkdownChunker());
 registerChunker(new CodeWindowChunker());
 registerChunker(new AstHeuristicChunker());
 registerChunker(new GithubIssueChunker());
+registerChunker(
+	new HierarchicalCodeChunker(
+		registry.get("ast") ?? registry.get("ast-heuristic") ?? new AstHeuristicChunker(),
+	),
+);

@@ -57,10 +57,13 @@ const EXT_TO_LANG: Record<string, string> = {
 	scala: "java",
 };
 
+/** Re-exported so the hierarchical chunker can reuse AST boundary logic (#252). */
+export { EXT_TO_LANG };
+
 /**
  * Find line indices where code boundaries (function/class/method declarations) occur.
  */
-function findBoundaryLines(lines: string[], lang: string): number[] {
+export function findBoundaryLines(lines: string[], lang: string): number[] {
 	const patterns = BOUNDARY_PATTERNS[lang];
 	if (!patterns) return [];
 
@@ -77,7 +80,7 @@ function findBoundaryLines(lines: string[], lang: string): number[] {
 /**
  * Extract a symbol name from a boundary line.
  */
-function extractSymbolName(line: string): string {
+export function extractSymbolName(line: string): string {
 	// Try to match common declaration patterns
 	const match = line.match(
 		/(?:function|class|interface|type|enum|struct|trait|impl|def|func|module)\s+(\w+)/,
@@ -229,7 +232,7 @@ export class AstHeuristicChunker implements Chunker {
 					source: document.source,
 					sourceUrl: document.sourceUrl,
 					timestamp: document.timestamp,
-				timestampKind: document.timestampKind,
+					timestampKind: document.timestampKind,
 					chunkIndex: 0,
 					totalChunks: 0,
 					metadata: {
