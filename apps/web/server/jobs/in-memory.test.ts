@@ -36,7 +36,7 @@ describe("InMemoryJobQueue", () => {
 			type: "ingest",
 			walletAddress: WALLET,
 			collectionId: "coll-1",
-			payload: { collectionName: "foo" },
+			payload: { collectionId: "foo" },
 		});
 		expect(job.status).toBe("queued");
 
@@ -47,7 +47,7 @@ describe("InMemoryJobQueue", () => {
 		expect(done?.phase).toBe("embedding");
 		expect(done?.current).toBe(3);
 		expect(done?.total).toBe(3);
-		expect(seenPayload).toEqual({ collectionName: "foo" });
+		expect(seenPayload).toEqual({ collectionId: "foo" });
 		await q.stop();
 	});
 
@@ -61,7 +61,7 @@ describe("InMemoryJobQueue", () => {
 			type: "ingest",
 			walletAddress: WALLET,
 			collectionId: "coll-2",
-			payload: { collectionName: "bar" },
+			payload: { collectionId: "bar" },
 		});
 		await tick();
 		const done = await q.get(job.id, WALLET);
@@ -85,7 +85,7 @@ describe("InMemoryJobQueue", () => {
 			type: "ingest",
 			walletAddress: WALLET,
 			collectionId: "coll-3",
-			payload: { collectionName: "a" },
+			payload: { collectionId: "a" },
 		});
 		await tick();
 		await expect(
@@ -93,7 +93,7 @@ describe("InMemoryJobQueue", () => {
 				type: "ingest",
 				walletAddress: WALLET,
 				collectionId: "coll-3",
-				payload: { collectionName: "a-again" },
+				payload: { collectionId: "a-again" },
 			}),
 		).rejects.toBeInstanceOf(JobCollectionBusyError);
 		release?.();
@@ -105,7 +105,7 @@ describe("InMemoryJobQueue", () => {
 			type: "ingest",
 			walletAddress: WALLET,
 			collectionId: "coll-3",
-			payload: { collectionName: "a-redo" },
+			payload: { collectionId: "a-redo" },
 		});
 		release?.();
 		await q.stop();
@@ -121,7 +121,7 @@ describe("InMemoryJobQueue", () => {
 			type: "ingest",
 			walletAddress: WALLET,
 			collectionId: "coll-4",
-			payload: { collectionName: "x" },
+			payload: { collectionId: "x" },
 		});
 		const ok = await q.cancel(job.id, WALLET);
 		expect(ok).toBe(true);
@@ -146,7 +146,7 @@ describe("InMemoryJobQueue", () => {
 			type: "ingest",
 			walletAddress: WALLET,
 			collectionId: "coll-5",
-			payload: { collectionName: "x" },
+			payload: { collectionId: "x" },
 		});
 		await tick();
 		await q.cancel(job.id, WALLET);
@@ -165,7 +165,7 @@ describe("InMemoryJobQueue", () => {
 			type: "ingest",
 			walletAddress: WALLET,
 			collectionId: "coll-6",
-			payload: { collectionName: "x" },
+			payload: { collectionId: "x" },
 		});
 		await tick();
 		expect(await q.get(job.id, "0xOther")).toBeNull();
@@ -184,7 +184,7 @@ describe("InMemoryJobQueue", () => {
 			type: "ingest",
 			walletAddress: WALLET,
 			collectionId: "coll-7",
-			payload: { collectionName: "x" },
+			payload: { collectionId: "x" },
 		});
 		await tick();
 		const list = await q.list(WALLET);
@@ -203,13 +203,13 @@ describe("InMemoryJobQueue", () => {
 			type: "ingest",
 			walletAddress: WALLET,
 			collectionId: "coll-A",
-			payload: { collectionName: "a" },
+			payload: { collectionId: "a" },
 		});
 		const b = await q.enqueue({
 			type: "ingest",
 			walletAddress: WALLET,
 			collectionId: "coll-B",
-			payload: { collectionName: "b" },
+			payload: { collectionId: "b" },
 		});
 		await tick();
 		const filtered = await q.list(WALLET, { collectionId: "coll-A" });

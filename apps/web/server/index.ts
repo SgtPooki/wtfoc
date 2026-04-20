@@ -4,6 +4,8 @@ import { dirname, extname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRepository } from "./db/index.js";
 import { createHonoApp } from "./hono-app.js";
+import { registerIngestHandler } from "./collections/ingest-worker.js";
+import { createJobQueue } from "./jobs/bootstrap.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type {
 	CollectionHead,
@@ -692,18 +694,41 @@ async function main() {
 
 	// ─── Initialize wallet collection flow ──────────────────────────────
 	const repo = await createRepository();
-	const honoApp = createHonoApp(repo);
 
-	// Auth and wallet-collection routes will be mounted on honoApp in later phases.
-	// For now, we just set up the infrastructure.
+	// Job orchestration (#168). pg-boss when DATABASE_URL is set, otherwise
+	// in-memory. Handlers register before start() so the worker picks them
+	// up immediately.
+	const { queue, dispose: disposeJobs } = await createJobQueue();
+	registerIngestHandler(queue, repo);
+	await queue.start();
+	console.error("[jobs] queue started");
+
+	const honoApp = createHonoApp(repo, () => queue);
+
+	// Graceful shutdown — drain in-flight handlers before the process exits.
+	const onShutdown = async (signal: string) => {
+		console.error(`[wtfoc] ${signal} — draining job queue`);
+		try {
+			await disposeJobs();
+		} catch (err) {
+			console.error("[jobs] shutdown error", err);
+		}
+		process.exit(0);
+	};
+	process.on("SIGINT", () => onShutdown("SIGINT"));
+	process.on("SIGTERM", () => onShutdown("SIGTERM"));
 
 	const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
 		const url = req.url ?? "/";
 		const params = parseQuery(url);
 		const path = url.split("?")[0] ?? "/";
 
-		// ─── Route /api/auth/* and /api/wallet-collections/* through Hono ───
-		if (path.startsWith("/api/auth") || path.startsWith("/api/wallet-collections")) {
+		// ─── Route /api/auth/*, /api/wallet-collections/*, /api/jobs/* through Hono ───
+		if (
+			path.startsWith("/api/auth") ||
+			path.startsWith("/api/wallet-collections") ||
+			path.startsWith("/api/jobs")
+		) {
 			const honoReq = new Request(
 				new URL(url, `http://${req.headers.host ?? "localhost"}`),
 				{

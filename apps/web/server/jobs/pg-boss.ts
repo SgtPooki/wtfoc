@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
-import PgBoss from "pg-boss";
+import { PgBoss } from "pg-boss";
 import type { Pool } from "pg";
+import type { Job as BossJob } from "pg-boss";
 import * as v from "valibot";
 import { JobCollectionBusyError } from "./in-memory.js";
 import type { JobQueue } from "./queue.js";
@@ -174,10 +175,12 @@ export class PgBossJobQueue implements JobQueue {
 	}
 
 	async #registerWithBoss(type: JobType, handler: JobHandler<unknown>): Promise<void> {
+		// pg-boss v12: per-node parallel workers via localConcurrency, batch fetch
+		// of 1 keeps job-by-job semantics (no batched commit across handlers).
 		await this.#boss.work<BossEnvelope>(
 			type,
-			{ teamSize: this.#globalConcurrency, teamConcurrency: 1 },
-			async (jobs) => {
+			{ localConcurrency: this.#globalConcurrency, batchSize: 1 },
+			async (jobs: BossJob<BossEnvelope>[]) => {
 				for (const job of jobs) {
 					await this.#runOne(type, handler, job.data);
 				}

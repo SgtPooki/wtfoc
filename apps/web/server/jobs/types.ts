@@ -29,7 +29,7 @@ export type JobStatus = (typeof JOB_STATUSES)[number];
  * same monorepo today.
  */
 export const ingestPayloadSchema = v.object({
-	collectionName: v.string(),
+	collectionId: v.string(),
 });
 export type IngestPayload = v.InferOutput<typeof ingestPayloadSchema>;
 

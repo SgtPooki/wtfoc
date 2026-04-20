@@ -17,6 +17,8 @@ export type AppEnv = {
 		walletAddress: string;
 		sessionId: string;
 		repo: Repository;
+		/** Optional in legacy startup paths; required when domain routes need to enqueue jobs (#168). */
+		jobQueue?: JobQueue;
 	};
 };
 
@@ -43,9 +45,10 @@ export function createHonoApp(repo: Repository, getQueue?: () => JobQueue): Hono
 		}),
 	);
 
-	// Inject repository into context
+	// Inject repository + (optional) job queue into context
 	app.use("*", async (c, next) => {
 		c.set("repo", repo);
+		if (getQueue) c.set("jobQueue", getQueue());
 		await next();
 	});
 

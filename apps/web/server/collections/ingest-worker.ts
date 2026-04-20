@@ -1,51 +1,87 @@
 /**
- * Async ingestion worker: processes sources for a collection in the background.
- * Builds segments + persists manifest via the existing wtfoc pipeline.
- * Enforces max 10 concurrent ingestion jobs (SC-006).
+ * Async ingestion worker (#168): processes sources for a collection in the
+ * background. The exported `runIngestJob` is the JobQueue handler; previous
+ * in-memory slot-semaphore retired in favor of pg-boss concurrency + the
+ * per-collection invariant enforced at the DB.
+ *
+ * Progress is reported through the `JobContext` so the /api/jobs endpoints
+ * can surface phase/current/total to callers polling from the web UI.
  */
 import type { Chunk, CollectionHead } from "@wtfoc/common";
 import { CURRENT_SCHEMA_VERSION } from "@wtfoc/common";
 import type { Repository, Source } from "../db/index.js";
+import type { JobQueue } from "../jobs/queue.js";
+import type { IngestPayload, JobContext } from "../jobs/types.js";
 
-const MAX_CONCURRENT_JOBS = 10;
-let activeJobs = 0;
-const jobQueue: Array<() => void> = [];
+export interface IngestJobParams {
+	collectionId: string;
+	collectionName: string;
+	sources: Source[];
+	repo: Repository;
+	ctx: JobContext;
+}
 
-function acquireSlot(): Promise<void> {
-	if (activeJobs < MAX_CONCURRENT_JOBS) {
-		activeJobs++;
-		return Promise.resolve();
-	}
-	return new Promise((resolve) => {
-		jobQueue.push(() => {
-			activeJobs++;
-			resolve();
+/**
+ * Wire the `ingest` job handler into the queue. Call once at server startup
+ * before `queue.start()`. The handler re-reads the collection + sources
+ * from the repo at run time so retries / restarts pick up the latest
+ * source list (covers the case where new sources were added between
+ * enqueue and the worker picking up the job).
+ */
+export function registerIngestHandler(queue: JobQueue, repo: Repository): void {
+	queue.register<IngestPayload>("ingest", async (payload, ctx) => {
+		const target = await repo.getCollection(payload.collectionId);
+		if (!target) {
+			throw new Error(`collection not found: ${payload.collectionId}`);
+		}
+		const pending = target.sources.filter(
+			(s) => s.status === "pending" || s.status === "failed",
+		);
+		const sourcesToRun = pending.length > 0 ? pending : target.sources;
+		await runIngestJob({
+			collectionId: target.id,
+			collectionName: target.name,
+			sources: sourcesToRun,
+			repo,
+			ctx,
 		});
 	});
 }
 
-function releaseSlot(): void {
-	activeJobs--;
-	const next = jobQueue.shift();
-	if (next) next();
-}
-
-export async function startIngestion(
-	collectionId: string,
-	collectionName: string,
-	sources: Source[],
-	repo: Repository,
-	signal?: AbortSignal,
-): Promise<void> {
-	await acquireSlot();
+/**
+ * Handler body for the `ingest` job type. Called by the JobQueue worker;
+ * should not be invoked directly from route handlers — routes enqueue
+ * instead so cancellation + durability + progress all live on one path.
+ */
+export async function runIngestJob({
+	collectionId,
+	collectionName,
+	sources,
+	repo,
+	ctx,
+}: IngestJobParams): Promise<void> {
+	const signal = ctx.signal;
 	try {
+		await ctx.reportProgress({
+			phase: "fetching sources",
+			current: 0,
+			total: sources.length,
+		});
 		await repo.updateCollectionStatus(collectionId, "ingesting");
 
 		const allChunks: Chunk[] = [];
 		let anySucceeded = false;
 
-		for (const source of sources) {
-			if (signal?.aborted) break;
+		for (let i = 0; i < sources.length; i++) {
+			signal.throwIfAborted();
+			const source = sources[i];
+			if (!source) continue;
+			await ctx.reportProgress({
+				phase: `fetching ${source.sourceType}`,
+				current: i,
+				total: sources.length,
+				message: source.identifier,
+			});
 
 			try {
 				await repo.updateSourceStatus(source.id, "ingesting");
@@ -64,18 +100,29 @@ export async function startIngestion(
 			return;
 		}
 
+		await ctx.reportProgress({
+			phase: "embedding + persisting",
+			current: sources.length,
+			total: sources.length,
+			message: `${allChunks.length} chunks`,
+		});
+
 		// Build segments and persist manifest using the existing pipeline
 		await buildAndPersist(collectionName, allChunks, repo, collectionId, signal);
 		await repo.updateCollectionStatus(collectionId, "ready");
 	} catch (err) {
+		// Honor cooperative cancel: don't mark ingestion_failed when the user
+		// asked us to stop.
+		if (signal.aborted) {
+			throw err;
+		}
 		console.error(`[ingest-worker] Collection ${collectionId} failed:`, err);
 		try {
 			await repo.updateCollectionStatus(collectionId, "ingestion_failed");
 		} catch {
 			// Best effort
 		}
-	} finally {
-		releaseSlot();
+		throw err;
 	}
 }
 

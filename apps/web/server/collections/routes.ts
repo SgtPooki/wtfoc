@@ -4,9 +4,10 @@ import type { Repository } from "../db/index.js";
 import { requireAuth } from "../auth/middleware.js";
 import { walletRateLimiter } from "../security/rate-limit.js";
 import { validateCollectionName, validateSources } from "./validators.js";
-import { startIngestion } from "./ingest-worker.js";
 import { startPromotion } from "./promote-worker.js";
 import { decryptSessionKey } from "../auth/crypto.js";
+import { JobCollectionBusyError } from "../jobs/in-memory.js";
+import type { JobQueue } from "../jobs/queue.js";
 
 const createRateLimit = walletRateLimiter(10, 3600); // 10 collections per hour per wallet
 
@@ -52,16 +53,39 @@ collections.post("/", createRateLimit.middleware(), async (c) => {
 		throw err;
 	}
 
-	// Start ingestion in background (non-blocking)
-	startIngestion(result.id, result.name, result.sources, repo).catch((err) => {
-		console.error(`[collections] Background ingestion failed for ${result.id}:`, err);
-	});
+	// Enqueue ingest job; the per-collection unique index in `jobs` makes
+	// double-enqueue impossible. Returns the job id alongside the collection
+	// so the UI can poll progress immediately. (#168 Phase 1)
+	const queue = c.get("jobQueue") as JobQueue | undefined;
+	let jobId: string | null = null;
+	if (queue) {
+		try {
+			const job = await queue.enqueue({
+				type: "ingest",
+				walletAddress,
+				collectionId: result.id,
+				payload: { collectionId: result.id },
+			});
+			jobId = job.id;
+		} catch (err) {
+			if (err instanceof JobCollectionBusyError) {
+				// Should not happen on a fresh collection; surface as 500 with detail.
+				console.error("[collections] unexpected busy on fresh collection", err);
+			}
+			throw err;
+		}
+	} else {
+		console.error(
+			"[collections] no jobQueue configured — skipping ingest enqueue (collection created without ingestion)",
+		);
+	}
 
 	return c.json(
 		{
 			id: result.id,
 			name: result.name,
 			status: "ingesting",
+			jobId,
 			sources: result.sources.map((s) => ({
 				id: s.id,
 				type: s.sourceType,
@@ -148,12 +172,35 @@ collections.post("/:id/sources", async (c) => {
 
 	const newSources = await repo.addSources(id, sourceResult.sources);
 
-	// Start ingestion for new sources only
-	startIngestion(id, col.name, newSources, repo).catch((err) => {
-		console.error(`[collections] Background ingestion failed for ${id}:`, err);
-	});
+	// Enqueue an ingest job for the collection; handler picks up pending +
+	// failed sources at run time, so this naturally covers the new sources.
+	const queue = c.get("jobQueue") as JobQueue | undefined;
+	let jobId: string | null = null;
+	if (queue) {
+		try {
+			const job = await queue.enqueue({
+				type: "ingest",
+				walletAddress,
+				collectionId: id,
+				payload: { collectionId: id },
+			});
+			jobId = job.id;
+		} catch (err) {
+			if (err instanceof JobCollectionBusyError) {
+				return c.json(
+					{
+						error: "collection already has an active ingest job",
+						code: "COLLECTION_BUSY",
+					},
+					409,
+				);
+			}
+			throw err;
+		}
+	}
 
 	return c.json({
+		jobId,
 		sources: newSources.map((s) => ({
 			id: s.id,
 			type: s.sourceType,
