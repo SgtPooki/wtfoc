@@ -200,6 +200,13 @@ async function scoreQuery(
 
 	try {
 		const boosts = autoRoute ? classifyQueryPersona(gq.queryText).sourceTypeBoosts : undefined;
+		// File-level gold queries (#286) get an automatic boost on file-summary
+		// chunks (#287). Category-based rather than persona-classifier-based
+		// because the gold fixture already tags intent explicitly. Value chosen
+		// conservatively — enough to surface a well-matched file summary above
+		// prose chunks, not so high that a weakly-matched summary outranks a
+		// directly-relevant symbol chunk.
+		const chunkLevelBoosts = gq.category === "file-level" ? { file: 1.4 } : undefined;
 
 		// Query phase
 		const qResult = await query(gq.queryText, embedder, vectorIndex, {
@@ -207,6 +214,7 @@ async function scoreQuery(
 			signal,
 			reranker,
 			sourceTypeBoosts: boosts,
+			chunkLevelBoosts,
 		});
 		resultCount = qResult.results.length;
 
@@ -228,6 +236,7 @@ async function scoreQuery(
 			overlayEdges: overlayEdges.length > 0 ? overlayEdges : undefined,
 			reranker,
 			sourceTypeBoosts: boosts,
+			chunkLevelBoosts,
 		});
 
 		for (const st of tResult.stats.sourceTypes) sourceTypesReached.push(st);

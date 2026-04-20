@@ -31,6 +31,17 @@ export interface QueryOptions {
 	 * raw score is high enough to survive the multiplier.
 	 */
 	sourceTypeBoosts?: Record<string, number>;
+	/**
+	 * Per-chunk-level score multipliers, keyed by `metadata.chunkLevel`.
+	 * Applied the same way as `sourceTypeBoosts` — soft reordering, never
+	 * drops. Missing levels default to 1.0. (#287)
+	 *
+	 * Example: `{ "file": 1.4 }` boosts file-level summary chunks emitted by
+	 * `HierarchicalCodeChunker` so abstract/file-scoped queries surface them
+	 * above rich prose chunks. Symbol-level chunks (no `chunkLevel` tag) are
+	 * unaffected.
+	 */
+	chunkLevelBoosts?: Record<string, number>;
 }
 
 export interface QueryResult {
@@ -56,6 +67,12 @@ export interface QueryResult {
 		returnedTypeCounts: Record<string, number>;
 		/** types boosted (value != 1.0) */
 		boostedTypes: string[];
+		/** chunk-level counts in the fetched candidate set (#287) */
+		candidateChunkLevelCounts?: Record<string, number>;
+		/** chunk-level counts in the returned topK (#287) */
+		returnedChunkLevelCounts?: Record<string, number>;
+		/** chunk levels boosted (value != 1.0) (#287) */
+		boostedChunkLevels?: string[];
 	};
 }
 
@@ -107,6 +124,12 @@ export async function query(
 	if (options?.sourceTypeBoosts && Object.keys(options.sourceTypeBoosts).length > 0) {
 		fetchK = Math.max(fetchK, topK * 10);
 	}
+	// Chunk-level boost needs the same wider fan-out as sourceTypeBoosts: file
+	// summary chunks are ~1/11 of code chunks, so a narrow top-k may contain
+	// zero candidates for the boost to reorder. (#287)
+	if (options?.chunkLevelBoosts && Object.keys(options.chunkLevelBoosts).length > 0) {
+		fetchK = Math.max(fetchK, topK * 10);
+	}
 	if (includeSet || excludeSet) fetchK = Math.max(fetchK, topK * 10);
 	const rawMatches = await vectorIndex.search(queryVector, fetchK);
 	// Apply source-type filters before reranker runs (save compute) and before topK slicing.
@@ -156,6 +179,12 @@ export async function query(
 				const typeBoost = options.sourceTypeBoosts[sourceType] ?? 1.0;
 				if (typeBoost !== 1.0) boostedScore = boostedScore * typeBoost;
 			}
+			// Chunk-level boost (#287) — soft routing on chunkLevel metadata
+			if (options?.chunkLevelBoosts) {
+				const level = m.entry.metadata.chunkLevel ?? "symbol";
+				const levelBoost = options.chunkLevelBoosts[level] ?? 1.0;
+				if (levelBoost !== 1.0) boostedScore = boostedScore * levelBoost;
+			}
 
 			return {
 				content: m.entry.metadata.content ?? "",
@@ -168,30 +197,59 @@ export async function query(
 			};
 		});
 
-	if (signalFilter || rerankedScores || options?.sourceTypeBoosts) {
+	if (signalFilter || rerankedScores || options?.sourceTypeBoosts || options?.chunkLevelBoosts) {
 		results.sort((a, b) => b.score - a.score);
 	}
 
-	// Diagnostics (#265 telemetry) — compute counts BEFORE slicing so we can
-	// compare candidate distribution vs what actually made it into topK.
-	const hasBoosts = options?.sourceTypeBoosts && Object.keys(options.sourceTypeBoosts).length > 0;
-	const diagnostics = hasBoosts
-		? (() => {
-				const candidateTypeCounts: Record<string, number> = {};
-				for (const r of results) {
-					candidateTypeCounts[r.sourceType] = (candidateTypeCounts[r.sourceType] ?? 0) + 1;
-				}
-				const sliced = results.slice(0, topK);
-				const returnedTypeCounts: Record<string, number> = {};
-				for (const r of sliced) {
-					returnedTypeCounts[r.sourceType] = (returnedTypeCounts[r.sourceType] ?? 0) + 1;
-				}
-				const boostedTypes = Object.entries(options?.sourceTypeBoosts ?? {})
-					.filter(([, v]) => v !== 1.0)
-					.map(([k]) => k);
-				return { candidateTypeCounts, returnedTypeCounts, boostedTypes };
-			})()
-		: undefined;
+	// Diagnostics (#265 + #287 telemetry) — compute counts BEFORE slicing so we
+	// can compare candidate distribution vs what actually made it into topK.
+	const hasTypeBoosts =
+		options?.sourceTypeBoosts && Object.keys(options.sourceTypeBoosts).length > 0;
+	const hasChunkLevelBoosts =
+		options?.chunkLevelBoosts && Object.keys(options.chunkLevelBoosts).length > 0;
+	const diagnostics =
+		hasTypeBoosts || hasChunkLevelBoosts
+			? (() => {
+					const chunkLevelByStorageId = new Map<string, string>();
+					for (const m of matches) {
+						const level = m.entry.metadata.chunkLevel ?? "symbol";
+						chunkLevelByStorageId.set(m.entry.storageId, level);
+					}
+					const candidateTypeCounts: Record<string, number> = {};
+					const candidateChunkLevelCounts: Record<string, number> = {};
+					for (const r of results) {
+						candidateTypeCounts[r.sourceType] = (candidateTypeCounts[r.sourceType] ?? 0) + 1;
+						const level = chunkLevelByStorageId.get(r.storageId) ?? "symbol";
+						candidateChunkLevelCounts[level] = (candidateChunkLevelCounts[level] ?? 0) + 1;
+					}
+					const sliced = results.slice(0, topK);
+					const returnedTypeCounts: Record<string, number> = {};
+					const returnedChunkLevelCounts: Record<string, number> = {};
+					for (const r of sliced) {
+						returnedTypeCounts[r.sourceType] = (returnedTypeCounts[r.sourceType] ?? 0) + 1;
+						const level = chunkLevelByStorageId.get(r.storageId) ?? "symbol";
+						returnedChunkLevelCounts[level] = (returnedChunkLevelCounts[level] ?? 0) + 1;
+					}
+					const boostedTypes = Object.entries(options?.sourceTypeBoosts ?? {})
+						.filter(([, v]) => v !== 1.0)
+						.map(([k]) => k);
+					const boostedChunkLevels = Object.entries(options?.chunkLevelBoosts ?? {})
+						.filter(([, v]) => v !== 1.0)
+						.map(([k]) => k);
+					return {
+						candidateTypeCounts,
+						returnedTypeCounts,
+						boostedTypes,
+						...(hasChunkLevelBoosts
+							? {
+									candidateChunkLevelCounts,
+									returnedChunkLevelCounts,
+									boostedChunkLevels,
+								}
+							: {}),
+					};
+				})()
+			: undefined;
 
 	results = results.slice(0, topK);
 

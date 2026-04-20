@@ -523,6 +523,83 @@ describe("buildEdgeIndex", () => {
 	});
 });
 
+describe("trace chunkLevelBoosts (#287)", () => {
+	// Hash embedder produces a query vector whose similarity with each fixture
+	// is deterministic. Vectors chosen so `sym-1` outranks `file-sum-1` on raw
+	// cosine, flipped only when a sufficient file boost is applied.
+	const fileEntry: VectorEntry = {
+		id: "file-sum-1",
+		vector: new Float32Array([0.3, 0.3, 0.3]),
+		storageId: "storage-file-sum-1",
+		metadata: {
+			sourceType: "code",
+			source: "synapse-sdk/src/client.ts",
+			content: "File: synapse-sdk/src/client.ts\n\nSymbols:\n- Synapse",
+			chunkLevel: "file",
+		},
+	};
+	const symEntry: VectorEntry = {
+		id: "sym-1",
+		vector: new Float32Array([1.0, 0.8, 0.7]),
+		storageId: "storage-sym-1",
+		metadata: {
+			sourceType: "code",
+			source: "synapse-sdk/src/client.ts",
+			content: "export class Synapse { ... }",
+		},
+	};
+	const fileSeg: Segment = {
+		schemaVersion: 1,
+		embeddingModel: "test",
+		embeddingDimensions: 3,
+		chunks: [
+			{
+				id: "file-sum-1",
+				storageId: "storage-file-sum-1",
+				content: "File: synapse-sdk/src/client.ts\n\nSymbols:\n- Synapse",
+				embedding: [0.3, 0.3, 0.3],
+				terms: ["synapse"],
+				source: "synapse-sdk/src/client.ts",
+				sourceType: "code",
+				metadata: { chunkLevel: "file" },
+			},
+			{
+				id: "sym-1",
+				storageId: "storage-sym-1",
+				content: "export class Synapse { ... }",
+				embedding: [1.0, 0.8, 0.7],
+				terms: ["synapse", "class"],
+				source: "synapse-sdk/src/client.ts",
+				sourceType: "code",
+				metadata: {},
+			},
+		],
+		edges: [],
+	};
+
+	it("boosts file-level chunks in seed selection when chunkLevelBoosts is set", async () => {
+		const index = await seedIndex(fileEntry, symEntry);
+		const withoutBoost = await trace("synapse", embedder, index, [fileSeg]);
+		const withBoost = await trace("synapse", embedder, index, [fileSeg], {
+			chunkLevelBoosts: { file: 5.0 },
+			maxTotal: 2,
+		});
+		// Without a boost, the higher-cosine symbol seed leads. With a strong
+		// file boost, the file summary surfaces first.
+		expect(withoutBoost.hops[0]?.storageId).toBe("storage-sym-1");
+		expect(withBoost.hops[0]?.storageId).toBe("storage-file-sum-1");
+	});
+
+	it("empty chunkLevelBoosts behaves identically to undefined", async () => {
+		const index = await seedIndex(fileEntry, symEntry);
+		const empty = await trace("synapse", embedder, index, [fileSeg], {
+			chunkLevelBoosts: {},
+		});
+		const undef = await trace("synapse", embedder, index, [fileSeg]);
+		expect(empty.hops[0]?.storageId).toBe(undef.hops[0]?.storageId);
+	});
+});
+
 describe("trace chronological projection (#274)", () => {
 	// Timestamped variant of the upload-timeout fixture, deliberately ordered
 	// so DFS traversal (slack → issue → pr) is NOT chronological: the slack

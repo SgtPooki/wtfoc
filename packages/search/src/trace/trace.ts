@@ -30,6 +30,14 @@ export interface TraceOptions {
 	 */
 	sourceTypeBoosts?: Record<string, number>;
 	/**
+	 * Per-chunk-level score multipliers applied to seed scores (#287). Keyed by
+	 * `Chunk.metadata.chunkLevel` (e.g. `file` for summary chunks from
+	 * `HierarchicalCodeChunker`; symbol chunks carry no level tag and are
+	 * treated as `symbol`). Applied the same way as `sourceTypeBoosts` — soft
+	 * reordering of seeds, never drops.
+	 */
+	chunkLevelBoosts?: Record<string, number>;
+	/**
 	 * Trace mode:
 	 * - "discovery" (default): find connected results across sources
 	 * - "analytical": also detect cross-source insights (convergence, evidence chains, temporal patterns)
@@ -167,25 +175,39 @@ export async function trace(
 	const queryVector = await embedder.embed(query, options?.signal);
 
 	// Step 2: Find seed chunks via vector search.
-	// Fan out wider when boosts are set — a dominant source type can otherwise
-	// fill the entire raw top-k and a boost just uniformly scales a
-	// single-type result set, producing no effective reordering (#265).
-	const hasBoosts = options?.sourceTypeBoosts && Object.keys(options.sourceTypeBoosts).length > 0;
+	// Fan out wider when any boost is set — a dominant source type / chunk
+	// level can otherwise fill the entire raw top-k and uniform scaling then
+	// produces no effective reordering (#265, #287).
+	const hasTypeBoosts =
+		options?.sourceTypeBoosts && Object.keys(options.sourceTypeBoosts).length > 0;
+	const hasLevelBoosts =
+		options?.chunkLevelBoosts && Object.keys(options.chunkLevelBoosts).length > 0;
+	const hasBoosts = hasTypeBoosts || hasLevelBoosts;
 	const candidateMultiplier = options?.reranker ? 2 : hasBoosts ? 5 : 1;
 	const candidateCount = maxTotal * candidateMultiplier;
 	const rawSeeds = await vectorIndex.search(queryVector, candidateCount);
 
-	// Apply source-type boosts (#265) — soft routing, never drops seeds.
+	// Apply source-type + chunk-level boosts (#265, #287) — soft routing,
+	// never drops seeds. Multiplicative composition so both axes can bias the
+	// same seed; missing keys default to 1.0.
 	const boostedSeeds = hasBoosts
 		? rawSeeds
-				.map((s): import("@wtfoc/common").ScoredEntry => ({
-					entry: s.entry,
-					score:
-						s.score *
-						((options?.sourceTypeBoosts as Record<string, number>)[
-							s.entry.metadata.sourceType ?? "unknown"
-						] ?? 1.0),
-				}))
+				.map((s): import("@wtfoc/common").ScoredEntry => {
+					let boosted = s.score;
+					if (hasTypeBoosts) {
+						boosted *=
+							(options?.sourceTypeBoosts as Record<string, number>)[
+								s.entry.metadata.sourceType ?? "unknown"
+							] ?? 1.0;
+					}
+					if (hasLevelBoosts) {
+						boosted *=
+							(options?.chunkLevelBoosts as Record<string, number>)[
+								s.entry.metadata.chunkLevel ?? "symbol"
+							] ?? 1.0;
+					}
+					return { entry: s.entry, score: boosted };
+				})
 				.sort((a, b) => b.score - a.score)
 				.slice(0, maxTotal * (options?.reranker ? 2 : 1))
 		: rawSeeds;

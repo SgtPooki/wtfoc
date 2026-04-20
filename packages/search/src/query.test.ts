@@ -209,6 +209,97 @@ describe("query", () => {
 		});
 	});
 
+	describe("chunk-level boosting (#287) — soft routing on metadata.chunkLevel", () => {
+		it("chunkLevelBoosts multiplies scores by per-level weight", async () => {
+			const index = await seedIndex(
+				makeEntry("sym", [0.95, 0.05, 0], { sourceType: "code" }),
+				makeEntry("file", [0.9, 0.1, 0], { sourceType: "code", chunkLevel: "file" }),
+			);
+			// Without boost, sym wins on raw cosine. With a strong file boost,
+			// file surfaces first.
+			const boosted = await query("upload", embedder, index, {
+				chunkLevelBoosts: { file: 1.5 },
+			});
+			expect(boosted.results[0]?.storageId).toBe("s-file");
+			expect(boosted.results[1]?.storageId).toBe("s-sym");
+		});
+
+		it("never drops results when a level boost is near zero", async () => {
+			const index = await seedIndex(
+				makeEntry("file-1", [1, 0, 0], { sourceType: "code", chunkLevel: "file" }),
+				makeEntry("file-2", [0.9, 0.1, 0], { sourceType: "code", chunkLevel: "file" }),
+				makeEntry("sym-1", [0.5, 0.5, 0], { sourceType: "code" }),
+			);
+			const result = await query("upload", embedder, index, {
+				chunkLevelBoosts: { file: 0.01 },
+				topK: 10,
+			});
+			expect(result.results).toHaveLength(3);
+			// sym wins since its raw 0.5 * default 1.0 > file's 1.0 * 0.01
+			expect(result.results[0]?.storageId).toBe("s-sym-1");
+		});
+
+		it("missing chunkLevel defaults to 'symbol' for boost lookup", async () => {
+			const index = await seedIndex(
+				makeEntry("sym", [0.5, 0.5, 0], { sourceType: "code" }),
+				makeEntry("file", [0.9, 0.1, 0], { sourceType: "code", chunkLevel: "file" }),
+			);
+			// Boost 'symbol' entries, not 'file' — symbol rank should rise.
+			const result = await query("upload", embedder, index, {
+				chunkLevelBoosts: { symbol: 3.0 },
+			});
+			expect(result.results[0]?.storageId).toBe("s-sym");
+			expect(result.results[1]?.storageId).toBe("s-file");
+		});
+
+		it("composes multiplicatively with sourceTypeBoosts", async () => {
+			const index = await seedIndex(
+				makeEntry("code-sym", [0.95, 0.05, 0], { sourceType: "code" }),
+				makeEntry("code-file", [0.9, 0.1, 0], {
+					sourceType: "code",
+					chunkLevel: "file",
+				}),
+				makeEntry("md-sym", [0.92, 0.08, 0], { sourceType: "markdown" }),
+			);
+			// Boost code 1.2x AND file 1.3x → code-file wins (1.2 * 1.3 composition).
+			const result = await query("upload", embedder, index, {
+				sourceTypeBoosts: { code: 1.2 },
+				chunkLevelBoosts: { file: 1.3 },
+			});
+			expect(result.results[0]?.storageId).toBe("s-code-file");
+		});
+
+		it("populates diagnostics with chunk-level counts when chunkLevelBoosts is set", async () => {
+			const index = await seedIndex(
+				makeEntry("file-1", [1, 0, 0], { sourceType: "code", chunkLevel: "file" }),
+				makeEntry("sym-1", [0.99, 0.01, 0], { sourceType: "code" }),
+				makeEntry("sym-2", [0.98, 0.02, 0], { sourceType: "code" }),
+			);
+			const result = await query("upload", embedder, index, {
+				chunkLevelBoosts: { file: 2.0 },
+				topK: 2,
+			});
+			expect(result.diagnostics).toBeDefined();
+			expect(result.diagnostics?.boostedChunkLevels).toEqual(["file"]);
+			expect(result.diagnostics?.candidateChunkLevelCounts?.file).toBe(1);
+			expect(result.diagnostics?.candidateChunkLevelCounts?.symbol).toBe(2);
+			expect(result.diagnostics?.returnedChunkLevelCounts?.file).toBe(1);
+		});
+
+		it("does NOT include chunk-level diagnostics when only sourceTypeBoosts is set", async () => {
+			const index = await seedIndex(
+				makeEntry("sym", [1, 0, 0], { sourceType: "code" }),
+				makeEntry("file", [0.9, 0.1, 0], { sourceType: "code", chunkLevel: "file" }),
+			);
+			const result = await query("upload", embedder, index, {
+				sourceTypeBoosts: { code: 1.1 },
+			});
+			expect(result.diagnostics).toBeDefined();
+			expect(result.diagnostics?.boostedChunkLevels).toBeUndefined();
+			expect(result.diagnostics?.candidateChunkLevelCounts).toBeUndefined();
+		});
+	});
+
 	describe("source-type filtering (#256)", () => {
 		it("includeSourceTypes keeps only results whose sourceType is in the set", async () => {
 			const index = await seedIndex(
