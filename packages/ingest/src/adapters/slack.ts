@@ -163,6 +163,7 @@ export class SlackAdapter implements SourceAdapter<SlackAdapterConfig> {
 				source: `#${channelName}`,
 				sourceUrl: `https://slack.com/archives/${channelId}/p${firstMsg.ts.replace(".", "")}`,
 				timestamp: new Date(Number.parseFloat(firstMsg.ts) * 1000).toISOString(),
+				timestampKind: "created",
 				chunkIndex: 0,
 				totalChunks: 1,
 				metadata: {

@@ -61,6 +61,7 @@ export function buildSegment(
 				sourceType: c.chunk.sourceType,
 				sourceUrl: c.chunk.sourceUrl,
 				timestamp: c.chunk.timestamp,
+				timestampKind: c.chunk.timestampKind,
 				metadata: { ...c.chunk.metadata, ...chunkerMeta },
 			};
 			if (c.signalScores && Object.keys(c.signalScores).length > 0) {
@@ -105,6 +106,7 @@ export function storedChunkToSegmentChunk(c: Segment["chunks"][number]): Segment
 			source: c.source,
 			sourceUrl: c.sourceUrl,
 			timestamp: c.timestamp,
+			timestampKind: c.timestampKind,
 			chunkIndex: 0,
 			totalChunks: 0,
 			metadata: c.metadata,

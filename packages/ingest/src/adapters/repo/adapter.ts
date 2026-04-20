@@ -210,6 +210,7 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 				source: `${repo}/${relPath}`,
 				sourceUrl,
 				timestamp: commitInfo?.date,
+				timestampKind: commitInfo?.date ? "committed" : undefined,
 				filePath: relPath,
 				metadata: {
 					filePath: relPath,
@@ -230,6 +231,7 @@ export class RepoAdapter implements SourceAdapter<RepoAdapterConfig> {
 					sourceType,
 					sourceUrl,
 					timestamp: commitInfo?.date ?? chunk.timestamp,
+					timestampKind: commitInfo?.date ? "committed" : chunk.timestampKind,
 					metadata: {
 						...chunk.metadata,
 						filePath: relPath,

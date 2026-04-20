@@ -73,6 +73,7 @@ export type {
 	DocumentLifecycleState,
 	DocumentMutability,
 	StructuredEvidence,
+	TimestampKind,
 } from "./schemas/chunk.js";
 export type { Edge } from "./schemas/edge.js";
 export type {

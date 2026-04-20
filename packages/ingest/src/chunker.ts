@@ -15,6 +15,8 @@ export interface MarkdownChunkerOptions {
 	source: string;
 	sourceUrl?: string;
 	timestamp?: string;
+	/** Semantic of `timestamp` — see `TimestampKind` in @wtfoc/common (#280). */
+	timestampKind?: import("@wtfoc/common").TimestampKind;
 	/** Merged into each chunk's `metadata`. */
 	metadata?: Record<string, string>;
 	/** Stable logical key for the source document */
@@ -163,6 +165,7 @@ export function chunkMarkdown(markdown: string, options: MarkdownChunkerOptions)
 			source: options.source,
 			sourceUrl: options.sourceUrl,
 			timestamp: options.timestamp,
+			timestampKind: options.timestampKind,
 			chunkIndex,
 			totalChunks,
 			metadata: { ...baseMeta },

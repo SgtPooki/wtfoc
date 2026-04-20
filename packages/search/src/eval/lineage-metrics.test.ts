@@ -210,6 +210,64 @@ describe("computeLineageMetrics", () => {
 		});
 	});
 
+	it("records kindPairs drill-down per coherence cell (#280)", () => {
+		const hops: TraceHop[] = [
+			makeHop({
+				sourceType: "github-pr",
+				timestamp: "2025-10-15T00:00:00Z",
+				timestampKind: "updated",
+			}),
+			makeHop({
+				sourceType: "code",
+				parentHopIndex: 0,
+				timestamp: "2025-10-14T00:00:00Z",
+				timestampKind: "committed",
+				connection: {
+					method: "edge",
+					edgeType: "documents",
+					confidence: 1,
+					walkDirection: "forward",
+				},
+			}),
+			makeHop({
+				sourceType: "code",
+				parentHopIndex: 0,
+				timestamp: "2025-10-13T00:00:00Z",
+				timestampKind: "committed",
+				connection: {
+					method: "edge",
+					edgeType: "documents",
+					confidence: 1,
+					walkDirection: "forward",
+				},
+			}),
+			// Hop with unknown parent kind — should bucket under "unknown->committed"
+			makeHop({ sourceType: "x", timestamp: "2025-10-20T00:00:00Z" }),
+			makeHop({
+				sourceType: "code",
+				parentHopIndex: 3,
+				timestamp: "2025-10-19T00:00:00Z",
+				timestampKind: "committed",
+				connection: {
+					method: "edge",
+					edgeType: "documents",
+					confidence: 1,
+					walkDirection: "forward",
+				},
+			}),
+		];
+		const m = computeLineageMetrics(makeResult(hops, []));
+		const cell = m.chainTemporalCoherenceByEdgeType.find(
+			(e) => e.edgeType === "documents" && e.walkDirection === "forward",
+		);
+		expect(cell).toBeDefined();
+		expect(cell?.pairCount).toBe(3);
+		expect(cell?.kindPairs).toEqual({
+			"updated->committed": 2,
+			"unknown->committed": 1,
+		});
+	});
+
 	it("splits coherence cells by walkDirection so forward/reverse walks don't conflate (#280)", () => {
 		// Same `closes` edge type, traversed both directions. Forward walks should
 		// be child-before-parent (PR → older issue). Reverse walks should be

@@ -119,6 +119,7 @@ export function formatDogfoodReport(report: DogfoodReport): string {
 						childBeforeParent: number;
 						childEqualsParent: number;
 						childAfterParentRate: number;
+						kindPairs: Record<string, number>;
 					}>;
 			  }
 			| undefined;
@@ -151,6 +152,21 @@ export function formatDogfoodReport(report: DogfoodReport): string {
 				return `${c.edgeType}[${dir}]=${fmtPct(c.childAfterParentRate)}(${c.pairCount})`;
 			});
 			lines.push(`    chain-temporal-coherence: ${entries.join("  ")}`);
+			// Top kind-pair for cells with ≥10 pairs. Surfaces clock-mixing
+			// (e.g. updated->committed) that might drive the rate on mature cells.
+			const kindLines: string[] = [];
+			for (const c of top) {
+				if (c.pairCount < 10) continue;
+				const pairs = Object.entries(c.kindPairs).sort((a, b) => b[1] - a[1]);
+				if (pairs.length === 0) continue;
+				const dir = c.walkDirection === "forward" ? "fwd" : "rev";
+				const topPairs = pairs.slice(0, 3).map(([k, n]) => `${k}=${n}`);
+				kindLines.push(`      ${c.edgeType}[${dir}]: ${topPairs.join(", ")}`);
+			}
+			if (kindLines.length > 0) {
+				lines.push(`    chain-temporal-kindPairs:`);
+				lines.push(...kindLines);
+			}
 		}
 	}
 

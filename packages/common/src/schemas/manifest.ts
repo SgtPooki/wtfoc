@@ -263,6 +263,8 @@ export interface Segment {
 		sourceType: string;
 		sourceUrl?: string;
 		timestamp?: string;
+		/** Semantic of `timestamp` — see `TimestampKind` in schemas/chunk.ts (#280). */
+		timestampKind?: import("./chunk.js").TimestampKind;
 		metadata: Record<string, string>;
 		signalScores?: Record<string, number>;
 		/** Stable logical key for the source document */

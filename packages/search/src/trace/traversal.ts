@@ -60,6 +60,7 @@ export function followEdges(
 				sourceUrl: targetData.sourceUrl,
 				storageId: targetData.storageId,
 				timestamp: targetData.timestamp,
+				timestampKind: targetData.timestampKind,
 				parentHopIndex,
 				connection: {
 					method: "edge",

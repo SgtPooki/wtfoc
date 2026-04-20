@@ -1,4 +1,4 @@
-import type { Edge, Segment } from "@wtfoc/common";
+import type { Edge, Segment, TimestampKind } from "@wtfoc/common";
 import { normalizeRepoSource } from "../normalize-source.js";
 
 /**
@@ -21,6 +21,7 @@ export interface ChunkData {
 	sourceUrl?: string;
 	storageId: string;
 	timestamp?: string;
+	timestampKind?: TimestampKind;
 }
 
 export interface ChunkIndexes {
@@ -44,6 +45,7 @@ export function buildChunkIndexes(segments: Segment[]): ChunkIndexes {
 				sourceType: chunk.sourceType,
 				source: chunk.source,
 				sourceUrl: chunk.sourceUrl,
+				timestampKind: chunk.timestampKind,
 				storageId: chunk.storageId,
 				timestamp: chunk.timestamp,
 			};

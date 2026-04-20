@@ -1,4 +1,4 @@
-import type { Embedder, Reranker, Segment, VectorIndex } from "@wtfoc/common";
+import type { Embedder, Reranker, Segment, TimestampKind, VectorIndex } from "@wtfoc/common";
 import { buildChronologicalHopIndices } from "./chronology.js";
 import { buildConclusion, type TraceConclusion } from "./conclusion.js";
 import { buildChunkIndexes, buildEdgeIndex } from "./indexing.js";
@@ -56,8 +56,16 @@ export interface TraceHop {
 	sourceUrl?: string;
 	/** Storage ID for verification */
 	storageId: string;
-	/** Timestamp from the source chunk (if available) */
+	/** Timestamp from the source chunk (ISO-8601, if available). See `timestampKind`. */
 	timestamp?: string;
+	/**
+	 * Mirror of `Chunk.timestampKind` — which clock produced `timestamp`. Lets
+	 * trace consumers interpret temporal relationships correctly when
+	 * different source adapters report different semantics (`created`,
+	 * `updated`, `committed`, ...). Undefined when the adapter did not record
+	 * a kind. See `TimestampKind` in `@wtfoc/common`.
+	 */
+	timestampKind?: TimestampKind;
 	/** Index of the hop that led to this one (undefined for seeds) */
 	parentHopIndex?: number;
 	/**
@@ -237,6 +245,7 @@ export async function trace(
 			sourceUrl: seed.entry.metadata.sourceUrl,
 			storageId: seed.entry.storageId,
 			timestamp: chunkData?.timestamp,
+			timestampKind: chunkData?.timestampKind,
 			connection: {
 				method: "semantic",
 				confidence: seed.score,
@@ -304,6 +313,7 @@ export async function trace(
 					sourceUrl: candidate.entry.metadata.sourceUrl,
 					storageId: candidate.entry.storageId,
 					timestamp: chunkData?.timestamp,
+					timestampKind: chunkData?.timestampKind,
 					connection: {
 						method: "semantic",
 						confidence: candidate.score,

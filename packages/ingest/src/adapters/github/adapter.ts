@@ -1,4 +1,4 @@
-import type { Chunk, ChunkerDocument, Edge, SourceAdapter } from "@wtfoc/common";
+import type { Chunk, ChunkerDocument, Edge, SourceAdapter, TimestampKind } from "@wtfoc/common";
 import {
 	GitHubApiError,
 	GitHubCliMissingError,
@@ -9,6 +9,22 @@ import { chunkMarkdown } from "../../chunker.js";
 import { GithubIssueChunker } from "../../chunkers/github-issue-chunker.js";
 import { RegexEdgeExtractor } from "../../edges/extractor.js";
 import { defaultExecFn, type ExecFn, ghApi } from "./transport.js";
+
+/**
+ * Pick timestamp + kind from a GitHub record that carries both `updated_at`
+ * and `created_at` (issues, PRs, PR comments). Prefer `updated_at`; kind
+ * tracks whether we actually read the update clock or fell back to create.
+ */
+function pickUpdatedOrCreated(rec: Record<string, unknown>): {
+	timestamp: string;
+	timestampKind: TimestampKind | undefined;
+} {
+	const updated = rec.updated_at ? String(rec.updated_at) : "";
+	const created = rec.created_at ? String(rec.created_at) : "";
+	if (updated) return { timestamp: updated, timestampKind: "updated" };
+	if (created) return { timestamp: created, timestampKind: "created" };
+	return { timestamp: "", timestampKind: undefined };
+}
 
 const issueChunker = new GithubIssueChunker();
 
@@ -143,6 +159,7 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 			const documentId = `${repo}#${number}`;
 			const documentVersionId = String(rec.updated_at ?? rec.created_at ?? "");
 
+			const { timestamp, timestampKind } = pickUpdatedOrCreated(rec);
 			const doc: ChunkerDocument = {
 				documentId,
 				documentVersionId,
@@ -150,7 +167,8 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 				sourceType: "github-issue",
 				source: `${repo}#${number}`,
 				sourceUrl: String(rec.html_url ?? ""),
-				timestamp: String(rec.updated_at ?? rec.created_at ?? ""),
+				timestamp,
+				timestampKind,
 				metadata,
 			};
 
@@ -198,6 +216,7 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 			const documentId = `${repo}#${number}`;
 			const documentVersionId = String(rec.updated_at ?? rec.created_at ?? "");
 
+			const { timestamp, timestampKind } = pickUpdatedOrCreated(rec);
 			const doc: ChunkerDocument = {
 				documentId,
 				documentVersionId,
@@ -205,7 +224,8 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 				sourceType: "github-pr",
 				source: `${repo}#${number}`,
 				sourceUrl: String(rec.html_url ?? ""),
-				timestamp: String(rec.updated_at ?? rec.created_at ?? ""),
+				timestamp,
+				timestampKind,
 				metadata,
 			};
 
@@ -270,11 +290,13 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 			// #258: source must be distinct from the parent PR so edge-resolution
 			// indexes each comment separately and substring/sourceType checks
 			// in retrieval can tell comments apart from the PR body.
+			const { timestamp, timestampKind } = pickUpdatedOrCreated(rec);
 			const chunks = chunkMarkdown(body, {
 				chunkSize: GITHUB_CHUNK_SIZE,
 				source: documentId,
 				sourceUrl: String(rec.html_url ?? ""),
-				timestamp: String(rec.updated_at ?? rec.created_at ?? ""),
+				timestamp,
+				timestampKind,
 				metadata,
 				documentId,
 				documentVersionId,
@@ -348,6 +370,7 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 				const documentId = `${repo}/discussions/${number}`;
 				const documentVersionId = String(node.createdAt ?? "");
 
+				const createdAtIso = String(node.createdAt ?? "");
 				const discussionDoc: ChunkerDocument = {
 					documentId,
 					documentVersionId,
@@ -355,7 +378,8 @@ export class GitHubAdapter implements SourceAdapter<GitHubAdapterConfig> {
 					sourceType: "github-discussion",
 					source: `${repo}/discussions/${number}`,
 					sourceUrl: String(node.url ?? ""),
-					timestamp: String(node.createdAt ?? ""),
+					timestamp: createdAtIso,
+					timestampKind: createdAtIso ? "created" : undefined,
 					metadata,
 				};
 

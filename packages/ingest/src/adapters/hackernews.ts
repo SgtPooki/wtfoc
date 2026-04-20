@@ -192,6 +192,7 @@ export class HackerNewsAdapter implements SourceAdapter<HackerNewsAdapterConfig>
 			source: `hn:${hit.objectID}`,
 			sourceUrl: `https://news.ycombinator.com/item?id=${hit.objectID}`,
 			timestamp: hit.created_at,
+			timestampKind: hit.created_at ? "created" : undefined,
 			chunkIndex: 0,
 			totalChunks: 1,
 			metadata: {
@@ -222,6 +223,7 @@ export class HackerNewsAdapter implements SourceAdapter<HackerNewsAdapterConfig>
 			source: `hn:${hit.objectID}`,
 			sourceUrl: `https://news.ycombinator.com/item?id=${hit.objectID}`,
 			timestamp: hit.created_at,
+			timestampKind: hit.created_at ? "created" : undefined,
 			chunkIndex: 0,
 			totalChunks: 1,
 			metadata: {

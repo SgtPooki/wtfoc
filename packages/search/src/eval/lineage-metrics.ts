@@ -25,13 +25,36 @@ export interface EdgeTypeTemporalCoherence {
 	childEqualsParent: number;
 	/** `childAfterParent / pairCount`. 0 when no pairs were scored. */
 	childAfterParentRate: number;
+	/**
+	 * Drill-down counts per `parentKind -> childKind` (#280). Keys use
+	 * `unknown` for hops whose `timestampKind` was undefined. Enables
+	 * spotting whether an unexpected cell rate is driven by mixed clocks
+	 * (e.g. `updated -> committed`) rather than the edge semantic. Summed
+	 * counts across `kindPairs` equal `pairCount`.
+	 */
+	kindPairs: Record<string, number>;
 }
 
-type CoherenceBucket = { after: number; before: number; equal: number };
+type CoherenceBucket = {
+	after: number;
+	before: number;
+	equal: number;
+	kindPairs: Map<string, number>;
+};
 type CoherenceKey = { edgeType: string; walkDirection: "forward" | "reverse" };
 
 function coherenceKeyString(k: CoherenceKey): string {
 	return `${k.walkDirection}|${k.edgeType}`;
+}
+
+function kindPairKey(parentKind: string | undefined, childKind: string | undefined): string {
+	return `${parentKind ?? "unknown"}->${childKind ?? "unknown"}`;
+}
+
+function mergeKindPairs(dst: Map<string, number>, src: Iterable<[string, number]>): void {
+	for (const [k, v] of src) {
+		dst.set(k, (dst.get(k) ?? 0) + v);
+	}
 }
 
 function computeCoherence(
@@ -48,6 +71,7 @@ function computeCoherence(
 				childBeforeParent: b.before,
 				childEqualsParent: b.equal,
 				childAfterParentRate: pairCount > 0 ? b.after / pairCount : 0,
+				kindPairs: Object.fromEntries(b.kindPairs),
 			};
 		})
 		.sort(
@@ -240,10 +264,15 @@ export function computeLineageMetrics(result: TraceResult): LineageMetrics {
 		if (parentMs === null || childMs === null) continue;
 		const key: CoherenceKey = { edgeType, walkDirection };
 		const keyStr = coherenceKeyString(key);
-		const entry = edgeBuckets.get(keyStr) ?? { key, bucket: { after: 0, before: 0, equal: 0 } };
+		const entry = edgeBuckets.get(keyStr) ?? {
+			key,
+			bucket: { after: 0, before: 0, equal: 0, kindPairs: new Map<string, number>() },
+		};
 		if (childMs > parentMs) entry.bucket.after++;
 		else if (childMs < parentMs) entry.bucket.before++;
 		else entry.bucket.equal++;
+		const pairKey = kindPairKey(parent.timestampKind, hop.timestampKind);
+		entry.bucket.kindPairs.set(pairKey, (entry.bucket.kindPairs.get(pairKey) ?? 0) + 1);
 		edgeBuckets.set(keyStr, entry);
 	}
 	const chainTemporalCoherenceByEdgeType = computeCoherence(edgeBuckets);
@@ -309,7 +338,7 @@ export function aggregateLineageMetrics(metrics: LineageMetrics[]): AggregateLin
 			: null;
 
 	// #280 — merge per-trace (edgeType, walkDirection) buckets into a single
-	// pair-weighted view.
+	// pair-weighted view, summing kindPairs counts too.
 	const mergedBuckets = new Map<string, { key: CoherenceKey; bucket: CoherenceBucket }>();
 	for (const m of nonEmpty) {
 		for (const c of m.chainTemporalCoherenceByEdgeType) {
@@ -317,11 +346,12 @@ export function aggregateLineageMetrics(metrics: LineageMetrics[]): AggregateLin
 			const keyStr = coherenceKeyString(key);
 			const entry = mergedBuckets.get(keyStr) ?? {
 				key,
-				bucket: { after: 0, before: 0, equal: 0 },
+				bucket: { after: 0, before: 0, equal: 0, kindPairs: new Map<string, number>() },
 			};
 			entry.bucket.after += c.childAfterParent;
 			entry.bucket.before += c.childBeforeParent;
 			entry.bucket.equal += c.childEqualsParent;
+			mergeKindPairs(entry.bucket.kindPairs, Object.entries(c.kindPairs));
 			mergedBuckets.set(keyStr, entry);
 		}
 	}

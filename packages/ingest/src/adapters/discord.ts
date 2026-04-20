@@ -177,6 +177,7 @@ export class DiscordAdapter implements SourceAdapter<DiscordAdapterConfig> {
 				source: `${serverName}/#${channelName}`,
 				sourceUrl,
 				timestamp: firstMsg.timestamp,
+				timestampKind: "created",
 				chunkIndex: 0,
 				totalChunks: 1,
 				metadata: {
@@ -294,6 +295,7 @@ export class DiscordAdapter implements SourceAdapter<DiscordAdapterConfig> {
 					source: `${serverName}/#${channelName}`,
 					sourceUrl,
 					timestamp: firstMsg.timestamp,
+					timestampKind: "created",
 					chunkIndex: 0,
 					totalChunks: 1,
 					metadata: {

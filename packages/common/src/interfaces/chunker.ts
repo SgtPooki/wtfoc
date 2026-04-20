@@ -1,4 +1,4 @@
-import type { Chunk } from "../schemas/chunk.js";
+import type { Chunk, TimestampKind } from "../schemas/chunk.js";
 
 /**
  * Input document for chunking — carries identity, version, and raw content.
@@ -16,8 +16,14 @@ export interface ChunkerDocument {
 	source: string;
 	/** URL back to the original source */
 	sourceUrl?: string;
-	/** When the source was created/modified */
+	/** When the source was created/modified (ISO-8601). See `timestampKind`. */
 	timestamp?: string;
+	/**
+	 * Semantic of `timestamp` — which clock the ISO string came from. Adapters
+	 * SHOULD set this where unambiguous; `undefined` means unknown. See
+	 * `TimestampKind` in schemas/chunk.ts for the canonical mapping.
+	 */
+	timestampKind?: TimestampKind;
 	/** Additional metadata to propagate to chunks */
 	metadata?: Record<string, string>;
 	/** File path relative to repo root (for language detection) */
