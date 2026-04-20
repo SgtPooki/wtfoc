@@ -198,13 +198,13 @@ describe("computeLineageMetrics", () => {
 			pairCount: 2,
 			childAfterParent: 2,
 			childBeforeParent: 0,
-			forwardRate: 1,
+			childAfterParentRate: 1,
 		});
 		expect(closes).toMatchObject({
 			pairCount: 1,
 			childAfterParent: 0,
 			childBeforeParent: 1,
-			forwardRate: 0,
+			childAfterParentRate: 0,
 		});
 	});
 
@@ -213,10 +213,18 @@ describe("computeLineageMetrics", () => {
 			makeHop({ sourceType: "a", timestamp: "2025-10-15T00:00:00Z" }),
 			// semantic: no edgeType — excluded
 			makeHop({ sourceType: "b", parentHopIndex: 0, timestamp: "2025-10-16T00:00:00Z" }),
-			// edge but parent undated — excluded
+			// edge without a resolved parentHopIndex (seed-like) — excluded
 			makeHop({
 				sourceType: "c",
 				timestamp: "2025-10-17T00:00:00Z",
+				connection: { method: "edge", edgeType: "references", confidence: 1 },
+			}),
+			// undated parent — child has a timestamp but can't form a pair; excluded
+			makeHop({ sourceType: "p2" }),
+			makeHop({
+				sourceType: "e",
+				parentHopIndex: 3,
+				timestamp: "2025-10-19T00:00:00Z",
 				connection: { method: "edge", edgeType: "references", confidence: 1 },
 			}),
 			// edge with both timestamps — counted
@@ -233,7 +241,7 @@ describe("computeLineageMetrics", () => {
 			edgeType: "references",
 			pairCount: 1,
 			childAfterParent: 1,
-			forwardRate: 1,
+			childAfterParentRate: 1,
 		});
 	});
 
@@ -376,12 +384,12 @@ describe("aggregateLineageMetrics", () => {
 		const refs = agg.chainTemporalCoherenceByEdgeType.find((e) => e.edgeType === "references");
 		const closes = agg.chainTemporalCoherenceByEdgeType.find((e) => e.edgeType === "closes");
 		expect(refs).toMatchObject({ pairCount: 3, childAfterParent: 2, childBeforeParent: 1 });
-		expect(refs?.forwardRate).toBeCloseTo(2 / 3);
+		expect(refs?.childAfterParentRate).toBeCloseTo(2 / 3);
 		expect(closes).toMatchObject({
 			pairCount: 1,
 			childAfterParent: 0,
 			childBeforeParent: 1,
-			forwardRate: 0,
+			childAfterParentRate: 0,
 		});
 	});
 

@@ -22,7 +22,7 @@ export interface EdgeTypeTemporalCoherence {
 	/** Pairs where `child.ts === parent.ts` to millisecond precision. */
 	childEqualsParent: number;
 	/** `childAfterParent / pairCount`. 0 when no pairs were scored. */
-	forwardRate: number;
+	childAfterParentRate: number;
 }
 
 function computeCoherence(
@@ -37,7 +37,7 @@ function computeCoherence(
 				childAfterParent: b.after,
 				childBeforeParent: b.before,
 				childEqualsParent: b.equal,
-				forwardRate: pairCount > 0 ? b.after / pairCount : 0,
+				childAfterParentRate: pairCount > 0 ? b.after / pairCount : 0,
 			};
 		})
 		.sort((a, b) => b.pairCount - a.pairCount || a.edgeType.localeCompare(b.edgeType));
@@ -143,10 +143,14 @@ export interface AggregateLineageMetrics {
 	/** Summed recommended-next-reads across all traces. */
 	totalRecommendedNextReads: number;
 	/**
-	 * Pair-weighted aggregate of per-trace `chainTemporalCoherenceByEdgeType`.
-	 * Pairs from every trace are summed per edge type before `forwardRate` is
-	 * recomputed, so a single heavy trace can't swamp the rate the way a
-	 * trace-mean would. Sorted by `pairCount` descending. See #280.
+	 * Pair-weighted aggregate of per-trace `chainTemporalCoherenceByEdgeType`:
+	 * pairs from every trace are summed per edge type, then
+	 * `childAfterParentRate` is recomputed on the merged totals. Reports the
+	 * aggregate pair population — a population-level diagnostic where
+	 * edge-rich traces do contribute proportionally more pairs, which is the
+	 * intended behavior for measuring extractor/traversal output. A trace-mean
+	 * would answer a different question (average query behavior) and is not
+	 * used here. Sorted by `pairCount` descending. See #280.
 	 */
 	chainTemporalCoherenceByEdgeType: EdgeTypeTemporalCoherence[];
 }

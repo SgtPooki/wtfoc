@@ -117,7 +117,7 @@ export function formatDogfoodReport(report: DogfoodReport): string {
 						childAfterParent: number;
 						childBeforeParent: number;
 						childEqualsParent: number;
-						forwardRate: number;
+						childAfterParentRate: number;
 					}>;
 			  }
 			| undefined;
@@ -146,7 +146,7 @@ export function formatDogfoodReport(report: DogfoodReport): string {
 		if (coherence.length > 0) {
 			const top = coherence.slice(0, 6);
 			const entries = top.map(
-				(c) => `${c.edgeType}=${fmtPct(c.forwardRate)}(${c.pairCount})`,
+				(c) => `${c.edgeType}=${fmtPct(c.childAfterParentRate)}(${c.pairCount})`,
 			);
 			lines.push(`    chain-temporal-coherence: ${entries.join("  ")}`);
 		}
