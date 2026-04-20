@@ -128,6 +128,7 @@ export {
 	statusFilePath,
 	writeOverlayEdges,
 } from "./edges/overlay-store.js";
+export { StructuralEdgeExtractor } from "./edges/structural.js";
 export { TemporalEdgeExtractor, type TemporalEdgeExtractorOptions } from "./edges/temporal.js";
 export {
 	type TemporalEdgeType,

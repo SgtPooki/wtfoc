@@ -15,6 +15,7 @@ import {
 	RegexEdgeExtractor,
 	readExtractionStatus,
 	readOverlayEdges,
+	StructuralEdgeExtractor,
 	statusFilePath,
 	TreeSitterEdgeExtractor,
 	writeExtractionStatus,
@@ -24,10 +25,17 @@ import type { Command } from "commander";
 import { getFormat, getManifestDir, getStore } from "../helpers.js";
 
 /** Known extractor names (not including preset tokens). */
-const KNOWN_EXTRACTOR_NAMES = ["regex", "heuristic", "code", "tree-sitter", "llm"] as const;
+const KNOWN_EXTRACTOR_NAMES = [
+	"regex",
+	"heuristic",
+	"code",
+	"tree-sitter",
+	"structural",
+	"llm",
+] as const;
 
 /** Default extractor set (fast local extractors). */
-const DEFAULT_EXTRACTORS = ["regex", "heuristic", "code"];
+const DEFAULT_EXTRACTORS = ["regex", "heuristic", "code", "structural"];
 
 /**
  * Map a segment chunk to the Chunk interface for extractors.
@@ -40,9 +48,13 @@ function segmentChunkToChunk(chunk: Segment["chunks"][number]): Chunk {
 		source: chunk.source,
 		sourceUrl: chunk.sourceUrl,
 		timestamp: chunk.timestamp,
+		timestampKind: chunk.timestampKind,
 		chunkIndex: "chunkIndex" in chunk ? (chunk as { chunkIndex: number }).chunkIndex : 0,
 		totalChunks: "totalChunks" in chunk ? (chunk as { totalChunks: number }).totalChunks : 1,
 		metadata: chunk.metadata,
+		documentId: chunk.documentId,
+		documentVersionId: chunk.documentVersionId,
+		contentFingerprint: chunk.contentFingerprint,
 	};
 }
 
@@ -146,7 +158,7 @@ export function registerExtractEdgesCommand(program: Command): void {
 		.requiredOption("-c, --collection <name>", "Collection name")
 		.option(
 			"--extractor <name>",
-			"Extractor to run. Repeatable. Names: regex, heuristic, code, tree-sitter, llm. Tokens: default (regex+heuristic+code), all (default+llm if configured)",
+			"Extractor to run. Repeatable. Names: regex, heuristic, code, structural, tree-sitter, llm. Tokens: default (regex+heuristic+code+structural), all (default+llm if configured)",
 			(val: string, prev: string[]) => [...prev, val],
 			[] as string[],
 		)
@@ -190,7 +202,7 @@ export function registerExtractEdgesCommand(program: Command): void {
 						}
 						console.error("\nPresets:");
 						console.error(
-							"  default   — regex, heuristic, code (+ tree-sitter if --tree-sitter-url set)",
+							"  default   — regex, heuristic, code, structural (+ tree-sitter if --tree-sitter-url set)",
 						);
 						console.error("  all       — default + llm (if --llm-url and --llm-model set)");
 					}
@@ -273,12 +285,15 @@ export function registerExtractEdgesCommand(program: Command): void {
 				if (resolvedNames.has("heuristic"))
 					patternExtractors.push({ name: "heuristic", id: "heuristic" });
 				if (resolvedNames.has("code")) patternExtractors.push({ name: "code", id: "code" });
+				if (resolvedNames.has("structural"))
+					patternExtractors.push({ name: "structural", id: "structural" });
 
 				// Run each local pattern extractor individually so each gets its own overlay
 				for (const { name, id } of patternExtractors) {
 					let extractInstance: { extract: (c: Chunk[], s?: AbortSignal) => Promise<Edge[]> };
 					if (name === "regex") extractInstance = new RegexEdgeExtractor();
 					else if (name === "heuristic") extractInstance = new HeuristicEdgeExtractor();
+					else if (name === "structural") extractInstance = new StructuralEdgeExtractor();
 					else extractInstance = new CodeEdgeExtractor();
 
 					extractorSpecs.push({
