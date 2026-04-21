@@ -93,6 +93,7 @@ export async function evaluateQualityQueries(
 		"coverage",
 		"synthesis",
 		"file-level",
+		"work-lineage",
 	] as const;
 	const categoryBreakdown: Record<string, { total: number; passed: number; passRate: number }> = {};
 	for (const cat of categories) {
@@ -104,6 +105,22 @@ export async function evaluateQualityQueries(
 			passRate: catScores.length > 0 ? catPassed / catScores.length : 0,
 		};
 	}
+
+	// Tier breakdown (v1.2.0) — demo-critical queries must pass for the
+	// June 7 flagship to be safe. Surfaced separately so overall pass rate
+	// doesn't hide a demo-breaking regression.
+	const demoCriticalIds = new Set(
+		GOLD_STANDARD_QUERIES.filter((q) => q.tier === "demo-critical").map((q) => q.id),
+	);
+	const demoCriticalScores = scores.filter((s) => demoCriticalIds.has(s.id));
+	const demoCriticalPassed = demoCriticalScores.filter((s) => s.passed).length;
+	const tierBreakdown = {
+		"demo-critical": {
+			total: demoCriticalScores.length,
+			passed: demoCriticalPassed,
+			passRate: demoCriticalScores.length > 0 ? demoCriticalPassed / demoCriticalScores.length : 0,
+		},
+	};
 
 	// Verdict
 	let verdict: "pass" | "warn" | "fail" = "pass";
@@ -165,6 +182,7 @@ export async function evaluateQualityQueries(
 			queryOnlyPassCount,
 			totalQueries: GOLD_STANDARD_QUERIES.length,
 			categoryBreakdown,
+			tierBreakdown,
 			scores,
 			// #217 — aggregate lineage trace quality (chain coverage, conclusion
 			// signal, timeline completeness, chain diversity) across all scored

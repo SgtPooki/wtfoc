@@ -28,7 +28,7 @@
  * separate changes coincide on the same version — a new change always gets
  * a fresh bump.
  */
-export const GOLD_STANDARD_QUERIES_VERSION = "1.1.0";
+export const GOLD_STANDARD_QUERIES_VERSION = "1.2.0";
 
 export interface GoldStandardQuery {
 	/** Unique identifier for this query */
@@ -45,8 +45,21 @@ export interface GoldStandardQuery {
 	 *   chunks emitted by `HierarchicalCodeChunker` (#252). Uses the same
 	 *   pass/fail rubric as other categories — the separation exists so the
 	 *   dogfood report can measure file-summary retrieval independently.
+	 * - `work-lineage` — flagship cross-org demo category (US-015, added in
+	 *   v1.2.0). Asks questions where a good answer surfaces BOTH the
+	 *   implementation (code) AND the discussion/design trail (issues,
+	 *   PRs, PR comments, docs) linked via `closes` / `references` /
+	 *   `contains` / `imports` edges. The dogfood report tracks this
+	 *   category separately so flagship demo readiness is measurable
+	 *   without the ecosystem-specific queries drowning the signal.
 	 */
-	category: "direct-lookup" | "cross-source" | "coverage" | "synthesis" | "file-level";
+	category:
+		| "direct-lookup"
+		| "cross-source"
+		| "coverage"
+		| "synthesis"
+		| "file-level"
+		| "work-lineage";
 	/** Source types that MUST appear in query results OR trace hops for the query to pass */
 	requiredSourceTypes: string[];
 	/** Substrings that should appear in at least one result source */
@@ -57,6 +70,17 @@ export interface GoldStandardQuery {
 	requireEdgeHop?: boolean;
 	/** If true, trace should reach multiple source types */
 	requireCrossSourceHops?: boolean;
+	/**
+	 * Demo-readiness tier (added in v1.2.0).
+	 * - `demo-critical` — must pass for the June 7 flagship demo to be safe.
+	 *   Dogfood report flags a regression loud when any demo-critical query
+	 *   fails, even if overall pass rate is fine.
+	 * - `diagnostic` — probes a weaker path (lineage-only, edge-heavy,
+	 *   single-repo). Still counted in overall pass rate but a failure is
+	 *   informative rather than demo-blocking.
+	 * Unset defaults to `diagnostic` in the report.
+	 */
+	tier?: "demo-critical" | "diagnostic";
 }
 
 export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
@@ -374,5 +398,105 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["code"],
 		expectedSourceSubstrings: ["context.ts", "storage"],
 		minResults: 1,
+	},
+
+	// ── Work-lineage (flagship, #264 / US-015, added v1.2.0) ──
+	// These queries are hand-picked from verified artifacts in
+	// `filoz-ecosystem-2026-04-v11`. Each demo-critical query surfaces BOTH
+	// the implementation code and the discussion trail (issue/PR/PR comment)
+	// linked via edges, proving trace reconstructs cross-org work across
+	// FilOzone + filecoin-project repos. Diagnostic queries probe
+	// lineage-only paths (edge-heavy but code doesn't surface semantically)
+	// so we can tell the difference between "retrieval is weak" and "this is
+	// fundamentally a coordination question without a single code answer".
+
+	{
+		id: "wl-1",
+		queryText: "Where does PieceCID validation happen and what concerns were raised about it?",
+		category: "work-lineage",
+		tier: "demo-critical",
+		requiredSourceTypes: ["code", "github-pr-comment", "markdown"],
+		expectedSourceSubstrings: ["piece.ts", "pieceCid"],
+		minResults: 3,
+		requireEdgeHop: true,
+		requireCrossSourceHops: true,
+	},
+	{
+		id: "wl-2",
+		queryText: "DataSetStatus enum values and transitions in filecoin services code",
+		category: "work-lineage",
+		tier: "demo-critical",
+		requiredSourceTypes: ["code", "github-issue", "github-pr", "github-pr-comment", "markdown"],
+		expectedSourceSubstrings: ["DataSetStatus", "filecoin-services"],
+		minResults: 3,
+		requireEdgeHop: true,
+		requireCrossSourceHops: true,
+	},
+	{
+		id: "wl-3",
+		queryText:
+			"Payment flow from client deposit to storage provider payout in contract code and docs",
+		category: "work-lineage",
+		tier: "demo-critical",
+		requiredSourceTypes: ["code", "markdown", "github-pr-comment"],
+		expectedSourceSubstrings: ["payment", "deposit"],
+		minResults: 3,
+		requireEdgeHop: true,
+		requireCrossSourceHops: true,
+	},
+	{
+		id: "wl-4",
+		queryText: "piece.ts validation logic across synapse-core and filecoin-pin, with PR discussion",
+		category: "work-lineage",
+		tier: "demo-critical",
+		requiredSourceTypes: ["code", "github-pr", "github-pr-comment"],
+		expectedSourceSubstrings: ["piece", "validate"],
+		minResults: 3,
+		requireEdgeHop: true,
+		requireCrossSourceHops: true,
+	},
+	{
+		id: "wl-5",
+		queryText: "Payments module deposit function implementation in filecoin-pin with docs context",
+		category: "work-lineage",
+		tier: "demo-critical",
+		requiredSourceTypes: ["code", "markdown"],
+		expectedSourceSubstrings: ["payments", "deposit"],
+		minResults: 3,
+		requireEdgeHop: true,
+	},
+
+	// Diagnostic — lineage-only, no expectation of code surfacing
+	{
+		id: "wl-6",
+		queryText: "How did curio integrate with synapse-sdk PDP layer via issues and PRs?",
+		category: "work-lineage",
+		tier: "diagnostic",
+		requiredSourceTypes: ["github-issue", "github-pr"],
+		expectedSourceSubstrings: ["curio", "pdp"],
+		minResults: 3,
+		requireEdgeHop: true,
+		requireCrossSourceHops: true,
+	},
+	{
+		id: "wl-7",
+		queryText: "Piece CID v1 to v2 migration discussion across curio and filecoin services PRs",
+		category: "work-lineage",
+		tier: "diagnostic",
+		requiredSourceTypes: ["github-pr", "github-pr-comment"],
+		expectedSourceSubstrings: ["v2", "piece"],
+		minResults: 3,
+		requireEdgeHop: true,
+		requireCrossSourceHops: true,
+	},
+	{
+		id: "wl-8",
+		queryText:
+			"Storage costs and billing concepts documented across synapse-sdk and filecoin-services",
+		category: "work-lineage",
+		tier: "diagnostic",
+		requiredSourceTypes: ["markdown"],
+		expectedSourceSubstrings: ["storage", "cost"],
+		minResults: 2,
 	},
 ];

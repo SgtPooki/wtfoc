@@ -27,11 +27,25 @@ describe("GOLD_STANDARD_QUERIES fixture integrity", () => {
 	});
 
 	it("every category has at least 3 queries", () => {
-		const cats: Array<"direct-lookup" | "cross-source" | "coverage" | "synthesis" | "file-level"> =
-			["direct-lookup", "cross-source", "coverage", "synthesis", "file-level"];
+		const cats: Array<
+			"direct-lookup" | "cross-source" | "coverage" | "synthesis" | "file-level" | "work-lineage"
+		> = ["direct-lookup", "cross-source", "coverage", "synthesis", "file-level", "work-lineage"];
 		for (const cat of cats) {
 			const n = GOLD_STANDARD_QUERIES.filter((q) => q.category === cat).length;
 			expect(n, `category ${cat} underrepresented`).toBeGreaterThanOrEqual(3);
+		}
+	});
+
+	it("work-lineage demo-critical queries require code + edge + cross-source (v1.2.0)", () => {
+		const demoCritical = GOLD_STANDARD_QUERIES.filter(
+			(q) => q.category === "work-lineage" && q.tier === "demo-critical",
+		);
+		expect(demoCritical.length, "need ≥ 5 demo-critical flagship queries").toBeGreaterThanOrEqual(
+			5,
+		);
+		for (const q of demoCritical) {
+			expect(q.requiredSourceTypes, `${q.id} must require code`).toContain("code");
+			expect(q.requireEdgeHop, `${q.id} must requireEdgeHop`).toBe(true);
 		}
 	});
 
