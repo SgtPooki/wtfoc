@@ -43,6 +43,7 @@ export class PgBossJobQueue implements JobQueue {
 	readonly #globalConcurrency: number;
 	readonly #handlers = new Map<JobType, JobHandler<unknown>>();
 	readonly #abortControllers = new Map<string, AbortController>();
+	readonly #subscribers = new Map<string, Set<(snapshot: JobRecord) => void>>();
 	#cancelPollTimer: NodeJS.Timeout | null = null;
 
 	constructor(opts: PgBossJobQueueOptions) {
@@ -100,7 +101,12 @@ export class PgBossJobQueue implements JobQueue {
 				const bossJobId = await this.#boss.send(input.type, { jobId: id, payload: input.payload });
 				await client.query("UPDATE jobs SET boss_job_id = $1 WHERE id = $2", [bossJobId, id]);
 				await client.query("COMMIT");
-				return { ...mapRow(row), bossJobId };
+				const enqueued = { ...mapRow(row), bossJobId };
+				// Fire subscribers outside the client release so they see committed state.
+				queueMicrotask(() => {
+					this.#emit(id).catch(() => {});
+				});
+				return enqueued;
 			} catch (err) {
 				await client.query("ROLLBACK");
 				if (isUniqueViolation(err, "jobs_collection_active_unique")) {
@@ -171,7 +177,45 @@ export class PgBossJobQueue implements JobQueue {
 		if (res.rowCount === 0) return false;
 		const ac = this.#abortControllers.get(id);
 		if (ac) ac.abort();
+		await this.#emit(id);
 		return true;
+	}
+
+	async subscribe(
+		id: string,
+		walletAddress: string,
+		listener: (snapshot: JobRecord) => void,
+	): Promise<() => void> {
+		const existing = await this.get(id, walletAddress);
+		if (!existing) return () => {};
+		let bucket = this.#subscribers.get(id);
+		if (!bucket) {
+			bucket = new Set();
+			this.#subscribers.set(id, bucket);
+		}
+		bucket.add(listener);
+		return () => {
+			const b = this.#subscribers.get(id);
+			if (!b) return;
+			b.delete(listener);
+			if (b.size === 0) this.#subscribers.delete(id);
+		};
+	}
+
+	async #emit(id: string): Promise<void> {
+		const bucket = this.#subscribers.get(id);
+		if (!bucket || bucket.size === 0) return;
+		const res = await this.#pool.query("SELECT * FROM jobs WHERE id = $1", [id]);
+		const row = res.rows[0];
+		if (!row) return;
+		const snapshot = mapRow(row);
+		for (const listener of bucket) {
+			try {
+				listener(snapshot);
+			} catch (err) {
+				console.error("[pg-boss-queue] subscriber threw", err);
+			}
+		}
 	}
 
 	async #registerWithBoss(type: JobType, handler: JobHandler<unknown>): Promise<void> {
@@ -224,6 +268,7 @@ export class PgBossJobQueue implements JobQueue {
 			"UPDATE jobs SET status = 'running', started_at = now(), updated_at = now() WHERE id = $1",
 			[jobId],
 		);
+		await this.#emit(jobId);
 
 		try {
 			await handler(payload, {
@@ -243,6 +288,7 @@ export class PgBossJobQueue implements JobQueue {
 					if (params.length === 0) return;
 					params.unshift(jobId);
 					await this.#pool.query(`UPDATE jobs SET ${sets.join(", ")} WHERE id = $1`, params);
+					await this.#emit(jobId);
 				},
 			});
 			if (ac.signal.aborted) {
@@ -279,6 +325,7 @@ export class PgBossJobQueue implements JobQueue {
 			  WHERE id = $1`,
 			[jobId, status, error?.errorCode ?? null, error?.errorMessage ?? null],
 		);
+		await this.#emit(jobId);
 	}
 
 	/**

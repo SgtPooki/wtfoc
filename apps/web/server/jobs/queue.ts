@@ -53,4 +53,17 @@ export interface JobQueue {
 	 * cancellable state, false otherwise (already terminal).
 	 */
 	cancel(id: string, walletAddress: string): Promise<boolean>;
+
+	/**
+	 * Subscribe to full-snapshot state changes for a single job (#288
+	 * Phase 2 Slice B). The listener is invoked after every state mutation
+	 * produced by this node — progress tick, cancel request, terminal
+	 * transition. Returns an unsubscribe function. Does not poll: cross-node
+	 * updates rely on the client's poll fallback when SSE goes silent.
+	 */
+	subscribe(
+		id: string,
+		walletAddress: string,
+		listener: (snapshot: JobRecord) => void,
+	): Promise<() => void>;
 }

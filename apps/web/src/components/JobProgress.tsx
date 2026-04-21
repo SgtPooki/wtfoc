@@ -2,6 +2,8 @@ import { useEffect, useState } from "preact/hooks";
 import { cancelJob, fetchJob, type JobView } from "../api";
 
 const POLL_INTERVAL_MS = 1500;
+/** If no SSE message (progress or heartbeat) for this long, fall back to polling. */
+const SSE_STALE_MS = 30_000;
 const TERMINAL: JobView["status"][] = ["succeeded", "failed", "cancelled"];
 
 interface Props {
@@ -10,10 +12,11 @@ interface Props {
 }
 
 /**
- * Poll a job and render a small progress bar + cancel control (#168).
- * Stops polling on terminal status. Survives page refresh because the
- * server keeps job state in postgres — `fetchJob` returns the same view
- * on next mount.
+ * Stream job progress via SSE (`/api/jobs/:id/events`), falling back to a
+ * 1.5s poll on error or silence >30s (#288 Phase 2 Slice B). The server
+ * emits a full snapshot on every state transition, so the client never has
+ * to reconcile diffs. Survives page refresh because the server persists
+ * job state in postgres.
  */
 export function JobProgress({ jobId, onTerminal }: Props) {
 	const [job, setJob] = useState<JobView | null>(null);
@@ -21,32 +24,88 @@ export function JobProgress({ jobId, onTerminal }: Props) {
 	const [cancelling, setCancelling] = useState(false);
 
 	useEffect(() => {
-		const ac = new AbortController();
-		let timer: ReturnType<typeof setTimeout> | null = null;
 		let stopped = false;
+		let pollTimer: ReturnType<typeof setTimeout> | null = null;
+		let staleTimer: ReturnType<typeof setTimeout> | null = null;
+		let source: EventSource | null = null;
+		const ac = new AbortController();
 
-		const tick = async () => {
-			try {
-				const { job: latest } = await fetchJob(jobId, ac.signal);
-				if (stopped) return;
-				setJob(latest);
-				setError(null);
-				if (TERMINAL.includes(latest.status)) {
-					onTerminal?.(latest);
-					return;
-				}
-				timer = setTimeout(tick, POLL_INTERVAL_MS);
-			} catch (err) {
-				if (ac.signal.aborted || stopped) return;
-				setError(err instanceof Error ? err.message : String(err));
-				timer = setTimeout(tick, POLL_INTERVAL_MS * 2);
+		const handleSnapshot = (latest: JobView) => {
+			if (stopped) return;
+			setJob(latest);
+			setError(null);
+			if (TERMINAL.includes(latest.status)) {
+				stopped = true;
+				cleanup();
+				onTerminal?.(latest);
 			}
 		};
-		tick();
+
+		const cleanup = () => {
+			if (staleTimer) clearTimeout(staleTimer);
+			if (pollTimer) clearTimeout(pollTimer);
+			if (source) source.close();
+			ac.abort();
+		};
+
+		const startPolling = () => {
+			if (stopped) return;
+			const tick = async () => {
+				if (stopped) return;
+				try {
+					const { job: latest } = await fetchJob(jobId, ac.signal);
+					handleSnapshot(latest);
+					if (!stopped) pollTimer = setTimeout(tick, POLL_INTERVAL_MS);
+				} catch (err) {
+					if (ac.signal.aborted || stopped) return;
+					setError(err instanceof Error ? err.message : String(err));
+					pollTimer = setTimeout(tick, POLL_INTERVAL_MS * 2);
+				}
+			};
+			tick();
+		};
+
+		const armStaleTimer = () => {
+			if (staleTimer) clearTimeout(staleTimer);
+			staleTimer = setTimeout(() => {
+				if (stopped) return;
+				console.warn("[JobProgress] SSE stale — falling back to poll");
+				if (source) source.close();
+				source = null;
+				startPolling();
+			}, SSE_STALE_MS);
+		};
+
+		try {
+			source = new EventSource(`/api/jobs/${encodeURIComponent(jobId)}/events`, {
+				withCredentials: true,
+			});
+			source.addEventListener("snapshot", (evt) => {
+				armStaleTimer();
+				try {
+					const parsed = JSON.parse((evt as MessageEvent).data) as JobView;
+					handleSnapshot(parsed);
+				} catch (err) {
+					console.error("[JobProgress] failed to parse snapshot", err);
+				}
+			});
+			source.addEventListener("ping", armStaleTimer);
+			source.addEventListener("error", () => {
+				if (stopped) return;
+				// Drop SSE and fall back to poll on any error.
+				if (source) source.close();
+				source = null;
+				startPolling();
+			});
+			armStaleTimer();
+		} catch (err) {
+			console.error("[JobProgress] EventSource failed", err);
+			startPolling();
+		}
+
 		return () => {
 			stopped = true;
-			if (timer) clearTimeout(timer);
-			ac.abort();
+			cleanup();
 		};
 	}, [jobId, onTerminal]);
 

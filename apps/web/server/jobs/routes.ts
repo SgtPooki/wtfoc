@@ -1,10 +1,19 @@
 import { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import { requireAuth } from "../auth/middleware.js";
 import type { AppEnv } from "../hono-app.js";
 import { JobCollectionBusyError } from "./in-memory.js";
 import type { JobQueue } from "./queue.js";
 import type { JobRecord, JobStatus, JobSummary, JobType } from "./types.js";
 import { JOB_STATUSES, JOB_TYPES } from "./types.js";
+
+/**
+ * Heartbeat interval for SSE progress streams. The client uses twice this
+ * value as its stale-timer threshold before falling back to polling, so the
+ * ratio matters more than the absolute value.
+ */
+export const SSE_HEARTBEAT_MS = Number(process.env["WTFOC_JOBS_SSE_HEARTBEAT_MS"]) || 15_000;
+const TERMINAL_STATUSES: readonly JobStatus[] = ["succeeded", "failed", "cancelled"];
 
 /**
  * Job CRUD routes (#168). Read + cancel only — all creation happens through
@@ -29,6 +38,77 @@ export function jobRoutes(getQueue: () => JobQueue): Hono<AppEnv> {
 			status,
 		});
 		return c.json({ jobs: list.map(summaryToJson) });
+	});
+
+	app.get("/:id/events", async (c) => {
+		const wallet = c.get("walletAddress");
+		const id = c.req.param("id");
+		const queue = getQueue();
+
+		// Verify visibility up-front so unauthorized callers get a proper 404
+		// instead of an empty SSE stream. Cross-wallet reads always fail here.
+		const snapshot = await queue.get(id, wallet);
+		if (!snapshot) {
+			return c.json({ error: "not found", code: "NOT_FOUND" }, 404);
+		}
+
+		return streamSSE(c, async (stream) => {
+			let closed = false;
+
+			const send = async (job: JobRecord) => {
+				if (closed) return;
+				try {
+					await stream.writeSSE({
+						event: "snapshot",
+						data: JSON.stringify(recordToJson(job)),
+					});
+				} catch {
+					closed = true;
+				}
+			};
+
+			// Initial snapshot — covers mid-job reconnect + terminal replay.
+			await send(snapshot);
+
+			const unsubscribe = await queue.subscribe(id, wallet, (job) => {
+				// Subscriber callback is sync; fire-and-forget the async write.
+				send(job).catch(() => {});
+				if (TERMINAL_STATUSES.includes(job.status)) {
+					closed = true;
+				}
+			});
+
+			// If the snapshot was already terminal on first read, close after
+			// replay so the client's `onmessage` handler gets one event.
+			if (TERMINAL_STATUSES.includes(snapshot.status)) {
+				closed = true;
+			}
+
+			const heartbeat = setInterval(() => {
+				if (closed) {
+					clearInterval(heartbeat);
+					return;
+				}
+				stream.writeSSE({ event: "ping", data: "" }).catch(() => {
+					closed = true;
+				});
+			}, SSE_HEARTBEAT_MS);
+			heartbeat.unref?.();
+
+			stream.onAbort(() => {
+				closed = true;
+				clearInterval(heartbeat);
+				unsubscribe();
+			});
+
+			// Hold the stream open until closed; once closed, writeSSE throws
+			// and the while loop exits so the handler can resolve cleanly.
+			while (!closed) {
+				await new Promise((resolve) => setTimeout(resolve, 500));
+			}
+			clearInterval(heartbeat);
+			unsubscribe();
+		});
 	});
 
 	app.get("/:id", async (c) => {

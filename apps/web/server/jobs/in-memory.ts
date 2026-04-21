@@ -27,6 +27,7 @@ export class InMemoryJobQueue implements JobQueue {
 	readonly #jobs = new Map<string, JobRecord>();
 	readonly #handlers = new Map<JobType, JobHandler<unknown>>();
 	readonly #abortControllers = new Map<string, AbortController>();
+	readonly #subscribers = new Map<string, Set<(snapshot: JobRecord) => void>>();
 	#started = false;
 
 	async start(): Promise<void> {
@@ -76,6 +77,7 @@ export class InMemoryJobQueue implements JobQueue {
 			updatedAt: now,
 		};
 		this.#jobs.set(job.id, job);
+		this.#emit(job.id);
 
 		if (this.#started) {
 			// Schedule handler on next tick; enqueue returns the queued record.
@@ -126,7 +128,48 @@ export class InMemoryJobQueue implements JobQueue {
 			job.status = "cancelled";
 			job.finishedAt = new Date();
 		}
+		this.#emit(id);
 		return true;
+	}
+
+	async subscribe(
+		id: string,
+		walletAddress: string,
+		listener: (snapshot: JobRecord) => void,
+	): Promise<() => void> {
+		const job = this.#jobs.get(id);
+		if (!job || job.walletAddress !== walletAddress) {
+			// Unknown / wallet-scoped miss — return a no-op unsubscribe so
+			// callers don't need to special-case; they'll get no events.
+			return () => {};
+		}
+		let bucket = this.#subscribers.get(id);
+		if (!bucket) {
+			bucket = new Set();
+			this.#subscribers.set(id, bucket);
+		}
+		bucket.add(listener);
+		return () => {
+			const b = this.#subscribers.get(id);
+			if (!b) return;
+			b.delete(listener);
+			if (b.size === 0) this.#subscribers.delete(id);
+		};
+	}
+
+	#emit(id: string): void {
+		const job = this.#jobs.get(id);
+		if (!job) return;
+		const bucket = this.#subscribers.get(id);
+		if (!bucket || bucket.size === 0) return;
+		const snapshot = { ...job };
+		for (const listener of bucket) {
+			try {
+				listener(snapshot);
+			} catch (err) {
+				console.error("[in-memory-queue] subscriber threw", err);
+			}
+		}
 	}
 
 	#hasActiveForCollection(collectionId: string): boolean {
@@ -158,6 +201,7 @@ export class InMemoryJobQueue implements JobQueue {
 		job.status = "running";
 		job.startedAt = new Date();
 		job.updatedAt = new Date();
+		this.#emit(id);
 
 		try {
 			await handler(payload, {
@@ -169,6 +213,7 @@ export class InMemoryJobQueue implements JobQueue {
 					if (update.total !== undefined) job.total = update.total;
 					if (update.message !== undefined) job.message = update.message;
 					job.updatedAt = new Date();
+					this.#emit(id);
 				},
 			});
 			if (ac.signal.aborted) {
@@ -188,6 +233,7 @@ export class InMemoryJobQueue implements JobQueue {
 			job.finishedAt = new Date();
 			job.updatedAt = new Date();
 			this.#abortControllers.delete(id);
+			this.#emit(id);
 		}
 	}
 }
