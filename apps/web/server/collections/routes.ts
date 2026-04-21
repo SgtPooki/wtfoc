@@ -149,6 +149,81 @@ collections.get("/:id", async (c) => {
 	});
 });
 
+/** POST /api/wallet-collections/cid — Import a collection from a manifest CID as a background job (#288 Phase 2) */
+collections.post("/cid", createRateLimit.middleware(), async (c) => {
+	const repo = c.get("repo") as Repository;
+	const walletAddress = c.get("walletAddress") as string;
+
+	const body = await c.req.json<{ manifestCid?: string; name?: string }>();
+
+	const manifestCid = typeof body.manifestCid === "string" ? body.manifestCid.trim() : "";
+	if (!manifestCid) {
+		return c.json({ error: "manifestCid is required", code: "INVALID_CID" }, 400);
+	}
+	if (manifestCid.length > 256) {
+		return c.json({ error: "manifestCid is too long", code: "INVALID_CID" }, 400);
+	}
+
+	const name = typeof body.name === "string" && body.name.trim().length > 0 ? body.name.trim() : "";
+	if (!name) {
+		return c.json({ error: "name is required", code: "INVALID_NAME" }, 400);
+	}
+	const nameError = validateCollectionName(name);
+	if (nameError) {
+		return c.json({ error: nameError, code: "INVALID_NAME" }, 400);
+	}
+
+	// Create the collection row up-front with no user-supplied sources; segments
+	// are sourced from the remote manifest. Status flips to `importing` once the
+	// job is enqueued so the UI sees the collection immediately.
+	let created: Awaited<ReturnType<Repository["createCollection"]>>;
+	try {
+		created = await repo.createCollection({ name, walletAddress, sources: [] });
+	} catch (err) {
+		if (err instanceof Error && err.message.includes("already exists")) {
+			return c.json({ error: err.message, code: "DUPLICATE_NAME" }, 409);
+		}
+		throw err;
+	}
+	await repo.updateCollectionStatus(created.id, "importing");
+
+	const queue = c.get("jobQueue") as JobQueue | undefined;
+	if (!queue) {
+		return c.json({ error: "job queue not configured", code: "NO_QUEUE" }, 503);
+	}
+
+	let jobId: string;
+	try {
+		const job = await queue.enqueue({
+			type: "cid-pull",
+			walletAddress,
+			collectionId: created.id,
+			payload: {
+				collectionId: created.id,
+				manifestCid,
+				collectionName: name,
+			},
+		});
+		jobId = job.id;
+	} catch (err) {
+		if (err instanceof JobCollectionBusyError) {
+			return c.json({ error: err.message, code: "COLLECTION_BUSY" }, 409);
+		}
+		throw err;
+	}
+
+	return c.json(
+		{
+			collectionId: created.id,
+			jobId,
+			name: created.name,
+			status: "importing" as const,
+			manifestCid,
+		},
+		201,
+	);
+});
+
 /** POST /api/wallet-collections/:id/sources — Add sources to an existing collection */
 collections.post("/:id/sources", async (c) => {
 	const repo = c.get("repo") as Repository;

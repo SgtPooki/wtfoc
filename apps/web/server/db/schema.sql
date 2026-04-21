@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS collections (
   name           TEXT NOT NULL,
   wallet_address TEXT NOT NULL,
   status         TEXT NOT NULL DEFAULT 'creating'
-    CHECK (status IN ('creating','ingesting','ready','ingestion_failed','promoting','promoted','promotion_failed')),
+    CHECK (status IN ('creating','ingesting','ready','ingestion_failed','importing','import_failed','promoting','promoted','promotion_failed')),
   manifest_cid   TEXT,
   piece_cid      TEXT,
   car_root_cid   TEXT,

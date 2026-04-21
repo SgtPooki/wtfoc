@@ -18,6 +18,8 @@ export type CollectionStatus =
 	| "ingesting"
 	| "ready"
 	| "ingestion_failed"
+	| "importing"
+	| "import_failed"
 	| "promoting"
 	| "promoted"
 	| "promotion_failed";

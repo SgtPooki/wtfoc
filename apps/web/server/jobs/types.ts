@@ -45,6 +45,7 @@ export const materializePayloadSchema = v.object({
 export type MaterializePayload = v.InferOutput<typeof materializePayloadSchema>;
 
 export const cidPullPayloadSchema = v.object({
+	collectionId: v.string(),
 	manifestCid: v.string(),
 	collectionName: v.string(),
 });

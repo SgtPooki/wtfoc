@@ -4,6 +4,7 @@ import { dirname, extname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRepository } from "./db/index.js";
 import { createHonoApp } from "./hono-app.js";
+import { registerCidPullHandler } from "./collections/cid-pull-worker.js";
 import { registerIngestHandler } from "./collections/ingest-worker.js";
 import { createJobQueue } from "./jobs/bootstrap.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -29,7 +30,7 @@ import {
 	trace,
 } from "@wtfoc/search";
 import type { VectorBackend } from "@wtfoc/search";
-import { CidReadableStorage, createStore, resolveCollectionByCid } from "@wtfoc/store";
+import { CidReadableStorage, createStore } from "@wtfoc/store";
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -108,10 +109,8 @@ interface LoadedCollection {
 	lastAccessedAt: number;
 	/** When we last checked the manifest headId for freshness. */
 	lastValidatedAt: number;
-	/** When we last wrote the GC sentinel to Qdrant (CID collections only). */
+	/** When we last wrote the GC sentinel to Qdrant. */
 	lastSentinelTouchedAt: number;
-	/** Local project name after CID manifest persistence (CID collections only). */
-	persistedName?: string;
 }
 
 interface CachedFile {
@@ -396,102 +395,15 @@ async function getCollection(name: string): Promise<LoadedCollection | null> {
 }
 
 // ─── CID Collection Loading ─────────────────────────────────────────────────
+//
+// CID import is now a job (#288 Phase 2). The synchronous mount path that
+// used to live here has been removed: clients POST /api/wallet-collections/cid,
+// which enqueues a `cid-pull` job that persists the manifest head under a
+// wallet-scoped collection name. Queries then flow through the normal
+// `/api/collections/:name/*` path against the persisted head.
 
-const cidInflight = new Map<string, Promise<LoadedCollection>>();
-const CID_MAX_CONCURRENT = 5;
 const qdrantGc =
 	VECTOR_BACKEND === "qdrant" ? new QdrantCollectionGc(QDRANT_URL, QDRANT_API_KEY) : null;
-
-async function getCollectionByCid(cid: string): Promise<LoadedCollection> {
-	const cached = collectionCache.get(`cid:${cid}`);
-	if (cached) {
-		cached.lastAccessedAt = Date.now();
-		// Debounced sentinel touch — only update Qdrant if >5 min since last touch
-		if (qdrantGc && Date.now() - cached.lastSentinelTouchedAt > 300_000) {
-			const dims = cached.manifest.embeddingDimensions ?? 384;
-			qdrantGc.touchCollection(`wtfoc-cid-${cid}`, dims).catch(() => {});
-			cached.lastSentinelTouchedAt = Date.now();
-		}
-		return cached;
-	}
-
-	// Deduplicate in-flight requests for the same CID
-	const existing = cidInflight.get(cid);
-	if (existing) return existing;
-
-	if (cidInflight.size >= CID_MAX_CONCURRENT) {
-		throw Object.assign(new Error("Too many concurrent CID fetches"), { code: "CID_BUSY" });
-	}
-
-	const promise = (async () => {
-		console.error(`⏳ Fetching collection from CID ${cid.slice(0, 16)}...`);
-		const { manifest, storage } = await resolveCollectionByCid(cid);
-
-		const dimensions = manifest.embeddingDimensions ?? 384;
-		const vectorIndex = await createVectorIndex({
-			backend: VECTOR_BACKEND,
-			collectionName: `cid-${cid}`,
-			dimensions,
-			qdrantUrl: QDRANT_URL,
-			qdrantApiKey: QDRANT_API_KEY,
-		});
-		const mounted = await mountCollection(manifest, storage, vectorIndex);
-
-		const now = Date.now();
-		const loaded: LoadedCollection = {
-			manifest,
-			segments: mounted.segments,
-			vectorIndex: mounted.vectorIndex,
-			headId: cid, // CID collections are immutable — CID is the identity
-			loadedAt: now,
-			lastAccessedAt: now,
-			lastValidatedAt: now,
-			lastSentinelTouchedAt: now,
-		};
-
-		collectionCache.set(`cid:${cid}`, loaded);
-		if (qdrantGc) {
-			qdrantGc.touchCollection(`wtfoc-cid-${cid}`, dimensions).catch(() => {});
-		}
-		console.error(
-			`✅ Loaded CID ${cid.slice(0, 16)}...: ${manifest.totalChunks} chunks, ${manifest.segments.length} segments`,
-		);
-
-		// Persist the collection locally: download all segment data from IPFS to
-		// local storage so the collection works natively via the name-based path.
-		const rawName = manifest.name || `cid-${cid.slice(0, 16)}`;
-		const safeName = rawName.replace(/[/\\:*?"<>|]/g, "-").replace(/\.{2,}/g, ".").slice(0, 128);
-		const persistName = safeName || `cid-${cid.slice(0, 16)}`;
-		try {
-			// Download each segment's raw bytes from IPFS → local storage.
-			// Re-downloading ensures the content hash matches the manifest ID.
-			for (const segSummary of manifest.segments) {
-				const exists = await store.storage.verify?.(segSummary.id);
-				if (exists?.exists) continue; // already cached locally
-				const segBytes = await storage.download(segSummary.id);
-				await store.storage.upload(segBytes);
-			}
-			console.error(`💾 Downloaded ${manifest.segments.length} segments to local storage`);
-
-			const existing = await store.manifests.getHead(persistName);
-			await store.manifests.putHead(persistName, manifest, existing?.headId ?? null);
-			console.error(`💾 Persisted CID collection as "${persistName}"`);
-		} catch (err) {
-			// Non-fatal — collection still works from cache
-			console.error(`⚠️  Could not persist CID collection locally: ${err instanceof Error ? err.message : err}`);
-		}
-		loaded.persistedName = persistName;
-
-		return loaded;
-	})();
-
-	cidInflight.set(cid, promise);
-	try {
-		return await promise;
-	} finally {
-		cidInflight.delete(cid);
-	}
-}
 
 // ─── Static File Serving ────────────────────────────────────────────────────
 
@@ -700,6 +612,7 @@ async function main() {
 	// up immediately.
 	const { queue, dispose: disposeJobs } = await createJobQueue();
 	registerIngestHandler(queue, repo);
+	registerCidPullHandler(queue, repo);
 	await queue.start();
 	console.error("[jobs] queue started");
 
@@ -798,7 +711,6 @@ async function main() {
 									warning: `Model mismatch: collection uses "${collectionModel}" but server has "${serverModel}". Search quality may be degraded.`,
 								}
 							: {}),
-						...(col.persistedName ? { persistedName: col.persistedName } : {}),
 						updatedAt: col.manifest.updatedAt,
 						sourceTypes: [
 							...new Set(col.segments.flatMap((s) => s.chunks.map((c) => c.sourceType))),
@@ -873,26 +785,6 @@ async function main() {
 				}
 
 				return jsonResponse(res, { error: `Unknown endpoint: ${endpoint}` }, 404);
-			}
-
-			// ─── CID-scoped API: /api/collections/cid/:cid/... ───
-			const cidMatch = path.match(/^\/api\/collections\/cid\/([^/]+)\/(.+)$/);
-			if (cidMatch) {
-				const [, cid, endpoint] = cidMatch;
-				if (!cid || !endpoint) {
-					return jsonResponse(res, { error: "Invalid CID path" }, 400);
-				}
-
-				try {
-					const col = await getCollectionByCid(decodeURIComponent(cid));
-					return handleEndpoint(col, endpoint, `cid:${cid}`);
-				} catch (err) {
-					const code = err instanceof Error && "code" in err ? (err as { code: string }).code : "";
-					if (code === "CID_INVALID") return jsonResponse(res, { error: "Invalid CID format", code }, 400);
-					if (code === "CID_NOT_MANIFEST") return jsonResponse(res, { error: "CID does not point to a wtfoc collection", code }, 422);
-					if (code === "CID_BUSY") return jsonResponse(res, { error: "Too many concurrent CID requests, try again later" }, 503);
-					throw err;
-				}
 			}
 
 			// ─── Collection-scoped API: /api/collections/:name/... ───
@@ -985,25 +877,22 @@ async function main() {
 		console.error(`   TTL: ${process.env["WTFOC_COLLECTION_TTL"]} (sweep every ${Math.round(SWEEP_INTERVAL / 1000)}s)`);
 	}
 
-	// ─── Qdrant CID collection garbage collection ──────────────────────
+	// ─── Qdrant idle collection garbage collection ─────────────────────
+	// Imported-via-CID collections now live under wallet-scoped names (same
+	// Qdrant key as any other collection), so we just protect whatever is
+	// currently cached and let the GC reap the rest.
 	if (qdrantGc) {
 		const activeQdrantNames = (): Set<string> => {
 			const active = new Set<string>();
-			for (const [key] of collectionCache) {
-				if (key.startsWith("cid:")) {
-					active.add(`wtfoc-${key.replace(":", "-")}`);
-				}
-			}
-			// Protect in-flight CID mounts that haven't been cached yet
-			for (const cid of cidInflight.keys()) {
-				active.add(`wtfoc-cid-${cid}`);
+			for (const [name] of collectionCache) {
+				active.add(`wtfoc-${name}`);
 			}
 			return active;
 		};
 
 		let sweepInProgress = false;
 		setInterval(async () => {
-			if (sweepInProgress) return; // skip if previous sweep still running
+			if (sweepInProgress) return;
 			sweepInProgress = true;
 			try {
 				const deleted = await qdrantGc.sweep({
@@ -1012,11 +901,9 @@ async function main() {
 					activeCollections: activeQdrantNames(),
 				});
 				if (deleted.length > 0) {
-					console.error(`♻️  Qdrant GC: deleted ${deleted.length} idle CID collection(s): ${deleted.join(", ")}`);
-					// Also evict from in-process cache
+					console.error(`♻️  Qdrant GC: deleted ${deleted.length} idle collection(s): ${deleted.join(", ")}`);
 					for (const name of deleted) {
-						const cid = name.replace("wtfoc-cid-", "");
-						collectionCache.delete(`cid:${cid}`);
+						collectionCache.delete(name.replace(/^wtfoc-/, ""));
 					}
 				}
 			} catch (err) {
@@ -1026,7 +913,7 @@ async function main() {
 			}
 		}, CID_GC_SWEEP_INTERVAL_MS).unref();
 
-		console.error(`   Qdrant GC: sweep every ${Math.round(CID_GC_SWEEP_INTERVAL_MS / 60_000)}min, max idle ${Math.round(CID_GC_MAX_IDLE_MS / 86_400_000)}d, max ${CID_GC_MAX_COLLECTIONS} CID collections`);
+		console.error(`   Qdrant GC: sweep every ${Math.round(CID_GC_SWEEP_INTERVAL_MS / 60_000)}min, max idle ${Math.round(CID_GC_MAX_IDLE_MS / 86_400_000)}d, max ${CID_GC_MAX_COLLECTIONS} collections`);
 	}
 
 	server.listen(PORT, () => {
