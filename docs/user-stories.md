@@ -42,6 +42,8 @@ Use stable IDs. Do not renumber existing stories.
 | `US-012` | Find unresolved TODOs in source code | Tech lead auditing codebase health | `idea` | `-` | `-` | `-` | `-` |
 | `US-013` | Incrementally ingest and monitor sources over time | Team maintaining a living knowledge graph | `validated` | `high` | `docs/demos/incremental-ingest/run.sh` | `docs/demos/incremental-ingest/README.md` | [#118](https://github.com/SgtPooki/wtfoc/issues/118) |
 | `US-014` | Surface unanswered community questions that don't match existing knowledge | DX or product lead identifying coverage gaps | `proposed` | `high` | `-` | `-` | `-` |
+| `US-015` | Cross-organization work insight — trace work evolution from Slack conversations through issues, PRs, code, and docs | Engineering lead / product / researcher asking "what's been happening across our projects over the last N weeks" | `in-progress` | `high` | `-` | `docs/demos/cross-org-insight/README.md` (TBD) | `-` |
+| `US-016` | Fine-grained access control on multi-source collections — grant read access per source or per source-type without sharing the whole collection | Team owner sharing a 50+ source collection with collaborators who should only see a subset | `proposed` | `high` | `-` | `-` | [#290](https://github.com/SgtPooki/wtfoc/issues/290) |
 
 ## How To Add A Story
 
@@ -78,6 +80,36 @@ If a story is only an idea, that is fine. Mark it `proposed` and leave missing l
 | Issue/spec | [#54](https://github.com/SgtPooki/wtfoc/issues/54) |
 | Status | `validated` |
 | Open gaps | Trace output is grouped by source type; could benefit from timeline-ordered view. Upload flow demo validated across 5 source types, ~16K chunks, 4 repos + 2 doc sites. |
+
+#### June 7 2026 demo acceptance (lightweight opener)
+
+This story serves as the lightweight demo opener for the June 7 2026 conference. Corpus is wtfoc ingested against itself (`wtfoc-dogfood-2026-04-*` series) — self-referential proof of capability on a single repo + its issues + PRs + docs.
+
+**Empirical baseline** (`wtfoc-dogfood-2026-04-v3-ast`, 2026-04-16):
+- 21 / 30 gold queries pass (70% overall)
+- direct-lookup 6/8 (75%), cross-source 5/7 (71%), coverage 5/8 (62%), synthesis 5/7 (71%)
+- 9 failures all cluster on out-of-scope Filecoin ecosystem queries that belong to the flagship corpus (US-015), not retrieval bugs
+
+**Demo-safe query set** (each already passes on the current corpus, each produces multi-hop lineage and cross-source citations):
+
+| Gold ID | Query | Why demo-safe |
+|---------|-------|---------------|
+| `cs-1` | What issues discuss edge resolution and how is it implemented? | chainCoverageRate 1.0, crossSourceChainRate 1.0, 10 multi-hop chains |
+| `cs-2` | What PRs changed the search or trace functionality and what code did they touch? | chainCoverageRate 0.87, strong code↔PR links |
+| `cs-4` | What PRs fix bugs in the chunking code and which files did they touch? | chainCoverageRate 0.73, avgChainDiversity 3.0 |
+| `syn-4` | What is the release process and how are versions tagged? | chainCoverageRate 0.93, 9 multi-hop chains |
+| `dl-1` | How does the ingest pipeline process source files? | Direct-lookup with cross-source validation, 11 multi-hop chains |
+
+**Pass criteria for the live demo:**
+- Dogfood run of the day shows ≥ 70% pass rate on the full 30-query gold set
+- All 5 demo-safe queries above must pass in the same run
+- Each live-demo query must render (a) a primary artifact, (b) at least one multi-hop lineage chain, (c) cross-source citations across ≥ 2 source types
+- No hallucinated file paths in citations — checked via local `store.storage.verify` against segment chunk source paths
+- Trust report (US from #43) passes on the demo corpus
+
+**Fail modes to rehearse:**
+- Dogfood pass rate drops below 70% on demo-day collection — fall back to showing the prior day's report + live trace on a single pre-run query
+- Slack adapter needed? Not for this story — slack-less. Flagship story (US-015) owns slack integration.
 
 ### `US-002` Use `wtfoc` as a decentralized evidence layer in a RAG pipeline
 
@@ -286,6 +318,61 @@ If a story is only an idea, that is fine. Mark it `proposed` and leave missing l
 | Issue/spec | `-` |
 | Status | `proposed` |
 | Open gaps | Need to define "unanswered" threshold (e.g., best trace match < 0.4 confidence). Need to decide whether to use the `question` signal score from #61 or a simpler heuristic (chunks containing "?"). Need dedup/clustering so 20 people asking the same question shows as one gap, not 20. Related to US-003 (clustering) and US-004 (stale docs) |
+
+### `US-015` Cross-organization work insight across code / issues / PRs / docs / chat
+
+| Field | Value |
+|-------|-------|
+| Story | A team lead or researcher asks "what has been happening across our projects over the last N weeks" and gets a time-ordered, cross-source trace showing how work evolved from Slack conversations to issues, PRs, code changes, and documentation updates |
+| User | Engineering lead, product lead, or embedded researcher tracking an organization's work across many repos and communication channels |
+| Pain | Work is fragmented across 50+ sources — Slack threads, GitHub issues/PRs/reviews, docs sites, Notion (future). Humans and AI agents can't efficiently answer "what customer complaint drove this PR", "what design discussions led to this doc update", or "what shipped in the last 2 weeks on topic X" |
+| Why `wtfoc` | `wtfoc` normalizes every source type into chunks + edges, so time-ordered trace across Slack → issue → PR → code → doc is a first-class query, not a manual spelunk |
+| Inputs | A collection spanning 2+ repos, GitHub issues/PRs with comments + reviews, doc sites, Slack channels (with workspace admin approval), and a natural-language work-evolution question |
+| Expected output | A time-ordered lineage trace that crosses source types: conversations → issues → PRs → code/docs. Each hop shows timestamp, source type, and evidence. Works for "last N days" time windows |
+| Example/demo | TBD — `docs/demos/cross-org-insight/` once corpus + gold queries land |
+| Docs | TBD |
+| Issue/spec | Parent tracked under #264 (conference MVP plan) as flagship demo; see also #274 chronological trace projection, #280 TimestampKind (both shipped). Slack blocked on #10. |
+| Status | `in-progress` |
+| Open gaps | Slack adapter blocked on workspace admin approval (#10). Latest filoz-ecosystem corpus (v11, 18725 chunks, 41 segments) has code + issues + PRs + pr-comments + markdown but NO slack-message and NO doc-page — earlier foc-ecosystem-v2 had both. Need to produce a v12 with slack + doc-sites re-added. Flagship-specific gold queries need writing (current gold set is wtfoc-self biased, underspecifies cross-org/time-window queries). |
+
+#### June 7 2026 demo acceptance (flagship)
+
+Corpus: `filoz-ecosystem-2026-04-v12` (to be built). Source types target: `code`, `github-issue`, `github-pr`, `github-pr-comment`, `markdown`, `doc-page`, `slack-message`.
+
+**Proposed demo questions** (subject to iteration once corpus + gold queries are built):
+
+1. *"What customer complaints from last month shaped PR #N?"* — slack-message → github-issue → github-pr chain, time-ordered
+2. *"Which design discussions were resolved in doc site updates?"* — github-pr-comment → doc-page
+3. *"What work happened on topic X in the last 2 weeks?"* — time-window cross-source query
+4. *"How did the approach to problem Y evolve from first mention to shipped code?"* — lineage over time spanning ≥ 3 source types
+5. *"Which open issues reference completed PRs?"* — resolution-state mismatch
+
+**Acceptance for the live demo:**
+- v12 corpus built with all 7 source types, dogfood pass rate ≥ 70% on flagship-specific gold queries
+- At least 4/5 demo questions pass with multi-hop cross-source lineage including ≥ 1 `slack-message` hop
+- Time-window queries surface `hopsWithTimestamp > 0` on ≥ 3/5 questions (requires #274 chronological projection already landed)
+- Trust report (US from #43) passes on v12
+
+**Blockers:**
+- Slack adapter ingest unblocking (#10)
+- Doc-site re-ingest on v12
+- Flagship gold queries need to be added to `packages/search/src/eval/gold-standard-queries.ts`
+
+### `US-016` Fine-grained access control on multi-source collections
+
+| Field | Value |
+|-------|-------|
+| Story | A collection owner ingests 50+ sources into one collection and grants collaborators read access to only the subset they should see, without sharing the whole collection |
+| User | Team owner or platform operator managing a shared knowledge graph that mixes public and sensitive sources |
+| Pain | Today a `wtfoc` collection is all-or-nothing. Ingesting Slack alongside public GitHub means either sharing everything or splitting into multiple collections, which loses cross-source trace value |
+| Why `wtfoc` | Content-addressed segments make per-source encryption natural — segments can stay public CIDs while payloads are ciphertext, and manifests can carry wrap-key grants per-reader |
+| Inputs | A collection with multiple sources, an owner wallet, a grantee wallet/identity, a policy statement ("grantee can read sources X and Y but not Z") |
+| Expected output | Grantee can query and trace over the subset; restricted content appears as redacted-count placeholders; revocation works via key rotation |
+| Example/demo | `-` |
+| Docs | `-` (see epic #290) |
+| Issue/spec | [#290](https://github.com/SgtPooki/wtfoc/issues/290) — epic; children #291-#300 |
+| Status | `proposed` |
+| Open gaps | Full epic — threat model, per-source key model, edge-gate enforcement, grant/revoke flow, redaction UX, index partitioning, owner UX, FOC promotion with ciphertext. Not on June 7 demo critical path but likely surfaced by audience Q&A for the flagship story, so scoping via child issues before demo day is useful |
 
 ## Story Template
 
