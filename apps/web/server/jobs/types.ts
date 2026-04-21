@@ -40,7 +40,13 @@ export const extractEdgesPayloadSchema = v.object({
 export type ExtractEdgesPayload = v.InferOutput<typeof extractEdgesPayloadSchema>;
 
 export const materializePayloadSchema = v.object({
+	collectionId: v.string(),
 	collectionName: v.string(),
+	segmentId: v.string(),
+	chunkCount: v.number(),
+	sourceCount: v.number(),
+	embeddingModel: v.string(),
+	embeddingDimensions: v.number(),
 });
 export type MaterializePayload = v.InferOutput<typeof materializePayloadSchema>;
 
@@ -88,6 +94,8 @@ export interface JobRecord {
 	errorCode: string | null;
 	errorMessage: string | null;
 	parentJobId: string | null;
+	/** Opaque dedupe key (#288 Phase 2 Slice C). `null` for direct enqueues. */
+	idempotencyKey: string | null;
 	createdAt: Date;
 	updatedAt: Date;
 }
@@ -105,12 +113,23 @@ export interface EnqueueJobInput<T extends JobType = JobType> {
 	collectionId: string | null;
 	payload: unknown;
 	parentJobId?: string;
+	/**
+	 * Optional idempotency key. Enqueue becomes insert-or-return-existing:
+	 * a second enqueue with the same key returns the original JobRecord
+	 * instead of creating a duplicate. Used by handlers that enqueue child
+	 * work from inside `JobContext.enqueueChild` so parent retries don't
+	 * fan out. Keys are opaque strings; callers pick a shape that captures
+	 * "the same logical child" (e.g. `collection:${id}:materialize:${seg}`).
+	 */
+	idempotencyKey?: string;
 }
 
 /**
  * Runtime context passed to every job handler. Handlers MUST:
  * 1. Respect `signal` — abort on cancel and long-wait.
  * 2. Call `reportProgress` periodically so the UI can poll.
+ * 3. Use `enqueueChild` (never the queue directly) when chaining work —
+ *    keeps parent_job_id linkage and idempotency honest across retries.
  */
 export interface JobContext {
 	jobId: string;
@@ -121,6 +140,19 @@ export interface JobContext {
 		total?: number;
 		message?: string;
 	}): Promise<void>;
+	enqueueChild<T extends JobType>(
+		type: T,
+		payload: unknown,
+		options?: {
+			/** Dedupe key — the same child only gets enqueued once across retries. */
+			idempotencyKey?: string;
+			/**
+			 * Collection id for the child. Usually the same as the parent's.
+			 * Passing null is rare and loses the per-collection chain UI.
+			 */
+			collectionId?: string | null;
+		},
+	): Promise<JobRecord>;
 }
 
 /** Handler registered per job type. */

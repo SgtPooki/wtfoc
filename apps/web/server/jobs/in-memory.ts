@@ -28,6 +28,7 @@ export class InMemoryJobQueue implements JobQueue {
 	readonly #handlers = new Map<JobType, JobHandler<unknown>>();
 	readonly #abortControllers = new Map<string, AbortController>();
 	readonly #subscribers = new Map<string, Set<(snapshot: JobRecord) => void>>();
+	readonly #idempotencyIndex = new Map<string, string>();
 	#started = false;
 
 	async start(): Promise<void> {
@@ -58,7 +59,24 @@ export class InMemoryJobQueue implements JobQueue {
 			}
 		}
 
-		if (input.collectionId && this.#hasActiveForCollection(input.collectionId)) {
+		// Idempotency dedupe: a prior enqueue with the same key returns its
+		// original record instead of creating a duplicate (#288 Slice C).
+		if (input.idempotencyKey) {
+			const existingId = this.#idempotencyIndex.get(input.idempotencyKey);
+			if (existingId) {
+				const existing = this.#jobs.get(existingId);
+				if (existing) return { ...existing };
+			}
+		}
+
+		// The per-collection active-unique invariant only guards top-of-pipeline
+		// (root) jobs — children may target the same collectionId as their
+		// parent without colliding. Mirrors the partial unique index.
+		if (
+			input.collectionId &&
+			!input.parentJobId &&
+			this.#hasActiveRootForCollection(input.collectionId)
+		) {
 			throw new JobCollectionBusyError(input.collectionId);
 		}
 
@@ -80,10 +98,14 @@ export class InMemoryJobQueue implements JobQueue {
 			errorCode: null,
 			errorMessage: null,
 			parentJobId: input.parentJobId ?? null,
+			idempotencyKey: input.idempotencyKey ?? null,
 			createdAt: now,
 			updatedAt: now,
 		};
 		this.#jobs.set(job.id, job);
+		if (input.idempotencyKey) {
+			this.#idempotencyIndex.set(input.idempotencyKey, job.id);
+		}
 		this.#emit(job.id);
 
 		if (this.#started) {
@@ -195,9 +217,10 @@ export class InMemoryJobQueue implements JobQueue {
 		}
 	}
 
-	#hasActiveForCollection(collectionId: string): boolean {
+	#hasActiveRootForCollection(collectionId: string): boolean {
 		for (const job of this.#jobs.values()) {
 			if (job.collectionId !== collectionId) continue;
+			if (job.parentJobId !== null) continue;
 			if (job.status === "queued" || job.status === "running") return true;
 		}
 		return false;
@@ -237,6 +260,17 @@ export class InMemoryJobQueue implements JobQueue {
 					if (update.message !== undefined) job.message = update.message;
 					job.updatedAt = new Date();
 					this.#emit(id);
+				},
+				enqueueChild: async (type, childPayload, opts) => {
+					return this.enqueue({
+						type,
+						walletAddress: job.walletAddress,
+						collectionId:
+							opts?.collectionId !== undefined ? opts.collectionId : job.collectionId,
+						payload: childPayload,
+						parentJobId: id,
+						idempotencyKey: opts?.idempotencyKey,
+					});
 				},
 			});
 			if (ac.signal.aborted) {

@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   error_code            TEXT,
   error_message         TEXT,
   parent_job_id         UUID REFERENCES jobs(id) ON DELETE SET NULL,
+  idempotency_key       TEXT,
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -102,8 +103,20 @@ CREATE INDEX IF NOT EXISTS idx_jobs_wallet_created ON jobs (wallet_address, crea
 CREATE INDEX IF NOT EXISTS idx_jobs_collection ON jobs (collection_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_parent ON jobs (parent_job_id);
 
--- "One active mutating job per collection" invariant — partial unique index
--- on the active states only, so terminal rows don't block re-enqueue (#168).
+-- "One active ROOT mutating job per collection" invariant — only applies to
+-- top-of-pipeline jobs (parent_job_id IS NULL). Children targeting the same
+-- collection (ingest → materialize chain) don't collide with their parent
+-- (#288 Phase 2 Slice C). The invariant still prevents two concurrent
+-- top-level imports/ingests on the same collection.
 CREATE UNIQUE INDEX IF NOT EXISTS jobs_collection_active_unique
   ON jobs (collection_id)
-  WHERE status IN ('queued', 'running') AND collection_id IS NOT NULL;
+  WHERE status IN ('queued', 'running')
+    AND collection_id IS NOT NULL
+    AND parent_job_id IS NULL;
+
+-- Idempotency keys: dedup child enqueues across parent retries so the chain
+-- only materializes any given artifact once. Unique only when present —
+-- jobs without a key (direct enqueue) are unaffected.
+CREATE UNIQUE INDEX IF NOT EXISTS jobs_idempotency_key_unique
+  ON jobs (idempotency_key)
+  WHERE idempotency_key IS NOT NULL;

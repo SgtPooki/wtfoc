@@ -92,27 +92,45 @@ export class PgBossJobQueue implements JobQueue {
 			}
 		}
 
+		// Idempotency fast-path: if a row with this key already exists, return
+		// it instead of racing the unique constraint. Saves the INSERT attempt
+		// for the common repeat-enqueue-from-parent-retry case.
+		if (input.idempotencyKey) {
+			const existing = await this.#pool.query(
+				"SELECT * FROM jobs WHERE idempotency_key = $1",
+				[input.idempotencyKey],
+			);
+			if (existing.rows[0]) return mapRow(existing.rows[0]);
+		}
+
 		const id = randomUUID();
 		const client = await this.#pool.connect();
 		try {
 			await client.query("BEGIN");
 			try {
-				// Insert first so the partial unique index on active states
-				// enforces the "one mutating job per collection" invariant.
+				// Insert first so the partial unique index on active root states
+				// enforces the "one mutating job per collection" invariant. The
+				// idempotency-key unique index deduplicates child enqueues.
 				const inserted = await client.query(
 					`INSERT INTO jobs (
 						id, type, wallet_address, collection_id,
-						status, current, total, parent_job_id
-					) VALUES ($1, $2, $3, $4, 'queued', 0, 0, $5)
+						status, current, total, parent_job_id, idempotency_key
+					) VALUES ($1, $2, $3, $4, 'queued', 0, 0, $5, $6)
 					RETURNING *`,
-					[id, input.type, input.walletAddress, input.collectionId, input.parentJobId ?? null],
+					[
+						id,
+						input.type,
+						input.walletAddress,
+						input.collectionId,
+						input.parentJobId ?? null,
+						input.idempotencyKey ?? null,
+					],
 				);
 				const row = inserted.rows[0];
 				const bossJobId = await this.#boss.send(input.type, { jobId: id, payload: input.payload });
 				await client.query("UPDATE jobs SET boss_job_id = $1 WHERE id = $2", [bossJobId, id]);
 				await client.query("COMMIT");
 				const enqueued = { ...mapRow(row), bossJobId };
-				// Fire subscribers outside the client release so they see committed state.
 				queueMicrotask(() => {
 					this.#emit(id).catch(() => {});
 				});
@@ -121,6 +139,14 @@ export class PgBossJobQueue implements JobQueue {
 				await client.query("ROLLBACK");
 				if (isUniqueViolation(err, "jobs_collection_active_unique")) {
 					throw new JobCollectionBusyError(input.collectionId ?? "(unknown)");
+				}
+				if (isUniqueViolation(err, "jobs_idempotency_key_unique") && input.idempotencyKey) {
+					// Race with a concurrent enqueue that landed first — return that one.
+					const existing = await this.#pool.query(
+						"SELECT * FROM jobs WHERE idempotency_key = $1",
+						[input.idempotencyKey],
+					);
+					if (existing.rows[0]) return mapRow(existing.rows[0]);
 				}
 				throw err;
 			}
@@ -155,7 +181,8 @@ export class PgBossJobQueue implements JobQueue {
 		const res = await this.#pool.query(
 			`SELECT id, boss_job_id, type, wallet_address, collection_id, status,
 			        phase, current, total, cancel_requested_at, started_at,
-			        finished_at, error_code, parent_job_id, created_at, updated_at
+			        finished_at, error_code, parent_job_id, idempotency_key,
+			        created_at, updated_at
 			   FROM jobs
 			  WHERE ${where.join(" AND ")}
 			  ORDER BY created_at DESC
@@ -172,7 +199,8 @@ export class PgBossJobQueue implements JobQueue {
 		const res = await this.#pool.query(
 			`SELECT id, boss_job_id, type, wallet_address, collection_id, status,
 			        phase, current, total, cancel_requested_at, started_at,
-			        finished_at, error_code, parent_job_id, created_at, updated_at
+			        finished_at, error_code, parent_job_id, idempotency_key,
+			        created_at, updated_at
 			   FROM jobs
 			  WHERE parent_job_id = $1 AND wallet_address = $2
 			  ORDER BY created_at ASC
@@ -317,6 +345,25 @@ export class PgBossJobQueue implements JobQueue {
 					await this.#pool.query(`UPDATE jobs SET ${sets.join(", ")} WHERE id = $1`, params);
 					await this.#emit(jobId);
 				},
+				enqueueChild: async (type, childPayload, opts) => {
+					// Read current parent's wallet/collection lazily so we stay
+					// correct even if future parent-rewrites shift them.
+					const parentRow = await this.#pool.query(
+						"SELECT wallet_address, collection_id FROM jobs WHERE id = $1",
+						[jobId],
+					);
+					const parent = parentRow.rows[0];
+					if (!parent) throw new Error(`parent row missing for job ${jobId}`);
+					return this.enqueue({
+						type,
+						walletAddress: parent.wallet_address,
+						collectionId:
+							opts?.collectionId !== undefined ? opts.collectionId : parent.collection_id,
+						payload: childPayload,
+						parentJobId: jobId,
+						idempotencyKey: opts?.idempotencyKey,
+					});
+				},
 			});
 			if (ac.signal.aborted) {
 				await this.#finalize(jobId, "cancelled", null);
@@ -408,6 +455,7 @@ interface JobRow {
 	error_code: string | null;
 	error_message: string | null;
 	parent_job_id: string | null;
+	idempotency_key: string | null;
 	created_at: Date;
 	updated_at: Date;
 }
@@ -430,6 +478,7 @@ function mapRow(row: JobRow): JobRecord {
 		errorCode: row.error_code,
 		errorMessage: row.error_message,
 		parentJobId: row.parent_job_id,
+		idempotencyKey: row.idempotency_key,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
@@ -451,6 +500,7 @@ function mapSummaryRow(row: Omit<JobRow, "message" | "error_message">): JobSumma
 		finishedAt: row.finished_at,
 		errorCode: row.error_code,
 		parentJobId: row.parent_job_id,
+		idempotencyKey: row.idempotency_key,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
