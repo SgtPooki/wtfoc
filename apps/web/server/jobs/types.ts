@@ -45,6 +45,7 @@ export const materializePayloadSchema = v.object({
 	segmentId: v.string(),
 	chunkCount: v.number(),
 	sourceCount: v.number(),
+	sourceTypes: v.array(v.string()),
 	embeddingModel: v.string(),
 	embeddingDimensions: v.number(),
 });

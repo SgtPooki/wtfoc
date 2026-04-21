@@ -6,6 +6,7 @@ import { createRepository } from "./db/index.js";
 import { createHonoApp } from "./hono-app.js";
 import { registerCidPullHandler } from "./collections/cid-pull-worker.js";
 import { registerIngestHandler } from "./collections/ingest-worker.js";
+import { registerMaterializeHandler } from "./collections/materialize-worker.js";
 import { createJobQueue } from "./jobs/bootstrap.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type {
@@ -613,6 +614,7 @@ async function main() {
 	const { queue, dispose: disposeJobs } = await createJobQueue();
 	registerIngestHandler(queue, repo);
 	registerCidPullHandler(queue, repo);
+	registerMaterializeHandler(queue, repo);
 	await queue.start();
 	console.error("[jobs] queue started");
 

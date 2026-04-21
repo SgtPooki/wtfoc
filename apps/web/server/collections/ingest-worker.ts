@@ -1,14 +1,20 @@
 /**
- * Async ingestion worker (#168): processes sources for a collection in the
- * background. The exported `runIngestJob` is the JobQueue handler; previous
- * in-memory slot-semaphore retired in favor of pg-boss concurrency + the
- * per-collection invariant enforced at the DB.
+ * Async ingestion worker (#168, extended by #288 Phase 2 Slice C).
  *
- * Progress is reported through the `JobContext` so the /api/jobs endpoints
- * can surface phase/current/total to callers polling from the web UI.
+ * `ingest` is now the first stage of a two-step pipeline:
+ *  1. `ingest`: fetch sources → chunk → embed → extract edges → build
+ *     segment → upload segment blob. Produces an immutable segment artifact
+ *     but does NOT touch the manifest head.
+ *  2. `materialize` (child job): append the segment to the manifest head
+ *     with CAS, flip the collection row to `ready`. See
+ *     `materialize-worker.ts`.
+ *
+ * The split keeps the ingest stage long-running-but-restartable — if
+ * materialize fails we can retry it without re-fetching sources. Parent
+ * retries of ingest dedupe the child via an idempotency key keyed on the
+ * collection + segment id.
  */
-import type { Chunk, CollectionHead } from "@wtfoc/common";
-import { CURRENT_SCHEMA_VERSION } from "@wtfoc/common";
+import type { Chunk } from "@wtfoc/common";
 import type { Repository, Source } from "../db/index.js";
 import type { JobQueue } from "../jobs/queue.js";
 import type { IngestPayload, JobContext } from "../jobs/types.js";
@@ -101,15 +107,42 @@ export async function runIngestJob({
 		}
 
 		await ctx.reportProgress({
-			phase: "embedding + persisting",
+			phase: "embedding + building segment",
 			current: sources.length,
 			total: sources.length,
 			message: `${allChunks.length} chunks`,
 		});
 
-		// Build segments and persist manifest using the existing pipeline
-		await buildAndPersist(collectionName, allChunks, repo, collectionId, signal);
-		await repo.updateCollectionStatus(collectionId, "ready");
+		// Build segment artifact, upload to content-addressed storage. Does NOT
+		// write the manifest head — that's materialize's job.
+		const artifact = await buildSegmentArtifact(allChunks, signal);
+
+		// Enqueue the materialize child to append this segment to the head.
+		// Idempotency key is derived from the segment id so a parent retry
+		// that re-produces the same content won't fan out duplicate children.
+		await ctx.reportProgress({
+			phase: "enqueueing materialize",
+			current: sources.length,
+			total: sources.length,
+		});
+		await ctx.enqueueChild(
+			"materialize",
+			{
+				collectionId,
+				collectionName,
+				segmentId: artifact.segmentId,
+				chunkCount: artifact.chunkCount,
+				sourceCount: sources.length,
+				sourceTypes: artifact.sourceTypes,
+				embeddingModel: artifact.embeddingModel,
+				embeddingDimensions: artifact.embeddingDimensions,
+			},
+			{
+				idempotencyKey: `collection:${collectionId}:materialize:${artifact.segmentId}`,
+			},
+		);
+		// The collection stays in `ingesting` until materialize lands — avoids
+		// a window where the UI claims ready before the head is written.
 	} catch (err) {
 		// Honor cooperative cancel: don't mark ingestion_failed when the user
 		// asked us to stop.
@@ -126,20 +159,30 @@ export async function runIngestJob({
 	}
 }
 
-async function buildAndPersist(
-	collectionName: string,
+interface SegmentArtifact {
+	segmentId: string;
+	chunkCount: number;
+	sourceTypes: string[];
+	embeddingModel: string;
+	embeddingDimensions: number;
+}
+
+/**
+ * Build a segment from chunks and upload it to content-addressed storage.
+ * Returns the artifact descriptor that the `materialize` child needs to
+ * append it to the manifest head. Does NOT touch the manifest.
+ */
+async function buildSegmentArtifact(
 	chunks: Chunk[],
-	repo: Repository,
-	collectionId: string,
 	signal?: AbortSignal,
-): Promise<void> {
+): Promise<SegmentArtifact> {
 	const { buildSegment, segmentId, mergeEdges, CompositeEdgeExtractor, CodeEdgeExtractor, HeuristicEdgeExtractor, HeuristicChunkScorer } =
 		await import("@wtfoc/ingest");
-	const { createStore, generateCollectionId } = await import("@wtfoc/store");
+	const { createStore } = await import("@wtfoc/store");
 
 	const store = createStore({ storage: "local" });
 
-	// Get embedder
+	// Embedder
 	const { getDefaultEmbedder } = await import("./embedder-helper.js");
 	const { embedder, modelName } = await getDefaultEmbedder();
 
@@ -151,7 +194,7 @@ async function buildAndPersist(
 		{ extractorName: "composite", edges: await compositeExtractor.extract(chunks) },
 	]);
 
-	// Embed all chunks
+	// Embed
 	signal?.throwIfAborted();
 	const embeddings = await embedder.embedBatch(chunks.map((c) => c.content));
 	const scorer = new HeuristicChunkScorer();
@@ -175,45 +218,26 @@ async function buildAndPersist(
 	});
 
 	const segmentBytes = new TextEncoder().encode(JSON.stringify(segment));
-	const segId = segmentId(segment);
+	const expectedId = segmentId(segment);
 
-	// Upload segment to local storage
-	const segmentResult = await store.storage.upload(segmentBytes);
-	const resultId = segmentResult.id;
+	const uploaded = await store.storage.upload(segmentBytes);
+	if (uploaded.id !== expectedId) {
+		throw new Error(
+			`segment id mismatch: computed ${expectedId}, stored as ${uploaded.id}`,
+		);
+	}
 
-	// Build and persist manifest
-	const currentHead = await store.manifests.getHead(collectionName).catch(() => null);
-	const currentPrevHeadId = currentHead ? currentHead.headId : null;
+	console.error(
+		`[ingest-worker] segment artifact ${uploaded.id.slice(0, 16)}… (${chunks.length} chunks)`,
+	);
 
-	const manifest: CollectionHead = {
-		schemaVersion: CURRENT_SCHEMA_VERSION,
-		collectionId: currentHead?.manifest.collectionId ?? generateCollectionId(collectionName),
-		name: collectionName,
-		currentRevisionId: currentHead?.manifest.currentRevisionId ?? null,
-		prevHeadId: currentPrevHeadId,
-		segments: [
-			...(currentHead?.manifest.segments ?? []),
-			{
-				id: resultId,
-				sourceTypes: [...new Set(chunks.map((c) => c.sourceType))],
-				chunkCount: chunks.length,
-			},
-		],
-		totalChunks: (currentHead?.manifest.totalChunks ?? 0) + chunks.length,
+	return {
+		segmentId: uploaded.id,
+		chunkCount: chunks.length,
+		sourceTypes: [...new Set(chunks.map((c) => c.sourceType))],
 		embeddingModel: modelName,
 		embeddingDimensions: embedder.dimensions,
-		createdAt: currentHead?.manifest.createdAt ?? new Date().toISOString(),
-		updatedAt: new Date().toISOString(),
 	};
-
-	await store.manifests.putHead(collectionName, manifest, currentPrevHeadId);
-
-	// Update collection metadata
-	await repo.updateCollectionPromotion(collectionId, {
-		segmentCount: manifest.segments.length,
-	});
-
-	console.error(`[ingest-worker] Collection "${collectionName}" persisted: ${chunks.length} chunks, ${manifest.segments.length} segment(s)`);
 }
 
 async function ingestSource(source: Source, signal?: AbortSignal): Promise<Chunk[]> {
