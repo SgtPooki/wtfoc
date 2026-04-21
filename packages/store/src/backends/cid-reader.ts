@@ -38,11 +38,16 @@ export class CidReadableStorage implements StorageBackend {
 		if (!this.#initPromise) {
 			this.#initPromise = (async () => {
 				try {
-					const mod = await import("@helia/verified-fetch");
-					const vf = await mod.createVerifiedFetch();
+					const vf = await buildDefaultVerifiedFetch();
 					this.#verifiedFetch = vf;
-				} catch {
-					// verified-fetch unavailable (missing native deps) — use HTTP gateways
+				} catch (err) {
+					// verified-fetch unavailable at import time OR at Helia start
+					// (e.g. node-datachannel native crash, missing WebRTC UDP) →
+					// fall back to public HTTP gateways. See wtfoc-u4i2.
+					console.error(
+						"[cid-reader] verified-fetch init failed, using HTTP gateway fallback:",
+						err instanceof Error ? err.message : err,
+					);
 					this.#useGatewayFallback = true;
 				}
 			})();
@@ -107,4 +112,41 @@ export class CidReadableStorage implements StorageBackend {
 			"CID_READ_ONLY",
 		);
 	}
+}
+
+/**
+ * Construct a verified-fetch backed by a Helia node with transports limited to
+ * TCP + WebSockets + circuit-relay. Dropping `@libp2p/webrtc` + webrtc-direct
+ * avoids a `node-datachannel` native crash observed on macOS where the ICE
+ * UDP mux fails to bind (wtfoc-u4i2). Bitswap + DHT routing over TCP is
+ * sufficient for verified retrieval.
+ */
+async function buildDefaultVerifiedFetch(): Promise<VerifiedFetch> {
+	const [{ createHelia, libp2pDefaults }, { createVerifiedFetch }] = await Promise.all([
+		import("helia"),
+		import("@helia/verified-fetch"),
+	]);
+
+	const defaults = libp2pDefaults();
+	// Drop webrtc + webrtc-direct. libp2pDefaults returns a mixed array of
+	// transport factories; filter by looking at the factory's `name` tag
+	// exported on each transport.
+	defaults.transports = (defaults.transports ?? []).filter((factory) => {
+		const tag = (factory as { name?: string }).name ?? "";
+		return !/webrtc/i.test(String(tag));
+	});
+	// Also strip transport listen addresses that reference the dropped transports
+	// so libp2p doesn't try to listen on /webrtc-direct.
+	if (defaults.addresses?.listen) {
+		defaults.addresses.listen = defaults.addresses.listen.filter((ma) => !/webrtc/i.test(ma));
+	}
+	// Drop services that bring in native deps / network side effects we don't
+	// need for read-only retrieval.
+	if (defaults.services) {
+		delete (defaults.services as Record<string, unknown>).autoTLS;
+		delete (defaults.services as Record<string, unknown>).upnp;
+	}
+
+	const helia = await createHelia({ libp2p: defaults });
+	return createVerifiedFetch(helia);
 }
