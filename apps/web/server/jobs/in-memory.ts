@@ -51,6 +51,13 @@ export class InMemoryJobQueue implements JobQueue {
 		}
 		v.parse(schema, input.payload);
 
+		if (input.parentJobId) {
+			const parent = this.#jobs.get(input.parentJobId);
+			if (!parent || parent.walletAddress !== input.walletAddress) {
+				throw new Error(`parent job not found: ${input.parentJobId}`);
+			}
+		}
+
 		if (input.collectionId && this.#hasActiveForCollection(input.collectionId)) {
 			throw new JobCollectionBusyError(input.collectionId);
 		}
@@ -113,6 +120,22 @@ export class InMemoryJobQueue implements JobQueue {
 			out.push(summary);
 		}
 		return out.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+	}
+
+	async listChildren(
+		parentId: string,
+		walletAddress: string,
+	): Promise<JobSummary[]> {
+		const parent = this.#jobs.get(parentId);
+		if (!parent || parent.walletAddress !== walletAddress) return [];
+		const out: JobSummary[] = [];
+		for (const job of this.#jobs.values()) {
+			if (job.parentJobId !== parentId) continue;
+			if (job.walletAddress !== walletAddress) continue;
+			const { message: _m, errorMessage: _e, ...summary } = job;
+			out.push(summary);
+		}
+		return out.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 	}
 
 	async cancel(id: string, walletAddress: string): Promise<boolean> {

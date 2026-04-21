@@ -82,6 +82,16 @@ export class PgBossJobQueue implements JobQueue {
 		if (!schema) throw new Error(`unknown job type: ${input.type}`);
 		v.parse(schema, input.payload);
 
+		if (input.parentJobId) {
+			const parent = await this.#pool.query(
+				"SELECT id FROM jobs WHERE id = $1 AND wallet_address = $2",
+				[input.parentJobId, input.walletAddress],
+			);
+			if (parent.rowCount === 0) {
+				throw new Error(`parent job not found: ${input.parentJobId}`);
+			}
+		}
+
 		const id = randomUUID();
 		const client = await this.#pool.connect();
 		try {
@@ -151,6 +161,23 @@ export class PgBossJobQueue implements JobQueue {
 			  ORDER BY created_at DESC
 			  LIMIT 200`,
 			params,
+		);
+		return res.rows.map(mapSummaryRow);
+	}
+
+	async listChildren(
+		parentId: string,
+		walletAddress: string,
+	): Promise<JobSummary[]> {
+		const res = await this.#pool.query(
+			`SELECT id, boss_job_id, type, wallet_address, collection_id, status,
+			        phase, current, total, cancel_requested_at, started_at,
+			        finished_at, error_code, parent_job_id, created_at, updated_at
+			   FROM jobs
+			  WHERE parent_job_id = $1 AND wallet_address = $2
+			  ORDER BY created_at ASC
+			  LIMIT 200`,
+			[parentId, walletAddress],
 		);
 		return res.rows.map(mapSummaryRow);
 	}

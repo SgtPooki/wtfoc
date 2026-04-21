@@ -66,4 +66,11 @@ export interface JobQueue {
 		walletAddress: string,
 		listener: (snapshot: JobRecord) => void,
 	): Promise<() => void>;
+
+	/**
+	 * List children of a parent job, wallet-scoped, oldest-first so UI can
+	 * render a stable chain. Returns `[]` for jobs with no children or when
+	 * the parent isn't visible to the caller (#288 Phase 2 Slice C1).
+	 */
+	listChildren(parentId: string, walletAddress: string): Promise<JobSummary[]>;
 }

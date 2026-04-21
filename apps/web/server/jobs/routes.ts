@@ -114,11 +114,16 @@ export function jobRoutes(getQueue: () => JobQueue): Hono<AppEnv> {
 	app.get("/:id", async (c) => {
 		const wallet = c.get("walletAddress");
 		const id = c.req.param("id");
-		const job = await getQueue().get(id, wallet);
+		const queue = getQueue();
+		const job = await queue.get(id, wallet);
 		if (!job) {
 			return c.json({ error: "not found", code: "NOT_FOUND" }, 404);
 		}
-		return c.json({ job: recordToJson(job) });
+		const children = await queue.listChildren(id, wallet);
+		return c.json({
+			job: recordToJson(job),
+			children: children.map(summaryToJson),
+		});
 	});
 
 	app.delete("/:id", async (c) => {
