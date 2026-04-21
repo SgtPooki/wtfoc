@@ -225,7 +225,13 @@ export interface JobView {
 	updatedAt: string;
 }
 
-export function fetchJob(id: string, signal?: AbortSignal): Promise<{ job: JobView }> {
+/** Subset of JobView returned for child listings (no `message`/`errorMessage`). */
+export type JobSummaryView = Omit<JobView, "message" | "errorMessage">;
+
+export function fetchJob(
+	id: string,
+	signal?: AbortSignal,
+): Promise<{ job: JobView; children?: JobSummaryView[] }> {
 	return apiFetch(`/api/jobs/${id}`, undefined, signal);
 }
 
