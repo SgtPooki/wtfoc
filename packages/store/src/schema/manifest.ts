@@ -288,21 +288,51 @@ export function validateManifestSchema(data: unknown): CollectionHead {
 		manifest.derivedEdgeLayers = data.derivedEdgeLayers as CollectionHead["derivedEdgeLayers"];
 	}
 
+	// Published artifact refs: pass through (optional, from self-contained promote).
+	// Required on the read path so cross-artifact-kind validation (e.g. batches
+	// indexing every CID in the CAR, not just segment CIDs) can resolve.
+	if ("artifactRefs" in data && Array.isArray(data.artifactRefs)) {
+		manifest.artifactRefs = data.artifactRefs as CollectionHead["artifactRefs"];
+	}
+
 	if ("batches" in data && data.batches !== undefined) {
 		if (!Array.isArray(data.batches)) {
 			throw schemaInvalid("headManifest", "batches must be an array", "batches");
 		}
 		manifest.batches = data.batches.map((item, index) => validateBatchRecord(item, index));
 
-		// Batch segmentIds contain IPFS CIDs (from bundleAndUpload), not local segment IDs.
-		// Build a lookup from any known identifier (local ID or IPFS CID) to the canonical
-		// segment ID, so we can validate membership and detect duplicates consistently.
+		// Batches carry CIDs for every artifact in the CAR — segments,
+		// derived-edge-layers, raw-source-blobs, and sidecars. The field is
+		// historically named `segmentIds` but in the self-contained promote
+		// path it indexes the full CAR contents. Build a lookup covering
+		// every known-published identifier (local storageId or published
+		// ipfsCid) so membership + duplicate detection work across artifact
+		// kinds.
 		const idToCanonical = new Map<string, string>();
 		for (const segment of manifest.segments) {
 			idToCanonical.set(segment.id, segment.id);
 			if (segment.ipfsCid) idToCanonical.set(segment.ipfsCid, segment.id);
 		}
-		const seenCanonicalIds = new Set<string>();
+		for (const layer of manifest.derivedEdgeLayers ?? []) {
+			idToCanonical.set(layer.id, layer.id);
+			if (layer.ipfsCid) idToCanonical.set(layer.ipfsCid, layer.id);
+		}
+		for (const ref of manifest.artifactRefs ?? []) {
+			if (ref.kind === "sidecar") {
+				idToCanonical.set(ref.ipfsCid, ref.ipfsCid);
+				continue;
+			}
+			idToCanonical.set(ref.storageId, ref.storageId);
+			idToCanonical.set(ref.ipfsCid, ref.storageId);
+		}
+		// Track which batch each canonical ID was first seen in. Duplicate
+		// CIDs *within* a single batch are fine — content-addressed dedup
+		// means two artifactRefs (e.g. byte-identical biome.json files under
+		// different documentIds) resolve to one CID in the CAR, and the
+		// batch may list that CID once per logical reference. The stronger
+		// invariant is that a given artifact doesn't straddle two different
+		// batches; enforce only that.
+		const firstBatchByCanonical = new Map<string, number>();
 		for (let index = 0; index < manifest.batches.length; index++) {
 			const batch = manifest.batches[index];
 			if (!batch) continue;
@@ -315,14 +345,15 @@ export function validateManifestSchema(data: unknown): CollectionHead {
 						{ field: `batches[${index}].segmentIds` },
 					);
 				}
-				if (seenCanonicalIds.has(canonical)) {
+				const firstSeen = firstBatchByCanonical.get(canonical);
+				if (firstSeen !== undefined && firstSeen !== index) {
 					throw new WtfocError(
-						`Invalid head manifest: segment "${segmentId}" appears in multiple batch records`,
+						`Invalid head manifest: segment "${segmentId}" appears in batches ${firstSeen} and ${index}`,
 						"SCHEMA_INVALID",
 						{ field: `batches[${index}].segmentIds` },
 					);
 				}
-				seenCanonicalIds.add(canonical);
+				if (firstSeen === undefined) firstBatchByCanonical.set(canonical, index);
 			}
 		}
 	}
