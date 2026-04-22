@@ -17,7 +17,8 @@
 		"lint:fix": "biome check . --write",
 		"clean": "pnpm -r exec rm -rf dist",
 		"dogfood": "tsx --tsconfig scripts/tsconfig.json scripts/dogfood.ts",
-		"dogfood:setup": "tsx --tsconfig scripts/tsconfig.json scripts/dogfood-setup.ts"
+		"dogfood:setup": "tsx --tsconfig scripts/tsconfig.json scripts/dogfood-setup.ts",
+		"dogfood:flagship": "bash scripts/dogfood-flagship.sh"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.8",
