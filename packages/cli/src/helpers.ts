@@ -9,6 +9,7 @@ import { resolveUrlShortcut } from "@wtfoc/config";
 import { AstChunker, registerChunker } from "@wtfoc/ingest";
 import type { MountedCollection } from "@wtfoc/search";
 import {
+	CachingEmbedder,
 	InMemoryVectorIndex,
 	mountCollection,
 	OpenAIEmbedder,
@@ -25,6 +26,7 @@ export interface EmbedderOpts {
 	embedderModel?: string;
 	embedderRateLimit?: string;
 	embedderMaxRetries?: string;
+	embedderCacheDir?: string;
 }
 
 export type LoadedCollection = MountedCollection;
@@ -61,6 +63,10 @@ export function withEmbedderOptions<T extends Command>(cmd: T): T {
 		.option(
 			"--embedder-max-retries <n>",
 			"Max retries on 429/5xx/transient provider errors (default: 8)",
+		)
+		.option(
+			"--embedder-cache-dir <dir>",
+			"Persistent query-embedding cache directory (env: WTFOC_EMBEDDER_CACHE_DIR). Opt-in.",
 		) as T;
 }
 
@@ -160,6 +166,26 @@ function resolveProfile(resolvedConfig?: ResolvedEmbedderConfig): EmbedderProfil
 	return profile;
 }
 
+/**
+ * Wrap an embedder with the persistent query-embedding cache when the user
+ * has opted in via `--embedder-cache-dir` or `WTFOC_EMBEDDER_CACHE_DIR`.
+ * No-op otherwise — caching stays off by default to keep privacy +
+ * benchmarking behavior unsurprising (see gh-284).
+ */
+function maybeWrapWithCache(
+	embedder: Embedder,
+	providerHint: string,
+	opts: { embedderCacheDir?: string },
+): Embedder {
+	const cacheDir = opts.embedderCacheDir ?? process.env.WTFOC_EMBEDDER_CACHE_DIR;
+	if (!cacheDir) return embedder;
+	return new CachingEmbedder(embedder, {
+		cacheDir,
+		provider: providerHint,
+		modelVersion: "unknown",
+	});
+}
+
 export function createEmbedder(
 	opts: {
 		embedder?: string;
@@ -168,6 +194,7 @@ export function createEmbedder(
 		embedderModel?: string;
 		embedderRateLimit?: string;
 		embedderMaxRetries?: string;
+		embedderCacheDir?: string;
 	},
 	resolvedConfig?: ResolvedEmbedderConfig,
 ): { embedder: Embedder; modelName: string } {
@@ -223,7 +250,10 @@ export function createEmbedder(
 			minRequestIntervalMs,
 			maxRetries,
 		});
-		return { embedder, modelName: model };
+		return {
+			embedder: maybeWrapWithCache(embedder, baseUrl, opts),
+			modelName: model,
+		};
 	}
 
 	// Default: local transformers.js (works everywhere, lower quality)
@@ -238,7 +268,10 @@ export function createEmbedder(
 				pooling,
 				prefix,
 			});
-			return { embedder, modelName: localModel };
+			return {
+				embedder: maybeWrapWithCache(embedder, "transformers", opts),
+				modelName: localModel,
+			};
 		} catch {
 			const fallbackDims = dimensions ?? 384;
 			console.error("⚠️  TransformersEmbedder unavailable, using zero-vector fallback");

@@ -17,14 +17,15 @@ import {
 } from "@wtfoc/common";
 import { evaluateIngest, evaluateEdgeExtraction, evaluateSignals, readCatalog, catalogFilePath, loadAllOverlayEdges } from "@wtfoc/ingest";
 import {
+	BgeReranker,
+	CachingEmbedder,
 	evaluateEdgeResolution,
 	evaluateQualityQueries,
-	evaluateThemes,
 	evaluateSearch,
-	OpenAIEmbedder,
+	evaluateThemes,
 	InMemoryVectorIndex,
-	BgeReranker,
 	LlmReranker,
+	OpenAIEmbedder,
 	type Reranker,
 } from "@wtfoc/search";
 import { evaluateStorage, createStore, type Store } from "@wtfoc/store";
@@ -67,6 +68,7 @@ const { values } = parseArgs({
 		"embedder-url": { type: "string" },
 		"embedder-model": { type: "string" },
 		"embedder-key": { type: "string" },
+		"embedder-cache-dir": { type: "string" },
 		"reranker-type": { type: "string" }, // "llm" | "bge" (bge not yet implemented)
 		"reranker-url": { type: "string" },  // base URL for llm or bge reranker
 		"reranker-model": { type: "string" }, // model name for llm reranker
@@ -249,11 +251,20 @@ async function main() {
 							checks: [],
 						};
 					} else {
-						const embedder = new OpenAIEmbedder({
+						const rawEmbedder = new OpenAIEmbedder({
 							apiKey: values["embedder-key"] || values["extractor-key"] || "no-key",
 							baseUrl: values["embedder-url"],
 							model: values["embedder-model"],
 						});
+						const embedCacheDir =
+							values["embedder-cache-dir"] ?? process.env.WTFOC_EMBEDDER_CACHE_DIR;
+						const embedder = embedCacheDir
+							? new CachingEmbedder(rawEmbedder, {
+									cacheDir: embedCacheDir,
+									provider: "openai-compatible",
+									modelVersion: "unknown",
+								})
+							: rawEmbedder;
 						const vectorIndex = new InMemoryVectorIndex();
 						// Populate vector index from segment chunks — must include full metadata
 						// so query()/trace() can read sourceType, source, content from results
@@ -308,11 +319,20 @@ async function main() {
 							checks: [],
 						};
 					} else {
-						const embedder = new OpenAIEmbedder({
+						const rawEmbedder = new OpenAIEmbedder({
 							apiKey: values["embedder-key"] || values["extractor-key"] || "no-key",
 							baseUrl: values["embedder-url"],
 							model: values["embedder-model"],
 						});
+						const embedCacheDir =
+							values["embedder-cache-dir"] ?? process.env.WTFOC_EMBEDDER_CACHE_DIR;
+						const embedder = embedCacheDir
+							? new CachingEmbedder(rawEmbedder, {
+									cacheDir: embedCacheDir,
+									provider: "openai-compatible",
+									modelVersion: "unknown",
+								})
+							: rawEmbedder;
 						const vectorIndex = new InMemoryVectorIndex();
 						for (const seg of segments) {
 							const entries = seg.chunks

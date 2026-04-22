@@ -5,6 +5,7 @@ export type { RerankCandidate, Reranker, RerankResult } from "@wtfoc/common";
 export { centroid, dot, extractLabel, GreedyClusterer, normalize } from "./clustering/index.js";
 export type { EdgeResolutionStats, SourceIndex } from "./edge-resolution.js";
 export { analyzeEdgeResolution, buildSourceIndex, resolves } from "./edge-resolution.js";
+export { CachingEmbedder, type CachingEmbedderOptions } from "./embedders/caching.js";
 export type { OpenAIEmbedderOptions } from "./embedders/openai.js";
 export { OpenAIEmbedder } from "./embedders/openai.js";
 export type { TransformersEmbedderOptions } from "./embedders/transformers.js";
