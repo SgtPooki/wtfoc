@@ -15,6 +15,13 @@ export interface CidResolvedCollection {
 	storage: StorageBackend;
 	/** Look up the published CID for a sidecar role, if the manifest carries one. */
 	sidecarCid(role: PublishedSidecarRole): string | undefined;
+	/**
+	 * Release any internally-owned helia/libp2p node. Safe to call multiple
+	 * times. Callers that finish with a resolved collection (CLI commands,
+	 * one-shot scripts) must call this before exit or the libp2p shutdown
+	 * timers keep the process alive for minutes.
+	 */
+	close(): Promise<void>;
 }
 
 /**
@@ -148,5 +155,6 @@ export async function resolveCollectionByCid(
 		manifest,
 		storage,
 		sidecarCid: (role) => cidBySidecarRole.get(role),
+		close: () => reader.close(),
 	};
 }

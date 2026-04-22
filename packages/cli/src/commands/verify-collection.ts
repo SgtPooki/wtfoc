@@ -59,7 +59,8 @@ export async function runVerifyCollection(
 ): Promise<VerifyCollectionReport> {
 	const resolver =
 		options.resolver ??
-		((cid: string) => resolveCollectionByCid(cid, undefined, { downloadTimeoutMs: options.downloadTimeoutMs }));
+		((cid: string) =>
+			resolveCollectionByCid(cid, undefined, { downloadTimeoutMs: options.downloadTimeoutMs }));
 	const retryDelaysMs = options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
 	const checks: VerifyCollectionCheck[] = [];
 
@@ -69,7 +70,19 @@ export async function runVerifyCollection(
 		status: "pass",
 		detail: `manifest CID ${manifestCid} resolved and schema valid`,
 	});
+	try {
+		return await runChecks(resolved, manifestCid, checks, retryDelaysMs);
+	} finally {
+		await resolved.close();
+	}
+}
 
+async function runChecks(
+	resolved: CidResolvedCollection,
+	manifestCid: string,
+	checks: VerifyCollectionCheck[],
+	retryDelaysMs: readonly number[],
+): Promise<VerifyCollectionReport> {
 	let segmentsReached = 0;
 	let segmentsHashMatch = 0;
 	let segmentsSchemaValid = 0;

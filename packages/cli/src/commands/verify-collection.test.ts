@@ -67,6 +67,7 @@ function resolverFrom(
 		manifest,
 		storage,
 		sidecarCid: () => undefined,
+		close: async () => {},
 	});
 }
 

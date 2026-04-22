@@ -38,10 +38,33 @@ export class CidReadableStorage implements StorageBackend {
 	#initPromise: Promise<void> | null = null;
 	#useGatewayFallback = false;
 	readonly #downloadTimeoutMs: number;
+	/**
+	 * Holds the helia handle built by {@link buildDefaultVerifiedFetch} so
+	 * {@link close} can shut it down. Tests that inject a `verifiedFetch`
+	 * own their own lifecycle and this stays null.
+	 */
+	#ownedHelia: { stop(): Promise<void> } | null = null;
 
 	constructor(options: CidReadableStorageOptions = {}) {
 		this.#verifiedFetch = options.verifiedFetch ?? null;
 		this.#downloadTimeoutMs = options.downloadTimeoutMs ?? DEFAULT_DOWNLOAD_TIMEOUT_MS;
+	}
+
+	/**
+	 * Stop any internally-owned helia instance. Idempotent. Callers that
+	 * use this storage (CLI commands, scripts, long-running services) must
+	 * invoke this before exit or the helia libp2p node keeps the process
+	 * alive for minutes waiting for its own shutdown timers.
+	 */
+	async close(): Promise<void> {
+		const helia = this.#ownedHelia;
+		this.#ownedHelia = null;
+		if (!helia) return;
+		try {
+			await helia.stop();
+		} catch {
+			// shutdown errors on a read-only reader are non-fatal; swallow
+		}
 	}
 
 	async #ensureReady(): Promise<void> {
@@ -49,8 +72,9 @@ export class CidReadableStorage implements StorageBackend {
 		if (!this.#initPromise) {
 			this.#initPromise = (async () => {
 				try {
-					const vf = await buildDefaultVerifiedFetch();
-					this.#verifiedFetch = vf;
+					const built = await buildDefaultVerifiedFetch();
+					this.#verifiedFetch = built.verifiedFetch;
+					this.#ownedHelia = built.helia;
 				} catch (err) {
 					// verified-fetch unavailable at import time OR at Helia start
 					// (e.g. node-datachannel native crash, missing WebRTC UDP) →
@@ -96,7 +120,10 @@ export class CidReadableStorage implements StorageBackend {
 		signal?.addEventListener("abort", externalAbort);
 		const timer =
 			this.#downloadTimeoutMs > 0 && Number.isFinite(this.#downloadTimeoutMs)
-				? setTimeout(() => controller.abort(new Error("verified-fetch timeout")), this.#downloadTimeoutMs)
+				? setTimeout(
+						() => controller.abort(new Error("verified-fetch timeout")),
+						this.#downloadTimeoutMs,
+					)
 				: null;
 		try {
 			const response = await this.#verifiedFetch!(`ipfs://${cid}`, { signal: controller.signal });
@@ -154,7 +181,10 @@ export class CidReadableStorage implements StorageBackend {
  * UDP mux fails to bind (wtfoc-u4i2). Bitswap + DHT routing over TCP is
  * sufficient for verified retrieval.
  */
-async function buildDefaultVerifiedFetch(): Promise<VerifiedFetch> {
+async function buildDefaultVerifiedFetch(): Promise<{
+	verifiedFetch: VerifiedFetch;
+	helia: { stop(): Promise<void> };
+}> {
 	const [{ createHelia, libp2pDefaults }, { createVerifiedFetch }] = await Promise.all([
 		import("helia"),
 		import("@helia/verified-fetch"),
@@ -181,5 +211,6 @@ async function buildDefaultVerifiedFetch(): Promise<VerifiedFetch> {
 	}
 
 	const helia = await createHelia({ libp2p: defaults });
-	return createVerifiedFetch(helia);
+	const verifiedFetch = await createVerifiedFetch(helia);
+	return { verifiedFetch, helia };
 }
