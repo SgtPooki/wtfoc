@@ -125,8 +125,10 @@ export class CidReadableStorage implements StorageBackend {
 						this.#downloadTimeoutMs,
 					)
 				: null;
+		const vf = this.#verifiedFetch;
+		if (!vf) return { kind: "retry-elsewhere" };
 		try {
-			const response = await this.#verifiedFetch!(`ipfs://${cid}`, { signal: controller.signal });
+			const response = await vf(`ipfs://${cid}`, { signal: controller.signal });
 			if (response.status === 404) return { kind: "not-found" };
 			if (!response.ok) return { kind: "retry-elsewhere" };
 			const buffer = await response.arrayBuffer();
