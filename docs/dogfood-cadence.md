@@ -11,16 +11,18 @@ The flagship demo story hinges on the `filoz-ecosystem-2026-04-v12` corpus passi
 
 Pass rates are computed against the **applicable** subset — queries the current corpus can answer at all. Queries with `collectionScopePattern` mismatches or `requiredSourceTypes` the corpus doesn't ingest are reported as skipped, not failed, so the overall rate means the same thing across corpus changes.
 
+Flagship runs enable source-type diversity enforcement (`--diversity-enforce`, #161) so a dominant source type (slack on v12) cannot monopolize top-K / seeds and starve queries of cross-source evidence. Turned on by default in `dogfood-flagship.sh`.
+
 | Slice | Pass rate |
 |---|---|
-| overall applicable | 29/39 (74%) |
+| overall applicable | 33/39 (85%) |
 | demo-critical tier | 5/5 (100%) |
 | work-lineage | 8/8 (100%) |
 | file-level | 4/4 (100%) |
 | direct-lookup | 6/7 (86%) |
-| cross-source | 4/7 (57%) |
-| coverage | 4/7 (57%) |
-| synthesis | 3/6 (50%) |
+| cross-source | 5/7 (71%) |
+| coverage | 5/7 (71%) |
+| synthesis | 5/6 (83%) |
 
 Skipped on v12: `dl-3`, `syn-1` (probe wtfoc-self internals), `cov-8` (needs doc-page, not ingested).
 
@@ -30,7 +32,7 @@ Enforced by [`scripts/dogfood-check-thresholds.ts`](../scripts/dogfood-check-thr
 
 | Slice | Floor | Why |
 |---|---|---|
-| overall | 65% | Catches systemic retrieval regression without flapping on 1–2 queries |
+| overall | 80% | Catches systemic retrieval regression without flapping on 1–2 queries (raised from 65% after #161 diversity-enforce lifted baseline to 85%) |
 | work-lineage | 87.5% (7/8) | Flagship demo category — one-query buffer only |
 | demo-critical tier | 100% (5/5) | Hard floor — the demo cannot carry a failing demo-critical query |
 | file-level | 100% (4/4) | Small category; a regression here means file-summary retrieval broke |

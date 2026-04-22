@@ -77,6 +77,7 @@ export async function evaluateQualityQueries(
 	reranker?: Reranker,
 	autoRoute = false,
 	context: QualityQueriesContext = {},
+	diversityEnforce = false,
 ): Promise<EvalStageResult> {
 	const startedAt = new Date().toISOString();
 	const t0 = performance.now();
@@ -106,6 +107,7 @@ export async function evaluateQualityQueries(
 			overlayEdges,
 			reranker,
 			autoRoute,
+			diversityEnforce,
 		);
 		scores.push(score);
 		if (score.passed) passCount++;
@@ -294,6 +296,7 @@ async function scoreQuery(
 	overlayEdges: Edge[] = [],
 	reranker?: Reranker,
 	autoRoute = false,
+	diversityEnforce = false,
 ): Promise<QueryScore> {
 	let resultCount = 0;
 	let requiredTypesFound = false;
@@ -316,6 +319,8 @@ async function scoreQuery(
 		// directly-relevant symbol chunk.
 		const chunkLevelBoosts = gq.category === "file-level" ? { file: 1.4 } : undefined;
 
+		const diversityOption = diversityEnforce ? { minScoreRatio: 0.65 } : undefined;
+
 		// Query phase
 		const qResult = await query(gq.queryText, embedder, vectorIndex, {
 			topK: 10,
@@ -323,6 +328,7 @@ async function scoreQuery(
 			reranker,
 			sourceTypeBoosts: boosts,
 			chunkLevelBoosts,
+			...(diversityOption ? { diversityEnforce: diversityOption } : {}),
 		});
 		resultCount = qResult.results.length;
 
@@ -345,6 +351,7 @@ async function scoreQuery(
 			reranker,
 			sourceTypeBoosts: boosts,
 			chunkLevelBoosts,
+			...(diversityOption ? { diversityEnforce: diversityOption } : {}),
 		});
 
 		for (const st of tResult.stats.sourceTypes) sourceTypesReached.push(st);

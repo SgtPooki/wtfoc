@@ -32,6 +32,7 @@ pnpm dogfood \
 	--embedder-key "$OPENROUTER_API_KEY" \
 	--extractor-url http://127.0.0.1:4523/v1 \
 	--extractor-model haiku \
+	--diversity-enforce \
 	--output "$OUT"
 
 echo ""

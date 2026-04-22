@@ -37,7 +37,7 @@ interface Threshold {
 }
 
 const THRESHOLDS = {
-	overallMin: 0.65,
+	overallMin: 0.8, // raised from 0.65 after diversity-enforce landed (#161)
 	workLineageMin: 0.875, // 7/8
 	demoCriticalMin: 1.0, // 5/5 hard floor
 	fileLevelMin: 1.0,

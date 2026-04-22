@@ -73,6 +73,7 @@ const { values } = parseArgs({
 		"reranker-url": { type: "string" },  // base URL for llm or bge reranker
 		"reranker-model": { type: "string" }, // model name for llm reranker
 		"auto-route": { type: "boolean", default: false }, // enable persona-based boost routing (#265)
+		"diversity-enforce": { type: "boolean", default: false }, // enforce source-type diversity in top-K / seeds (#161)
 		help: { type: "boolean", short: "h", default: false },
 	},
 	strict: true,
@@ -373,6 +374,7 @@ async function main() {
 						reranker,
 						values["auto-route"] ?? false,
 						{ collectionId: values.collection!, corpusSourceTypes },
+						values["diversity-enforce"] ?? false,
 					);
 					}
 					break;

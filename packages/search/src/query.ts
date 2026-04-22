@@ -42,6 +42,24 @@ export interface QueryOptions {
 	 * unaffected.
 	 */
 	chunkLevelBoosts?: Record<string, number>;
+	/**
+	 * Enforce source-type diversity in the returned top-K (#161). When set,
+	 * after scoring + boosting, reserve one slot for the best candidate of
+	 * each distinct source type whose best-candidate score meets the floor
+	 * (`bestScoreOfType >= topScore * minScoreRatio`). Remaining slots fill
+	 * by score. Prevents a single over-represented type (slack, doc-page,
+	 * etc.) from monopolizing top-K after boosts compress the score band.
+	 *
+	 * Default off — does not activate unless this option is set. The floor
+	 * guards against surfacing weak candidates just to satisfy diversity.
+	 */
+	diversityEnforce?: {
+		/**
+		 * Minimum score ratio (0–1) a type's best candidate must meet relative
+		 * to the overall top score to get a reserved slot. Default 0.65.
+		 */
+		minScoreRatio?: number;
+	};
 }
 
 export interface QueryResult {
@@ -73,6 +91,12 @@ export interface QueryResult {
 		returnedChunkLevelCounts?: Record<string, number>;
 		/** chunk levels boosted (value != 1.0) (#287) */
 		boostedChunkLevels?: string[];
+		/**
+		 * Source types that got a reserved slot via `diversityEnforce` (#161).
+		 * Empty/absent means either diversity was off or no type needed
+		 * promotion beyond score-order.
+		 */
+		diversityReservedTypes?: string[];
 	};
 }
 
@@ -131,6 +155,10 @@ export async function query(
 		fetchK = Math.max(fetchK, topK * 10);
 	}
 	if (includeSet || excludeSet) fetchK = Math.max(fetchK, topK * 10);
+	// Diversity reservation needs a wide candidate pool — if fetchK ~= topK,
+	// dominant types fill the entire fetched set and diversity has no long
+	// tail to pull a reserved candidate from (#161).
+	if (options?.diversityEnforce) fetchK = Math.max(fetchK, topK * 10);
 	const rawMatches = await vectorIndex.search(queryVector, fetchK);
 	// Apply source-type filters before reranker runs (save compute) and before topK slicing.
 	const matches =
@@ -201,14 +229,59 @@ export async function query(
 		results.sort((a, b) => b.score - a.score);
 	}
 
+	// Diversity-enforcing top-K (#161). Applied AFTER all scoring but BEFORE
+	// slicing. Reserves one slot per source-type whose best candidate
+	// meets the floor, then fills remaining topK slots by score. Guards
+	// against a dominant source type monopolizing top-K after boost
+	// compression — slack-heavy corpora triggered this on v12 for queries
+	// where required cross-source evidence was available but ranked below
+	// a slack flood.
+	let diversityReservedTypes: string[] | undefined;
+	if (options?.diversityEnforce && results.length > 0) {
+		const { minScoreRatio = 0.65 } = options.diversityEnforce;
+		const topScore = results[0]?.score ?? 0;
+		const floor = topScore * minScoreRatio;
+
+		const bestPerType = new Map<string, (typeof results)[number]>();
+		for (const r of results) {
+			if (!bestPerType.has(r.sourceType) && r.score >= floor) {
+				bestPerType.set(r.sourceType, r);
+			}
+		}
+
+		const reserved = [...bestPerType.values()].sort((a, b) => b.score - a.score).slice(0, topK);
+		const reservedIds = new Set(reserved.map((r) => r.storageId));
+
+		if (reserved.length > 0 && reserved.length <= topK) {
+			const filler = results
+				.filter((r) => !reservedIds.has(r.storageId))
+				.slice(0, topK - reserved.length);
+			const merged = [...reserved, ...filler].sort((a, b) => b.score - a.score);
+			// Only mark types as "reserved" when the rescue actually changed
+			// top-K membership vs pure score order. A pure-score top-K that
+			// already had diversity needs no diagnostic entry.
+			const pureScoreTopIds = new Set(results.slice(0, topK).map((r) => r.storageId));
+			const promotedIds = reservedIds.size
+				? [...reservedIds].filter((id) => !pureScoreTopIds.has(id))
+				: [];
+			if (promotedIds.length > 0) {
+				diversityReservedTypes = reserved
+					.filter((r) => promotedIds.includes(r.storageId))
+					.map((r) => r.sourceType);
+			}
+			results = merged;
+		}
+	}
+
 	// Diagnostics (#265 + #287 telemetry) — compute counts BEFORE slicing so we
 	// can compare candidate distribution vs what actually made it into topK.
 	const hasTypeBoosts =
 		options?.sourceTypeBoosts && Object.keys(options.sourceTypeBoosts).length > 0;
 	const hasChunkLevelBoosts =
 		options?.chunkLevelBoosts && Object.keys(options.chunkLevelBoosts).length > 0;
+	const hasDiversity = Boolean(options?.diversityEnforce);
 	const diagnostics =
-		hasTypeBoosts || hasChunkLevelBoosts
+		hasTypeBoosts || hasChunkLevelBoosts || hasDiversity
 			? (() => {
 					const chunkLevelByStorageId = new Map<string, string>();
 					for (const m of matches) {
@@ -240,6 +313,7 @@ export async function query(
 						candidateTypeCounts,
 						returnedTypeCounts,
 						boostedTypes,
+						...(diversityReservedTypes ? { diversityReservedTypes } : {}),
 						...(hasChunkLevelBoosts
 							? {
 									candidateChunkLevelCounts,

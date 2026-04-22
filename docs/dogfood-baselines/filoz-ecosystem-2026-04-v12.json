@@ -1,21 +1,21 @@
 {
   "reportSchemaVersion": "1.0.0",
-  "timestamp": "2026-04-22T18:25:09.366Z",
+  "timestamp": "2026-04-22T21:44:52.614Z",
   "collectionId": "0da9b1675309f7f3c1c5e17838301710",
   "collectionName": "filoz-ecosystem-2026-04-v12",
   "stages": [
     {
       "stage": "quality-queries",
-      "startedAt": "2026-04-22T18:23:02.472Z",
-      "durationMs": 126893,
+      "startedAt": "2026-04-22T21:42:55.788Z",
+      "durationMs": 116823,
       "verdict": "pass",
-      "summary": "29/39 applicable gold queries passed (74%, 3 skipped)",
+      "summary": "33/39 applicable gold queries passed (85%, 3 skipped)",
       "metrics": {
         "goldQueriesVersion": "1.4.0",
-        "passRate": 0.7435897435897436,
-        "passCount": 29,
-        "queryOnlyPassRate": 0.6410256410256411,
-        "queryOnlyPassCount": 25,
+        "passRate": 0.8461538461538461,
+        "passCount": 33,
+        "queryOnlyPassRate": 0.8717948717948718,
+        "queryOnlyPassCount": 34,
         "applicableTotal": 39,
         "skippedCount": 3,
         "skippedReasons": [
@@ -42,20 +42,20 @@
           },
           "cross-source": {
             "total": 7,
-            "passed": 4,
-            "passRate": 0.5714285714285714,
+            "passed": 5,
+            "passRate": 0.7142857142857143,
             "skipped": 0
           },
           "coverage": {
             "total": 7,
-            "passed": 4,
-            "passRate": 0.5714285714285714,
+            "passed": 5,
+            "passRate": 0.7142857142857143,
             "skipped": 1
           },
           "synthesis": {
             "total": 6,
-            "passed": 3,
-            "passRate": 0.5,
+            "passed": 5,
+            "passRate": 0.8333333333333334,
             "skipped": 1
           },
           "file-level": {
@@ -225,10 +225,10 @@
             "category": "cross-source",
             "queryText": "What issues discuss edge resolution and how is it implemented?",
             "passed": true,
-            "passedQueryOnly": false,
+            "passedQueryOnly": true,
             "resultCount": 10,
             "requiredTypesFound": true,
-            "requiredTypesFoundQueryOnly": false,
+            "requiredTypesFoundQueryOnly": true,
             "substringFound": true,
             "edgeHopFound": true,
             "crossSourceFound": true,
@@ -1066,10 +1066,10 @@
             "category": "synthesis",
             "queryText": "How do edges connect content across different sources?",
             "passed": true,
-            "passedQueryOnly": false,
+            "passedQueryOnly": true,
             "resultCount": 10,
             "requiredTypesFound": true,
-            "requiredTypesFoundQueryOnly": false,
+            "requiredTypesFoundQueryOnly": true,
             "substringFound": true,
             "edgeHopFound": true,
             "crossSourceFound": true,
@@ -1117,11 +1117,11 @@
             "id": "syn-4",
             "category": "synthesis",
             "queryText": "What is the release process and how are versions tagged?",
-            "passed": false,
-            "passedQueryOnly": false,
+            "passed": true,
+            "passedQueryOnly": true,
             "resultCount": 10,
-            "requiredTypesFound": false,
-            "requiredTypesFoundQueryOnly": false,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
             "substringFound": true,
             "edgeHopFound": true,
             "crossSourceFound": true,
@@ -1386,8 +1386,8 @@
             "passed": false,
             "passedQueryOnly": false,
             "resultCount": 10,
-            "requiredTypesFound": false,
-            "requiredTypesFoundQueryOnly": false,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
             "substringFound": false,
             "edgeHopFound": true,
             "crossSourceFound": true,
@@ -1400,12 +1400,12 @@
               "totalHops": 15,
               "hopsInChains": 10,
               "chainCoverageRate": 0.6666666666666666,
-              "totalChainCount": 12,
-              "multiHopChainCount": 7,
+              "totalChainCount": 13,
+              "multiHopChainCount": 8,
               "hasPrimaryArtifact": true,
               "candidateFixCount": 0,
               "relatedContextCount": 5,
-              "recommendedNextReadCount": 7,
+              "recommendedNextReadCount": 8,
               "hopsWithTimestamp": 14,
               "timestampCoverageRate": 0.9333333333333333,
               "traversalTimelineMonotonic": false,
@@ -1415,27 +1415,15 @@
               "avgChainDiversity": 1,
               "chainTemporalCoherenceByEdgeType": [
                 {
-                  "edgeType": "references",
+                  "edgeType": "documents",
                   "walkDirection": "forward",
-                  "pairCount": 5,
-                  "childAfterParent": 5,
-                  "childBeforeParent": 0,
-                  "childEqualsParent": 0,
-                  "childAfterParentRate": 1,
-                  "kindPairs": {
-                    "committed->committed": 5
-                  }
-                },
-                {
-                  "edgeType": "references",
-                  "walkDirection": "reverse",
-                  "pairCount": 3,
+                  "pairCount": 8,
                   "childAfterParent": 0,
-                  "childBeforeParent": 3,
+                  "childBeforeParent": 8,
                   "childEqualsParent": 0,
                   "childAfterParentRate": 0,
                   "kindPairs": {
-                    "committed->committed": 3
+                    "committed->committed": 8
                   }
                 },
                 {
@@ -1458,10 +1446,10 @@
             "category": "direct-lookup",
             "queryText": "What recent pull requests changed PDP, proof set, or proof verification behavior?",
             "passed": true,
-            "passedQueryOnly": false,
+            "passedQueryOnly": true,
             "resultCount": 10,
             "requiredTypesFound": true,
-            "requiredTypesFoundQueryOnly": false,
+            "requiredTypesFoundQueryOnly": true,
             "substringFound": true,
             "edgeHopFound": true,
             "crossSourceFound": true,
@@ -1509,11 +1497,11 @@
             "id": "cs-6",
             "category": "cross-source",
             "queryText": "How does synapse-sdk integrate with filecoin-pin or delegated storage services when publishing data?",
-            "passed": false,
-            "passedQueryOnly": false,
+            "passed": true,
+            "passedQueryOnly": true,
             "resultCount": 10,
-            "requiredTypesFound": false,
-            "requiredTypesFoundQueryOnly": false,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
             "substringFound": true,
             "edgeHopFound": true,
             "crossSourceFound": true,
@@ -1588,10 +1576,10 @@
             "category": "cross-source",
             "queryText": "How is a storage provider or proof service configured in Synapse docs compared with the TypeScript implementation?",
             "passed": true,
-            "passedQueryOnly": false,
+            "passedQueryOnly": true,
             "resultCount": 10,
             "requiredTypesFound": true,
-            "requiredTypesFoundQueryOnly": false,
+            "requiredTypesFoundQueryOnly": true,
             "substringFound": true,
             "edgeHopFound": true,
             "crossSourceFound": true,
@@ -1636,12 +1624,12 @@
             "id": "cov-6",
             "category": "coverage",
             "queryText": "What problems or bugs were reported around payment flows in the Filecoin services ecosystem repos?",
-            "passed": false,
-            "passedQueryOnly": false,
+            "passed": true,
+            "passedQueryOnly": true,
             "resultCount": 10,
-            "requiredTypesFound": false,
-            "requiredTypesFoundQueryOnly": false,
-            "substringFound": false,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
             "edgeHopFound": true,
             "crossSourceFound": true,
             "sourceTypesReached": [
@@ -1832,11 +1820,11 @@
             "id": "syn-7",
             "category": "synthesis",
             "queryText": "How do Curio sector or deal-storage concepts connect to the Synapse client storage workflow?",
-            "passed": false,
-            "passedQueryOnly": false,
+            "passed": true,
+            "passedQueryOnly": true,
             "resultCount": 10,
-            "requiredTypesFound": false,
-            "requiredTypesFoundQueryOnly": false,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
             "substringFound": true,
             "edgeHopFound": true,
             "crossSourceFound": true,
@@ -2181,10 +2169,10 @@
             "category": "work-lineage",
             "queryText": "DataSetStatus enum values and transitions in filecoin services code",
             "passed": true,
-            "passedQueryOnly": false,
+            "passedQueryOnly": true,
             "resultCount": 10,
             "requiredTypesFound": true,
-            "requiredTypesFoundQueryOnly": false,
+            "requiredTypesFoundQueryOnly": true,
             "substringFound": true,
             "edgeHopFound": true,
             "crossSourceFound": true,
@@ -2668,23 +2656,23 @@
           "avgCrossSourceChainRate": 0.47599067599067596,
           "avgTimestampCoverageRate": 0.9914529914529916,
           "avgChainDiversity": 1.6115625115625114,
-          "avgMultiHopChainCount": 10.179487179487179,
+          "avgMultiHopChainCount": 10.205128205128204,
           "primaryArtifactRate": 1,
           "traversalTimelineMonotonicRate": 0.02564102564102564,
           "traversalTimelineMonotonicCandidateCount": 39,
           "totalCandidateFixes": 3,
-          "totalRecommendedNextReads": 397,
+          "totalRecommendedNextReads": 398,
           "chainTemporalCoherenceByEdgeType": [
             {
               "edgeType": "references",
               "walkDirection": "forward",
-              "pairCount": 259,
-              "childAfterParent": 102,
+              "pairCount": 254,
+              "childAfterParent": 97,
               "childBeforeParent": 112,
               "childEqualsParent": 45,
-              "childAfterParentRate": 0.3938223938223938,
+              "childAfterParentRate": 0.38188976377952755,
               "kindPairs": {
-                "committed->committed": 193,
+                "committed->committed": 188,
                 "committed->updated": 20,
                 "created->updated": 8,
                 "updated->committed": 5,
@@ -2694,13 +2682,13 @@
             {
               "edgeType": "references",
               "walkDirection": "reverse",
-              "pairCount": 67,
+              "pairCount": 64,
               "childAfterParent": 21,
-              "childBeforeParent": 38,
+              "childBeforeParent": 35,
               "childEqualsParent": 8,
-              "childAfterParentRate": 0.31343283582089554,
+              "childAfterParentRate": 0.328125,
               "kindPairs": {
-                "committed->committed": 35,
+                "committed->committed": 32,
                 "updated->updated": 19,
                 "updated->committed": 4,
                 "updated->created": 9
@@ -2709,13 +2697,13 @@
             {
               "edgeType": "documents",
               "walkDirection": "forward",
-              "pairCount": 37,
+              "pairCount": 45,
               "childAfterParent": 15,
-              "childBeforeParent": 7,
+              "childBeforeParent": 15,
               "childEqualsParent": 15,
-              "childAfterParentRate": 0.40540540540540543,
+              "childAfterParentRate": 0.3333333333333333,
               "kindPairs": {
-                "committed->committed": 37
+                "committed->committed": 45
               }
             },
             {
@@ -2861,28 +2849,10 @@
           "detail": "[cross-source] \"Which issues discuss dependency updates and their resolution?\" — missing required source types"
         },
         {
-          "name": "quality:syn-4",
-          "passed": false,
-          "actual": "missing required source types",
-          "detail": "[synthesis] \"What is the release process and how are versions tagged?\" — missing required source types"
-        },
-        {
           "name": "quality:dl-7",
           "passed": false,
-          "actual": "missing required source types, missing expected source substrings",
-          "detail": "[direct-lookup] \"What are the main dependencies used?\" — missing required source types, missing expected source substrings"
-        },
-        {
-          "name": "quality:cs-6",
-          "passed": false,
-          "actual": "missing required source types",
-          "detail": "[cross-source] \"How does synapse-sdk integrate with filecoin-pin or delegated storage services when publishing data?\" — missing required source types"
-        },
-        {
-          "name": "quality:cov-6",
-          "passed": false,
-          "actual": "missing required source types, missing expected source substrings",
-          "detail": "[coverage] \"What problems or bugs were reported around payment flows in the Filecoin services ecosystem repos?\" — missing required source types, missing expected source substrings"
+          "actual": "missing expected source substrings",
+          "detail": "[direct-lookup] \"What are the main dependencies used?\" — missing expected source substrings"
         },
         {
           "name": "quality:cov-7",
@@ -2895,16 +2865,10 @@
           "passed": false,
           "actual": "missing required source types",
           "detail": "[synthesis] \"Why did the Filecoin services work settle on the current proof set or PDP service contract design?\" — missing required source types"
-        },
-        {
-          "name": "quality:syn-7",
-          "passed": false,
-          "actual": "missing required source types",
-          "detail": "[synthesis] \"How do Curio sector or deal-storage concepts connect to the Synapse client storage workflow?\" — missing required source types"
         }
       ]
     }
   ],
   "verdict": "pass",
-  "durationMs": 127920
+  "durationMs": 117742
 }

@@ -9,6 +9,32 @@ import { followEdges } from "./traversal.js";
 export type TraceMode = "discovery" | "analytical";
 export type TraceView = "lineage" | "timeline" | "evidence";
 
+/**
+ * Select `limit` seeds with source-type diversity. Reserves one slot per
+ * source type whose best-score seed meets `topScore * minScoreRatio`, then
+ * fills remaining slots by score. Returns seeds in score-desc order.
+ */
+function applySeedDiversity(
+	scored: import("@wtfoc/common").ScoredEntry[],
+	limit: number,
+	minScoreRatio: number,
+): import("@wtfoc/common").ScoredEntry[] {
+	if (scored.length === 0 || limit <= 0) return [];
+	const topScore = scored[0]?.score ?? 0;
+	const floor = topScore * minScoreRatio;
+	const bestPerType = new Map<string, import("@wtfoc/common").ScoredEntry>();
+	for (const s of scored) {
+		const t = s.entry.metadata.sourceType ?? "unknown";
+		if (!bestPerType.has(t) && s.score >= floor) bestPerType.set(t, s);
+	}
+	const reserved = [...bestPerType.values()].sort((a, b) => b.score - a.score).slice(0, limit);
+	const reservedIds = new Set(reserved.map((s) => s.entry.id));
+	const filler = scored
+		.filter((s) => !reservedIds.has(s.entry.id))
+		.slice(0, limit - reserved.length);
+	return [...reserved, ...filler].sort((a, b) => b.score - a.score);
+}
+
 export interface TraceOptions {
 	/** Max results per source type (default: 3) */
 	maxPerSource?: number;
@@ -51,6 +77,13 @@ export interface TraceOptions {
 	overlayEdges?: import("@wtfoc/common").Edge[];
 	/** Optional reranker applied to initial seed candidates before traversal. */
 	reranker?: Reranker;
+	/**
+	 * Enforce source-type diversity in seed selection (#161). Prevents a
+	 * dominant source type (slack, doc-page) from monopolizing the seed
+	 * set and starving the traversal of cross-source evidence. See
+	 * `QueryOptions.diversityEnforce` for mechanics.
+	 */
+	diversityEnforce?: { minScoreRatio?: number };
 }
 
 export interface TraceHop {
@@ -183,14 +216,15 @@ export async function trace(
 	const hasLevelBoosts =
 		options?.chunkLevelBoosts && Object.keys(options.chunkLevelBoosts).length > 0;
 	const hasBoosts = hasTypeBoosts || hasLevelBoosts;
-	const candidateMultiplier = options?.reranker ? 2 : hasBoosts ? 5 : 1;
+	const hasDiversity = Boolean(options?.diversityEnforce);
+	const candidateMultiplier = options?.reranker ? 2 : hasBoosts || hasDiversity ? 5 : 1;
 	const candidateCount = maxTotal * candidateMultiplier;
 	const rawSeeds = await vectorIndex.search(queryVector, candidateCount);
 
 	// Apply source-type + chunk-level boosts (#265, #287) — soft routing,
 	// never drops seeds. Multiplicative composition so both axes can bias the
 	// same seed; missing keys default to 1.0.
-	const boostedSeeds = hasBoosts
+	const scoredSeeds = hasBoosts
 		? rawSeeds
 				.map((s): import("@wtfoc/common").ScoredEntry => {
 					let boosted = s.score;
@@ -209,8 +243,17 @@ export async function trace(
 					return { entry: s.entry, score: boosted };
 				})
 				.sort((a, b) => b.score - a.score)
-				.slice(0, maxTotal * (options?.reranker ? 2 : 1))
-		: rawSeeds;
+		: [...rawSeeds].sort((a, b) => b.score - a.score);
+
+	const seedLimit = maxTotal * (options?.reranker ? 2 : 1);
+
+	// Diversity-enforcing seed selection (#161). When enabled, reserve one
+	// slot per source-type whose best seed meets the floor before filling
+	// the rest by score. Prevents a dominant type (slack on v12) from
+	// starving the traversal of cross-source evidence.
+	const boostedSeeds = options?.diversityEnforce
+		? applySeedDiversity(scoredSeeds, seedLimit, options.diversityEnforce.minScoreRatio ?? 0.65)
+		: scoredSeeds.slice(0, seedLimit);
 
 	const seeds = boostedSeeds;
 	let effectiveSeeds = seeds;
