@@ -23,6 +23,7 @@ import { registerThemesCommand } from "./commands/themes.js";
 import { registerTraceCommand } from "./commands/trace.js";
 import { registerUnresolvedEdgesCommand } from "./commands/unresolved-edges.js";
 import { registerVerifyCommand } from "./commands/verify.js";
+import { registerVerifyCollectionCommand } from "./commands/verify-collection.js";
 import { registerVerifyTrustCommand } from "./commands/verify-trust.js";
 
 /** Resolved project config, loaded once at startup. */
@@ -74,6 +75,7 @@ registerCollectionsCommand(program);
 registerDescribeCommand(program);
 registerVerifyCommand(program);
 registerVerifyTrustCommand(program);
+registerVerifyCollectionCommand(program);
 registerUnresolvedEdgesCommand(program);
 registerSuggestSourcesCommand(program);
 registerReindexCommand(program);
