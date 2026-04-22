@@ -25,9 +25,18 @@ export interface CidResolvedCollection {
  * 3. Validates the manifest schema
  * 4. Returns a storage backend that maps segment IDs → IPFS CIDs for download
  */
+export interface ResolveCollectionOptions {
+	/**
+	 * Hard per-download timeout in ms forwarded to the internal
+	 * {@link CidReadableStorage}. See its constructor docs. Default 120_000.
+	 */
+	downloadTimeoutMs?: number;
+}
+
 export async function resolveCollectionByCid(
 	cidString: string,
 	signal?: AbortSignal,
+	options: ResolveCollectionOptions = {},
 ): Promise<CidResolvedCollection> {
 	// Validate CID format
 	let parsedCid: CID;
@@ -37,7 +46,11 @@ export async function resolveCollectionByCid(
 		throw new WtfocError(`Invalid CID: "${cidString}"`, "CID_INVALID", { cid: cidString });
 	}
 
-	const reader = new CidReadableStorage();
+	const reader = new CidReadableStorage({
+		...(options.downloadTimeoutMs !== undefined
+			? { downloadTimeoutMs: options.downloadTimeoutMs }
+			: {}),
+	});
 	const cidStr = parsedCid.toString();
 
 	// Fetch manifest

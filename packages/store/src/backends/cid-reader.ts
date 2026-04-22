@@ -2,6 +2,7 @@ import type { StorageBackend, StorageResult } from "@wtfoc/common";
 import { StorageNotFoundError, StorageUnreachableError, WtfocError } from "@wtfoc/common";
 
 const IPFS_GATEWAYS = ["https://dweb.link/ipfs/", "https://trustless-gateway.link/ipfs/"];
+const DEFAULT_DOWNLOAD_TIMEOUT_MS = 120_000;
 
 type VerifiedFetch = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -13,6 +14,14 @@ type VerifiedFetch = (url: string, init?: RequestInit) => Promise<Response>;
 export interface CidReadableStorageOptions {
 	/** Preconfigured verified-fetch — skips the lazy default init. */
 	verifiedFetch?: VerifiedFetch;
+	/**
+	 * Hard per-download timeout in ms. When verified-fetch is in use and a
+	 * single call exceeds this, the call is aborted and the download
+	 * retries through the HTTP gateway fallback. Default 120000 (2 min).
+	 * Set `0` or `Infinity` to disable — useful in tests that provide their
+	 * own deterministic `verifiedFetch`.
+	 */
+	downloadTimeoutMs?: number;
 }
 
 /**
@@ -28,9 +37,11 @@ export class CidReadableStorage implements StorageBackend {
 	#verifiedFetch: VerifiedFetch | null;
 	#initPromise: Promise<void> | null = null;
 	#useGatewayFallback = false;
+	readonly #downloadTimeoutMs: number;
 
 	constructor(options: CidReadableStorageOptions = {}) {
 		this.#verifiedFetch = options.verifiedFetch ?? null;
+		this.#downloadTimeoutMs = options.downloadTimeoutMs ?? DEFAULT_DOWNLOAD_TIMEOUT_MS;
 	}
 
 	async #ensureReady(): Promise<void> {
@@ -59,28 +70,50 @@ export class CidReadableStorage implements StorageBackend {
 		signal?.throwIfAborted();
 		await this.#ensureReady();
 
-		// Try verified-fetch first if available
+		// Try verified-fetch first if available. Enforce a hard per-call
+		// timeout because helia/verified-fetch has no internal cap and can
+		// stall indefinitely on provider discovery — caller-supplied retry
+		// logic is useless outside a request that never returns. On timeout
+		// or any recoverable error, fall through to the HTTP gateway path.
 		if (this.#verifiedFetch) {
-			let response: Response;
-			try {
-				response = await this.#verifiedFetch(`ipfs://${cid}`, { signal });
-			} catch (err) {
-				if (err instanceof DOMException && err.name === "AbortError") throw err;
-				throw new StorageUnreachableError("ipfs", err);
-			}
-
-			if (response.status === 404) {
-				throw new StorageNotFoundError(cid, "ipfs");
-			}
-			if (!response.ok) {
-				throw new StorageUnreachableError("ipfs", new Error(`HTTP ${response.status} for ${cid}`));
-			}
-
-			const buffer = await response.arrayBuffer();
-			return new Uint8Array(buffer);
+			const vfResult = await this.#tryVerifiedFetch(cid, signal);
+			if (vfResult.kind === "ok") return vfResult.bytes;
+			if (vfResult.kind === "not-found") throw new StorageNotFoundError(cid, "ipfs");
+			// kind === "retry-elsewhere" → continue to gateway fallback
 		}
 
-		// HTTP gateway fallback
+		return this.#downloadViaGateways(cid, signal);
+	}
+
+	async #tryVerifiedFetch(
+		cid: string,
+		signal?: AbortSignal,
+	): Promise<
+		{ kind: "ok"; bytes: Uint8Array } | { kind: "not-found" } | { kind: "retry-elsewhere" }
+	> {
+		const controller = new AbortController();
+		const externalAbort = () => controller.abort(signal?.reason);
+		signal?.addEventListener("abort", externalAbort);
+		const timer =
+			this.#downloadTimeoutMs > 0 && Number.isFinite(this.#downloadTimeoutMs)
+				? setTimeout(() => controller.abort(new Error("verified-fetch timeout")), this.#downloadTimeoutMs)
+				: null;
+		try {
+			const response = await this.#verifiedFetch!(`ipfs://${cid}`, { signal: controller.signal });
+			if (response.status === 404) return { kind: "not-found" };
+			if (!response.ok) return { kind: "retry-elsewhere" };
+			const buffer = await response.arrayBuffer();
+			return { kind: "ok", bytes: new Uint8Array(buffer) };
+		} catch (err) {
+			if (signal?.aborted) throw err;
+			return { kind: "retry-elsewhere" };
+		} finally {
+			if (timer) clearTimeout(timer);
+			signal?.removeEventListener("abort", externalAbort);
+		}
+	}
+
+	async #downloadViaGateways(cid: string, signal?: AbortSignal): Promise<Uint8Array> {
 		const errors: Error[] = [];
 		for (const gateway of IPFS_GATEWAYS) {
 			try {

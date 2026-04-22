@@ -49,13 +49,17 @@ async function downloadWithRetry(
 export interface VerifyCollectionOptions {
 	resolver?: (cid: string) => Promise<CidResolvedCollection>;
 	retryDelaysMs?: readonly number[];
+	/** Per-download hard timeout (ms). Default 120000. */
+	downloadTimeoutMs?: number;
 }
 
 export async function runVerifyCollection(
 	manifestCid: string,
 	options: VerifyCollectionOptions = {},
 ): Promise<VerifyCollectionReport> {
-	const resolver = options.resolver ?? resolveCollectionByCid;
+	const resolver =
+		options.resolver ??
+		((cid: string) => resolveCollectionByCid(cid, undefined, { downloadTimeoutMs: options.downloadTimeoutMs }));
 	const retryDelaysMs = options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
 	const checks: VerifyCollectionCheck[] = [];
 
@@ -193,11 +197,17 @@ export function registerVerifyCollectionCommand(program: Command): void {
 			"Remote trust report: fetch manifest by CID, walk every segment + derived-edge-layer CID, verify content hashes + segment schemas. Network-bound.",
 		)
 		.requiredOption("--manifest-cid <cid>", "Manifest CID to verify")
-		.action(async (opts: { manifestCid: string }) => {
+		.option(
+			"--download-timeout <ms>",
+			"Per-artifact hard download timeout in ms (default: 120000 / 2min). Set 0 to disable.",
+		)
+		.action(async (opts: { manifestCid: string; downloadTimeout?: string }) => {
 			const format = getFormat(program.opts());
+			const downloadTimeoutMs =
+				opts.downloadTimeout !== undefined ? Number.parseInt(opts.downloadTimeout, 10) : undefined;
 			let report: VerifyCollectionReport;
 			try {
-				report = await runVerifyCollection(opts.manifestCid);
+				report = await runVerifyCollection(opts.manifestCid, { downloadTimeoutMs });
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
 				if (format === "json") {
