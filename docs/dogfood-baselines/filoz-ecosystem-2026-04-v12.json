@@ -1,52 +1,74 @@
 {
   "reportSchemaVersion": "1.0.0",
-  "timestamp": "2026-04-22T17:16:09.191Z",
+  "timestamp": "2026-04-22T18:25:09.366Z",
   "collectionId": "0da9b1675309f7f3c1c5e17838301710",
   "collectionName": "filoz-ecosystem-2026-04-v12",
   "stages": [
     {
       "stage": "quality-queries",
-      "startedAt": "2026-04-22T17:13:34.685Z",
-      "durationMs": 154504,
+      "startedAt": "2026-04-22T18:23:02.472Z",
+      "durationMs": 126893,
       "verdict": "pass",
-      "summary": "29/42 gold queries passed (69%)",
+      "summary": "29/39 applicable gold queries passed (74%, 3 skipped)",
       "metrics": {
-        "goldQueriesVersion": "1.3.0",
-        "passRate": 0.6904761904761905,
+        "goldQueriesVersion": "1.4.0",
+        "passRate": 0.7435897435897436,
         "passCount": 29,
-        "queryOnlyPassRate": 0.5952380952380952,
+        "queryOnlyPassRate": 0.6410256410256411,
         "queryOnlyPassCount": 25,
+        "applicableTotal": 39,
+        "skippedCount": 3,
+        "skippedReasons": [
+          {
+            "id": "dl-3",
+            "reason": "probes wtfoc-self edge-extractor internals"
+          },
+          {
+            "id": "syn-1",
+            "reason": "probes wtfoc-self ingest→embed→search pipeline"
+          },
+          {
+            "id": "cov-8",
+            "reason": "corpus lacks required source type(s): doc-page"
+          }
+        ],
         "totalQueries": 42,
         "categoryBreakdown": {
           "direct-lookup": {
-            "total": 8,
+            "total": 7,
             "passed": 6,
-            "passRate": 0.75
+            "passRate": 0.8571428571428571,
+            "skipped": 1
           },
           "cross-source": {
             "total": 7,
             "passed": 4,
-            "passRate": 0.5714285714285714
+            "passRate": 0.5714285714285714,
+            "skipped": 0
           },
           "coverage": {
-            "total": 8,
+            "total": 7,
             "passed": 4,
-            "passRate": 0.5
+            "passRate": 0.5714285714285714,
+            "skipped": 1
           },
           "synthesis": {
-            "total": 7,
+            "total": 6,
             "passed": 3,
-            "passRate": 0.42857142857142855
+            "passRate": 0.5,
+            "skipped": 1
           },
           "file-level": {
             "total": 4,
             "passed": 4,
-            "passRate": 1
+            "passRate": 1,
+            "skipped": 0
           },
           "work-lineage": {
             "total": 8,
             "passed": 8,
-            "passRate": 1
+            "passRate": 1,
+            "skipped": 0
           }
         },
         "tierBreakdown": {
@@ -185,65 +207,18 @@
             "id": "dl-3",
             "category": "direct-lookup",
             "queryText": "How does edge extraction work?",
+            "skipped": true,
+            "skipReason": "probes wtfoc-self edge-extractor internals",
             "passed": false,
             "passedQueryOnly": false,
-            "resultCount": 10,
-            "requiredTypesFound": true,
-            "requiredTypesFoundQueryOnly": true,
-            "substringFound": false,
+            "resultCount": 0,
+            "requiredTypesFound": false,
+            "requiredTypesFoundQueryOnly": false,
+            "substringFound": true,
             "edgeHopFound": true,
             "crossSourceFound": true,
-            "sourceTypesReached": [
-              "github-pr-comment",
-              "code",
-              "markdown",
-              "slack-message",
-              "github-pr"
-            ],
-            "lineage": {
-              "totalHops": 15,
-              "hopsInChains": 7,
-              "chainCoverageRate": 0.4666666666666667,
-              "totalChainCount": 13,
-              "multiHopChainCount": 5,
-              "hasPrimaryArtifact": true,
-              "candidateFixCount": 0,
-              "relatedContextCount": 8,
-              "recommendedNextReadCount": 5,
-              "hopsWithTimestamp": 10,
-              "timestampCoverageRate": 0.6666666666666666,
-              "traversalTimelineMonotonic": false,
-              "timelineSpanMs": 30104987979,
-              "crossSourceChainCount": 5,
-              "crossSourceChainRate": 1,
-              "avgChainDiversity": 2.2,
-              "chainTemporalCoherenceByEdgeType": [
-                {
-                  "edgeType": "references",
-                  "walkDirection": "forward",
-                  "pairCount": 5,
-                  "childAfterParent": 5,
-                  "childBeforeParent": 0,
-                  "childEqualsParent": 0,
-                  "childAfterParentRate": 1,
-                  "kindPairs": {
-                    "created->updated": 5
-                  }
-                },
-                {
-                  "edgeType": "discusses",
-                  "walkDirection": "forward",
-                  "pairCount": 1,
-                  "childAfterParent": 1,
-                  "childBeforeParent": 0,
-                  "childEqualsParent": 0,
-                  "childAfterParentRate": 1,
-                  "kindPairs": {
-                    "updated->updated": 1
-                  }
-                }
-              ]
-            }
+            "sourceTypesReached": [],
+            "lineage": null
           },
           {
             "id": "cs-1",
@@ -1012,74 +987,18 @@
             "id": "syn-1",
             "category": "synthesis",
             "queryText": "How does data flow from ingestion through embedding to search results?",
+            "skipped": true,
+            "skipReason": "probes wtfoc-self ingest→embed→search pipeline",
             "passed": false,
             "passedQueryOnly": false,
-            "resultCount": 10,
+            "resultCount": 0,
             "requiredTypesFound": false,
             "requiredTypesFoundQueryOnly": false,
             "substringFound": true,
             "edgeHopFound": true,
             "crossSourceFound": true,
-            "sourceTypesReached": [
-              "slack-message",
-              "markdown"
-            ],
-            "lineage": {
-              "totalHops": 15,
-              "hopsInChains": 14,
-              "chainCoverageRate": 0.9333333333333333,
-              "totalChainCount": 12,
-              "multiHopChainCount": 11,
-              "hasPrimaryArtifact": true,
-              "candidateFixCount": 0,
-              "relatedContextCount": 1,
-              "recommendedNextReadCount": 11,
-              "hopsWithTimestamp": 15,
-              "timestampCoverageRate": 1,
-              "traversalTimelineMonotonic": false,
-              "timelineSpanMs": 25817561589,
-              "crossSourceChainCount": 0,
-              "crossSourceChainRate": 0,
-              "avgChainDiversity": 1,
-              "chainTemporalCoherenceByEdgeType": [
-                {
-                  "edgeType": "references",
-                  "walkDirection": "forward",
-                  "pairCount": 8,
-                  "childAfterParent": 3,
-                  "childBeforeParent": 0,
-                  "childEqualsParent": 5,
-                  "childAfterParentRate": 0.375,
-                  "kindPairs": {
-                    "committed->committed": 8
-                  }
-                },
-                {
-                  "edgeType": "references",
-                  "walkDirection": "reverse",
-                  "pairCount": 4,
-                  "childAfterParent": 2,
-                  "childBeforeParent": 1,
-                  "childEqualsParent": 1,
-                  "childAfterParentRate": 0.5,
-                  "kindPairs": {
-                    "committed->committed": 4
-                  }
-                },
-                {
-                  "edgeType": "discusses",
-                  "walkDirection": "reverse",
-                  "pairCount": 1,
-                  "childAfterParent": 1,
-                  "childBeforeParent": 0,
-                  "childEqualsParent": 0,
-                  "childAfterParentRate": 1,
-                  "kindPairs": {
-                    "committed->committed": 1
-                  }
-                }
-              ]
-            }
+            "sourceTypesReached": [],
+            "lineage": null
           },
           {
             "id": "syn-2",
@@ -1716,7 +1635,7 @@
           {
             "id": "cov-6",
             "category": "coverage",
-            "queryText": "What problems or bugs were reported around Filecoin Pay payment flows in the ecosystem repos?",
+            "queryText": "What problems or bugs were reported around payment flows in the Filecoin services ecosystem repos?",
             "passed": false,
             "passedQueryOnly": false,
             "resultCount": 10,
@@ -1727,37 +1646,62 @@
             "crossSourceFound": true,
             "sourceTypesReached": [
               "slack-message",
-              "markdown",
+              "github-issue",
               "github-pr"
             ],
             "lineage": {
               "totalHops": 15,
-              "hopsInChains": 2,
-              "chainCoverageRate": 0.13333333333333333,
-              "totalChainCount": 14,
-              "multiHopChainCount": 1,
+              "hopsInChains": 12,
+              "chainCoverageRate": 0.8,
+              "totalChainCount": 10,
+              "multiHopChainCount": 7,
               "hasPrimaryArtifact": true,
-              "candidateFixCount": 0,
-              "relatedContextCount": 13,
-              "recommendedNextReadCount": 1,
+              "candidateFixCount": 1,
+              "relatedContextCount": 3,
+              "recommendedNextReadCount": 7,
               "hopsWithTimestamp": 15,
               "timestampCoverageRate": 1,
               "traversalTimelineMonotonic": false,
-              "timelineSpanMs": 25320804347,
-              "crossSourceChainCount": 1,
+              "timelineSpanMs": 26673940228,
+              "crossSourceChainCount": 7,
               "crossSourceChainRate": 1,
-              "avgChainDiversity": 2,
+              "avgChainDiversity": 2.142857142857143,
               "chainTemporalCoherenceByEdgeType": [
                 {
                   "edgeType": "references",
                   "walkDirection": "forward",
-                  "pairCount": 1,
+                  "pairCount": 5,
+                  "childAfterParent": 5,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "created->updated": 5
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 5,
                   "childAfterParent": 0,
-                  "childBeforeParent": 1,
+                  "childBeforeParent": 5,
                   "childEqualsParent": 0,
                   "childAfterParentRate": 0,
                   "kindPairs": {
-                    "committed->updated": 1
+                    "updated->created": 4,
+                    "updated->updated": 1
+                  }
+                },
+                {
+                  "edgeType": "closes",
+                  "walkDirection": "forward",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "updated->updated": 1
                   }
                 }
               ]
@@ -1977,61 +1921,18 @@
             "id": "cov-8",
             "category": "coverage",
             "queryText": "What official Filecoin documentation pages describe storage providers?",
+            "skipped": true,
+            "skipReason": "corpus lacks required source type(s): doc-page",
             "passed": false,
             "passedQueryOnly": false,
-            "resultCount": 10,
+            "resultCount": 0,
             "requiredTypesFound": false,
             "requiredTypesFoundQueryOnly": false,
             "substringFound": true,
             "edgeHopFound": true,
             "crossSourceFound": true,
-            "sourceTypesReached": [
-              "markdown"
-            ],
-            "lineage": {
-              "totalHops": 15,
-              "hopsInChains": 14,
-              "chainCoverageRate": 0.9333333333333333,
-              "totalChainCount": 12,
-              "multiHopChainCount": 11,
-              "hasPrimaryArtifact": true,
-              "candidateFixCount": 0,
-              "relatedContextCount": 1,
-              "recommendedNextReadCount": 11,
-              "hopsWithTimestamp": 15,
-              "timestampCoverageRate": 1,
-              "traversalTimelineMonotonic": false,
-              "timelineSpanMs": 37008196000,
-              "crossSourceChainCount": 0,
-              "crossSourceChainRate": 0,
-              "avgChainDiversity": 1,
-              "chainTemporalCoherenceByEdgeType": [
-                {
-                  "edgeType": "references",
-                  "walkDirection": "forward",
-                  "pairCount": 12,
-                  "childAfterParent": 0,
-                  "childBeforeParent": 1,
-                  "childEqualsParent": 11,
-                  "childAfterParentRate": 0,
-                  "kindPairs": {
-                    "committed->committed": 12
-                  }
-                },
-                {
-                  "edgeType": "references",
-                  "walkDirection": "reverse",
-                  "pairCount": 1,
-                  "childAfterParent": 1,
-                  "childBeforeParent": 0,
-                  "childEqualsParent": 0,
-                  "childAfterParentRate": 1,
-                  "kindPairs": {
-                    "committed->committed": 1
-                  }
-                }
-              ]
-            }
+            "sourceTypesReached": [],
+            "lineage": null
           },
           {
             "id": "fl-1",
@@ -2761,30 +2662,30 @@
           }
         ],
         "lineage": {
-          "traceCount": 42,
-          "tracesObserved": 42,
-          "avgChainCoverageRate": 0.8777777777777778,
-          "avgCrossSourceChainRate": 0.46580086580086577,
-          "avgTimestampCoverageRate": 0.984126984126984,
-          "avgChainDiversity": 1.5930495430495428,
-          "avgMultiHopChainCount": 9.952380952380953,
+          "traceCount": 39,
+          "tracesObserved": 39,
+          "avgChainCoverageRate": 0.9025641025641028,
+          "avgCrossSourceChainRate": 0.47599067599067596,
+          "avgTimestampCoverageRate": 0.9914529914529916,
+          "avgChainDiversity": 1.6115625115625114,
+          "avgMultiHopChainCount": 10.179487179487179,
           "primaryArtifactRate": 1,
-          "traversalTimelineMonotonicRate": 0.023809523809523808,
-          "traversalTimelineMonotonicCandidateCount": 42,
-          "totalCandidateFixes": 2,
-          "totalRecommendedNextReads": 418,
+          "traversalTimelineMonotonicRate": 0.02564102564102564,
+          "traversalTimelineMonotonicCandidateCount": 39,
+          "totalCandidateFixes": 3,
+          "totalRecommendedNextReads": 397,
           "chainTemporalCoherenceByEdgeType": [
             {
               "edgeType": "references",
               "walkDirection": "forward",
-              "pairCount": 280,
-              "childAfterParent": 105,
-              "childBeforeParent": 114,
-              "childEqualsParent": 61,
-              "childAfterParentRate": 0.375,
+              "pairCount": 259,
+              "childAfterParent": 102,
+              "childBeforeParent": 112,
+              "childEqualsParent": 45,
+              "childAfterParentRate": 0.3938223938223938,
               "kindPairs": {
-                "committed->committed": 213,
-                "committed->updated": 21,
+                "committed->committed": 193,
+                "committed->updated": 20,
                 "created->updated": 8,
                 "updated->committed": 5,
                 "updated->updated": 33
@@ -2794,15 +2695,15 @@
               "edgeType": "references",
               "walkDirection": "reverse",
               "pairCount": 67,
-              "childAfterParent": 24,
-              "childBeforeParent": 34,
-              "childEqualsParent": 9,
-              "childAfterParentRate": 0.3582089552238806,
+              "childAfterParent": 21,
+              "childBeforeParent": 38,
+              "childEqualsParent": 8,
+              "childAfterParentRate": 0.31343283582089554,
               "kindPairs": {
-                "committed->committed": 40,
-                "updated->updated": 18,
+                "committed->committed": 35,
+                "updated->updated": 19,
                 "updated->committed": 4,
-                "updated->created": 5
+                "updated->created": 9
               }
             },
             {
@@ -2830,25 +2731,24 @@
               }
             },
             {
-              "edgeType": "discusses",
-              "walkDirection": "forward",
-              "pairCount": 16,
-              "childAfterParent": 1,
-              "childBeforeParent": 15,
-              "childEqualsParent": 0,
-              "childAfterParentRate": 0.0625,
-              "kindPairs": {
-                "updated->updated": 1,
-                "committed->committed": 15
-              }
-            },
-            {
               "edgeType": "contains",
               "walkDirection": "forward",
               "pairCount": 15,
               "childAfterParent": 0,
               "childBeforeParent": 0,
               "childEqualsParent": 15,
+              "childAfterParentRate": 0,
+              "kindPairs": {
+                "committed->committed": 15
+              }
+            },
+            {
+              "edgeType": "discusses",
+              "walkDirection": "forward",
+              "pairCount": 15,
+              "childAfterParent": 0,
+              "childBeforeParent": 15,
+              "childEqualsParent": 0,
               "childAfterParentRate": 0,
               "kindPairs": {
                 "committed->committed": 15
@@ -2867,15 +2767,15 @@
               }
             },
             {
-              "edgeType": "discusses",
-              "walkDirection": "reverse",
-              "pairCount": 3,
+              "edgeType": "closes",
+              "walkDirection": "forward",
+              "pairCount": 2,
               "childAfterParent": 2,
               "childBeforeParent": 0,
-              "childEqualsParent": 1,
-              "childAfterParentRate": 0.6666666666666666,
+              "childEqualsParent": 0,
+              "childAfterParentRate": 1,
               "kindPairs": {
-                "committed->committed": 3
+                "updated->updated": 2
               }
             },
             {
@@ -2886,6 +2786,18 @@
               "childBeforeParent": 0,
               "childEqualsParent": 2,
               "childAfterParentRate": 0,
+              "kindPairs": {
+                "committed->committed": 2
+              }
+            },
+            {
+              "edgeType": "discusses",
+              "walkDirection": "reverse",
+              "pairCount": 2,
+              "childAfterParent": 1,
+              "childBeforeParent": 0,
+              "childEqualsParent": 1,
+              "childAfterParentRate": 0.5,
               "kindPairs": {
                 "committed->committed": 2
               }
@@ -2915,18 +2827,6 @@
               }
             },
             {
-              "edgeType": "closes",
-              "walkDirection": "forward",
-              "pairCount": 1,
-              "childAfterParent": 1,
-              "childBeforeParent": 0,
-              "childEqualsParent": 0,
-              "childAfterParentRate": 1,
-              "kindPairs": {
-                "updated->updated": 1
-              }
-            },
-            {
               "edgeType": "imports",
               "walkDirection": "reverse",
               "pairCount": 1,
@@ -2942,12 +2842,6 @@
         }
       },
       "checks": [
-        {
-          "name": "quality:dl-3",
-          "passed": false,
-          "actual": "missing expected source substrings",
-          "detail": "[direct-lookup] \"How does edge extraction work?\" — missing expected source substrings"
-        },
         {
           "name": "quality:cs-3",
           "passed": false,
@@ -2965,12 +2859,6 @@
           "passed": false,
           "actual": "missing required source types",
           "detail": "[cross-source] \"Which issues discuss dependency updates and their resolution?\" — missing required source types"
-        },
-        {
-          "name": "quality:syn-1",
-          "passed": false,
-          "actual": "missing required source types",
-          "detail": "[synthesis] \"How does data flow from ingestion through embedding to search results?\" — missing required source types"
         },
         {
           "name": "quality:syn-4",
@@ -2994,7 +2882,7 @@
           "name": "quality:cov-6",
           "passed": false,
           "actual": "missing required source types, missing expected source substrings",
-          "detail": "[coverage] \"What problems or bugs were reported around Filecoin Pay payment flows in the ecosystem repos?\" — missing required source types, missing expected source substrings"
+          "detail": "[coverage] \"What problems or bugs were reported around payment flows in the Filecoin services ecosystem repos?\" — missing required source types, missing expected source substrings"
         },
         {
           "name": "quality:cov-7",
@@ -3013,16 +2901,10 @@
           "passed": false,
           "actual": "missing required source types",
           "detail": "[synthesis] \"How do Curio sector or deal-storage concepts connect to the Synapse client storage workflow?\" — missing required source types"
-        },
-        {
-          "name": "quality:cov-8",
-          "passed": false,
-          "actual": "missing required source types",
-          "detail": "[coverage] \"What official Filecoin documentation pages describe storage providers?\" — missing required source types"
         }
       ]
     }
   ],
   "verdict": "pass",
-  "durationMs": 155424
+  "durationMs": 127920
 }

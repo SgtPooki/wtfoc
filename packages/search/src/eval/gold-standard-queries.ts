@@ -28,7 +28,7 @@
  * separate changes coincide on the same version — a new change always gets
  * a fresh bump.
  */
-export const GOLD_STANDARD_QUERIES_VERSION = "1.3.0";
+export const GOLD_STANDARD_QUERIES_VERSION = "1.4.0";
 
 export interface GoldStandardQuery {
 	/** Unique identifier for this query */
@@ -81,6 +81,18 @@ export interface GoldStandardQuery {
 	 * Unset defaults to `diagnostic` in the report.
 	 */
 	tier?: "demo-critical" | "diagnostic";
+	/**
+	 * Collection-scope filter. When set, the query only runs against
+	 * collections whose ID matches this regex; on other collections it is
+	 * marked `skipped` with `collectionScopeReason` and excluded from the
+	 * applicable denominator. Use for queries that probe artifacts native
+	 * to one corpus family (wtfoc-self internals, filoz-ecosystem
+	 * specifics) — better than silently failing them on corpora where
+	 * the answer cannot exist.
+	 */
+	collectionScopePattern?: string;
+	/** Required when `collectionScopePattern` is set — shows up in reports. */
+	collectionScopeReason?: string;
 }
 
 export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
@@ -108,6 +120,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["code", "markdown"],
 		expectedSourceSubstrings: ["edge", "/src/"],
 		minResults: 1,
+		// Probes wtfoc's own edge-extractor source tree. Not applicable on
+		// third-party corpora (filoz-ecosystem, etc.) where the concept
+		// simply doesn't exist.
+		collectionScopePattern: "^(wtfoc-|default$)",
+		collectionScopeReason: "probes wtfoc-self edge-extractor internals",
 	},
 
 	// ── Cross-source tracing ──────────────────────────────────
@@ -215,6 +232,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["code", "markdown"],
 		minResults: 3,
 		requireCrossSourceHops: true,
+		// Phrasing is wtfoc-self ("ingestion → embedding → search" is our
+		// own pipeline). Skip on third-party corpora where the concepts
+		// don't map.
+		collectionScopePattern: "^(wtfoc-|default$)",
+		collectionScopeReason: "probes wtfoc-self ingest→embed→search pipeline",
 	},
 	{
 		id: "syn-2",
@@ -312,10 +334,13 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 	{
 		id: "cov-6",
 		queryText:
-			"What problems or bugs were reported around Filecoin Pay payment flows in the ecosystem repos?",
+			"What problems or bugs were reported around payment flows in the Filecoin services ecosystem repos?",
 		category: "coverage",
 		requiredSourceTypes: ["github-issue", "github-pr-comment"],
-		expectedSourceSubstrings: ["filecoin-pay", "pay"],
+		// Corpus uses "filecoin-services" for the payment contracts project
+		// and "synapse-sdk" / "synapse-core" for client-side payments code.
+		// The original "filecoin-pay" substring never resolved on v12.
+		expectedSourceSubstrings: ["filecoin-services", "payments"],
 		minResults: 2,
 		requireCrossSourceHops: true,
 	},

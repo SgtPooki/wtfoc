@@ -25,6 +25,14 @@ interface QueryScore {
 	id: string;
 	category: string;
 	queryText: string;
+	/**
+	 * True when the query was skipped as inapplicable to this corpus (because
+	 * its `requiredSourceTypes` are not present, or its `collectionScopePattern`
+	 * does not match the collection id). Skipped queries do not count toward
+	 * pass/fail; they contribute to `skippedCount` and `skippedReasons`.
+	 */
+	skipped?: boolean;
+	skipReason?: string;
 	passed: boolean;
 	/**
 	 * #261 — whether the query would pass using ONLY the semantic search stage
@@ -48,6 +56,18 @@ interface QueryScore {
  * Evaluate search quality against gold standard queries.
  * Runs each query via trace and scores against expected results.
  */
+export interface QualityQueriesContext {
+	/** Collection ID for `collectionScopePattern` matching. */
+	collectionId?: string;
+	/**
+	 * Source types actually present in the corpus (union across all
+	 * segments). When provided, queries whose `requiredSourceTypes` are
+	 * not all present are marked skipped rather than failed — that is a
+	 * corpus coverage gap, not a retrieval regression.
+	 */
+	corpusSourceTypes?: ReadonlySet<string>;
+}
+
 export async function evaluateQualityQueries(
 	embedder: Embedder,
 	vectorIndex: VectorIndex,
@@ -56,6 +76,7 @@ export async function evaluateQualityQueries(
 	overlayEdges: Edge[] = [],
 	reranker?: Reranker,
 	autoRoute = false,
+	context: QualityQueriesContext = {},
 ): Promise<EvalStageResult> {
 	const startedAt = new Date().toISOString();
 	const t0 = performance.now();
@@ -64,9 +85,18 @@ export async function evaluateQualityQueries(
 	const scores: QueryScore[] = [];
 	let passCount = 0;
 	let queryOnlyPassCount = 0;
+	let skippedCount = 0;
+	const skippedReasons: Array<{ id: string; reason: string }> = [];
 
 	for (const gq of GOLD_STANDARD_QUERIES) {
 		signal?.throwIfAborted();
+		const skip = resolveSkip(gq, context);
+		if (skip) {
+			scores.push(skippedScore(gq, skip));
+			skippedCount++;
+			skippedReasons.push({ id: gq.id, reason: skip });
+			continue;
+		}
 		const score = await scoreQuery(
 			gq,
 			embedder,
@@ -82,9 +112,9 @@ export async function evaluateQualityQueries(
 		if (score.passedQueryOnly) queryOnlyPassCount++;
 	}
 
-	const passRate = GOLD_STANDARD_QUERIES.length > 0 ? passCount / GOLD_STANDARD_QUERIES.length : 0;
-	const queryOnlyPassRate =
-		GOLD_STANDARD_QUERIES.length > 0 ? queryOnlyPassCount / GOLD_STANDARD_QUERIES.length : 0;
+	const applicableTotal = GOLD_STANDARD_QUERIES.length - skippedCount;
+	const passRate = applicableTotal > 0 ? passCount / applicableTotal : 0;
+	const queryOnlyPassRate = applicableTotal > 0 ? queryOnlyPassCount / applicableTotal : 0;
 
 	// Category breakdown
 	const categories = [
@@ -95,14 +125,19 @@ export async function evaluateQualityQueries(
 		"file-level",
 		"work-lineage",
 	] as const;
-	const categoryBreakdown: Record<string, { total: number; passed: number; passRate: number }> = {};
+	const categoryBreakdown: Record<
+		string,
+		{ total: number; passed: number; passRate: number; skipped: number }
+	> = {};
 	for (const cat of categories) {
 		const catScores = scores.filter((s) => s.category === cat);
-		const catPassed = catScores.filter((s) => s.passed).length;
+		const applicable = catScores.filter((s) => !s.skipped);
+		const catPassed = applicable.filter((s) => s.passed).length;
 		categoryBreakdown[cat] = {
-			total: catScores.length,
+			total: applicable.length,
 			passed: catPassed,
-			passRate: catScores.length > 0 ? catPassed / catScores.length : 0,
+			passRate: applicable.length > 0 ? catPassed / applicable.length : 0,
+			skipped: catScores.length - applicable.length,
 		};
 	}
 
@@ -112,7 +147,7 @@ export async function evaluateQualityQueries(
 	const demoCriticalIds = new Set(
 		GOLD_STANDARD_QUERIES.filter((q) => q.tier === "demo-critical").map((q) => q.id),
 	);
-	const demoCriticalScores = scores.filter((s) => demoCriticalIds.has(s.id));
+	const demoCriticalScores = scores.filter((s) => demoCriticalIds.has(s.id) && !s.skipped);
 	const demoCriticalPassed = demoCriticalScores.filter((s) => s.passed).length;
 	const tierBreakdown = {
 		"demo-critical": {
@@ -145,6 +180,7 @@ export async function evaluateQualityQueries(
 
 	// Add individual failure checks
 	for (const score of scores) {
+		if (score.skipped) continue;
 		if (!score.passed) {
 			const reasons: string[] = [];
 			if (score.resultCount === 0) reasons.push("no results");
@@ -168,18 +204,23 @@ export async function evaluateQualityQueries(
 		startedAt,
 		durationMs,
 		verdict,
-		summary: `${passCount}/${GOLD_STANDARD_QUERIES.length} gold queries passed (${Math.round(passRate * 100)}%)`,
+		summary: `${passCount}/${applicableTotal} applicable gold queries passed (${Math.round(passRate * 100)}%${skippedCount > 0 ? `, ${skippedCount} skipped` : ""})`,
 		metrics: {
 			// #261 — stamp the fixture version into every report so historical
 			// dogfood runs remain comparable only when the same gold queries
 			// scored them. Version bumps on add/remove/re-categorize.
 			goldQueriesVersion: GOLD_STANDARD_QUERIES_VERSION,
+			// v1.4.0 — pass rates are computed against the *applicable* subset
+			// (queries minus skipped). Skipped queries are tracked separately
+			// so "69%" does not silently change meaning across collections.
 			passRate,
 			passCount,
-			// #261 — query-only metrics exposed alongside trace-assisted ones
-			// so retrieval regressions don't hide behind trace rescue.
 			queryOnlyPassRate,
 			queryOnlyPassCount,
+			applicableTotal,
+			skippedCount,
+			skippedReasons,
+			/** Total queries in the fixture — includes skipped. */
 			totalQueries: GOLD_STANDARD_QUERIES.length,
 			categoryBreakdown,
 			tierBreakdown,
@@ -192,6 +233,55 @@ export async function evaluateQualityQueries(
 			),
 		},
 		checks,
+	};
+}
+
+/**
+ * Decide whether a query is inapplicable to the current corpus.
+ * Returns a human-readable reason string when skipped, or null when applicable.
+ *
+ * Two gates:
+ * 1. `collectionScopePattern` — query declares which corpora it targets.
+ * 2. corpus source-type coverage — if the query requires a source type not
+ *    ingested into the corpus, skip instead of failing (a coverage gap in
+ *    the corpus is not a retrieval regression).
+ */
+function resolveSkip(gq: GoldStandardQuery, ctx: QualityQueriesContext): string | null {
+	if (gq.collectionScopePattern && ctx.collectionId) {
+		const re = new RegExp(gq.collectionScopePattern);
+		if (!re.test(ctx.collectionId)) {
+			return (
+				gq.collectionScopeReason ??
+				`collection "${ctx.collectionId}" does not match scope pattern ${gq.collectionScopePattern}`
+			);
+		}
+	}
+	if (ctx.corpusSourceTypes) {
+		const missing = gq.requiredSourceTypes.filter((st) => !ctx.corpusSourceTypes?.has(st));
+		if (missing.length > 0) {
+			return `corpus lacks required source type(s): ${missing.join(", ")}`;
+		}
+	}
+	return null;
+}
+
+function skippedScore(gq: GoldStandardQuery, reason: string): QueryScore {
+	return {
+		id: gq.id,
+		category: gq.category,
+		queryText: gq.queryText,
+		skipped: true,
+		skipReason: reason,
+		passed: false,
+		passedQueryOnly: false,
+		resultCount: 0,
+		requiredTypesFound: false,
+		requiredTypesFoundQueryOnly: false,
+		substringFound: true,
+		edgeHopFound: true,
+		crossSourceFound: true,
+		sourceTypesReached: [],
+		lineage: null,
 	};
 }
 

@@ -340,6 +340,10 @@ async function main() {
 							(store.manifests as { dir?: string }).dir ??
 							`${process.env.HOME ?? "."}.wtfoc/projects`;
 						const qqOverlayEdges = await loadAllOverlayEdges(qqManifestDir, values.collection!);
+						const corpusSourceTypes = new Set<string>();
+						for (const segSummary of head.manifest.segments) {
+							for (const st of segSummary.sourceTypes ?? []) corpusSourceTypes.add(st);
+						}
 						result = await evaluateQualityQueries(
 						embedder,
 						vectorIndex,
@@ -348,6 +352,7 @@ async function main() {
 						qqOverlayEdges,
 						reranker,
 						values["auto-route"] ?? false,
+						{ collectionId: values.collection!, corpusSourceTypes },
 					);
 					}
 					break;

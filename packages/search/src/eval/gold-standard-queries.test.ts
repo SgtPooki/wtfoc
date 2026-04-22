@@ -58,6 +58,17 @@ describe("GOLD_STANDARD_QUERIES fixture integrity", () => {
 		expect(traceRequired.length).toBeGreaterThanOrEqual(5);
 	});
 
+	it("queries with collectionScopePattern must carry a reason and a valid regex (v1.4.0)", () => {
+		for (const q of GOLD_STANDARD_QUERIES) {
+			if (!q.collectionScopePattern) continue;
+			expect(
+				q.collectionScopeReason,
+				`${q.id} has collectionScopePattern but no collectionScopeReason`,
+			).toBeTruthy();
+			expect(() => new RegExp(q.collectionScopePattern ?? "")).not.toThrow();
+		}
+	});
+
 	it("requiredSourceTypes values are all real source types", () => {
 		const KNOWN = new Set([
 			"code",

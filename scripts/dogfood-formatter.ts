@@ -42,7 +42,13 @@ function stageKeyMetrics(stage: EvalStageResult): string {
 			// `passed=X/Y`) so informal parsers that key off the pass count
 			// don't trip on the suffix.
 			const ver = m.goldQueriesVersion ? `, gold=v${m.goldQueriesVersion}` : "";
-			return `pass-rate=${fmtPct(m.passRate)} (query-only=${fmtPct(m.queryOnlyPassRate)}), passed=${m.passCount}/${m.totalQueries}${ver}`;
+			const applicable =
+				typeof m.applicableTotal === "number" ? m.applicableTotal : m.totalQueries;
+			const skipTag =
+				typeof m.skippedCount === "number" && m.skippedCount > 0
+					? `, skipped=${m.skippedCount}/${m.totalQueries}`
+					: "";
+			return `pass-rate=${fmtPct(m.passRate)} (query-only=${fmtPct(m.queryOnlyPassRate)}), passed=${m.passCount}/${applicable}${skipTag}${ver}`;
 		}
 		default:
 			return stage.summary;

@@ -23,6 +23,9 @@ interface Metrics {
 	passRate: number;
 	passCount: number;
 	totalQueries: number;
+	applicableTotal?: number;
+	skippedCount?: number;
+	skippedReasons?: Array<{ id: string; reason: string }>;
 	categoryBreakdown: Record<string, Breakdown>;
 	tierBreakdown?: Record<string, Breakdown>;
 }
@@ -82,9 +85,14 @@ function main(): void {
 	const m = loadMetrics(path);
 	const checks = collectThresholds(m);
 
+	const applicable = m.applicableTotal ?? m.totalQueries;
 	console.log(`Report: ${path}`);
 	console.log(`Fixture: ${m.goldQueriesVersion ?? "?"}`);
-	console.log(`Overall: ${m.passCount}/${m.totalQueries} (${(m.passRate * 100).toFixed(1)}%)`);
+	console.log(`Overall: ${m.passCount}/${applicable} (${(m.passRate * 100).toFixed(1)}%)`);
+	if (m.skippedCount && m.skippedCount > 0) {
+		console.log(`Skipped: ${m.skippedCount}/${m.totalQueries} (inapplicable to this corpus)`);
+		for (const s of m.skippedReasons ?? []) console.log(`  · ${s.id}: ${s.reason}`);
+	}
 	console.log("");
 
 	let failed = 0;

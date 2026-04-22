@@ -5,22 +5,24 @@ The flagship demo story hinges on the `filoz-ecosystem-2026-04-v12` corpus passi
 ## Baseline
 
 - Corpus: `filoz-ecosystem-2026-04-v12` — 13,477 chunks, 37 segments, 6 source types (code, markdown, slack-message, github-issue, github-pr, github-pr-comment)
-- Fixture: `GOLD_STANDARD_QUERIES_VERSION = 1.3.0` (42 queries)
+- Fixture: `GOLD_STANDARD_QUERIES_VERSION = 1.4.0` (42 queries total, 39 applicable)
 - Report: [`dogfood-baselines/filoz-ecosystem-2026-04-v12.json`](dogfood-baselines/filoz-ecosystem-2026-04-v12.json)
 - Captured: 2026-04-22
 
-Baseline numbers:
+Pass rates are computed against the **applicable** subset — queries the current corpus can answer at all. Queries with `collectionScopePattern` mismatches or `requiredSourceTypes` the corpus doesn't ingest are reported as skipped, not failed, so the overall rate means the same thing across corpus changes.
 
 | Slice | Pass rate |
 |---|---|
-| overall | 29/42 (69%) |
+| overall applicable | 29/39 (74%) |
 | demo-critical tier | 5/5 (100%) |
 | work-lineage | 8/8 (100%) |
 | file-level | 4/4 (100%) |
-| direct-lookup | 6/8 (75%) |
+| direct-lookup | 6/7 (86%) |
 | cross-source | 4/7 (57%) |
-| coverage | 4/8 (50%) |
-| synthesis | 3/7 (43%) |
+| coverage | 4/7 (57%) |
+| synthesis | 3/6 (50%) |
+
+Skipped on v12: `dl-3`, `syn-1` (probe wtfoc-self internals), `cov-8` (needs doc-page, not ingested).
 
 ## Regression thresholds
 
