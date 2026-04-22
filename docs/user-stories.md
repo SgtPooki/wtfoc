@@ -29,7 +29,7 @@ Use stable IDs. Do not renumber existing stories.
 | ID | Story | User | Status | Priority | Example | Docs | Issue |
 |----|-------|------|--------|----------|---------|------|-------|
 | `US-001` | Trace bug lineage across issues, PRs, comments, and repos | Engineer investigating bugs | `validated` | `high` | `docs/demos/upload-flow-trace/run.sh` | `docs/demos/upload-flow-trace/README.md` | [#54](https://github.com/SgtPooki/wtfoc/issues/54) |
-| `US-002` | Use `wtfoc` as a decentralized evidence layer in a RAG pipeline | AI engineer building RAG systems | `planned` | `high` | `-` | `-` | [#55](https://github.com/SgtPooki/wtfoc/issues/55) |
+| `US-002` | Use `wtfoc` as a decentralized evidence layer in a RAG pipeline | AI engineer building RAG systems | `planned` | `high` | `-` | [`docs/evidence-layer.md`](evidence-layer.md) | [#55](https://github.com/SgtPooki/wtfoc/issues/55) |
 | `US-003` | Cluster repeated feature requests and unmet complaints across repos | Product or engineering lead prioritizing work | `validated` | `high` | `docs/demos/theme-discovery/run.sh` | `docs/demos/theme-discovery/README.md` | [#57](https://github.com/SgtPooki/wtfoc/issues/57), [#59](https://github.com/SgtPooki/wtfoc/issues/59) |
 | `US-004` | Detect stale documentation and undocumented implemented features | Maintainer or DX owner improving docs quality | `validated` | `medium` | `docs/demos/drift-analysis/run.sh` | `docs/demos/drift-analysis/README.md` | [#58](https://github.com/SgtPooki/wtfoc/issues/58) |
 | `US-005` | Build a unified knowledge graph across GitHub, docs sites, and chat | Team lead or DX engineer onboarding to a project | `validated` | `high` | `docs/demos/upload-flow-trace/run.sh` | `docs/demos/upload-flow-trace/README.md` | `-` |

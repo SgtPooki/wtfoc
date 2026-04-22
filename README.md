@@ -6,7 +6,7 @@
 
 Use it when search is not enough and you need the chain: the Slack complaint, the GitHub issue, the PR that fixed it, the code that changed, and the docs that were updated.
 
-**Learn more:** [Why wtfoc?](docs/why.md) | [Vision & North-Star Goals](docs/vision.md) | [Pipeline Architecture](docs/pipeline-architecture.md)
+**Learn more:** [Why wtfoc?](docs/why.md) | [Evidence layer for RAG](docs/evidence-layer.md) | [Vision & North-Star Goals](docs/vision.md) | [Pipeline Architecture](docs/pipeline-architecture.md)
 
 ## Search vs Trace
 
