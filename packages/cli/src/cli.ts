@@ -23,6 +23,7 @@ import { registerThemesCommand } from "./commands/themes.js";
 import { registerTraceCommand } from "./commands/trace.js";
 import { registerUnresolvedEdgesCommand } from "./commands/unresolved-edges.js";
 import { registerVerifyCommand } from "./commands/verify.js";
+import { registerVerifyTrustCommand } from "./commands/verify-trust.js";
 
 /** Resolved project config, loaded once at startup. */
 let projectConfig: ResolvedConfig | undefined;
@@ -72,6 +73,7 @@ registerStatusCommand(program);
 registerCollectionsCommand(program);
 registerDescribeCommand(program);
 registerVerifyCommand(program);
+registerVerifyTrustCommand(program);
 registerUnresolvedEdgesCommand(program);
 registerSuggestSourcesCommand(program);
 registerReindexCommand(program);
