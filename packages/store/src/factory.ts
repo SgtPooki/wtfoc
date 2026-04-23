@@ -38,9 +38,14 @@ export interface Store {
  * ```
  */
 export function createStore(config: StoreConfig): Store {
+	// Precedence: explicit config > env var > HOME-based default. Env vars let
+	// CLI invocations inside the prod web pod write to the mounted PVC
+	// (WTFOC_DATA_DIR + WTFOC_MANIFEST_DIR point at /data/wtfoc/...) instead of
+	// ~/.wtfoc on the ephemeral container FS. The web server already reads these;
+	// now the CLI's store does too.
 	const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? ".";
-	const defaultDataDir = `${homeDir}/.wtfoc/data`;
-	const defaultManifestDir = `${homeDir}/.wtfoc/projects`;
+	const defaultDataDir = process.env.WTFOC_DATA_DIR ?? `${homeDir}/.wtfoc/data`;
+	const defaultManifestDir = process.env.WTFOC_MANIFEST_DIR ?? `${homeDir}/.wtfoc/projects`;
 
 	let storage: StorageBackend;
 

@@ -8,6 +8,7 @@ import { cors } from "hono/cors";
 import { csrf } from "hono/csrf";
 import type { Repository } from "./db/index.js";
 import { authRoutes } from "./auth/routes.js";
+import { publicCollectionRoutes } from "./collections/public-routes.js";
 import { collectionRoutes } from "./collections/routes.js";
 import { jobRoutes } from "./jobs/routes.js";
 import type { JobQueue } from "./jobs/queue.js";
@@ -55,6 +56,7 @@ export function createHonoApp(repo: Repository, getQueue?: () => JobQueue): Hono
 	// Mount routes
 	app.route("/api/auth", authRoutes);
 	app.route("/api/wallet-collections", collectionRoutes);
+	app.route("/api/collections-public", publicCollectionRoutes);
 	if (getQueue) {
 		app.route("/api/jobs", jobRoutes(getQueue));
 	}

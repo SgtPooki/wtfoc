@@ -642,6 +642,7 @@ async function main() {
 		if (
 			path.startsWith("/api/auth") ||
 			path.startsWith("/api/wallet-collections") ||
+			path.startsWith("/api/collections-public") ||
 			path.startsWith("/api/jobs")
 		) {
 			const honoReq = new Request(

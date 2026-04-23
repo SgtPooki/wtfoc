@@ -107,6 +107,58 @@ describe("createStore", () => {
 		expect(calls).toEqual(["getHead:test"]);
 	});
 
+	it("reads WTFOC_DATA_DIR + WTFOC_MANIFEST_DIR env vars when config omits them", async () => {
+		const envDataDir = await makeTempDir();
+		const envManifestDir = await makeTempDir();
+		const origData = process.env.WTFOC_DATA_DIR;
+		const origManifest = process.env.WTFOC_MANIFEST_DIR;
+		process.env.WTFOC_DATA_DIR = envDataDir;
+		process.env.WTFOC_MANIFEST_DIR = envManifestDir;
+		try {
+			const store = createStore({ storage: "local" });
+			const data = new TextEncoder().encode("env-var test");
+			const result = await store.storage.upload(data);
+			const downloaded = await store.storage.download(result.id);
+			expect(new Uint8Array(downloaded)).toEqual(data);
+		} finally {
+			if (origData === undefined) delete process.env.WTFOC_DATA_DIR;
+			else process.env.WTFOC_DATA_DIR = origData;
+			if (origManifest === undefined) delete process.env.WTFOC_MANIFEST_DIR;
+			else process.env.WTFOC_MANIFEST_DIR = origManifest;
+		}
+	});
+
+	it("prefers explicit config over env vars", async () => {
+		const envDataDir = await makeTempDir();
+		const envManifestDir = await makeTempDir();
+		const explicitDataDir = await makeTempDir();
+		const explicitManifestDir = await makeTempDir();
+		const origData = process.env.WTFOC_DATA_DIR;
+		const origManifest = process.env.WTFOC_MANIFEST_DIR;
+		process.env.WTFOC_DATA_DIR = envDataDir;
+		process.env.WTFOC_MANIFEST_DIR = envManifestDir;
+		try {
+			const store = createStore({
+				storage: "local",
+				dataDir: explicitDataDir,
+				manifestDir: explicitManifestDir,
+			});
+			const data = new TextEncoder().encode("explicit-wins");
+			await store.storage.upload(data);
+			// The store should land data in explicitDataDir, not envDataDir.
+			const { readdir } = await import("node:fs/promises");
+			const explicitFiles = await readdir(explicitDataDir);
+			const envFiles = await readdir(envDataDir);
+			expect(explicitFiles.length).toBeGreaterThan(0);
+			expect(envFiles.length).toBe(0);
+		} finally {
+			if (origData === undefined) delete process.env.WTFOC_DATA_DIR;
+			else process.env.WTFOC_DATA_DIR = origData;
+			if (origManifest === undefined) delete process.env.WTFOC_MANIFEST_DIR;
+			else process.env.WTFOC_MANIFEST_DIR = origManifest;
+		}
+	});
+
 	it("uses custom backend when verify is not implemented", async () => {
 		const customBackend: StorageBackend = {
 			async upload(): Promise<StorageResult> {
