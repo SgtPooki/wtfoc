@@ -1,9 +1,52 @@
 import { createHash } from "node:crypto";
-import type { Chunk, StorageBackend } from "@wtfoc/common";
+import type { Chunk, StorageBackend, TimestampKind } from "@wtfoc/common";
 import type { RawSourceEntry } from "./raw-source-archive.js";
 
 function sha256Hex(content: string): string {
 	return createHash("sha256").update(content, "utf8").digest("hex");
+}
+
+/**
+ * Canonical default timestamp kind per source type. Used by the donor-replay
+ * path (and any other path that reconstructs a Chunk from an archived raw
+ * source entry without running the source's adapter). Kept in one place so
+ * the replay default matches what the adapter would have set if it had run.
+ *
+ * Extend this when adding a new source adapter. Missing entries fall back
+ * to `ingested` with `entry.fetchedAt` — an honest low-trust default rather
+ * than dropping the field entirely (which poisons chainTemporalCoherence
+ * metrics, see gh-282).
+ */
+export const DEFAULT_TIMESTAMP_KIND_BY_SOURCE_TYPE: Record<string, TimestampKind> = {
+	"github-issue": "updated",
+	"github-pr": "updated",
+	"github-pr-comment": "updated",
+	"github-discussion": "updated",
+	"slack-message": "created",
+	"discord-message": "created",
+	code: "committed",
+	markdown: "committed",
+	"doc-page": "published",
+};
+
+/**
+ * Derive `{timestamp, timestampKind}` for a replayed chunk. Prefers the
+ * adapter's native field from `entry.metadata` (when the donor captured
+ * schema-aware metadata), otherwise falls back to `entry.fetchedAt` with
+ * kind `ingested`. Never returns an undefined kind — a known low-trust
+ * value is strictly better than silent drop for downstream temporal
+ * reasoning (gh-282).
+ */
+export function deriveReplayTimestamp(entry: RawSourceEntry): {
+	timestamp: string;
+	timestampKind: TimestampKind;
+} {
+	const defaultKind = DEFAULT_TIMESTAMP_KIND_BY_SOURCE_TYPE[entry.sourceType];
+	const metaValue = defaultKind ? entry.metadata?.[defaultKind] : undefined;
+	if (defaultKind && metaValue) {
+		return { timestamp: metaValue, timestampKind: defaultKind };
+	}
+	return { timestamp: entry.fetchedAt, timestampKind: "ingested" };
 }
 
 /**
@@ -71,12 +114,15 @@ export async function* replayFromArchive(
 				? entry.documentId.split("/").slice(2).join("/") || undefined
 				: undefined;
 
+			const { timestamp, timestampKind } = deriveReplayTimestamp(entry);
 			const chunk: Chunk = {
 				id,
 				content,
 				sourceType: entry.sourceType,
 				source: entry.documentId,
 				sourceUrl: entry.sourceUrl,
+				timestamp,
+				timestampKind,
 				chunkIndex: 0,
 				totalChunks: 1,
 				metadata: filePath ? { filePath } : {},

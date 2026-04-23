@@ -211,6 +211,8 @@ export {
 	storedChunkToSegmentChunk,
 } from "./segment-builder.js";
 export {
+	DEFAULT_TIMESTAMP_KIND_BY_SOURCE_TYPE,
+	deriveReplayTimestamp,
 	type RawSourceDocument,
 	replayFromArchive,
 	replayRawDocuments,

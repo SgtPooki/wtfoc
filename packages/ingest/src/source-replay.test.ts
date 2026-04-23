@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RawSourceEntry } from "./raw-source-archive.js";
-import { replayFromArchive } from "./source-replay.js";
+import { deriveReplayTimestamp, replayFromArchive } from "./source-replay.js";
 
 function makeEntry(overrides: Partial<RawSourceEntry> = {}): RawSourceEntry {
 	return {
@@ -116,6 +116,58 @@ describe("replayFromArchive", () => {
 
 		expect(chunks).toHaveLength(0);
 		expect(storage.download).not.toHaveBeenCalled();
+	});
+});
+
+describe("deriveReplayTimestamp (gh-282)", () => {
+	it("prefers adapter metadata field matching the default kind", () => {
+		const r = deriveReplayTimestamp(
+			makeEntry({
+				sourceType: "github-issue",
+				metadata: { updated: "2026-03-15T12:00:00Z", created: "2026-01-01T00:00:00Z" },
+			}),
+		);
+		expect(r.timestampKind).toBe("updated");
+		expect(r.timestamp).toBe("2026-03-15T12:00:00Z");
+	});
+
+	it("maps each known source type to its canonical kind when metadata present", () => {
+		const cases: Array<[string, string, string]> = [
+			["github-pr", "updated", "updated"],
+			["github-pr-comment", "updated", "updated"],
+			["slack-message", "created", "created"],
+			["code", "committed", "committed"],
+			["markdown", "committed", "committed"],
+			["doc-page", "published", "published"],
+		];
+		for (const [sourceType, metaKey, expectedKind] of cases) {
+			const r = deriveReplayTimestamp(
+				makeEntry({ sourceType, metadata: { [metaKey]: "2026-02-01T00:00:00Z" } }),
+			);
+			expect(r.timestampKind, sourceType).toBe(expectedKind);
+		}
+	});
+
+	it("falls back to fetchedAt + ingested when metadata lacks the default field", () => {
+		const r = deriveReplayTimestamp(
+			makeEntry({ sourceType: "github-issue", metadata: { labels: "bug" } }),
+		);
+		expect(r.timestampKind).toBe("ingested");
+		expect(r.timestamp).toBe("2026-04-01T00:00:00Z");
+	});
+
+	it("falls back to fetchedAt + ingested for unknown source types", () => {
+		const r = deriveReplayTimestamp(
+			makeEntry({ sourceType: "reddit-post", metadata: { updated: "ignored" } }),
+		);
+		expect(r.timestampKind).toBe("ingested");
+		expect(r.timestamp).toBe("2026-04-01T00:00:00Z");
+	});
+
+	it("handles pre-schema donor entries (metadata absent)", () => {
+		const r = deriveReplayTimestamp(makeEntry({ sourceType: "github-issue" }));
+		expect(r.timestampKind).toBe("ingested");
+		expect(r.timestamp).toBe("2026-04-01T00:00:00Z");
 	});
 });
 
