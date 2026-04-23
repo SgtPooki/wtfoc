@@ -47,12 +47,17 @@ RUN rm -rf node_modules/.pnpm/sharp@* node_modules/.pnpm/@img* \
     node_modules/.pnpm/@biomejs* \
     node_modules/.pnpm/vitest* \
     node_modules/.pnpm/@vitest* \
-    node_modules/.pnpm/esbuild*
-    # NOTE: do NOT prune crawlee / @crawlee / playwright / cheerio / puppeteer.
-    # @wtfoc/ingest barrel re-exports WebsiteAdapter which imports crawlee at
-    # module level, so any `import "@wtfoc/ingest"` in the web server (promote /
-    # ingest workers) eagerly resolves the whole chain. Pruning them causes
-    # ERR_MODULE_NOT_FOUND on container start.
+    node_modules/.pnpm/esbuild* \
+    node_modules/.pnpm/playwright@* \
+    node_modules/.pnpm/playwright-core@* \
+    node_modules/.pnpm/puppeteer*
+    # NOTE: keep crawlee / @crawlee / cheerio — @wtfoc/ingest re-exports
+    # WebsiteAdapter from its barrel, which imports CheerioCrawler from crawlee
+    # at module level. Any `import "@wtfoc/ingest"` in the web server
+    # (promote/ingest workers) eagerly resolves the whole chain. Playwright +
+    # puppeteer are optional peer deps of crawlee's browser modules; we only
+    # use CheerioCrawler, so they are safe to drop. Restructuring the ingest
+    # barrel to lazy-load WebsiteAdapter would let us drop crawlee here too.
 
 # ─── Production image ────────────────────────────────────────────────────────
 FROM node:24-slim AS production
