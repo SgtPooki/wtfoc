@@ -50,6 +50,14 @@ Trace can only walk edges that exist. If no edge links a PR to its Slack convers
 
 A subtler failure mode: diversity-enforce pulls a mixed-type *seed set* into the traversal, but each seed's edge-walk is independent. If the top-scoring seed is markdown and its edges only point to other markdown, you can still end up with an all-markdown trace even though lower-ranked code seeds were present. Trace's `stats.sourceTypes` reflects hops reached across the whole walk; if that collapses to one type, the fix is usually in the *query phrasing* (to make a different-typed seed dominant) rather than in the trace parameters.
 
+#### Known limitation: abstract cross-source → code
+
+Abstract portable queries phrased like "find a bug report, the PR that closed it, and the code that changed" reliably fail to reach `code` on real mixed corpora today. Measured on filoz-ecosystem-2026-04-v12 with diversity-enforce on: seeds are discussion-heavy (slack, pr-comment, markdown), walking their edges stays inside discussion (`crossSourceChainCount=0`, `avgChainDiversity=1`), and step-4 semantic fallback's similarity floor excludes code chunks that are lexically far from the abstract query text.
+
+This is a true retrieval limitation, not a phrasing problem. The abstract form is exactly what we want the portable tier to test — rephrasing to name files or symbols would pass the metric but stop measuring what it's supposed to measure. Relaxing the floor to force code in would surface the nearest code chunk regardless of relevance, which is gaming the metric rather than fixing retrieval.
+
+The principled fix is multi-step / evidence-led retrieval: once a high-confidence discussion seed is found, extract the symbol/file/issue refs it contains and issue a secondary concrete query to pull matching code chunks into the trace as pivoted evidence. Until that lands, abstract cross-source→code queries stay in the portable fixture as an honest yellow signal; the scripted demo uses concrete questions that already trace cleanly.
+
 ### 5. Diversity-enforce when a single type dominates
 
 Slack-heavy corpora consistently flood top-K with messages because short informal text embeds close to most queries. Our flagship dogfood runs with `--diversity-enforce` (reserves top-K slots per source type above a score floor; see #161). If you're building your own tooling on top of `query()` / `trace()`, pass `diversityEnforce: { minScoreRatio: 0.65 }` in the options to get the same behavior.
