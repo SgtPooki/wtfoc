@@ -14,6 +14,8 @@ Each demo has a human-readable **README.md** (the narrative) and an executable *
 | [Drift Analysis](drift-analysis/) | seconds | Find stale docs and undocumented features | `./docs/demos/drift-analysis/run.sh` |
 | [Edge Extraction](edge-extraction/) | ~5 min | LLM edge extraction, materialization, promote pipeline | `./docs/demos/edge-extraction/run.sh` |
 | [Local to FOC](local-to-foc/) | ~3 min | Build locally, promote to Filecoin, share CID | `./docs/demos/local-to-foc/run.sh` |
+| [Verify a CID](verify-cid/) | ~15s-2min | Trust the bits: fetch + recompute hashes for a published CID (no local state) | `./docs/demos/verify-cid/run.sh` |
+| [Cross-Source Question](cross-source-question/) | ~10-30s | Real question, real evidence chain — Slack → issue → PR → code on flagship v12 | `./docs/demos/cross-source-question/run.sh` |
 | [Full Stack](full-stack/) | ~10 min | MCP + Web UI + Claude Desktop integration | (see README) |
 
 **Prerequisite:** Most demos reuse the `wtfoc-quick-start` collection. Run the Quick Start demo first — everything else builds on it.
@@ -30,7 +32,9 @@ For a recording or live presentation, run them in this order:
 6. **Upload Flow Trace** — The hero story: cross-repo architecture tracing with real results
 7. **Edge Extraction** — The intelligence layer: LLM finds semantic relationships regex can't
 8. **Local to FOC** — The trust arc: same collection, now on Filecoin with a shareable CID
-9. **Full Stack** — The finale: Claude uses wtfoc as a tool, web UI shows the graph
+9. **Verify a CID** — The handoff: audience grabs the CID and recomputes the hashes themselves
+10. **Cross-Source Question** — The payoff: ask a real question against the verified corpus, get evidence across 5 source types
+11. **Full Stack** — The finale: Claude uses wtfoc as a tool, web UI shows the graph
 
 Steps 2-5 run in seconds on the quick-start collection. Step 6 is the long one (~15 min) — pre-bake it the night before if demoing live.
 
