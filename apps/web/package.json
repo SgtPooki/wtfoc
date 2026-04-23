@@ -6,7 +6,7 @@
 	"scripts": {
 		"dev": "vite",
 		"build": "vite build",
-		"build:server": "tsc -p server/tsconfig.json",
+		"build:server": "tsc -p server/tsconfig.json && mkdir -p server/dist/db && cp server/db/schema.sql server/dist/db/schema.sql",
 		"build:all": "pnpm build && pnpm build:server",
 		"dev:server": "tsx --watch server/index.ts",
 		"preview": "vite preview",
