@@ -27,6 +27,34 @@ export const PUBLIC_WALLET_ADDRESS = "0x0000000000000000000000000000000000000000
 
 const publicPullRateLimit = ipRateLimiter(20, 3600); // 20 pulls per hour per IP
 
+/**
+ * Resolve the runtime mode for the public pull endpoint from
+ * `WTFOC_PUBLIC_CID_PULL`. Disk-footprint concern: each pull can write
+ * hundreds of MB to the node PVC, so the endpoint is OFF by default and
+ * operators opt in explicitly per deployment.
+ *
+ *   off              → endpoint returns 503 (default)
+ *   on               → open access (still IP rate-limited)
+ *   token:<secret>   → requires `X-Public-Pull-Token: <secret>` header
+ */
+export type PublicPullMode =
+	| { kind: "off" }
+	| { kind: "on" }
+	| { kind: "token"; secret: string };
+
+export function resolvePublicPullMode(value: string | undefined = process.env.WTFOC_PUBLIC_CID_PULL): PublicPullMode {
+	const raw = value?.trim() ?? "";
+	if (raw === "" || raw === "off") return { kind: "off" };
+	if (raw === "on") return { kind: "on" };
+	if (raw.startsWith("token:")) {
+		const secret = raw.slice("token:".length);
+		if (secret.length === 0) return { kind: "off" };
+		return { kind: "token", secret };
+	}
+	// Unknown value — fail safe to off rather than guess open.
+	return { kind: "off" };
+}
+
 export const publicCollectionRoutes = new Hono<AppEnv>();
 
 /**
@@ -40,6 +68,26 @@ export const publicCollectionRoutes = new Hono<AppEnv>();
  * GET /api/collections (file-listing) once the job completes.
  */
 publicCollectionRoutes.post("/pull", publicPullRateLimit.middleware(), async (c) => {
+	const mode = resolvePublicPullMode();
+	if (mode.kind === "off") {
+		return c.json(
+			{
+				error: "public CID pull is disabled on this deployment",
+				code: "PUBLIC_PULL_DISABLED",
+			},
+			503,
+		);
+	}
+	if (mode.kind === "token") {
+		const presented = c.req.header("x-public-pull-token") ?? "";
+		if (presented !== mode.secret) {
+			return c.json(
+				{ error: "invalid or missing X-Public-Pull-Token", code: "INVALID_TOKEN" },
+				401,
+			);
+		}
+	}
+
 	const repo = c.get("repo") as Repository;
 	const body = await c.req.json<{ manifestCid?: string; name?: string }>();
 
