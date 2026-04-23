@@ -47,12 +47,12 @@ RUN rm -rf node_modules/.pnpm/sharp@* node_modules/.pnpm/@img* \
     node_modules/.pnpm/@biomejs* \
     node_modules/.pnpm/vitest* \
     node_modules/.pnpm/@vitest* \
-    node_modules/.pnpm/esbuild* \
-    node_modules/.pnpm/crawlee* \
-    node_modules/.pnpm/@crawlee* \
-    node_modules/.pnpm/playwright* \
-    node_modules/.pnpm/cheerio* \
-    node_modules/.pnpm/puppeteer*
+    node_modules/.pnpm/esbuild*
+    # NOTE: do NOT prune crawlee / @crawlee / playwright / cheerio / puppeteer.
+    # @wtfoc/ingest barrel re-exports WebsiteAdapter which imports crawlee at
+    # module level, so any `import "@wtfoc/ingest"` in the web server (promote /
+    # ingest workers) eagerly resolves the whole chain. Pruning them causes
+    # ERR_MODULE_NOT_FOUND on container start.
 
 # ─── Production image ────────────────────────────────────────────────────────
 FROM node:24-slim AS production
