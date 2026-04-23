@@ -71,6 +71,7 @@ If you're contributing queries to `packages/search/src/eval/gold-standard-querie
 - **`requiredSourceTypes`** — list only types the corpus can actually produce via the query's natural anchor. Don't assert a type just because the corpus contains it somewhere; assert it because the trace-from-this-anchor reliably reaches it. Peer-reviewed principle: *encode structurally-supported expectations, not wishful topology*.
 - **`expectedSourceSubstrings`** — match on `source` (repo path, document id), not on content. Content rarely contains the repo's own name; paths almost always do.
 - **`collectionScopePattern`** — add this when the query probes artifacts native to one corpus family (e.g. `^(wtfoc-|default$)` for wtfoc-self internals). Queries outside their scope are marked skipped, not failed, keeping the applicable pass rate honest across corpora.
+- **`portability`** — tag `"portable"` when the query has no corpus-specific artifact names (no repo names, file paths, issue IDs) and tests generic retrieval capability. Tag `"corpus-specific"` (the default) when it names concrete v12/wtfoc/etc. artifacts. The `portablePassRate` metric is the gating signal for generic retrieval quality; keep portable queries abstract so they run honestly across corpora.
 
 ### Debugging a failing query
 
@@ -94,6 +95,14 @@ Valid in a few specific cases (corpus genuinely lacks a type, trace cannot struc
 ### "Raise the threshold to match the current pass rate"
 
 Thresholds exist to catch regressions. Raising them only when things are going well creates a ratchet that eventually locks you out of acceptable noise. Our flagship overall threshold stays at 80% while the current baseline is 85% — that's a healthy buffer, not a reason to tighten.
+
+### "100% applicable pass rate = retrieval works"
+
+No. A high pass rate on a *single* corpus can mean either (a) retrieval generalizes well, or (b) the fixture was tuned to that corpus. The way to tell them apart is `portablePassRate` on an *unseen* corpus.
+
+On 2026-04-23 we discovered this the hard way: the flagship fixture hit 100% applicable on filoz-v12, which looked great, but the 6 queries that got there had been rephrased to name v12 artifacts explicitly. When we split the fixture into portable + corpus-specific and ran against a second real corpus (wtfoc-self), the portable queries held at 100% on both corpora while the corpus-specific ones dropped to 35% on the second corpus — exactly what you'd expect if they were measuring the corpus, not the retrieval.
+
+The rule that came out of that: **a 100% pass with 35% applicability is yellow, not green.** The dashboard should warn when the fixture covers less than 60% of the corpus it's running against; otherwise a too-specific fixture can celebrate a hollow win.
 
 ## The dogfood loop for your own corpus
 

@@ -159,6 +159,39 @@ export async function evaluateQualityQueries(
 		},
 	};
 
+	// Portability breakdown (v1.6.0) — split pass rate into generic
+	// retrieval quality (portable queries) vs corpus-specific depth
+	// (queries naming v12 artifacts). Keeps a 100% corpus-specific score
+	// from masquerading as general retrieval. Peer-review (codex + gemini)
+	// required after overfitting audit flagged single-corpus tuning.
+	const portableIds = new Set(
+		GOLD_STANDARD_QUERIES.filter((q) => q.portability === "portable").map((q) => q.id),
+	);
+	const portableScores = scores.filter((s) => portableIds.has(s.id) && !s.skipped);
+	const portablePassed = portableScores.filter((s) => s.passed).length;
+	const corpusSpecificScores = scores.filter((s) => !portableIds.has(s.id) && !s.skipped);
+	const corpusSpecificPassed = corpusSpecificScores.filter((s) => s.passed).length;
+	const portabilityBreakdown = {
+		portable: {
+			total: portableScores.length,
+			passed: portablePassed,
+			passRate: portableScores.length > 0 ? portablePassed / portableScores.length : 0,
+		},
+		"corpus-specific": {
+			total: corpusSpecificScores.length,
+			passed: corpusSpecificPassed,
+			passRate:
+				corpusSpecificScores.length > 0 ? corpusSpecificPassed / corpusSpecificScores.length : 0,
+		},
+	};
+
+	// Applicable rate (v1.6.0) — what fraction of the fixture this corpus
+	// can even answer. A high pass rate on a low applicable rate is the
+	// overfit-and-skip signature; threshold check should warn on this.
+	const applicableRate = GOLD_STANDARD_QUERIES.length
+		? applicableTotal / GOLD_STANDARD_QUERIES.length
+		: 0;
+
 	// Verdict
 	let verdict: "pass" | "warn" | "fail" = "pass";
 	if (passRate === 0) {
@@ -220,12 +253,14 @@ export async function evaluateQualityQueries(
 			queryOnlyPassRate,
 			queryOnlyPassCount,
 			applicableTotal,
+			applicableRate,
 			skippedCount,
 			skippedReasons,
 			/** Total queries in the fixture — includes skipped. */
 			totalQueries: GOLD_STANDARD_QUERIES.length,
 			categoryBreakdown,
 			tierBreakdown,
+			portabilityBreakdown,
 			scores,
 			// #217 — aggregate lineage trace quality (chain coverage, conclusion
 			// signal, timeline completeness, chain diversity) across all scored

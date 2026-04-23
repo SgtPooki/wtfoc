@@ -1,0 +1,3458 @@
+{
+  "reportSchemaVersion": "1.0.0",
+  "timestamp": "2026-04-23T13:54:03.800Z",
+  "collectionId": "5dcaa8438920d3dd6da75a5def192ec7",
+  "collectionName": "wtfoc-dogfood-2026-04-v3",
+  "stages": [
+    {
+      "stage": "quality-queries",
+      "startedAt": "2026-04-23T13:51:50.215Z",
+      "durationMs": 133581,
+      "verdict": "pass",
+      "summary": "24/44 applicable gold queries passed (55%, 1 skipped)",
+      "metrics": {
+        "goldQueriesVersion": "1.6.0",
+        "passRate": 0.5454545454545454,
+        "passCount": 24,
+        "queryOnlyPassRate": 0.5,
+        "queryOnlyPassCount": 22,
+        "applicableTotal": 44,
+        "applicableRate": 0.9777777777777777,
+        "skippedCount": 1,
+        "skippedReasons": [
+          {
+            "id": "cov-8",
+            "reason": "corpus lacks required source type(s): doc-page"
+          }
+        ],
+        "totalQueries": 45,
+        "categoryBreakdown": {
+          "direct-lookup": {
+            "total": 8,
+            "passed": 6,
+            "passRate": 0.75,
+            "skipped": 0
+          },
+          "cross-source": {
+            "total": 9,
+            "passed": 7,
+            "passRate": 0.7777777777777778,
+            "skipped": 0
+          },
+          "coverage": {
+            "total": 7,
+            "passed": 5,
+            "passRate": 0.7142857142857143,
+            "skipped": 1
+          },
+          "synthesis": {
+            "total": 7,
+            "passed": 5,
+            "passRate": 0.7142857142857143,
+            "skipped": 0
+          },
+          "file-level": {
+            "total": 4,
+            "passed": 0,
+            "passRate": 0,
+            "skipped": 0
+          },
+          "work-lineage": {
+            "total": 9,
+            "passed": 1,
+            "passRate": 0.1111111111111111,
+            "skipped": 0
+          }
+        },
+        "tierBreakdown": {
+          "demo-critical": {
+            "total": 5,
+            "passed": 0,
+            "passRate": 0
+          }
+        },
+        "portabilityBreakdown": {
+          "portable": {
+            "total": 13,
+            "passed": 13,
+            "passRate": 1
+          },
+          "corpus-specific": {
+            "total": 31,
+            "passed": 11,
+            "passRate": 0.3548387096774194
+          }
+        },
+        "scores": [
+          {
+            "id": "dl-1",
+            "category": "direct-lookup",
+            "queryText": "How does the ingest pipeline process source files?",
+            "passed": true,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "github-pr",
+              "code"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 14,
+              "chainCoverageRate": 0.9333333333333333,
+              "totalChainCount": 14,
+              "multiHopChainCount": 13,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 1,
+              "recommendedNextReadCount": 13,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 113321000,
+              "crossSourceChainCount": 13,
+              "crossSourceChainRate": 1,
+              "avgChainDiversity": 2,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 13,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 13,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 13
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "dl-2",
+            "category": "direct-lookup",
+            "queryText": "What is the manifest schema for collections?",
+            "passed": true,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "code"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 10,
+              "chainCoverageRate": 0.6666666666666666,
+              "totalChainCount": 12,
+              "multiHopChainCount": 7,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 5,
+              "recommendedNextReadCount": 7,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1801141000,
+              "crossSourceChainCount": 0,
+              "crossSourceChainRate": 0,
+              "avgChainDiversity": 1,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "imports",
+                  "walkDirection": "forward",
+                  "pairCount": 7,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 7,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 7
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 1,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 1,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 1,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "dl-3",
+            "category": "direct-lookup",
+            "queryText": "How does edge extraction work?",
+            "passed": true,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "code",
+              "github-pr"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 0,
+              "chainCoverageRate": 0,
+              "totalChainCount": 15,
+              "multiHopChainCount": 0,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 15,
+              "recommendedNextReadCount": 0,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1622527000,
+              "crossSourceChainCount": 0,
+              "crossSourceChainRate": 0,
+              "avgChainDiversity": 0,
+              "chainTemporalCoherenceByEdgeType": []
+            }
+          },
+          {
+            "id": "cs-1",
+            "category": "cross-source",
+            "queryText": "What issues discuss edge resolution and how is it implemented?",
+            "passed": true,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "github-pr",
+              "github-issue",
+              "code"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 15,
+              "chainCoverageRate": 1,
+              "totalChainCount": 12,
+              "multiHopChainCount": 12,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 1,
+              "relatedContextCount": 0,
+              "recommendedNextReadCount": 12,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 2000,
+              "crossSourceChainCount": 12,
+              "crossSourceChainRate": 1,
+              "avgChainDiversity": 3,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 12,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 12,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 12
+                  }
+                },
+                {
+                  "edgeType": "closes",
+                  "walkDirection": "forward",
+                  "pairCount": 1,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 1,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 1,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "cs-2",
+            "category": "cross-source",
+            "queryText": "What PRs changed the search or trace functionality and what code did they touch?",
+            "passed": true,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "github-pr-comment",
+              "github-pr",
+              "code"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 14,
+              "chainCoverageRate": 0.9333333333333333,
+              "totalChainCount": 12,
+              "multiHopChainCount": 11,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 1,
+              "recommendedNextReadCount": 11,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 110071000,
+              "crossSourceChainCount": 11,
+              "crossSourceChainRate": 1,
+              "avgChainDiversity": 3,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 12,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 12,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 12
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "cs-3",
+            "category": "cross-source",
+            "queryText": "Which TypeScript source files implement storage operations described in synapse-sdk documentation?",
+            "passed": true,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "github-issue",
+              "github-pr",
+              "github-pr-comment"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 15,
+              "chainCoverageRate": 1,
+              "totalChainCount": 11,
+              "multiHopChainCount": 11,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 0,
+              "recommendedNextReadCount": 11,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1730186000,
+              "crossSourceChainCount": 10,
+              "crossSourceChainRate": 0.9090909090909091,
+              "avgChainDiversity": 1.9090909090909092,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "documents",
+                  "walkDirection": "forward",
+                  "pairCount": 10,
+                  "childAfterParent": 10,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 10
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 2,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 2,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 2
+                  }
+                },
+                {
+                  "edgeType": "depends-on",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "cov-1",
+            "category": "coverage",
+            "queryText": "What source types are represented in this collection?",
+            "passed": true,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "github-issue",
+              "github-pr",
+              "github-pr-comment"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 14,
+              "chainCoverageRate": 0.9333333333333333,
+              "totalChainCount": 11,
+              "multiHopChainCount": 10,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 1,
+              "recommendedNextReadCount": 10,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1730186000,
+              "crossSourceChainCount": 9,
+              "crossSourceChainRate": 0.9,
+              "avgChainDiversity": 1.9,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "documents",
+                  "walkDirection": "forward",
+                  "pairCount": 9,
+                  "childAfterParent": 9,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 9
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 2,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 2,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 2
+                  }
+                },
+                {
+                  "edgeType": "depends-on",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "cov-2",
+            "category": "coverage",
+            "queryText": "FilOzone filecoin-services issue: emit event from dataSetDeleted method and signed user auth",
+            "passed": true,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": false,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "github-pr",
+              "code",
+              "github-issue"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 13,
+              "chainCoverageRate": 0.8666666666666667,
+              "totalChainCount": 10,
+              "multiHopChainCount": 8,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 2,
+              "recommendedNextReadCount": 8,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1730186000,
+              "crossSourceChainCount": 7,
+              "crossSourceChainRate": 0.875,
+              "avgChainDiversity": 1.875,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "documents",
+                  "walkDirection": "forward",
+                  "pairCount": 6,
+                  "childAfterParent": 6,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 6
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 3,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 2,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0.3333333333333333,
+                  "kindPairs": {
+                    "unknown->unknown": 3
+                  }
+                },
+                {
+                  "edgeType": "depends-on",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "dl-4",
+            "category": "direct-lookup",
+            "queryText": "How are chunks stored and indexed for vector search?",
+            "passed": true,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "code"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 12,
+              "chainCoverageRate": 0.8,
+              "totalChainCount": 12,
+              "multiHopChainCount": 9,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 3,
+              "recommendedNextReadCount": 9,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1802813000,
+              "crossSourceChainCount": 0,
+              "crossSourceChainRate": 0,
+              "avgChainDiversity": 1,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "imports",
+                  "walkDirection": "forward",
+                  "pairCount": 10,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 10,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 10
+                  }
+                },
+                {
+                  "edgeType": "imports",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 1,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "dl-5",
+            "category": "direct-lookup",
+            "queryText": "What are the configuration options for the project?",
+            "passed": true,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "code",
+              "markdown",
+              "github-pr"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 9,
+              "chainCoverageRate": 0.6,
+              "totalChainCount": 12,
+              "multiHopChainCount": 6,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 6,
+              "recommendedNextReadCount": 6,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1643830000,
+              "crossSourceChainCount": 2,
+              "crossSourceChainRate": 0.3333333333333333,
+              "avgChainDiversity": 1.3333333333333333,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "discusses",
+                  "walkDirection": "forward",
+                  "pairCount": 4,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 4,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 4
+                  }
+                },
+                {
+                  "edgeType": "documents",
+                  "walkDirection": "forward",
+                  "pairCount": 2,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 2,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 2
+                  }
+                },
+                {
+                  "edgeType": "discusses",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 1,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "cs-4",
+            "category": "cross-source",
+            "queryText": "What PRs fix bugs in the chunking code and which files did they touch?",
+            "passed": true,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "github-pr",
+              "code"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 12,
+              "chainCoverageRate": 0.8,
+              "totalChainCount": 13,
+              "multiHopChainCount": 10,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 3,
+              "recommendedNextReadCount": 10,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1715222000,
+              "crossSourceChainCount": 10,
+              "crossSourceChainRate": 1,
+              "avgChainDiversity": 2,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 11,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 11,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 11
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "cs-5",
+            "category": "cross-source",
+            "queryText": "Which PR discussions cover dependency updates and their resolution?",
+            "passed": true,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "github-pr",
+              "markdown"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 7,
+              "chainCoverageRate": 0.4666666666666667,
+              "totalChainCount": 12,
+              "multiHopChainCount": 4,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 8,
+              "recommendedNextReadCount": 4,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1643830000,
+              "crossSourceChainCount": 0,
+              "crossSourceChainRate": 0,
+              "avgChainDiversity": 1,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 4,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 4,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 4
+                  }
+                },
+                {
+                  "edgeType": "depends-on",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "cov-3",
+            "category": "coverage",
+            "queryText": "Where is test coverage documented or configured?",
+            "passed": true,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "github-pr",
+              "code",
+              "markdown"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 14,
+              "chainCoverageRate": 0.9333333333333333,
+              "totalChainCount": 11,
+              "multiHopChainCount": 10,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 1,
+              "recommendedNextReadCount": 10,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 63937000,
+              "crossSourceChainCount": 10,
+              "crossSourceChainRate": 1,
+              "avgChainDiversity": 2,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "imports",
+                  "walkDirection": "forward",
+                  "pairCount": 8,
+                  "childAfterParent": 4,
+                  "childBeforeParent": 1,
+                  "childEqualsParent": 3,
+                  "childAfterParentRate": 0.5,
+                  "kindPairs": {
+                    "unknown->unknown": 8
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 4,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 4,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 4
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "cov-4",
+            "category": "coverage",
+            "queryText": "What licenses apply to the code in this collection?",
+            "passed": true,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "code"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 13,
+              "chainCoverageRate": 0.8666666666666667,
+              "totalChainCount": 14,
+              "multiHopChainCount": 12,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 2,
+              "recommendedNextReadCount": 12,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1582464000,
+              "crossSourceChainCount": 0,
+              "crossSourceChainRate": 0,
+              "avgChainDiversity": 1,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 12,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 12,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 12
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "syn-1",
+            "category": "synthesis",
+            "queryText": "How does data flow from ingestion through embedding to search results?",
+            "passed": true,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "github-issue"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 12,
+              "chainCoverageRate": 0.8,
+              "totalChainCount": 11,
+              "multiHopChainCount": 8,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 3,
+              "recommendedNextReadCount": 8,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1805538000,
+              "crossSourceChainCount": 7,
+              "crossSourceChainRate": 0.875,
+              "avgChainDiversity": 1.875,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "documents",
+                  "walkDirection": "forward",
+                  "pairCount": 7,
+                  "childAfterParent": 7,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 7
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 2,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 2,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 2
+                  }
+                },
+                {
+                  "edgeType": "depends-on",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "syn-2",
+            "category": "synthesis",
+            "queryText": "What is the overall architecture of this system?",
+            "passed": true,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 12,
+              "chainCoverageRate": 0.8,
+              "totalChainCount": 13,
+              "multiHopChainCount": 10,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 3,
+              "recommendedNextReadCount": 10,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1720828000,
+              "crossSourceChainCount": 0,
+              "crossSourceChainRate": 0,
+              "avgChainDiversity": 1,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 9,
+                  "childAfterParent": 9,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 9
+                  }
+                },
+                {
+                  "edgeType": "documents",
+                  "walkDirection": "forward",
+                  "pairCount": 2,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 2,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 2
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "syn-3",
+            "category": "synthesis",
+            "queryText": "How do edges connect content across different sources?",
+            "passed": true,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "code"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 9,
+              "chainCoverageRate": 0.6,
+              "totalChainCount": 12,
+              "multiHopChainCount": 6,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 6,
+              "recommendedNextReadCount": 6,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1662370000,
+              "crossSourceChainCount": 0,
+              "crossSourceChainRate": 0,
+              "avgChainDiversity": 1,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 7,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 7,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 7
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "syn-4",
+            "category": "synthesis",
+            "queryText": "What is the release process and how are versions tagged?",
+            "passed": true,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "code",
+              "github-pr"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 2,
+              "chainCoverageRate": 0.13333333333333333,
+              "totalChainCount": 14,
+              "multiHopChainCount": 1,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 13,
+              "recommendedNextReadCount": 1,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1715222000,
+              "crossSourceChainCount": 0,
+              "crossSourceChainRate": 0,
+              "avgChainDiversity": 1,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 1,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 1,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "syn-5",
+            "category": "synthesis",
+            "queryText": "How does the system handle errors and failures?",
+            "passed": true,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "code"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 2,
+              "chainCoverageRate": 0.13333333333333333,
+              "totalChainCount": 14,
+              "multiHopChainCount": 1,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 13,
+              "recommendedNextReadCount": 1,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1650351000,
+              "crossSourceChainCount": 0,
+              "crossSourceChainRate": 0,
+              "avgChainDiversity": 1,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 1,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "cov-5",
+            "category": "coverage",
+            "queryText": "What CI or GitHub Actions workflows exist?",
+            "passed": true,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 5,
+              "chainCoverageRate": 0.3333333333333333,
+              "totalChainCount": 13,
+              "multiHopChainCount": 3,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 10,
+              "recommendedNextReadCount": 3,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1658452000,
+              "crossSourceChainCount": 0,
+              "crossSourceChainRate": 0,
+              "avgChainDiversity": 1,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "discusses",
+                  "walkDirection": "forward",
+                  "pairCount": 3,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 3,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 3
+                  }
+                },
+                {
+                  "edgeType": "discusses",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 1,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "dl-6",
+            "category": "direct-lookup",
+            "queryText": "What does the README describe?",
+            "passed": true,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "github-issue",
+              "markdown"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 15,
+              "chainCoverageRate": 1,
+              "totalChainCount": 13,
+              "multiHopChainCount": 13,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 0,
+              "recommendedNextReadCount": 13,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 78116000,
+              "crossSourceChainCount": 13,
+              "crossSourceChainRate": 1,
+              "avgChainDiversity": 2,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 14,
+                  "childAfterParent": 2,
+                  "childBeforeParent": 12,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0.14285714285714285,
+                  "kindPairs": {
+                    "unknown->unknown": 14
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "dl-7",
+            "category": "direct-lookup",
+            "queryText": "What are the main dependencies used?",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": false,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "code"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 7,
+              "chainCoverageRate": 0.4666666666666667,
+              "totalChainCount": 13,
+              "multiHopChainCount": 5,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 8,
+              "recommendedNextReadCount": 5,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1752361000,
+              "crossSourceChainCount": 0,
+              "crossSourceChainRate": 0,
+              "avgChainDiversity": 1,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 4,
+                  "childAfterParent": 4,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 4
+                  }
+                },
+                {
+                  "edgeType": "documents",
+                  "walkDirection": "forward",
+                  "pairCount": 2,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 2,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 2
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "dl-8",
+            "category": "direct-lookup",
+            "queryText": "What recent pull requests changed PDP, proof set, or proof verification behavior?",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": false,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "github-issue",
+              "github-pr",
+              "github-pr-comment"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 14,
+              "chainCoverageRate": 0.9333333333333333,
+              "totalChainCount": 11,
+              "multiHopChainCount": 10,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 1,
+              "recommendedNextReadCount": 10,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1730186000,
+              "crossSourceChainCount": 9,
+              "crossSourceChainRate": 0.9,
+              "avgChainDiversity": 1.9,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "documents",
+                  "walkDirection": "forward",
+                  "pairCount": 9,
+                  "childAfterParent": 9,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 9
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 2,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 2,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 2
+                  }
+                },
+                {
+                  "edgeType": "depends-on",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "cs-6",
+            "category": "cross-source",
+            "queryText": "How does synapse-sdk integrate with filecoin-pin or delegated storage services when publishing data?",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": false,
+            "requiredTypesFoundQueryOnly": false,
+            "substringFound": false,
+            "edgeHopFound": true,
+            "crossSourceFound": false,
+            "sourceTypesReached": [
+              "markdown"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 13,
+              "chainCoverageRate": 0.8666666666666667,
+              "totalChainCount": 12,
+              "multiHopChainCount": 10,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 2,
+              "recommendedNextReadCount": 10,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1662370000,
+              "crossSourceChainCount": 0,
+              "crossSourceChainRate": 0,
+              "avgChainDiversity": 1,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 10,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 10,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 10
+                  }
+                },
+                {
+                  "edgeType": "documents",
+                  "walkDirection": "forward",
+                  "pairCount": 1,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 1,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "cs-7",
+            "category": "cross-source",
+            "queryText": "How is a storage provider or proof service configured in Synapse docs compared with the TypeScript implementation?",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": false,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "code"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 15,
+              "chainCoverageRate": 1,
+              "totalChainCount": 12,
+              "multiHopChainCount": 12,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 0,
+              "recommendedNextReadCount": 12,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1725789000,
+              "crossSourceChainCount": 12,
+              "crossSourceChainRate": 1,
+              "avgChainDiversity": 2,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "imports",
+                  "walkDirection": "forward",
+                  "pairCount": 13,
+                  "childAfterParent": 11,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 2,
+                  "childAfterParentRate": 0.8461538461538461,
+                  "kindPairs": {
+                    "unknown->unknown": 13
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "cov-6",
+            "category": "coverage",
+            "queryText": "What problems or bugs were reported around payment flows in the Filecoin services ecosystem repos?",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": false,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "github-issue"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 12,
+              "chainCoverageRate": 0.8,
+              "totalChainCount": 11,
+              "multiHopChainCount": 8,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 3,
+              "recommendedNextReadCount": 8,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1730186000,
+              "crossSourceChainCount": 7,
+              "crossSourceChainRate": 0.875,
+              "avgChainDiversity": 1.875,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "documents",
+                  "walkDirection": "forward",
+                  "pairCount": 7,
+                  "childAfterParent": 7,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 7
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 2,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 2,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 2
+                  }
+                },
+                {
+                  "edgeType": "depends-on",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "cov-7",
+            "category": "coverage",
+            "queryText": "How does piece.ts implement PieceCID and CommP validation across synapse-core and filecoin-pin?",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": false,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "code",
+              "markdown",
+              "github-issue"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 12,
+              "chainCoverageRate": 0.8,
+              "totalChainCount": 11,
+              "multiHopChainCount": 8,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 3,
+              "recommendedNextReadCount": 8,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1730186000,
+              "crossSourceChainCount": 7,
+              "crossSourceChainRate": 0.875,
+              "avgChainDiversity": 1.875,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "documents",
+                  "walkDirection": "forward",
+                  "pairCount": 7,
+                  "childAfterParent": 7,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 7
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 2,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 2,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 2
+                  }
+                },
+                {
+                  "edgeType": "depends-on",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "syn-6",
+            "category": "synthesis",
+            "queryText": "What PR discussions and comments argued about the proof set or PDP service contract design in filecoin-services?",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": false,
+            "substringFound": false,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "github-issue",
+              "github-pr",
+              "github-pr-comment"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 15,
+              "chainCoverageRate": 1,
+              "totalChainCount": 11,
+              "multiHopChainCount": 11,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 0,
+              "recommendedNextReadCount": 11,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1730186000,
+              "crossSourceChainCount": 10,
+              "crossSourceChainRate": 0.9090909090909091,
+              "avgChainDiversity": 1.9090909090909092,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "documents",
+                  "walkDirection": "forward",
+                  "pairCount": 10,
+                  "childAfterParent": 10,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 10
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 2,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 2,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 2
+                  }
+                },
+                {
+                  "edgeType": "depends-on",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "syn-7",
+            "category": "synthesis",
+            "queryText": "How do Curio sector or deal-storage concepts connect to the Synapse client storage workflow?",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": false,
+            "requiredTypesFoundQueryOnly": false,
+            "substringFound": false,
+            "edgeHopFound": true,
+            "crossSourceFound": false,
+            "sourceTypesReached": [
+              "markdown"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 13,
+              "chainCoverageRate": 0.8666666666666667,
+              "totalChainCount": 12,
+              "multiHopChainCount": 10,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 2,
+              "recommendedNextReadCount": 10,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 214890000,
+              "crossSourceChainCount": 0,
+              "crossSourceChainRate": 0,
+              "avgChainDiversity": 1,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 10,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 10,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 10
+                  }
+                },
+                {
+                  "edgeType": "documents",
+                  "walkDirection": "forward",
+                  "pairCount": 1,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 1,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "cov-8",
+            "category": "coverage",
+            "queryText": "What official Filecoin documentation pages describe storage providers?",
+            "skipped": true,
+            "skipReason": "corpus lacks required source type(s): doc-page",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 0,
+            "requiredTypesFound": false,
+            "requiredTypesFoundQueryOnly": false,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [],
+            "lineage": null
+          },
+          {
+            "id": "fl-1",
+            "category": "file-level",
+            "queryText": "Which file defines the Synapse class or createSynapse factory?",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": false,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "code"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 15,
+              "chainCoverageRate": 1,
+              "totalChainCount": 12,
+              "multiHopChainCount": 12,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 0,
+              "recommendedNextReadCount": 12,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1725789000,
+              "crossSourceChainCount": 12,
+              "crossSourceChainRate": 1,
+              "avgChainDiversity": 2,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "imports",
+                  "walkDirection": "forward",
+                  "pairCount": 13,
+                  "childAfterParent": 11,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 2,
+                  "childAfterParentRate": 0.8461538461538461,
+                  "kindPairs": {
+                    "unknown->unknown": 13
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "fl-2",
+            "category": "file-level",
+            "queryText": "Which file defines PieceCID and the piece identity logic?",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": false,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "code"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 14,
+              "chainCoverageRate": 0.9333333333333333,
+              "totalChainCount": 12,
+              "multiHopChainCount": 11,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 1,
+              "recommendedNextReadCount": 11,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1645321000,
+              "crossSourceChainCount": 0,
+              "crossSourceChainRate": 0,
+              "avgChainDiversity": 1,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "imports",
+                  "walkDirection": "forward",
+                  "pairCount": 11,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 11,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 11
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 1,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 1,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 1,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "fl-3",
+            "category": "file-level",
+            "queryText": "Which files import PieceCID in the synapse client?",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": false,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "code",
+              "markdown"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 12,
+              "chainCoverageRate": 0.8,
+              "totalChainCount": 14,
+              "multiHopChainCount": 11,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 3,
+              "recommendedNextReadCount": 11,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1613465000,
+              "crossSourceChainCount": 0,
+              "crossSourceChainRate": 0,
+              "avgChainDiversity": 1,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "discusses",
+                  "walkDirection": "forward",
+                  "pairCount": 10,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 10,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 10
+                  }
+                },
+                {
+                  "edgeType": "imports",
+                  "walkDirection": "forward",
+                  "pairCount": 1,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 1,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "fl-4",
+            "category": "file-level",
+            "queryText": "Which file defines StorageContext in the synapse-sdk?",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": false,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "code"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 13,
+              "chainCoverageRate": 0.8666666666666667,
+              "totalChainCount": 12,
+              "multiHopChainCount": 10,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 2,
+              "recommendedNextReadCount": 10,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1725789000,
+              "crossSourceChainCount": 10,
+              "crossSourceChainRate": 1,
+              "avgChainDiversity": 2,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "imports",
+                  "walkDirection": "forward",
+                  "pairCount": 11,
+                  "childAfterParent": 10,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 1,
+                  "childAfterParentRate": 0.9090909090909091,
+                  "kindPairs": {
+                    "unknown->unknown": 11
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "wl-1",
+            "category": "work-lineage",
+            "queryText": "Where does PieceCID validation happen and what concerns were raised about it?",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": false,
+            "edgeHopFound": true,
+            "crossSourceFound": false,
+            "sourceTypesReached": [
+              "code"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 12,
+              "chainCoverageRate": 0.8,
+              "totalChainCount": 12,
+              "multiHopChainCount": 9,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 3,
+              "recommendedNextReadCount": 9,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1645321000,
+              "crossSourceChainCount": 0,
+              "crossSourceChainRate": 0,
+              "avgChainDiversity": 1,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "imports",
+                  "walkDirection": "forward",
+                  "pairCount": 9,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 9,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 9
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 1,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 1,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 1,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "wl-2",
+            "category": "work-lineage",
+            "queryText": "DataSetStatus enum values and transitions in filecoin services code",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": false,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "code",
+              "github-pr",
+              "github-issue"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 8,
+              "chainCoverageRate": 0.5333333333333333,
+              "totalChainCount": 10,
+              "multiHopChainCount": 3,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 7,
+              "recommendedNextReadCount": 3,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1730186000,
+              "crossSourceChainCount": 2,
+              "crossSourceChainRate": 0.6666666666666666,
+              "avgChainDiversity": 1.6666666666666667,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 3,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 2,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0.3333333333333333,
+                  "kindPairs": {
+                    "unknown->unknown": 3
+                  }
+                },
+                {
+                  "edgeType": "depends-on",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "documents",
+                  "walkDirection": "forward",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "wl-3",
+            "category": "work-lineage",
+            "queryText": "synapse-sdk payments deposit implementation typescript",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": false,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "code",
+              "markdown",
+              "github-issue",
+              "github-pr",
+              "github-pr-comment"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 14,
+              "chainCoverageRate": 0.9333333333333333,
+              "totalChainCount": 11,
+              "multiHopChainCount": 10,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 1,
+              "recommendedNextReadCount": 10,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1730186000,
+              "crossSourceChainCount": 9,
+              "crossSourceChainRate": 0.9,
+              "avgChainDiversity": 1.9,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "documents",
+                  "walkDirection": "forward",
+                  "pairCount": 9,
+                  "childAfterParent": 9,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 9
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 2,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 2,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 2
+                  }
+                },
+                {
+                  "edgeType": "depends-on",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "wl-4",
+            "category": "work-lineage",
+            "queryText": "piece.ts validation logic across synapse-core and filecoin-pin, with PR discussion",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": false,
+            "substringFound": false,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "github-issue",
+              "github-pr",
+              "github-pr-comment"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 15,
+              "chainCoverageRate": 1,
+              "totalChainCount": 11,
+              "multiHopChainCount": 11,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 0,
+              "recommendedNextReadCount": 11,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1730186000,
+              "crossSourceChainCount": 10,
+              "crossSourceChainRate": 0.9090909090909091,
+              "avgChainDiversity": 1.9090909090909092,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "documents",
+                  "walkDirection": "forward",
+                  "pairCount": 10,
+                  "childAfterParent": 10,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 10
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 2,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 2,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 2
+                  }
+                },
+                {
+                  "edgeType": "depends-on",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "wl-5",
+            "category": "work-lineage",
+            "queryText": "Payments module deposit function implementation in filecoin-pin with docs context",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": false,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "github-issue",
+              "github-pr",
+              "github-pr-comment"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 15,
+              "chainCoverageRate": 1,
+              "totalChainCount": 11,
+              "multiHopChainCount": 11,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 0,
+              "recommendedNextReadCount": 11,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1730186000,
+              "crossSourceChainCount": 10,
+              "crossSourceChainRate": 0.9090909090909091,
+              "avgChainDiversity": 1.9090909090909092,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "documents",
+                  "walkDirection": "forward",
+                  "pairCount": 10,
+                  "childAfterParent": 10,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 10
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 2,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 2,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 2
+                  }
+                },
+                {
+                  "edgeType": "depends-on",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "wl-6",
+            "category": "work-lineage",
+            "queryText": "How did curio integrate with synapse-sdk PDP layer via issues and PRs?",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": false,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "code"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 14,
+              "chainCoverageRate": 0.9333333333333333,
+              "totalChainCount": 12,
+              "multiHopChainCount": 11,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 1,
+              "recommendedNextReadCount": 11,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1725789000,
+              "crossSourceChainCount": 11,
+              "crossSourceChainRate": 1,
+              "avgChainDiversity": 2,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "imports",
+                  "walkDirection": "forward",
+                  "pairCount": 12,
+                  "childAfterParent": 11,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 1,
+                  "childAfterParentRate": 0.9166666666666666,
+                  "kindPairs": {
+                    "unknown->unknown": 12
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "wl-7",
+            "category": "work-lineage",
+            "queryText": "Piece CID v1 to v2 migration discussion across curio and filecoin services PRs",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": false,
+            "requiredTypesFoundQueryOnly": false,
+            "substringFound": false,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "github-issue"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 12,
+              "chainCoverageRate": 0.8,
+              "totalChainCount": 11,
+              "multiHopChainCount": 8,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 3,
+              "recommendedNextReadCount": 8,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1730186000,
+              "crossSourceChainCount": 7,
+              "crossSourceChainRate": 0.875,
+              "avgChainDiversity": 1.875,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "documents",
+                  "walkDirection": "forward",
+                  "pairCount": 7,
+                  "childAfterParent": 7,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 7
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 2,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 2,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 2
+                  }
+                },
+                {
+                  "edgeType": "depends-on",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "wl-8",
+            "category": "work-lineage",
+            "queryText": "Storage costs and billing concepts documented across synapse-sdk and filecoin-services",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": false,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 13,
+              "chainCoverageRate": 0.8666666666666667,
+              "totalChainCount": 12,
+              "multiHopChainCount": 10,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 2,
+              "recommendedNextReadCount": 10,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1662370000,
+              "crossSourceChainCount": 0,
+              "crossSourceChainRate": 0,
+              "avgChainDiversity": 1,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 10,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 10,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 10
+                  }
+                },
+                {
+                  "edgeType": "documents",
+                  "walkDirection": "forward",
+                  "pairCount": 1,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 1,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "port-1",
+            "category": "work-lineage",
+            "queryText": "Find a bug report, the pull request that closed it, and the code that changed.",
+            "passed": true,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": false,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "github-issue"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 12,
+              "chainCoverageRate": 0.8,
+              "totalChainCount": 11,
+              "multiHopChainCount": 8,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 3,
+              "recommendedNextReadCount": 8,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1648158000,
+              "crossSourceChainCount": 4,
+              "crossSourceChainRate": 0.5,
+              "avgChainDiversity": 1.5,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 5,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 5,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 5
+                  }
+                },
+                {
+                  "edgeType": "documents",
+                  "walkDirection": "forward",
+                  "pairCount": 4,
+                  "childAfterParent": 4,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 4
+                  }
+                },
+                {
+                  "edgeType": "depends-on",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "port-2",
+            "category": "cross-source",
+            "queryText": "Trace a recent pull request discussion to the source files it modified.",
+            "passed": true,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "markdown",
+              "github-issue"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 12,
+              "chainCoverageRate": 0.8,
+              "totalChainCount": 11,
+              "multiHopChainCount": 8,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 3,
+              "recommendedNextReadCount": 8,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1648158000,
+              "crossSourceChainCount": 4,
+              "crossSourceChainRate": 0.5,
+              "avgChainDiversity": 1.5,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 5,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 5,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 5
+                  }
+                },
+                {
+                  "edgeType": "documents",
+                  "walkDirection": "forward",
+                  "pairCount": 4,
+                  "childAfterParent": 4,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 4
+                  }
+                },
+                {
+                  "edgeType": "depends-on",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "port-3",
+            "category": "cross-source",
+            "queryText": "Find documentation sections that describe behavior and the source code that implements them.",
+            "passed": true,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "code",
+              "markdown",
+              "github-issue"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 13,
+              "chainCoverageRate": 0.8666666666666667,
+              "totalChainCount": 11,
+              "multiHopChainCount": 9,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 2,
+              "recommendedNextReadCount": 9,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 1720120000,
+              "crossSourceChainCount": 5,
+              "crossSourceChainRate": 0.5555555555555556,
+              "avgChainDiversity": 1.5555555555555556,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "documents",
+                  "walkDirection": "forward",
+                  "pairCount": 5,
+                  "childAfterParent": 5,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 5
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 5,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 5,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "unknown->unknown": 5
+                  }
+                },
+                {
+                  "edgeType": "depends-on",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "unknown->unknown": 1
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "lineage": {
+          "traceCount": 44,
+          "tracesObserved": 44,
+          "avgChainCoverageRate": 0.7787878787878789,
+          "avgCrossSourceChainRate": 0.5287936179981636,
+          "avgTimestampCoverageRate": 1,
+          "avgChainDiversity": 1.5515208907254356,
+          "avgMultiHopChainCount": 8.659090909090908,
+          "primaryArtifactRate": 1,
+          "traversalTimelineMonotonicRate": 0,
+          "traversalTimelineMonotonicCandidateCount": 44,
+          "totalCandidateFixes": 1,
+          "totalRecommendedNextReads": 381,
+          "chainTemporalCoherenceByEdgeType": [
+            {
+              "edgeType": "references",
+              "walkDirection": "forward",
+              "pairCount": 183,
+              "childAfterParent": 21,
+              "childBeforeParent": 139,
+              "childEqualsParent": 23,
+              "childAfterParentRate": 0.11475409836065574,
+              "kindPairs": {
+                "unknown->unknown": 183
+              }
+            },
+            {
+              "edgeType": "documents",
+              "walkDirection": "forward",
+              "pairCount": 124,
+              "childAfterParent": 115,
+              "childBeforeParent": 9,
+              "childEqualsParent": 0,
+              "childAfterParentRate": 0.9274193548387096,
+              "kindPairs": {
+                "unknown->unknown": 124
+              }
+            },
+            {
+              "edgeType": "imports",
+              "walkDirection": "forward",
+              "pairCount": 95,
+              "childAfterParent": 47,
+              "childBeforeParent": 29,
+              "childEqualsParent": 19,
+              "childAfterParentRate": 0.49473684210526314,
+              "kindPairs": {
+                "unknown->unknown": 95
+              }
+            },
+            {
+              "edgeType": "references",
+              "walkDirection": "reverse",
+              "pairCount": 27,
+              "childAfterParent": 22,
+              "childBeforeParent": 0,
+              "childEqualsParent": 5,
+              "childAfterParentRate": 0.8148148148148148,
+              "kindPairs": {
+                "unknown->unknown": 27
+              }
+            },
+            {
+              "edgeType": "depends-on",
+              "walkDirection": "reverse",
+              "pairCount": 17,
+              "childAfterParent": 17,
+              "childBeforeParent": 0,
+              "childEqualsParent": 0,
+              "childAfterParentRate": 1,
+              "kindPairs": {
+                "unknown->unknown": 17
+              }
+            },
+            {
+              "edgeType": "discusses",
+              "walkDirection": "forward",
+              "pairCount": 17,
+              "childAfterParent": 0,
+              "childBeforeParent": 0,
+              "childEqualsParent": 17,
+              "childAfterParentRate": 0,
+              "kindPairs": {
+                "unknown->unknown": 17
+              }
+            },
+            {
+              "edgeType": "discusses",
+              "walkDirection": "reverse",
+              "pairCount": 2,
+              "childAfterParent": 0,
+              "childBeforeParent": 0,
+              "childEqualsParent": 2,
+              "childAfterParentRate": 0,
+              "kindPairs": {
+                "unknown->unknown": 2
+              }
+            },
+            {
+              "edgeType": "closes",
+              "walkDirection": "forward",
+              "pairCount": 1,
+              "childAfterParent": 0,
+              "childBeforeParent": 0,
+              "childEqualsParent": 1,
+              "childAfterParentRate": 0,
+              "kindPairs": {
+                "unknown->unknown": 1
+              }
+            },
+            {
+              "edgeType": "imports",
+              "walkDirection": "reverse",
+              "pairCount": 1,
+              "childAfterParent": 0,
+              "childBeforeParent": 0,
+              "childEqualsParent": 1,
+              "childAfterParentRate": 0,
+              "kindPairs": {
+                "unknown->unknown": 1
+              }
+            }
+          ]
+        }
+      },
+      "checks": [
+        {
+          "name": "quality:dl-7",
+          "passed": false,
+          "actual": "missing expected source substrings",
+          "detail": "[direct-lookup] \"What are the main dependencies used?\" — missing expected source substrings"
+        },
+        {
+          "name": "quality:dl-8",
+          "passed": false,
+          "actual": "missing expected source substrings",
+          "detail": "[direct-lookup] \"What recent pull requests changed PDP, proof set, or proof verification behavior?\" — missing expected source substrings"
+        },
+        {
+          "name": "quality:cs-6",
+          "passed": false,
+          "actual": "missing required source types, missing expected source substrings, no cross-source hops",
+          "detail": "[cross-source] \"How does synapse-sdk integrate with filecoin-pin or delegated storage services when publishing data?\" — missing required source types, missing expected source substrings, no cross-source hops"
+        },
+        {
+          "name": "quality:cs-7",
+          "passed": false,
+          "actual": "missing expected source substrings",
+          "detail": "[cross-source] \"How is a storage provider or proof service configured in Synapse docs compared with the TypeScript implementation?\" — missing expected source substrings"
+        },
+        {
+          "name": "quality:cov-6",
+          "passed": false,
+          "actual": "missing expected source substrings",
+          "detail": "[coverage] \"What problems or bugs were reported around payment flows in the Filecoin services ecosystem repos?\" — missing expected source substrings"
+        },
+        {
+          "name": "quality:cov-7",
+          "passed": false,
+          "actual": "missing expected source substrings",
+          "detail": "[coverage] \"How does piece.ts implement PieceCID and CommP validation across synapse-core and filecoin-pin?\" — missing expected source substrings"
+        },
+        {
+          "name": "quality:syn-6",
+          "passed": false,
+          "actual": "missing expected source substrings",
+          "detail": "[synthesis] \"What PR discussions and comments argued about the proof set or PDP service contract design in filecoin-services?\" — missing expected source substrings"
+        },
+        {
+          "name": "quality:syn-7",
+          "passed": false,
+          "actual": "missing required source types, missing expected source substrings, no cross-source hops",
+          "detail": "[synthesis] \"How do Curio sector or deal-storage concepts connect to the Synapse client storage workflow?\" — missing required source types, missing expected source substrings, no cross-source hops"
+        },
+        {
+          "name": "quality:fl-1",
+          "passed": false,
+          "actual": "missing expected source substrings",
+          "detail": "[file-level] \"Which file defines the Synapse class or createSynapse factory?\" — missing expected source substrings"
+        },
+        {
+          "name": "quality:fl-2",
+          "passed": false,
+          "actual": "missing expected source substrings",
+          "detail": "[file-level] \"Which file defines PieceCID and the piece identity logic?\" — missing expected source substrings"
+        },
+        {
+          "name": "quality:fl-3",
+          "passed": false,
+          "actual": "missing expected source substrings",
+          "detail": "[file-level] \"Which files import PieceCID in the synapse client?\" — missing expected source substrings"
+        },
+        {
+          "name": "quality:fl-4",
+          "passed": false,
+          "actual": "missing expected source substrings",
+          "detail": "[file-level] \"Which file defines StorageContext in the synapse-sdk?\" — missing expected source substrings"
+        },
+        {
+          "name": "quality:wl-1",
+          "passed": false,
+          "actual": "missing expected source substrings, no cross-source hops",
+          "detail": "[work-lineage] \"Where does PieceCID validation happen and what concerns were raised about it?\" — missing expected source substrings, no cross-source hops"
+        },
+        {
+          "name": "quality:wl-2",
+          "passed": false,
+          "actual": "missing expected source substrings",
+          "detail": "[work-lineage] \"DataSetStatus enum values and transitions in filecoin services code\" — missing expected source substrings"
+        },
+        {
+          "name": "quality:wl-3",
+          "passed": false,
+          "actual": "missing expected source substrings",
+          "detail": "[work-lineage] \"synapse-sdk payments deposit implementation typescript\" — missing expected source substrings"
+        },
+        {
+          "name": "quality:wl-4",
+          "passed": false,
+          "actual": "missing expected source substrings",
+          "detail": "[work-lineage] \"piece.ts validation logic across synapse-core and filecoin-pin, with PR discussion\" — missing expected source substrings"
+        },
+        {
+          "name": "quality:wl-5",
+          "passed": false,
+          "actual": "missing expected source substrings",
+          "detail": "[work-lineage] \"Payments module deposit function implementation in filecoin-pin with docs context\" — missing expected source substrings"
+        },
+        {
+          "name": "quality:wl-6",
+          "passed": false,
+          "actual": "missing expected source substrings",
+          "detail": "[work-lineage] \"How did curio integrate with synapse-sdk PDP layer via issues and PRs?\" — missing expected source substrings"
+        },
+        {
+          "name": "quality:wl-7",
+          "passed": false,
+          "actual": "missing required source types, missing expected source substrings",
+          "detail": "[work-lineage] \"Piece CID v1 to v2 migration discussion across curio and filecoin services PRs\" — missing required source types, missing expected source substrings"
+        },
+        {
+          "name": "quality:wl-8",
+          "passed": false,
+          "actual": "missing expected source substrings",
+          "detail": "[work-lineage] \"Storage costs and billing concepts documented across synapse-sdk and filecoin-services\" — missing expected source substrings"
+        }
+      ]
+    }
+  ],
+  "verdict": "pass",
+  "durationMs": 133912
+}

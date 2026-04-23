@@ -58,6 +58,40 @@ describe("GOLD_STANDARD_QUERIES fixture integrity", () => {
 		expect(traceRequired.length).toBeGreaterThanOrEqual(5);
 	});
 
+	it("fixture has at least 8 portable queries (v1.6.0 overfit-guard)", () => {
+		const portable = GOLD_STANDARD_QUERIES.filter((q) => q.portability === "portable");
+		expect(
+			portable.length,
+			"fewer than 8 portable queries — fixture is too corpus-specific to measure generic retrieval",
+		).toBeGreaterThanOrEqual(8);
+	});
+
+	it("portable queries do not reference specific corpora in text (v1.6.0)", () => {
+		const CORPUS_NAMES = [
+			"filoz",
+			"synapse-sdk",
+			"synapse-core",
+			"filecoin-services",
+			"filecoin-pin",
+			"FilOzone",
+			"piece.ts",
+			"DataSetStatus",
+			"PieceCID",
+			"CommP",
+			"Curio",
+			"PDP",
+		];
+		for (const q of GOLD_STANDARD_QUERIES) {
+			if (q.portability !== "portable") continue;
+			for (const name of CORPUS_NAMES) {
+				expect(
+					q.queryText.toLowerCase().includes(name.toLowerCase()),
+					`portable query ${q.id} references "${name}" — move to corpus-specific`,
+				).toBe(false);
+			}
+		}
+	});
+
 	it("queries with collectionScopePattern must carry a reason and a valid regex (v1.4.0)", () => {
 		for (const q of GOLD_STANDARD_QUERIES) {
 			if (!q.collectionScopePattern) continue;

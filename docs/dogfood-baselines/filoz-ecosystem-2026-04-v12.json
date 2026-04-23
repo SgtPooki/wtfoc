@@ -1,22 +1,23 @@
 {
   "reportSchemaVersion": "1.0.0",
-  "timestamp": "2026-04-23T13:09:37.406Z",
+  "timestamp": "2026-04-23T13:48:08.453Z",
   "collectionId": "0da9b1675309f7f3c1c5e17838301710",
   "collectionName": "filoz-ecosystem-2026-04-v12",
   "stages": [
     {
       "stage": "quality-queries",
-      "startedAt": "2026-04-23T13:07:45.854Z",
-      "durationMs": 111550,
+      "startedAt": "2026-04-23T13:45:58.492Z",
+      "durationMs": 129958,
       "verdict": "pass",
-      "summary": "38/38 applicable gold queries passed (100%, 4 skipped)",
+      "summary": "38/41 applicable gold queries passed (93%, 4 skipped)",
       "metrics": {
-        "goldQueriesVersion": "1.5.0",
-        "passRate": 1,
+        "goldQueriesVersion": "1.6.0",
+        "passRate": 0.926829268292683,
         "passCount": 38,
-        "queryOnlyPassRate": 0.9736842105263158,
-        "queryOnlyPassCount": 37,
-        "applicableTotal": 38,
+        "queryOnlyPassRate": 0.926829268292683,
+        "queryOnlyPassCount": 38,
+        "applicableTotal": 41,
+        "applicableRate": 0.9111111111111111,
         "skippedCount": 4,
         "skippedReasons": [
           {
@@ -36,7 +37,7 @@
             "reason": "corpus lacks required source type(s): doc-page"
           }
         ],
-        "totalQueries": 42,
+        "totalQueries": 45,
         "categoryBreakdown": {
           "direct-lookup": {
             "total": 6,
@@ -45,9 +46,9 @@
             "skipped": 2
           },
           "cross-source": {
-            "total": 7,
+            "total": 9,
             "passed": 7,
-            "passRate": 1,
+            "passRate": 0.7777777777777778,
             "skipped": 0
           },
           "coverage": {
@@ -69,9 +70,9 @@
             "skipped": 0
           },
           "work-lineage": {
-            "total": 8,
+            "total": 9,
             "passed": 8,
-            "passRate": 1,
+            "passRate": 0.8888888888888888,
             "skipped": 0
           }
         },
@@ -79,6 +80,18 @@
           "demo-critical": {
             "total": 5,
             "passed": 5,
+            "passRate": 1
+          }
+        },
+        "portabilityBreakdown": {
+          "portable": {
+            "total": 13,
+            "passed": 10,
+            "passRate": 0.7692307692307693
+          },
+          "corpus-specific": {
+            "total": 28,
+            "passed": 28,
             "passRate": 1
           }
         },
@@ -2565,49 +2578,220 @@
                 }
               ]
             }
+          },
+          {
+            "id": "port-1",
+            "category": "work-lineage",
+            "queryText": "Find a bug report, the pull request that closed it, and the code that changed.",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": false,
+            "requiredTypesFoundQueryOnly": false,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "slack-message",
+              "github-pr-comment",
+              "markdown"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 13,
+              "chainCoverageRate": 0.8666666666666667,
+              "totalChainCount": 11,
+              "multiHopChainCount": 9,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 2,
+              "recommendedNextReadCount": 9,
+              "hopsWithTimestamp": 2,
+              "timestampCoverageRate": 0.13333333333333333,
+              "traversalTimelineMonotonic": true,
+              "timelineSpanMs": 16560529413,
+              "crossSourceChainCount": 0,
+              "crossSourceChainRate": 0,
+              "avgChainDiversity": 1,
+              "chainTemporalCoherenceByEdgeType": []
+            }
+          },
+          {
+            "id": "port-2",
+            "category": "cross-source",
+            "queryText": "Trace a recent pull request discussion to the source files it modified.",
+            "passed": false,
+            "passedQueryOnly": false,
+            "resultCount": 10,
+            "requiredTypesFound": false,
+            "requiredTypesFoundQueryOnly": false,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": true,
+            "sourceTypesReached": [
+              "github-pr-comment",
+              "slack-message",
+              "github-pr"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 13,
+              "chainCoverageRate": 0.8666666666666667,
+              "totalChainCount": 11,
+              "multiHopChainCount": 9,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 1,
+              "relatedContextCount": 2,
+              "recommendedNextReadCount": 9,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 22004298581,
+              "crossSourceChainCount": 4,
+              "crossSourceChainRate": 0.4444444444444444,
+              "avgChainDiversity": 1.4444444444444444,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 7,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 6,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0.14285714285714285,
+                  "kindPairs": {
+                    "updated->updated": 7
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 4,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 3,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0.25,
+                  "kindPairs": {
+                    "updated->updated": 4
+                  }
+                },
+                {
+                  "edgeType": "addresses",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 1,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "updated->updated": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "port-3",
+            "category": "cross-source",
+            "queryText": "Find documentation sections that describe behavior and the source code that implements them.",
+            "passed": false,
+            "passedQueryOnly": true,
+            "resultCount": 10,
+            "requiredTypesFound": true,
+            "requiredTypesFoundQueryOnly": true,
+            "substringFound": true,
+            "edgeHopFound": true,
+            "crossSourceFound": false,
+            "sourceTypesReached": [
+              "markdown"
+            ],
+            "lineage": {
+              "totalHops": 15,
+              "hopsInChains": 14,
+              "chainCoverageRate": 0.9333333333333333,
+              "totalChainCount": 13,
+              "multiHopChainCount": 12,
+              "hasPrimaryArtifact": true,
+              "candidateFixCount": 0,
+              "relatedContextCount": 1,
+              "recommendedNextReadCount": 12,
+              "hopsWithTimestamp": 15,
+              "timestampCoverageRate": 1,
+              "traversalTimelineMonotonic": false,
+              "timelineSpanMs": 32497521000,
+              "crossSourceChainCount": 0,
+              "crossSourceChainRate": 0,
+              "avgChainDiversity": 1,
+              "chainTemporalCoherenceByEdgeType": [
+                {
+                  "edgeType": "references",
+                  "walkDirection": "forward",
+                  "pairCount": 12,
+                  "childAfterParent": 0,
+                  "childBeforeParent": 12,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 0,
+                  "kindPairs": {
+                    "committed->committed": 12
+                  }
+                },
+                {
+                  "edgeType": "references",
+                  "walkDirection": "reverse",
+                  "pairCount": 1,
+                  "childAfterParent": 1,
+                  "childBeforeParent": 0,
+                  "childEqualsParent": 0,
+                  "childAfterParentRate": 1,
+                  "kindPairs": {
+                    "committed->committed": 1
+                  }
+                }
+              ]
+            }
           }
         ],
         "lineage": {
-          "traceCount": 38,
-          "tracesObserved": 38,
-          "avgChainCoverageRate": 0.9070175438596492,
-          "avgCrossSourceChainRate": 0.5173388015493279,
-          "avgTimestampCoverageRate": 0.9912280701754387,
-          "avgChainDiversity": 1.6670046327941066,
-          "avgMultiHopChainCount": 10.052631578947368,
+          "traceCount": 41,
+          "tracesObserved": 41,
+          "avgChainCoverageRate": 0.9056910569105691,
+          "avgCrossSourceChainRate": 0.490324851300461,
+          "avgTimestampCoverageRate": 0.9707317073170733,
+          "avgChainDiversity": 1.6290395241614755,
+          "avgMultiHopChainCount": 10.048780487804878,
           "primaryArtifactRate": 1,
-          "traversalTimelineMonotonicRate": 0.02631578947368421,
-          "traversalTimelineMonotonicCandidateCount": 38,
-          "totalCandidateFixes": 4,
-          "totalRecommendedNextReads": 382,
+          "traversalTimelineMonotonicRate": 0.04878048780487805,
+          "traversalTimelineMonotonicCandidateCount": 41,
+          "totalCandidateFixes": 5,
+          "totalRecommendedNextReads": 412,
           "chainTemporalCoherenceByEdgeType": [
             {
               "edgeType": "references",
               "walkDirection": "forward",
-              "pairCount": 254,
-              "childAfterParent": 108,
-              "childBeforeParent": 99,
+              "pairCount": 273,
+              "childAfterParent": 109,
+              "childBeforeParent": 117,
               "childEqualsParent": 47,
-              "childAfterParentRate": 0.4251968503937008,
+              "childAfterParentRate": 0.3992673992673993,
               "kindPairs": {
-                "committed->committed": 178,
+                "committed->committed": 190,
                 "committed->updated": 18,
                 "created->updated": 8,
                 "updated->committed": 5,
-                "updated->updated": 45
+                "updated->updated": 52
               }
             },
             {
               "edgeType": "references",
               "walkDirection": "reverse",
-              "pairCount": 72,
-              "childAfterParent": 22,
-              "childBeforeParent": 42,
+              "pairCount": 77,
+              "childAfterParent": 24,
+              "childBeforeParent": 45,
               "childEqualsParent": 8,
-              "childAfterParentRate": 0.3055555555555556,
+              "childAfterParentRate": 0.3116883116883117,
               "kindPairs": {
-                "committed->committed": 31,
-                "updated->updated": 27,
+                "committed->committed": 32,
+                "updated->updated": 31,
                 "updated->committed": 3,
                 "updated->created": 11
               }
@@ -2675,13 +2859,13 @@
             {
               "edgeType": "addresses",
               "walkDirection": "reverse",
-              "pairCount": 2,
+              "pairCount": 3,
               "childAfterParent": 0,
-              "childBeforeParent": 2,
+              "childBeforeParent": 3,
               "childEqualsParent": 0,
               "childAfterParentRate": 0,
               "kindPairs": {
-                "updated->updated": 2
+                "updated->updated": 3
               }
             },
             {
@@ -2747,9 +2931,28 @@
           ]
         }
       },
-      "checks": []
+      "checks": [
+        {
+          "name": "quality:port-1",
+          "passed": false,
+          "actual": "missing required source types",
+          "detail": "[work-lineage] \"Find a bug report, the pull request that closed it, and the code that changed.\" — missing required source types"
+        },
+        {
+          "name": "quality:port-2",
+          "passed": false,
+          "actual": "missing required source types",
+          "detail": "[cross-source] \"Trace a recent pull request discussion to the source files it modified.\" — missing required source types"
+        },
+        {
+          "name": "quality:port-3",
+          "passed": false,
+          "actual": "no cross-source hops",
+          "detail": "[cross-source] \"Find documentation sections that describe behavior and the source code that implements them.\" — no cross-source hops"
+        }
+      ]
     }
   ],
   "verdict": "pass",
-  "durationMs": 112604
+  "durationMs": 131167
 }

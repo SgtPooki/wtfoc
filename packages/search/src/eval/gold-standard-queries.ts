@@ -28,7 +28,7 @@
  * separate changes coincide on the same version — a new change always gets
  * a fresh bump.
  */
-export const GOLD_STANDARD_QUERIES_VERSION = "1.5.0";
+export const GOLD_STANDARD_QUERIES_VERSION = "1.6.0";
 
 export interface GoldStandardQuery {
 	/** Unique identifier for this query */
@@ -93,6 +93,22 @@ export interface GoldStandardQuery {
 	collectionScopePattern?: string;
 	/** Required when `collectionScopePattern` is set — shows up in reports. */
 	collectionScopeReason?: string;
+	/**
+	 * Portability tag (added v1.6.0 after peer-review flagged that v12-
+	 * specific rephrases had converted a retrieval eval into a fixture
+	 * memorization test). Orthogonal to `tier` above:
+	 *
+	 * - `"portable"` — query is phrased abstractly and must work on ANY
+	 *   serious software corpus (code + docs + issues/PRs). No repo
+	 *   names, file paths, or issue IDs in the query text. Used to
+	 *   measure generic retrieval quality. Reported as `portablePassRate`.
+	 * - `"corpus-specific"` — query names concrete artifacts of one
+	 *   corpus family. Scored separately as `corpusSpecificPassRate` so a
+	 *   100% there cannot masquerade as general retrieval quality.
+	 * - Unset defaults to `"corpus-specific"` in the report — safer
+	 *   default than claiming portability the query hasn't earned.
+	 */
+	portability?: "portable" | "corpus-specific";
 }
 
 export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
@@ -168,6 +184,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "coverage",
 		requiredSourceTypes: ["code"],
 		minResults: 3,
+		portability: "portable",
 	},
 	{
 		id: "cov-2",
@@ -201,6 +218,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["markdown", "code"],
 		expectedSourceSubstrings: ["config"],
 		minResults: 1,
+		portability: "portable",
 	},
 
 	// ── Cross-source tracing ──────────────────────────────────
@@ -225,6 +243,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["github-pr", "github-pr-comment"],
 		minResults: 1,
 		requireEdgeHop: true,
+		portability: "portable",
 	},
 
 	// ── Coverage ──────────────────────────────────────────────
@@ -234,6 +253,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "coverage",
 		requiredSourceTypes: ["markdown", "code"],
 		minResults: 1,
+		portability: "portable",
 	},
 	{
 		id: "cov-4",
@@ -241,6 +261,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "coverage",
 		requiredSourceTypes: ["markdown"],
 		minResults: 1,
+		portability: "portable",
 	},
 
 	// ── Synthesis ─────────────────────────────────────────────
@@ -263,6 +284,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "synthesis",
 		requiredSourceTypes: ["markdown"],
 		minResults: 3,
+		portability: "portable",
 	},
 	{
 		id: "syn-3",
@@ -279,6 +301,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "synthesis",
 		requiredSourceTypes: ["markdown", "github-pr"],
 		minResults: 2,
+		portability: "portable",
 	},
 	{
 		id: "syn-5",
@@ -286,6 +309,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "synthesis",
 		requiredSourceTypes: ["code"],
 		minResults: 2,
+		portability: "portable",
 	},
 
 	// ── Coverage extras ───────────────────────────────────────
@@ -295,6 +319,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "coverage",
 		requiredSourceTypes: ["code", "markdown"],
 		minResults: 1,
+		portability: "portable",
 	},
 
 	// ── Direct lookup extras ──────────────────────────────────
@@ -305,6 +330,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["markdown"],
 		expectedSourceSubstrings: ["README"],
 		minResults: 1,
+		portability: "portable",
 	},
 	{
 		id: "dl-7",
@@ -582,5 +608,51 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		// names rather than the semantic words "storage" / "cost".
 		expectedSourceSubstrings: ["synapse-sdk", "filecoin-pin"],
 		minResults: 2,
+	},
+
+	// ── Portable cross-source queries (v1.6.0) ────────────────
+	// Added after peer-review (gemini + codex) flagged that prior
+	// work-lineage / cross-source queries had become v12-artifact-specific
+	// and stopped measuring generic retrieval quality. These are phrased
+	// abstractly: no repo names, no file paths, no issue IDs. They must
+	// work on any serious software corpus (code + docs + issues/PRs).
+	// Scored separately as `portablePassRate`.
+
+	{
+		id: "port-1",
+		// Core wtfoc claim, abstractly: can trace find bug → fix evidence
+		// across issue + PR + code in any corpus? No corpus-specific
+		// substrings; substring gate matches on common artifact shapes.
+		queryText: "Find a bug report, the pull request that closed it, and the code that changed.",
+		category: "work-lineage",
+		portability: "portable",
+		requiredSourceTypes: ["github-issue", "github-pr", "code"],
+		minResults: 3,
+		requireEdgeHop: true,
+		requireCrossSourceHops: true,
+	},
+	{
+		id: "port-2",
+		// Cross-source discussion → code. Abstracted from wl-4 which names
+		// piece.ts + filecoin-pin. Here the question is the capability,
+		// not a specific artifact.
+		queryText: "Trace a recent pull request discussion to the source files it modified.",
+		category: "cross-source",
+		portability: "portable",
+		requiredSourceTypes: ["github-pr", "github-pr-comment", "code"],
+		minResults: 2,
+		requireEdgeHop: true,
+		requireCrossSourceHops: true,
+	},
+	{
+		id: "port-3",
+		// Docs ↔ code alignment check. Portable version of cs-3.
+		queryText:
+			"Find documentation sections that describe behavior and the source code that implements them.",
+		category: "cross-source",
+		portability: "portable",
+		requiredSourceTypes: ["markdown", "code"],
+		minResults: 2,
+		requireCrossSourceHops: true,
 	},
 ];

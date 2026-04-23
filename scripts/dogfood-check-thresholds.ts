@@ -24,10 +24,12 @@ interface Metrics {
 	passCount: number;
 	totalQueries: number;
 	applicableTotal?: number;
+	applicableRate?: number;
 	skippedCount?: number;
 	skippedReasons?: Array<{ id: string; reason: string }>;
 	categoryBreakdown: Record<string, Breakdown>;
 	tierBreakdown?: Record<string, Breakdown>;
+	portabilityBreakdown?: Record<string, Breakdown>;
 }
 
 interface Threshold {
@@ -39,8 +41,19 @@ interface Threshold {
 const THRESHOLDS = {
 	overallMin: 0.8, // raised from 0.65 after diversity-enforce landed (#161)
 	workLineageMin: 0.875, // 7/8
-	demoCriticalMin: 1.0, // 5/5 hard floor
+	demoCriticalMin: 1.0, // 5/5 hard floor — applies only to demo-critical-tier queries
 	fileLevelMin: 1.0,
+	// Portability floor (v1.6.0). Portable queries test generic retrieval
+	// quality across any serious software corpus. Peer-review (gemini)
+	// recommended a 70% hard floor here; codex said start advisory for
+	// one cycle. We go with 70% as a hard floor on the primary corpus
+	// since we've already run it once and know the current number.
+	portableMin: 0.7,
+	// Applicability floor. A high pass rate on a low applicable rate is
+	// the overfit-and-skip signature — warn if the fixture can barely
+	// answer this corpus. 60% picked as clear "fixture too specific"
+	// signal without hair-triggering on legitimately-bounded corpora.
+	applicableRateMin: 0.6,
 } as const;
 
 function loadMetrics(path: string): Metrics {
@@ -57,7 +70,17 @@ function loadMetrics(path: string): Metrics {
 
 function collectThresholds(m: Metrics): Threshold[] {
 	return [
-		{ label: "overall", actual: m.passRate, floor: THRESHOLDS.overallMin },
+		{ label: "overall applicable", actual: m.passRate, floor: THRESHOLDS.overallMin },
+		{
+			label: "portable",
+			actual: m.portabilityBreakdown?.portable?.passRate ?? 0,
+			floor: THRESHOLDS.portableMin,
+		},
+		{
+			label: "applicability rate",
+			actual: m.applicableRate ?? 1,
+			floor: THRESHOLDS.applicableRateMin,
+		},
 		{
 			label: "work-lineage",
 			actual: m.categoryBreakdown["work-lineage"]?.passRate ?? 0,
@@ -77,9 +100,11 @@ function collectThresholds(m: Metrics): Threshold[] {
 }
 
 function main(): void {
-	const path = process.argv[2];
+	const args = process.argv.slice(2);
+	const advisory = args.includes("--advisory");
+	const path = args.find((a) => !a.startsWith("--"));
 	if (!path) {
-		console.error("usage: dogfood-check-thresholds.ts <report.json>");
+		console.error("usage: dogfood-check-thresholds.ts [--advisory] <report.json>");
 		process.exit(2);
 	}
 	const m = loadMetrics(path);
@@ -88,7 +113,23 @@ function main(): void {
 	const applicable = m.applicableTotal ?? m.totalQueries;
 	console.log(`Report: ${path}`);
 	console.log(`Fixture: ${m.goldQueriesVersion ?? "?"}`);
+	if (advisory) console.log("Mode: advisory (thresholds reported, never fail-exit)");
 	console.log(`Overall: ${m.passCount}/${applicable} (${(m.passRate * 100).toFixed(1)}%)`);
+	if (typeof m.applicableRate === "number") {
+		console.log(
+			`Applicability: ${applicable}/${m.totalQueries} (${(m.applicableRate * 100).toFixed(1)}%)`,
+		);
+	}
+	const portable = m.portabilityBreakdown?.portable;
+	const corpusSpecific = m.portabilityBreakdown?.["corpus-specific"];
+	if (portable) {
+		console.log(`Portable: ${portable.passed}/${portable.total} (${(portable.passRate * 100).toFixed(1)}%)`);
+	}
+	if (corpusSpecific) {
+		console.log(
+			`Corpus-specific: ${corpusSpecific.passed}/${corpusSpecific.total} (${(corpusSpecific.passRate * 100).toFixed(1)}%)`,
+		);
+	}
 	if (m.skippedCount && m.skippedCount > 0) {
 		console.log(`Skipped: ${m.skippedCount}/${m.totalQueries} (inapplicable to this corpus)`);
 		for (const s of m.skippedReasons ?? []) console.log(`  · ${s.id}: ${s.reason}`);
@@ -104,6 +145,10 @@ function main(): void {
 		if (!ok) failed++;
 	}
 	if (failed > 0) {
+		if (advisory) {
+			console.error(`\n${failed} threshold(s) violated — advisory only (not exit 1)`);
+			return;
+		}
 		console.error(`\n${failed} threshold(s) violated`);
 		process.exit(1);
 	}
