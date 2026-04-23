@@ -274,6 +274,11 @@ export class PgBossJobQueue implements JobQueue {
 	}
 
 	async #registerWithBoss(type: JobType, handler: JobHandler<unknown>): Promise<void> {
+		// pg-boss v12 requires explicit queue creation before work(). v11 and
+		// earlier auto-created queues on first enqueue/work; v12 splits that into
+		// an explicit step and throws "Queue <name> does not exist" otherwise.
+		// createQueue is idempotent when the queue already exists.
+		await this.#boss.createQueue(type);
 		// pg-boss v12: per-node parallel workers via localConcurrency, batch fetch
 		// of 1 keeps job-by-job semantics (no batched commit across handlers).
 		await this.#boss.work<BossEnvelope>(
