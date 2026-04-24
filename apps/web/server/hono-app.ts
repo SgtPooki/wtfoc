@@ -8,10 +8,12 @@ import { cors } from "hono/cors";
 import { csrf } from "hono/csrf";
 import type { Repository } from "./db/index.js";
 import { authRoutes } from "./auth/routes.js";
+import { createAccountsRoutes } from "./accounts/routes.js";
 import { publicCollectionRoutes } from "./collections/public-routes.js";
 import { collectionRoutes } from "./collections/routes.js";
 import { jobRoutes } from "./jobs/routes.js";
 import type { JobQueue } from "./jobs/queue.js";
+import type pg from "pg";
 
 export type AppEnv = {
 	Variables: {
@@ -23,7 +25,20 @@ export type AppEnv = {
 	};
 };
 
-export function createHonoApp(repo: Repository, getQueue?: () => JobQueue): Hono<AppEnv> {
+export interface HonoAppOptions {
+	/**
+	 * Raw pg pool. When provided, enables Auth.js user accounts at
+	 * /api/accounts/*. Omitted in in-memory test setups where there is
+	 * no Postgres; Auth.js has no in-memory adapter in wtfoc today.
+	 */
+	pool?: pg.Pool;
+}
+
+export function createHonoApp(
+	repo: Repository,
+	getQueue?: () => JobQueue,
+	options: HonoAppOptions = {},
+): Hono<AppEnv> {
 	const app = new Hono<AppEnv>();
 
 	// Middleware: CORS for all routes
@@ -57,6 +72,9 @@ export function createHonoApp(repo: Repository, getQueue?: () => JobQueue): Hono
 	app.route("/api/auth", authRoutes);
 	app.route("/api/wallet-collections", collectionRoutes);
 	app.route("/api/collections-public", publicCollectionRoutes);
+	if (options.pool) {
+		app.route("/api/accounts", createAccountsRoutes({ pool: options.pool }));
+	}
 	if (getQueue) {
 		app.route("/api/jobs", jobRoutes(getQueue));
 	}

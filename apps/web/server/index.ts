@@ -618,7 +618,10 @@ async function main() {
 	await queue.start();
 	console.error("[jobs] queue started");
 
-	const honoApp = createHonoApp(repo, () => queue);
+	// Accounts (Auth.js) only wires up when we have a real Postgres pool —
+	// the @auth/pg-adapter has no in-memory fallback in our wiring today.
+	const pool = "pool" in repo ? (repo as { pool: import("pg").Pool }).pool : undefined;
+	const honoApp = createHonoApp(repo, () => queue, { pool });
 
 	// Graceful shutdown — drain in-flight handlers before the process exits.
 	const onShutdown = async (signal: string) => {
@@ -641,6 +644,7 @@ async function main() {
 		// ─── Route /api/auth/*, /api/wallet-collections/*, /api/jobs/* through Hono ───
 		if (
 			path.startsWith("/api/auth") ||
+			path.startsWith("/api/accounts") ||
 			path.startsWith("/api/wallet-collections") ||
 			path.startsWith("/api/collections-public") ||
 			path.startsWith("/api/jobs")

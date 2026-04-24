@@ -26,6 +26,16 @@ export class PostgresRepository implements Repository {
 		this.#databaseUrl = databaseUrl;
 	}
 
+	/**
+	 * Expose the pg pool for code that needs raw pool access (e.g., the
+	 * Auth.js PostgresAdapter, which wants to own its own queries but
+	 * share the connection pool). Keep this surface narrow — anything
+	 * domain-level should go through the Repository interface.
+	 */
+	get pool(): pg.Pool {
+		return this.#pool;
+	}
+
 	async migrate(): Promise<void> {
 		// Legacy baseline: schema.sql is idempotent (IF NOT EXISTS throughout)
 		// and defines the pre-Auth.js tables. New schema changes land as
