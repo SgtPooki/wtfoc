@@ -34,6 +34,10 @@ export function buildAccountsConfig(inputs: AccountsConfigInputs): AuthConfig {
 	return {
 		adapter: PostgresAdapter(inputs.pool),
 		secret: inputs.authSecret,
+		// Mounted under /api/accounts; Auth.js otherwise defaults to /auth
+		// and 400s every request with "Bad request." because the URL parser
+		// can't find its action in the path.
+		basePath: "/api/accounts",
 		session: { strategy: "database" },
 		providers: [
 			Resend({
