@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { runner } from "node-pg-migrate";
 import pg from "pg";
 import type {
 	AuditOperation,
@@ -18,14 +19,29 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export class PostgresRepository implements Repository {
 	readonly #pool: pg.Pool;
+	readonly #databaseUrl: string;
 
 	constructor(databaseUrl: string) {
 		this.#pool = new pg.Pool({ connectionString: databaseUrl });
+		this.#databaseUrl = databaseUrl;
 	}
 
 	async migrate(): Promise<void> {
+		// Legacy baseline: schema.sql is idempotent (IF NOT EXISTS throughout)
+		// and defines the pre-Auth.js tables. New schema changes land as
+		// numbered node-pg-migrate files under ./migrations/.
 		const sql = readFileSync(join(__dirname, "schema.sql"), "utf-8");
 		await this.#pool.query(sql);
+
+		await runner({
+			databaseUrl: this.#databaseUrl,
+			dir: join(__dirname, "migrations"),
+			direction: "up",
+			migrationsTable: "pgmigrations",
+			log: (msg) => console.log(`[pg-migrate] ${msg}`),
+			singleTransaction: true,
+			verbose: false,
+		});
 	}
 
 	// --- Wallet sessions ---

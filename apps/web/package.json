@@ -6,14 +6,17 @@
 	"scripts": {
 		"dev": "vite",
 		"build": "vite build",
-		"build:server": "tsc -p server/tsconfig.json && mkdir -p server/dist/db && cp server/db/schema.sql server/dist/db/schema.sql",
+		"build:server": "tsc -p server/tsconfig.json && mkdir -p server/dist/db/migrations && cp server/db/schema.sql server/dist/db/schema.sql && cp server/db/migrations/*.sql server/dist/db/migrations/",
 		"build:all": "pnpm build && pnpm build:server",
 		"dev:server": "tsx --watch server/index.ts",
 		"preview": "vite preview",
 		"start": "node server/dist/index.js"
 	},
 	"dependencies": {
+		"@auth/core": "^0.41.2",
+		"@auth/pg-adapter": "^1.11.2",
 		"@filoz/synapse-core": "^0.3.1",
+		"@hono/auth-js": "^1.1.1",
 		"@hono/node-server": "^1.19.11",
 		"@modelcontextprotocol/sdk": "^1.12.1",
 		"@preact/signals": "^2.0.0",
@@ -28,6 +31,7 @@
 		"d3-force": "^3.0.0",
 		"d3-selection": "^3.0.0",
 		"hono": "^4.12.9",
+		"node-pg-migrate": "^8.0.4",
 		"pg": "^8.20.0",
 		"pg-boss": "^12.15.0",
 		"preact": "^10.25.0",
