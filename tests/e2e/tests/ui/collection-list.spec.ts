@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
 
 test.describe("collection list", () => {
 	test("app loads and shows collection cards", async ({ page }) => {
-		await page.goto("/");
+		await page.goto("/app");
 
 		// Header renders
 		await expect(page.locator("header h1")).toBeVisible();
@@ -24,7 +24,7 @@ test.describe("collection list", () => {
 	});
 
 	test("clicking a collection card selects it", async ({ page }) => {
-		await page.goto("/");
+		await page.goto("/app");
 
 		const grid = page.locator(".collection-grid");
 		await expect(grid).toBeVisible({ timeout: 10_000 });
