@@ -1,8 +1,8 @@
 /**
- * Route-level tests for the unauthenticated public CID pull endpoint
- * (bead wtfoc-1xxh). Uses InMemoryRepository + InMemoryJobQueue so we
- * exercise the full wiring — hono app, csrf/cors middleware, validators,
- * job enqueue — without a real postgres or IPFS.
+ * Route-level tests for the unauthenticated public CID pull endpoint.
+ * Uses InMemoryRepository + InMemoryJobQueue so we exercise the full
+ * wiring — hono app, csrf/cors middleware, validators, job enqueue —
+ * without a real postgres or IPFS.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

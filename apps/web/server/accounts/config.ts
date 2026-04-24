@@ -1,9 +1,9 @@
 /**
  * Auth.js configuration for user accounts (email magic-link via Resend,
- * PostgresAdapter, database session strategy). Phase 1 of wtfoc-p6at —
- * wallet/SIWE auth (apps/web/server/auth/) stays untouched; this flow
- * lives under /api/accounts/* and manages `users` / `accounts` / `sessions`
- * / `verification_token` tables.
+ * PostgresAdapter, database session strategy). Wallet/SIWE auth lives
+ * under apps/web/server/auth/ and is untouched; this flow lives under
+ * /api/accounts/* and manages `users` / `accounts` / `sessions` /
+ * `verification_token` tables.
  *
  * Session strategy is `database` (not JWT): gives us server-side revocation,
  * a clean `sessions` row per login for analytics + forced logout, and a

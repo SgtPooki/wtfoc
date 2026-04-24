@@ -1,8 +1,8 @@
 /**
- * Auth.js client for wtfoc accounts flow (phase 2+3 of wtfoc-p6at).
- * Thin wrapper over /api/accounts/* — no @auth/react or @auth/preact
- * because we don't have that framework helper available and the surface
- * is small enough to roll directly.
+ * Auth.js client helpers for wtfoc's user accounts flow. Thin wrapper
+ * over /api/accounts/* — no @auth/react or @auth/preact because we
+ * don't have that framework helper available and the surface is small
+ * enough to roll directly.
  */
 
 import { signal } from "@preact/signals";

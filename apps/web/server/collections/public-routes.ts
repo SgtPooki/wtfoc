@@ -6,7 +6,7 @@
  * This router exposes a wallet-free CID pull path that enqueues a `cid-pull`
  * job under a sentinel zero-address wallet so the existing worker pipeline
  * + rate limiter can reuse wallet_address for accounting without the caller
- * having to sign anything. Bead wtfoc-1xxh.
+ * having to sign anything.
  */
 
 import { Hono } from "hono";

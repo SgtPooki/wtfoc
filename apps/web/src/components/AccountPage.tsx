@@ -1,7 +1,7 @@
 /**
  * /account — shows the logged-in user + a Sign out button. Collection
- * ownership UI lands in phase 5 of wtfoc-p6at; for now this is the
- * minimum viable authenticated surface so we can prove the round trip.
+ * ownership UI lands in a later pass; this is the minimum viable
+ * authenticated surface so we can prove the round trip.
  */
 
 import { session, signOut } from "../accounts.js";

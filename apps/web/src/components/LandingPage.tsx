@@ -1,7 +1,6 @@
 /**
  * Landing page for wtfoc — informs new visitors what this is, how it
  * works, and how to sign up. Rendered at `/` for unauth visitors.
- * Phase 3 of wtfoc-p6at.
  */
 
 import { session } from "../accounts.js";
