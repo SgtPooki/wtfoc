@@ -1,13 +1,17 @@
+import { AccountPage } from "./components/AccountPage";
 import { CollectionDetail } from "./components/CollectionDetail";
 import { CollectionList } from "./components/CollectionList";
 import { CollectionPicker } from "./components/CollectionPicker";
 import { CreateCollection } from "./components/CreateCollection";
 import { EdgePanel } from "./components/EdgePanel";
 import { Footer } from "./components/Footer";
+import { LandingPage } from "./components/LandingPage";
 import { Layout } from "./components/Layout";
+import { LoginPage } from "./components/LoginPage";
 import { SearchView } from "./components/SearchView";
 import { SourcesPanel } from "./components/SourcesPanel";
 import { TraceView } from "./components/TraceView";
+import { route } from "./route.js";
 import {
 	activeCollectionId,
 	activeQuery,
@@ -18,6 +22,14 @@ import {
 } from "./state";
 
 export function App() {
+	const path = route.value;
+	if (path === "/") return <LandingPage />;
+	if (path === "/login") return <LoginPage />;
+	if (path === "/account") return <AccountPage />;
+	return <AppShell />;
+}
+
+function AppShell() {
 	const hasCollection = collection.value.length > 0;
 	const hasQuery = activeQuery.value.length > 0;
 	const connected = isConnected.value;

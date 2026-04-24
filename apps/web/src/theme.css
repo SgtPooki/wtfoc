@@ -1076,3 +1076,177 @@ header h1 {
 	font-size: 0.85rem;
 	margin-bottom: 0.5rem;
 }
+
+/* ─── Landing + auth pages (phase 3 of wtfoc-p6at) ─────────────────── */
+
+.landing {
+	max-width: 840px;
+	margin: 0 auto;
+	padding: 3rem 1.5rem 5rem;
+}
+.landing-hero {
+	text-align: center;
+	padding: 3rem 0 2.5rem;
+	border-bottom: 1px solid var(--border);
+	margin-bottom: 3rem;
+}
+.landing-hero h1 {
+	font-size: 3.5rem;
+	font-weight: 700;
+	letter-spacing: -0.03em;
+	background: linear-gradient(135deg, var(--accent) 0%, #a78bfa 100%);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	margin-bottom: 1rem;
+}
+.landing-tagline {
+	font-size: 1.25rem;
+	color: var(--muted);
+	max-width: 600px;
+	margin: 0 auto 2rem;
+	line-height: 1.5;
+}
+.landing-cta {
+	display: flex;
+	gap: 0.75rem;
+	justify-content: center;
+	flex-wrap: wrap;
+}
+.landing-how, .landing-why, .landing-next {
+	margin-bottom: 2.5rem;
+}
+.landing-how h2, .landing-why h2, .landing-next h2 {
+	font-size: 1.5rem;
+	margin-bottom: 1rem;
+	color: var(--text);
+}
+.landing-how ol, .landing-why ul {
+	padding-left: 1.25rem;
+	color: var(--muted);
+	line-height: 1.65;
+}
+.landing-how li, .landing-why li {
+	margin-bottom: 0.75rem;
+}
+.landing-how strong, .landing-why strong {
+	color: var(--text);
+}
+.landing-next p {
+	color: var(--muted);
+	line-height: 1.65;
+	margin-bottom: 1.25rem;
+}
+
+.btn {
+	display: inline-block;
+	padding: 0.6rem 1.1rem;
+	border-radius: 6px;
+	background: var(--surface);
+	color: var(--text);
+	border: 1px solid var(--border);
+	font-size: 0.95rem;
+	cursor: pointer;
+	font-weight: 500;
+	text-decoration: none;
+	transition: background 0.12s ease, border-color 0.12s ease;
+}
+.btn:hover {
+	background: var(--surface-hover);
+	border-color: var(--accent);
+	color: var(--text);
+}
+.btn-primary {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: #fff;
+}
+.btn-primary:hover {
+	background: var(--accent-dim);
+	border-color: var(--accent-dim);
+	color: #fff;
+}
+.btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.auth-page {
+	max-width: 440px;
+	margin: 3rem auto;
+	padding: 0 1.5rem;
+}
+.auth-back {
+	display: inline-block;
+	color: var(--muted);
+	font-size: 0.85rem;
+	margin-bottom: 1.5rem;
+}
+.auth-back:hover {
+	color: var(--accent);
+}
+.auth-page h1 {
+	margin-bottom: 1.5rem;
+	font-size: 1.75rem;
+}
+.auth-form {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+}
+.auth-label {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+.auth-label span {
+	font-size: 0.85rem;
+	color: var(--muted);
+}
+.auth-label input {
+	padding: 0.65rem 0.75rem;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	color: var(--text);
+	font-size: 1rem;
+}
+.auth-label input:focus {
+	outline: none;
+	border-color: var(--accent);
+}
+.auth-info {
+	padding: 1.25rem;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+}
+.auth-muted {
+	color: var(--muted);
+	font-size: 0.85rem;
+}
+.auth-error {
+	color: #f87171;
+	font-size: 0.9rem;
+	padding: 0.65rem;
+	border: 1px solid #7f1d1d;
+	border-radius: 6px;
+	background: rgba(127, 29, 29, 0.2);
+}
+.account-info {
+	padding: 1.25rem;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	margin-bottom: 1.5rem;
+	line-height: 1.75;
+}
+.account-actions {
+	display: flex;
+	gap: 0.75rem;
+	margin-bottom: 1.25rem;
+	flex-wrap: wrap;
+}
