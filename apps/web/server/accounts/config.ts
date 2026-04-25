@@ -56,6 +56,21 @@ export function buildAccountsConfig(inputs: AccountsConfigInputs): AuthConfig {
 				}
 				return true;
 			},
+			// Expose users.role on the session so the client can show admin
+			// surfaces and downstream Hono middleware can enforce requireAdmin.
+			// PostgresAdapter selects * from users, so `user` already carries
+			// role; we just forward it to the session.
+			async session({ session, user }) {
+				const role = (user as { role?: string }).role ?? "user";
+				return {
+					...session,
+					user: {
+						...session.user,
+						id: user.id,
+						role,
+					},
+				};
+			},
 		},
 		pages: {
 			signIn: "/login",

@@ -13,6 +13,7 @@
 import { Hono } from "hono";
 import { authHandler, initAuthConfig } from "@hono/auth-js";
 import type { AppEnv } from "../hono-app.js";
+import { createAdminRoutes } from "./admin-routes.js";
 import { buildAccountsConfig } from "./config.js";
 import type pg from "pg";
 
@@ -50,6 +51,10 @@ export function createAccountsRoutes(inputs: AccountsRoutesInputs): Hono<AppEnv>
 			});
 		}),
 	);
+
+	// Admin sub-app must be mounted before authHandler, otherwise Auth.js
+	// 400s any path it doesn't recognize as one of its own actions.
+	app.route("/admin", createAdminRoutes({ pool: inputs.pool }));
 
 	app.use("*", authHandler());
 

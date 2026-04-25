@@ -1250,3 +1250,41 @@ header h1 {
 	margin-bottom: 1.25rem;
 	flex-wrap: wrap;
 }
+
+/* Admin users panel */
+.admin-users {
+	margin-top: 2rem;
+	padding-top: 1.5rem;
+	border-top: 1px solid var(--border);
+}
+.admin-users h2 {
+	font-size: 1.15rem;
+	margin-bottom: 0.75rem;
+	color: var(--text);
+}
+.admin-users-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.9rem;
+}
+.admin-users-table th,
+.admin-users-table td {
+	text-align: left;
+	padding: 0.5rem 0.65rem;
+	border-bottom: 1px solid var(--border);
+}
+.admin-users-table th {
+	font-weight: 600;
+	color: var(--muted);
+	font-size: 0.8rem;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+.admin-users-table td .btn {
+	padding: 0.3rem 0.6rem;
+	font-size: 0.8rem;
+}
+.admin-self-tag {
+	color: var(--muted);
+	font-size: 0.8rem;
+}

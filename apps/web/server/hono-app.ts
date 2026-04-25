@@ -22,6 +22,8 @@ export type AppEnv = {
 		repo: Repository;
 		/** Optional in legacy startup paths; required when domain routes need to enqueue jobs (#168). */
 		jobQueue?: JobQueue;
+		/** Set by the Auth.js requireUser/requireAdmin middleware on /api/accounts/* routes. */
+		accountsUser?: import("./accounts/middleware.js").AccountsSessionUser;
 	};
 };
 

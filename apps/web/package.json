@@ -10,7 +10,8 @@
 		"build:all": "pnpm build && pnpm build:server",
 		"dev:server": "tsx --watch server/index.ts",
 		"preview": "vite preview",
-		"start": "node server/dist/index.js"
+		"start": "node server/dist/index.js",
+		"grant-admin": "tsx server/scripts/grant-admin.ts"
 	},
 	"dependencies": {
 		"@auth/core": "^0.41.2",

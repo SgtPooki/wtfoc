@@ -4,8 +4,9 @@
  * authenticated surface so we can prove the round trip.
  */
 
-import { session, signOut } from "../accounts.js";
+import { isAdmin, session, signOut } from "../accounts.js";
 import { navigate } from "../route.js";
+import { AdminUsersPanel } from "./AdminUsersPanel";
 
 async function onSignOut() {
 	await signOut();
@@ -62,6 +63,9 @@ export function AccountPage() {
 						<strong>Name:</strong> {s.user.name}
 					</p>
 				)}
+				<p>
+					<strong>Role:</strong> {s.user.role}
+				</p>
 				<p class="auth-muted">User ID: {s.user.id}</p>
 				<p class="auth-muted">Session expires: {new Date(s.expires).toLocaleString()}</p>
 			</div>
@@ -81,6 +85,7 @@ export function AccountPage() {
 				</button>
 			</div>
 			<p class="auth-muted">Collection ownership + sharing land in the next wtfoc release.</p>
+			{isAdmin.value && <AdminUsersPanel />}
 		</main>
 	);
 }

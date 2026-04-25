@@ -5,13 +5,16 @@
  * enough to roll directly.
  */
 
-import { signal } from "@preact/signals";
+import { computed, signal } from "@preact/signals";
+
+export type UserRole = "user" | "admin";
 
 export interface SessionUser {
 	id: string;
 	email: string | null;
 	name: string | null;
 	image: string | null;
+	role: UserRole;
 }
 
 export interface Session {
@@ -21,6 +24,8 @@ export interface Session {
 
 /** Current Auth.js session (null = anonymous, undefined = still loading). */
 export const session = signal<Session | null | undefined>(undefined);
+
+export const isAdmin = computed(() => session.value?.user.role === "admin");
 
 const BASE = "/api/accounts";
 
