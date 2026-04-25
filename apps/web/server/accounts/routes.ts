@@ -15,7 +15,24 @@ import { authHandler, initAuthConfig } from "@hono/auth-js";
 import type { AppEnv } from "../hono-app.js";
 import { createAdminRoutes } from "./admin-routes.js";
 import { buildAccountsConfig } from "./config.js";
+import { SiweNonceStore } from "./siwe-nonce-store.js";
+import { createSiweRoutes } from "./siwe-routes.js";
 import type pg from "pg";
+
+// Filecoin mainnet (314) + calibration (314159). Override via env if more
+// chains are ever supported.
+const DEFAULT_ALLOWED_CHAIN_IDS = [314, 314159];
+
+function resolveSiweSettings(): { domain: string; uri: string; allowedChainIds: number[] } {
+	const authUrl = process.env.AUTH_URL ?? "https://wtfoc.xyz";
+	const parsed = new URL(authUrl);
+	const domain = process.env.AUTH_SIWE_DOMAIN ?? parsed.host;
+	const uri = process.env.AUTH_SIWE_URI ?? authUrl.replace(/\/$/, "");
+	const allowedChainIds = process.env.AUTH_SIWE_CHAIN_IDS
+		? process.env.AUTH_SIWE_CHAIN_IDS.split(",").map((s) => Number.parseInt(s.trim(), 10)).filter(Number.isFinite)
+		: DEFAULT_ALLOWED_CHAIN_IDS;
+	return { domain, uri, allowedChainIds };
+}
 
 export interface AccountsRoutesInputs {
 	pool: pg.Pool;
@@ -29,6 +46,8 @@ export interface AccountsRoutesInputs {
  */
 export function createAccountsRoutes(inputs: AccountsRoutesInputs): Hono<AppEnv> {
 	const app = new Hono<AppEnv>();
+	const nonceStore = new SiweNonceStore(inputs.pool);
+	const siweSettings = resolveSiweSettings();
 
 	app.use(
 		"*",
@@ -48,13 +67,25 @@ export function createAccountsRoutes(inputs: AccountsRoutesInputs): Hono<AppEnv>
 				resendApiKey,
 				emailFrom,
 				authSecret,
+				siwe: {
+					nonceStore,
+					domain: siweSettings.domain,
+					uri: siweSettings.uri,
+					allowedChainIds: siweSettings.allowedChainIds,
+				},
 			});
 		}),
 	);
 
-	// Admin sub-app must be mounted before authHandler, otherwise Auth.js
-	// 400s any path it doesn't recognize as one of its own actions.
+	// Admin + SIWE sub-apps must be mounted before authHandler, otherwise
+	// Auth.js 400s any path it doesn't recognize as one of its own actions.
 	app.route("/admin", createAdminRoutes({ pool: inputs.pool }));
+	app.route("/siwe", createSiweRoutes({
+		nonceStore,
+		domain: siweSettings.domain,
+		uri: siweSettings.uri,
+		allowedChainIds: siweSettings.allowedChainIds,
+	}));
 
 	app.use("*", authHandler());
 
