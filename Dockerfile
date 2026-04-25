@@ -37,9 +37,6 @@ RUN rm -rf node_modules/.pnpm/sharp@* node_modules/.pnpm/@img* \
     node_modules/.pnpm/@xenova* \
     node_modules/.pnpm/protobufjs* \
     node_modules/.pnpm/@filoz* \
-    node_modules/.pnpm/viem* \
-    node_modules/.pnpm/ox@* \
-    node_modules/.pnpm/abitype* \
     node_modules/.pnpm/filecoin-pin* \
     node_modules/.pnpm/pino* \
     node_modules/.pnpm/@types* \
