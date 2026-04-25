@@ -8,6 +8,7 @@ import { isAdmin, session, signOut } from "../accounts.js";
 import { navigate } from "../route.js";
 import { isConnected, sessionKeyActive, sessionKeyExpiresAt, walletAddress } from "../state";
 import { AdminUsersPanel } from "./AdminUsersPanel";
+import { SiweAuthButton } from "./SiweAuthButton";
 
 function shortAddress(addr: string): string {
 	if (addr.length < 12) return addr;
@@ -102,7 +103,7 @@ export function AccountPage() {
 				</div>
 				<div class="connection-row">
 					<div>
-						<strong>Wallet for signing</strong>
+						<strong>Wallet for signing (Filecoin promote)</strong>
 						{isConnected.value && walletAddress.value ? (
 							<p class="auth-muted">
 								{shortAddress(walletAddress.value)} · session-key{" "}
@@ -114,9 +115,19 @@ export function AccountPage() {
 							<p class="auth-muted">No wallet connected for this browser</p>
 						)}
 						<p class="auth-muted">
-							This wallet is used to sign Filecoin promote transactions; it is not yet linked to
-							your account identity. Wallet-as-account-login is coming with unified sign-in.
+							Used to sign Filecoin promote transactions. This is independent of account identity (a
+							separate session managed under /api/auth/*).
 						</p>
+					</div>
+				</div>
+				<div class="connection-row">
+					<div>
+						<strong>Linked wallet for sign-in (SIWE)</strong>
+						<p class="auth-muted">
+							Adds a wallet as an alternative way to log into this account. After linking you can
+							sign in from any browser by signing a wallet message instead of using email.
+						</p>
+						<SiweAuthButton mode="link" />
 					</div>
 				</div>
 			</section>

@@ -1331,3 +1331,29 @@ header h1 {
 	border-color: #1a3a1a;
 	background: #102710;
 }
+
+/* SIWE auth button + login divider */
+.auth-divider {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	margin: 1.25rem 0 0.75rem;
+	color: var(--muted);
+	font-size: 0.8rem;
+}
+.auth-divider::before,
+.auth-divider::after {
+	content: "";
+	flex: 1;
+	height: 1px;
+	background: var(--border);
+}
+.siwe-auth {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	margin-bottom: 0.5rem;
+}
+.siwe-auth .btn {
+	align-self: flex-start;
+}

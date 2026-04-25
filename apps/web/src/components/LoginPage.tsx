@@ -7,6 +7,7 @@
 import { signal } from "@preact/signals";
 import { signInWithEmail } from "../accounts.js";
 import { navigate } from "../route.js";
+import { SiweAuthButton } from "./SiweAuthButton";
 
 const email = signal("");
 const status = signal<"idle" | "sending" | "sent" | "error">("idle");
@@ -94,6 +95,18 @@ export function LoginPage() {
 					{status.value === "error" && errorMsg.value && <p class="auth-error">{errorMsg.value}</p>}
 					<p class="auth-muted">New here? Entering an email creates your account automatically.</p>
 				</form>
+			)}
+			{!showSent && (
+				<>
+					<div class="auth-divider">
+						<span>or</span>
+					</div>
+					<SiweAuthButton mode="signin" onComplete={() => navigate("/account")} />
+					<p class="auth-muted">
+						Wallet sign-in is short-lived (1h) and not server-revocable. For long-lived sessions use
+						email.
+					</p>
+				</>
 			)}
 		</main>
 	);
