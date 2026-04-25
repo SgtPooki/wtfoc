@@ -8,6 +8,7 @@ import { isAdmin, session, signOut } from "../accounts.js";
 import { navigate } from "../route.js";
 import { isConnected, sessionKeyActive, sessionKeyExpiresAt, walletAddress } from "../state";
 import { AdminUsersPanel } from "./AdminUsersPanel";
+import { LinkedWalletsList, refreshLinkedWallets } from "./LinkedWalletsList";
 import { SiweAuthButton } from "./SiweAuthButton";
 
 function shortAddress(addr: string): string {
@@ -122,12 +123,14 @@ export function AccountPage() {
 				</div>
 				<div class="connection-row">
 					<div>
-						<strong>Linked wallet for sign-in (SIWE)</strong>
+						<strong>Linked wallets for sign-in (SIWE)</strong>
 						<p class="auth-muted">
 							Adds a wallet as an alternative way to log into this account. After linking you can
-							sign in from any browser by signing a wallet message instead of using email.
+							sign in from any browser by signing a wallet message instead of using email. You can
+							link as many wallets as you want.
 						</p>
-						<SiweAuthButton mode="link" />
+						<LinkedWalletsList />
+						<SiweAuthButton mode="link" onComplete={() => refreshLinkedWallets()} />
 					</div>
 				</div>
 			</section>

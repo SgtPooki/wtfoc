@@ -10,7 +10,7 @@
  */
 
 import { useState } from "preact/hooks";
-import { signInWithWallet } from "../siwe-auth.js";
+import { linkWalletToAccount, signInWithWallet } from "../siwe-auth.js";
 
 interface Props {
 	mode: "signin" | "link";
@@ -25,12 +25,16 @@ export function SiweAuthButton({ mode, onComplete }: Props) {
 		setError(null);
 		setLoading(true);
 		try {
-			await signInWithWallet();
+			if (mode === "link") {
+				await linkWalletToAccount();
+			} else {
+				await signInWithWallet();
+			}
 			onComplete?.();
 		} catch (err) {
 			const rpcErr = err as { code?: number; message?: string };
 			if (rpcErr.code === 4001 || rpcErr.message?.toLowerCase().includes("user rejected")) {
-				setError("Sign-in cancelled");
+				setError(mode === "link" ? "Linking cancelled" : "Sign-in cancelled");
 			} else {
 				setError(err instanceof Error ? err.message : String(err));
 			}

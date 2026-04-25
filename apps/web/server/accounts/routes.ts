@@ -82,6 +82,7 @@ export function createAccountsRoutes(inputs: AccountsRoutesInputs): Hono<AppEnv>
 	app.route("/admin", createAdminRoutes({ pool: inputs.pool }));
 	app.route("/siwe", createSiweRoutes({
 		nonceStore,
+		pool: inputs.pool,
 		domain: siweSettings.domain,
 		uri: siweSettings.uri,
 		allowedChainIds: siweSettings.allowedChainIds,

@@ -1,18 +1,18 @@
 /**
- * SIWE sign-in via Auth.js — talks to /api/accounts/siwe + the Auth.js
- * credentials callback. This is the identity flow ("who are you?"). The
- * legacy wallet flow in ../wallet.ts continues to manage FOC signing-key
- * delegation under /api/auth/*; the two systems are decoupled by design.
+ * SIWE auth client. Two distinct flows share the prepareSignedMessage
+ * step (connect wallet → challenge → sign), then diverge:
  *
- * Flow:
- *   1. Connect wallet via injected provider (eth_requestAccounts)
- *   2. GET /api/accounts/siwe/challenge → server-issued nonce + EIP-4361 message
- *   3. personal_sign the message in the wallet
- *   4. POST /api/accounts/csrf → fresh csrfToken
- *   5. POST /api/accounts/callback/credentials/siwe with csrfToken + message
- *      + signature; Auth.js verifies and either creates a wallet-only user
- *      (if no auth context) or — when an existing Auth.js session cookie
- *      is present — links the wallet to the current user.
+ *   signInWithWallet  → POST to Auth.js /callback/credentials/siwe.
+ *                       Anonymous flow. Creates a new wallet-only Auth.js
+ *                       user, or returns the existing one if this wallet
+ *                       is already linked. Use on /login.
+ *
+ *   linkWalletToAccount → POST to /api/accounts/siwe/link. Authenticated
+ *                       flow. Adds an accounts(provider='siwe') row for
+ *                       the current user. Use on /account.
+ *
+ * The legacy wallet flow in ../wallet.ts is unrelated — that handles FOC
+ * signing-key delegation under /api/auth/* and stays separate.
  */
 
 import { fetchAccountSession, session } from "./accounts.js";
@@ -51,11 +51,11 @@ async function fetchCsrfToken(): Promise<string> {
 	return body.csrfToken;
 }
 
-/**
- * Run the full SIWE sign-in flow. Returns the linked or newly-created
- * Auth.js user via session.value once complete; throws on any step failure.
- */
-export async function signInWithWallet(): Promise<void> {
+async function prepareSignedMessage(): Promise<{
+	address: string;
+	message: string;
+	signature: string;
+}> {
 	if (!hasInjectedProvider()) {
 		throw new Error("No Ethereum wallet detected. Install MetaMask or another EIP-1193 wallet.");
 	}
@@ -78,11 +78,22 @@ export async function signInWithWallet(): Promise<void> {
 
 	const challenge = await fetchChallenge(address, chainId);
 	const signature = await personalSign(challenge.message, address);
+	return { address, message: challenge.message, signature };
+}
+
+/**
+ * Sign-in flow: anonymous user wants to authenticate with a wallet.
+ * Goes through the Auth.js credentials callback, which creates a NEW
+ * wallet-only user (or returns the existing one if this wallet is
+ * already linked).
+ */
+export async function signInWithWallet(): Promise<void> {
+	const { message, signature } = await prepareSignedMessage();
 	const csrfToken = await fetchCsrfToken();
 
 	const body = new URLSearchParams({
 		csrfToken,
-		message: challenge.message,
+		message,
 		signature,
 		callbackUrl: "/account",
 		json: "true",
@@ -100,8 +111,54 @@ export async function signInWithWallet(): Promise<void> {
 		throw new Error(`SIWE sign-in failed: ${res.status} ${errText}`);
 	}
 
-	// Auth.js returns { url } on success when json=true. Refresh local session
-	// state so isAdmin / role / user fields update immediately.
 	const refreshed = await fetchAccountSession();
 	session.value = refreshed;
+}
+
+/**
+ * Link flow: authenticated user wants to add a wallet to their existing
+ * account. Goes through the wtfoc-specific /api/accounts/siwe/link
+ * endpoint which writes an accounts(provider='siwe') row for the current
+ * user. Distinct from the sign-in flow because the credentials sign-in
+ * callback would otherwise create a NEW user instead of linking.
+ */
+export async function linkWalletToAccount(): Promise<{ wallet: string; alreadyLinked?: boolean }> {
+	const { message, signature } = await prepareSignedMessage();
+
+	const res = await fetch("/api/accounts/siwe/link", {
+		method: "POST",
+		credentials: "same-origin",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ message, signature }),
+	});
+
+	const body = (await res.json().catch(() => ({}))) as {
+		wallet?: string;
+		ok?: boolean;
+		alreadyLinked?: boolean;
+		error?: string;
+	};
+
+	if (!res.ok) {
+		throw new Error(body.error ?? `link failed: ${res.status}`);
+	}
+	return { wallet: body.wallet ?? "", alreadyLinked: body.alreadyLinked };
+}
+
+export async function fetchLinkedWallets(): Promise<string[]> {
+	const res = await fetch("/api/accounts/siwe/wallets", { credentials: "same-origin" });
+	if (!res.ok) return [];
+	const body = (await res.json()) as { wallets: string[] };
+	return body.wallets;
+}
+
+export async function unlinkWallet(wallet: string): Promise<void> {
+	const res = await fetch(`/api/accounts/siwe/wallets/${encodeURIComponent(wallet)}`, {
+		method: "DELETE",
+		credentials: "same-origin",
+	});
+	if (!res.ok) {
+		const body = (await res.json().catch(() => ({}))) as { error?: string };
+		throw new Error(body.error ?? `unlink failed: ${res.status}`);
+	}
 }
