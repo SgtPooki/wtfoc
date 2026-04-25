@@ -6,7 +6,13 @@
 
 import { isAdmin, session, signOut } from "../accounts.js";
 import { navigate } from "../route.js";
+import { isConnected, sessionKeyActive, sessionKeyExpiresAt, walletAddress } from "../state";
 import { AdminUsersPanel } from "./AdminUsersPanel";
+
+function shortAddress(addr: string): string {
+	if (addr.length < 12) return addr;
+	return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
 
 async function onSignOut() {
 	await signOut();
@@ -81,9 +87,40 @@ export function AccountPage() {
 					Open app
 				</a>
 				<button type="button" class="btn" onClick={onSignOut}>
-					Sign out
+					Sign out of account
 				</button>
 			</div>
+
+			<section class="connections">
+				<h2>Connections</h2>
+				<div class="connection-row">
+					<div>
+						<strong>Email magic link</strong>
+						<p class="auth-muted">{s.user.email ?? "—"} · active</p>
+					</div>
+					<span class="connection-tag connection-active">Signed in</span>
+				</div>
+				<div class="connection-row">
+					<div>
+						<strong>Wallet for signing</strong>
+						{isConnected.value && walletAddress.value ? (
+							<p class="auth-muted">
+								{shortAddress(walletAddress.value)} · session-key{" "}
+								{sessionKeyActive.value
+									? `active (expires ${sessionKeyExpiresAt.value ? new Date(sessionKeyExpiresAt.value).toLocaleString() : "?"})`
+									: "not delegated"}
+							</p>
+						) : (
+							<p class="auth-muted">No wallet connected for this browser</p>
+						)}
+						<p class="auth-muted">
+							This wallet is used to sign Filecoin promote transactions; it is not yet linked to
+							your account identity. Wallet-as-account-login is coming with unified sign-in.
+						</p>
+					</div>
+				</div>
+			</section>
+
 			<p class="auth-muted">Collection ownership + sharing land in the next wtfoc release.</p>
 			{isAdmin.value && <AdminUsersPanel />}
 		</main>
