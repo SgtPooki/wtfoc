@@ -131,7 +131,10 @@ export function createSiweRoutes(inputs: SiweRoutesInputs): Hono<AppEnv> {
 			return c.json({ error: "missing user", code: "UNAUTHENTICATED" }, 401);
 		}
 
-		const body = await c.req.json<{ message?: string; signature?: string }>().catch(() => ({}));
+		type LinkBody = { message?: string; signature?: string };
+		const body = await c.req
+			.json<LinkBody>()
+			.catch((): LinkBody => ({}));
 		if (typeof body.message !== "string" || typeof body.signature !== "string") {
 			return c.json({ error: "message + signature required", code: "INVALID_BODY" }, 400);
 		}
