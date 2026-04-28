@@ -32,11 +32,15 @@ import {
 import { evaluateStorage, createStore } from "@wtfoc/store";
 import { formatDogfoodReport } from "./dogfood-formatter.js";
 import { buildRunConfig, defaultQualityQueriesRetrieval } from "./lib/build-run-config.js";
+import { CostAggregator } from "./lib/cost-aggregator.js";
+import type { LlmUsage } from "./lib/llm-usage.js";
 import {
 	computeRunConfigFingerprint,
 	type ExtendedDogfoodReport,
 	FINGERPRINT_VERSION,
 } from "./lib/run-config.js";
+import { SubstageTimer } from "./lib/substage-timer.js";
+import { TimingVectorIndex } from "./lib/timing-vector-index.js";
 
 const VALID_STAGES = [
 	"ingest",
@@ -155,6 +159,20 @@ async function main() {
 		segments.push(JSON.parse(text) as Segment);
 	}
 
+	// Per-substage telemetry — maintainer-only. Captures wall-clock + token
+	// usage across the quality-queries stage. Sinks pipe into the timer +
+	// aggregator, which become metrics in the resulting report.
+	const timer = new SubstageTimer();
+	const costs = new CostAggregator();
+	const embedderUsageSink = (u: LlmUsage): void => {
+		if (typeof u.durationMs === "number") timer.record("embed-call", u.durationMs);
+		costs.record("embed-call", u);
+	};
+	const rerankerUsageSink = (u: LlmUsage): void => {
+		if (typeof u.durationMs === "number") timer.record("rerank", u.durationMs);
+		costs.record("rerank", u);
+	};
+
 	// Build optional reranker
 	let reranker: Reranker | undefined;
 	const rerankerType = values["reranker-type"];
@@ -167,6 +185,7 @@ async function main() {
 			baseUrl: rerankerUrl,
 			model: values["reranker-model"] ?? values["extractor-model"],
 			apiKey: values["extractor-key"],
+			usageSink: rerankerUsageSink,
 		});
 		console.error(`[dogfood] Reranker: llm (${rerankerUrl}, model=${values["reranker-model"] ?? values["extractor-model"]})`);
 	}
@@ -331,6 +350,7 @@ async function main() {
 							apiKey: values["embedder-key"] || values["extractor-key"] || "no-key",
 							baseUrl: values["embedder-url"],
 							model: values["embedder-model"],
+							usageSink: embedderUsageSink,
 						});
 						const embedCacheDir =
 							values["embedder-cache-dir"] ?? process.env.WTFOC_EMBEDDER_CACHE_DIR;
@@ -341,7 +361,7 @@ async function main() {
 									modelVersion: "unknown",
 								})
 							: rawEmbedder;
-						const vectorIndex = new InMemoryVectorIndex();
+						const baseVectorIndex = new InMemoryVectorIndex();
 						for (const seg of segments) {
 							const entries = seg.chunks
 								.filter((c: { embedding?: number[] }) => c.embedding && c.embedding.length > 0)
@@ -361,9 +381,12 @@ async function main() {
 									},
 								}));
 							if (entries.length > 0) {
-								await vectorIndex.add(entries);
+								await baseVectorIndex.add(entries);
 							}
 						}
+						const vectorIndex = new TimingVectorIndex(baseVectorIndex, (ms) =>
+							timer.record("vector-retrieve", ms),
+						);
 						const qqManifestDir =
 							(store.manifests as { dir?: string }).dir ??
 							`${process.env.HOME ?? "."}.wtfoc/projects`;
@@ -380,9 +403,21 @@ async function main() {
 						qqOverlayEdges,
 						reranker,
 						values["auto-route"] ?? false,
-						{ collectionId: values.collection!, corpusSourceTypes },
+						{
+							collectionId: values.collection!,
+							corpusSourceTypes,
+							perQueryHook: (id, ms) => timer.record("per-query-total", ms),
+						},
 						values["diversity-enforce"] ?? false,
 					);
+					// Attach timing + cost telemetry to the stage's metrics
+					// payload — published `EvalStageResult.metrics` is
+					// `Record<string, unknown>` so this is additive.
+					result.metrics = {
+						...result.metrics,
+						timing: timer.allStats(),
+						cost: costs.allStats(),
+					};
 					}
 					break;
 				}
@@ -443,6 +478,7 @@ async function main() {
 		runConfig,
 		runConfigFingerprint: computeRunConfigFingerprint(runConfig),
 		fingerprintVersion: FINGERPRINT_VERSION,
+		costComparable: costs.comparability(),
 	};
 
 	// Output

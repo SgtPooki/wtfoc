@@ -60,6 +60,13 @@ export interface ExtendedDogfoodReport extends DogfoodReport {
 	runConfig: RunConfig;
 	runConfigFingerprint: string;
 	fingerprintVersion: number;
+	/**
+	 * Whether costs in this report are comparable enough to be ranked.
+	 * False when any LLM call had unknown pricing or missing token counts.
+	 * Downstream consumers (threshold check + sweep harness) MUST refuse
+	 * to rank by cost when `value === false`.
+	 */
+	costComparable?: { value: boolean; reasons: string[] };
 }
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };

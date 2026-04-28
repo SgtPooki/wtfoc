@@ -68,6 +68,18 @@ function loadMetrics(path: string): Metrics {
 	return qq.metrics;
 }
 
+interface ReportCostComparability {
+	value: boolean;
+	reasons: string[];
+}
+
+function loadCostComparability(path: string): ReportCostComparability | null {
+	const raw = JSON.parse(readFileSync(path, "utf-8")) as {
+		costComparable?: ReportCostComparability;
+	};
+	return raw.costComparable ?? null;
+}
+
 function collectThresholds(m: Metrics): Threshold[] {
 	return [
 		{ label: "overall applicable", actual: m.passRate, floor: THRESHOLDS.overallMin },
@@ -102,12 +114,16 @@ function collectThresholds(m: Metrics): Threshold[] {
 function main(): void {
 	const args = process.argv.slice(2);
 	const advisory = args.includes("--advisory");
+	const requireCostRankable = args.includes("--require-cost-rankable");
 	const path = args.find((a) => !a.startsWith("--"));
 	if (!path) {
-		console.error("usage: dogfood-check-thresholds.ts [--advisory] <report.json>");
+		console.error(
+			"usage: dogfood-check-thresholds.ts [--advisory] [--require-cost-rankable] <report.json>",
+		);
 		process.exit(2);
 	}
 	const m = loadMetrics(path);
+	const comparability = loadCostComparability(path);
 	const checks = collectThresholds(m);
 
 	const applicable = m.applicableTotal ?? m.totalQueries;
@@ -144,6 +160,24 @@ function main(): void {
 		console.log(`${ok ? "✅" : "❌"} ${c.label}: ${pct}% (floor ${floorPct}%)`);
 		if (!ok) failed++;
 	}
+
+	// Cost-comparability gate (peer-review consensus). Reports cost is
+	// only rankable when every LLM call has known pricing + token counts.
+	// `--require-cost-rankable` makes it a hard fail; otherwise it's a
+	// warning so existing flagship runs (no usage capture today) keep
+	// passing while we backfill the pricing table.
+	if (comparability) {
+		const ok = comparability.value;
+		console.log(`${ok ? "✅" : "⚠️"} cost rankable: ${ok}`);
+		if (!ok) {
+			for (const reason of comparability.reasons) console.log(`  · ${reason}`);
+			if (requireCostRankable) failed++;
+		}
+	} else if (requireCostRankable) {
+		console.log("❌ cost rankable: report missing costComparable field");
+		failed++;
+	}
+
 	if (failed > 0) {
 		if (advisory) {
 			console.error(`\n${failed} threshold(s) violated — advisory only (not exit 1)`);

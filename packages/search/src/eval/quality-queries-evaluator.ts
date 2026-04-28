@@ -66,6 +66,13 @@ export interface QualityQueriesContext {
 	 * corpus coverage gap, not a retrieval regression.
 	 */
 	corpusSourceTypes?: ReadonlySet<string>;
+	/**
+	 * Per-query timing hook. Maintainer-only: dogfood and the autoresearch
+	 * sweep harness pass a callback that receives `(queryId, durationMs)`
+	 * after each query is scored. Used to compute end-to-end p50/p95
+	 * across the fixture; consumers leave it unset.
+	 */
+	perQueryHook?: (queryId: string, durationMs: number) => void;
 }
 
 export async function evaluateQualityQueries(
@@ -98,6 +105,7 @@ export async function evaluateQualityQueries(
 			skippedReasons.push({ id: gq.id, reason: skip });
 			continue;
 		}
+		const queryStart = performance.now();
 		const score = await scoreQuery(
 			gq,
 			embedder,
@@ -109,6 +117,7 @@ export async function evaluateQualityQueries(
 			autoRoute,
 			diversityEnforce,
 		);
+		context.perQueryHook?.(gq.id, performance.now() - queryStart);
 		scores.push(score);
 		if (score.passed) passCount++;
 		if (score.passedQueryOnly) queryOnlyPassCount++;

@@ -7,6 +7,19 @@ export interface LlmRerankerOptions {
 	model: string;
 	/** Optional API key (sent as Bearer token) */
 	apiKey?: string;
+	/**
+	 * Optional per-call telemetry hook. Maintainer-only: dogfood and the
+	 * autoresearch sweep harness pass a sink to capture token usage and
+	 * call duration. Consumers leave this unset.
+	 */
+	usageSink?: (usage: {
+		requestModelId: string;
+		providerResponseModelId?: string;
+		promptTokens?: number;
+		completionTokens?: number;
+		totalTokens?: number;
+		durationMs: number;
+	}) => void;
 }
 
 const SYSTEM_PROMPT = `You are a relevance scoring assistant. Given a search query and a list of candidate documents, score each candidate's relevance to the query on a scale of 0.0 to 1.0.
@@ -25,11 +38,13 @@ export class LlmReranker implements Reranker {
 	readonly #baseUrl: string;
 	readonly #model: string;
 	readonly #apiKey: string | undefined;
+	readonly #usageSink: LlmRerankerOptions["usageSink"];
 
 	constructor(options: LlmRerankerOptions) {
 		this.#baseUrl = options.baseUrl.replace(/\/+$/, "");
 		this.#model = options.model;
 		this.#apiKey = options.apiKey;
+		this.#usageSink = options.usageSink;
 	}
 
 	async rerank(
@@ -50,6 +65,7 @@ export class LlmReranker implements Reranker {
 		const headers: Record<string, string> = { "Content-Type": "application/json" };
 		if (this.#apiKey) headers.Authorization = `Bearer ${this.#apiKey}`;
 
+		const callStart = performance.now();
 		const response = await fetch(`${this.#baseUrl}/chat/completions`, {
 			method: "POST",
 			headers,
@@ -71,8 +87,21 @@ export class LlmReranker implements Reranker {
 
 		const data = (await response.json()) as {
 			choices?: Array<{ message?: { content?: string } }>;
+			usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+			model?: string;
 		};
 		const content = data.choices?.[0]?.message?.content ?? "";
+
+		if (this.#usageSink) {
+			this.#usageSink({
+				requestModelId: this.#model,
+				providerResponseModelId: data.model,
+				promptTokens: data.usage?.prompt_tokens,
+				completionTokens: data.usage?.completion_tokens,
+				totalTokens: data.usage?.total_tokens,
+				durationMs: performance.now() - callStart,
+			});
+		}
 
 		let scored: RerankResult[] = this.#parseScores(content, candidates);
 
