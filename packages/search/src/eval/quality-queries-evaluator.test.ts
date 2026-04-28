@@ -244,6 +244,63 @@ describe("evaluateQualityQueries", () => {
 		});
 	});
 
+	describe("retrieval recall@K (#311 Phase 0d)", () => {
+		it("computes recall@10 for queries with goldSupportingSources", async () => {
+			// wl-1 has goldSupportingSources: ["piece.ts", "pieceCid"].
+			// Provide top-K with both substrings present in source paths →
+			// expect recallAtK = 1.0.
+			mockQuery.mockResolvedValue(
+				makeQueryResult([
+					{ sourceType: "code", source: "/src/piece.ts", score: 0.95 },
+					{ sourceType: "markdown", source: "docs/pieceCid-spec.md", score: 0.9 },
+				]),
+			);
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+
+			const result = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
+			const scores = result.metrics.scores as Array<{
+				id: string;
+				recallAtK: number | null;
+				recallK: number | null;
+			}>;
+			const wl1 = scores.find((s) => s.id === "wl-1");
+			expect(wl1?.recallAtK).toBe(1);
+			expect(wl1?.recallK).toBe(10);
+		});
+
+		it("emits recallAtK = null on queries without a gold mapping", async () => {
+			mockQuery.mockResolvedValue(
+				makeQueryResult([{ sourceType: "code", source: "/src/x.ts", score: 0.9 }]),
+			);
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+			const result = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
+			const scores = result.metrics.scores as Array<{
+				id: string;
+				recallAtK: number | null;
+			}>;
+			// dl-1 has no goldSupportingSources in fixture today — must be null.
+			const dl1 = scores.find((s) => s.id === "dl-1");
+			expect(dl1?.recallAtK).toBeNull();
+		});
+
+		it("emits recallAtK aggregate at the metrics level", async () => {
+			mockQuery.mockResolvedValue(makeQueryResult([]));
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+			const result = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
+			const r = result.metrics.recallAtK as {
+				k: number | null;
+				graded: number;
+				avgRecallAtK: number;
+				demoCriticalAvgRecallAtK: number;
+				demoCriticalGraded: number;
+			};
+			expect(r).toBeDefined();
+			expect(typeof r.avgRecallAtK).toBe("number");
+			// Demo-critical tier has 5 queries; all populated with gold in v1.7.0.
+			expect(r.demoCriticalGraded).toBeGreaterThan(0);
+		});
+	});
+
 	describe("evidence-diversity per query (#311 Phase 0e)", () => {
 		it("counts distinct sources + source-types across query + trace", async () => {
 			mockQuery.mockResolvedValue(

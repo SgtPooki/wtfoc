@@ -59,6 +59,16 @@ interface QueryScore {
 	 */
 	distinctDocs: number;
 	distinctSourceTypes: number;
+	/**
+	 * #311 (Phase 0d) — retrieval recall@K against gold supporting
+	 * sources, computed only for queries with a `goldSupportingSources`
+	 * mapping in the fixture (demo-critical tier in v1.7.0). null when
+	 * the fixture has no recall baseline for this query, or when the
+	 * query failed before retrieval (resultCount === 0).
+	 */
+	recallAtK: number | null;
+	/** Top-K depth used to compute `recallAtK` (currently 10). */
+	recallK: number | null;
 }
 
 /**
@@ -291,6 +301,11 @@ export async function evaluateQualityQueries(
 			// autoresearch loop can detect retrieval narrowing — variants
 			// that improve pass-rate while shrinking cross-source evidence.
 			evidenceDiversity: aggregateDiversity(scores),
+			// #311 (Phase 0d) — recall@K aggregate over queries that have a
+			// goldSupportingSources mapping in the fixture (demo-critical
+			// tier in v1.7.0). Reports the mean recall@K across those
+			// queries plus the per-tier average for demo-critical.
+			recallAtK: aggregateRecall(scores),
 		},
 		checks,
 	};
@@ -340,6 +355,30 @@ function avg(nums: number[]): number {
 	return sum / nums.length;
 }
 
+interface RecallAggregate {
+	k: number | null;
+	graded: number;
+	avgRecallAtK: number;
+	demoCriticalAvgRecallAtK: number;
+	demoCriticalGraded: number;
+}
+
+function aggregateRecall(scores: QueryScore[]): RecallAggregate {
+	const graded = scores.filter((s) => !s.skipped && s.recallAtK !== null && s.recallK !== null);
+	const demoCriticalIds = new Set(
+		GOLD_STANDARD_QUERIES.filter((q) => q.tier === "demo-critical").map((q) => q.id),
+	);
+	const demoCriticalGraded = graded.filter((s) => demoCriticalIds.has(s.id));
+	const k = graded[0]?.recallK ?? null;
+	return {
+		k,
+		graded: graded.length,
+		avgRecallAtK: avg(graded.map((s) => s.recallAtK ?? 0)),
+		demoCriticalAvgRecallAtK: avg(demoCriticalGraded.map((s) => s.recallAtK ?? 0)),
+		demoCriticalGraded: demoCriticalGraded.length,
+	};
+}
+
 function aggregateDiversity(scores: QueryScore[]): DiversityAggregate {
 	const applicable = scores.filter((s) => !s.skipped);
 	const passing = applicable.filter((s) => s.passed);
@@ -372,6 +411,8 @@ function skippedScore(gq: GoldStandardQuery, reason: string): QueryScore {
 		lineage: null,
 		distinctDocs: 0,
 		distinctSourceTypes: 0,
+		recallAtK: null,
+		recallK: null,
 	};
 }
 
@@ -398,6 +439,8 @@ async function scoreQuery(
 	let lineage: LineageMetrics | null = null;
 	const distinctSources = new Set<string>();
 	const distinctTypes = new Set<string>();
+	let recallAtK: number | null = null;
+	let recallK: number | null = null;
 
 	try {
 		const boosts = autoRoute ? classifyQueryPersona(gq.queryText).sourceTypeBoosts : undefined;
@@ -435,6 +478,21 @@ async function scoreQuery(
 			substringFound = gq.expectedSourceSubstrings.some((sub) =>
 				resultSources.some((src) => src.toLowerCase().includes(sub.toLowerCase())),
 			);
+		}
+
+		// #311 Phase 0d — recall@K against gold supporting sources.
+		// Computed against query-stage top-K only (no trace rescue) so the
+		// metric measures retrieval quality independently of the graph.
+		if (gq.goldSupportingSources && gq.goldSupportingSources.length > 0) {
+			const k = 10;
+			const topKSources = qResult.results.slice(0, k).map((r) => r.source.toLowerCase());
+			let matched = 0;
+			for (const goldSub of gq.goldSupportingSources) {
+				const subLower = goldSub.toLowerCase();
+				if (topKSources.some((src) => src.includes(subLower))) matched++;
+			}
+			recallAtK = matched / gq.goldSupportingSources.length;
+			recallK = k;
 		}
 
 		// Trace phase
@@ -500,5 +558,7 @@ async function scoreQuery(
 		lineage,
 		distinctDocs: distinctSources.size,
 		distinctSourceTypes: distinctTypes.size,
+		recallAtK,
+		recallK,
 	};
 }

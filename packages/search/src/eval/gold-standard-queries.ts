@@ -28,7 +28,7 @@
  * separate changes coincide on the same version — a new change always gets
  * a fresh bump.
  */
-export const GOLD_STANDARD_QUERIES_VERSION = "1.6.0";
+export const GOLD_STANDARD_QUERIES_VERSION = "1.7.0";
 
 export interface GoldStandardQuery {
 	/** Unique identifier for this query */
@@ -109,6 +109,21 @@ export interface GoldStandardQuery {
 	 *   default than claiming portability the query hasn't earned.
 	 */
 	portability?: "portable" | "corpus-specific";
+	/**
+	 * Recall-proxy gold set (added v1.7.0). Substrings that any top-K
+	 * retrieval result MUST contain in its `source` for a query to be
+	 * considered fully recall-covered. The autoresearch loop computes
+	 * `recallAtK = matched / |goldSupportingSources|` per query — a
+	 * fractional score that lets us rank retrieval variants on cross-
+	 * source coverage independently of the binary pass/fail rubric.
+	 *
+	 * Phase 0d populates this only for the demo-critical tier. Wider
+	 * coverage is fixture-expansion work tracked under Phase 1 of #311.
+	 *
+	 * Unset → `recallAtK` is null for that query (fixture has no recall
+	 * baseline yet).
+	 */
+	goldSupportingSources?: string[];
 }
 
 export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
@@ -502,6 +517,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		tier: "demo-critical",
 		requiredSourceTypes: ["code", "github-pr-comment", "markdown"],
 		expectedSourceSubstrings: ["piece.ts", "pieceCid"],
+		goldSupportingSources: ["piece.ts", "pieceCid"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -522,6 +538,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		// supported set.
 		requiredSourceTypes: ["code", "github-pr", "markdown"],
 		expectedSourceSubstrings: ["DataSetStatus", "filecoin-services"],
+		goldSupportingSources: ["DataSetStatus", "filecoin-services"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -543,6 +560,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		// plus its lineage via edges within the code graph.
 		requiredSourceTypes: ["code"],
 		expectedSourceSubstrings: ["payments", "synapse-core"],
+		goldSupportingSources: ["payments", "synapse-core"],
 		minResults: 3,
 		requireEdgeHop: true,
 	},
@@ -555,6 +573,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		// Query top-N surfaces filecoin-pin source files + CHANGELOG and
 		// synapse-sdk#... PR URLs. Pin on repo names that appear there.
 		expectedSourceSubstrings: ["filecoin-pin", "synapse-sdk"],
+		goldSupportingSources: ["filecoin-pin", "synapse-sdk"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -566,6 +585,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		tier: "demo-critical",
 		requiredSourceTypes: ["code", "markdown"],
 		expectedSourceSubstrings: ["payments", "deposit"],
+		goldSupportingSources: ["payments", "deposit"],
 		minResults: 3,
 		requireEdgeHop: true,
 	},
