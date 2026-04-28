@@ -117,6 +117,7 @@ FOC is the best default, not the only option. The `StorageBackend` seam means yo
 - **Impact analysis**: "If we change this API, what downstream code, docs, and integrations are affected?"
 - **Feature history**: Connect customer feedback → feature request → implementation → deployment
 - **Knowledge gaps**: "What parts of our system have no documentation edges? Where are docs drifting from code?"
+- **API drift / pain-point detection**: "Where do code, changelog, docs, and customer reports describe the same concept differently — and where are they diverging?" Cross-source canonicalization is what makes this answerable, not embedding similarity alone. See [vision.md — What collections are for](./vision.md#what-collections-are-for) for the full four-use-case taxonomy (extend / RAG / share / drift).
 
 ### AI Agents
 
