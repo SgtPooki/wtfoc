@@ -10,7 +10,6 @@ import { parseArgs } from "node:util";
 import { writeFileSync, mkdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
-	type DogfoodReport,
 	type EvalStageResult,
 	type Segment,
 	aggregateVerdict,
@@ -23,13 +22,21 @@ import {
 	evaluateQualityQueries,
 	evaluateSearch,
 	evaluateThemes,
+	GOLD_STANDARD_QUERIES,
+	GOLD_STANDARD_QUERIES_VERSION,
 	InMemoryVectorIndex,
 	LlmReranker,
 	OpenAIEmbedder,
 	type Reranker,
 } from "@wtfoc/search";
-import { evaluateStorage, createStore, type Store } from "@wtfoc/store";
+import { evaluateStorage, createStore } from "@wtfoc/store";
 import { formatDogfoodReport } from "./dogfood-formatter.js";
+import { buildRunConfig, defaultQualityQueriesRetrieval } from "./lib/build-run-config.js";
+import {
+	computeRunConfigFingerprint,
+	type ExtendedDogfoodReport,
+	FINGERPRINT_VERSION,
+} from "./lib/run-config.js";
 
 const VALID_STAGES = [
 	"ingest",
@@ -398,7 +405,34 @@ async function main() {
 		}
 	}
 
-	const report: DogfoodReport = {
+	const runConfig = buildRunConfig({
+		collectionId: values.collection!,
+		manifest: head.manifest,
+		goldFixtureVersion: GOLD_STANDARD_QUERIES_VERSION,
+		goldFixture: GOLD_STANDARD_QUERIES,
+		embedder: {
+			url: values["embedder-url"] ?? "",
+			model: values["embedder-model"] ?? "",
+		},
+		extractor:
+			values["extractor-url"] && values["extractor-model"]
+				? { url: values["extractor-url"], model: values["extractor-model"] }
+				: null,
+		reranker: rerankerType
+			? {
+					type: rerankerType,
+					url: rerankerUrl ?? "",
+					model: values["reranker-model"] ?? values["extractor-model"],
+				}
+			: null,
+		grader: null,
+		retrieval: defaultQualityQueriesRetrieval({
+			autoRoute: values["auto-route"] ?? false,
+			diversityEnforce: values["diversity-enforce"] ?? false,
+		}),
+	});
+
+	const report: ExtendedDogfoodReport = {
 		reportSchemaVersion: "1.0.0",
 		timestamp: new Date().toISOString(),
 		collectionId: head.manifest.collectionId,
@@ -406,6 +440,9 @@ async function main() {
 		stages: stageResults,
 		verdict: aggregateVerdict(stageResults),
 		durationMs: Math.round(performance.now() - t0),
+		runConfig,
+		runConfigFingerprint: computeRunConfigFingerprint(runConfig),
+		fingerprintVersion: FINGERPRINT_VERSION,
 	};
 
 	// Output
