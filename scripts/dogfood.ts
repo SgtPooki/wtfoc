@@ -32,6 +32,7 @@ import {
 import { evaluateStorage, createStore } from "@wtfoc/store";
 import { formatDogfoodReport } from "./dogfood-formatter.js";
 import { buildRunConfig, defaultQualityQueriesRetrieval } from "./lib/build-run-config.js";
+import { namespacedCacheDir } from "./lib/cache-namespace.js";
 import { CostAggregator } from "./lib/cost-aggregator.js";
 import type { LlmUsage } from "./lib/llm-usage.js";
 import {
@@ -158,6 +159,38 @@ async function main() {
 		const text = new TextDecoder().decode(raw);
 		segments.push(JSON.parse(text) as Segment);
 	}
+
+	// Build the run identity record + fingerprint up front so cache
+	// namespacing can use it before any stage runs. Variants with
+	// different fingerprints share no on-disk caches.
+	const runConfig = buildRunConfig({
+		collectionId: values.collection!,
+		manifest: head.manifest,
+		goldFixtureVersion: GOLD_STANDARD_QUERIES_VERSION,
+		goldFixture: GOLD_STANDARD_QUERIES,
+		embedder: {
+			url: values["embedder-url"] ?? "",
+			model: values["embedder-model"] ?? "",
+		},
+		extractor:
+			values["extractor-url"] && values["extractor-model"]
+				? { url: values["extractor-url"], model: values["extractor-model"] }
+				: null,
+		reranker:
+			values["reranker-type"] && values["reranker-url"]
+				? {
+						type: values["reranker-type"],
+						url: values["reranker-url"],
+						model: values["reranker-model"] ?? values["extractor-model"],
+					}
+				: null,
+		grader: null,
+		retrieval: defaultQualityQueriesRetrieval({
+			autoRoute: values["auto-route"] ?? false,
+			diversityEnforce: values["diversity-enforce"] ?? false,
+		}),
+	});
+	const runConfigFingerprint = computeRunConfigFingerprint(runConfig);
 
 	// Per-substage telemetry — maintainer-only. Captures wall-clock + token
 	// usage across the quality-queries stage. Sinks pipe into the timer +
@@ -352,11 +385,11 @@ async function main() {
 							model: values["embedder-model"],
 							usageSink: embedderUsageSink,
 						});
-						const embedCacheDir =
+						const embedCacheBaseDir =
 							values["embedder-cache-dir"] ?? process.env.WTFOC_EMBEDDER_CACHE_DIR;
-						const embedder = embedCacheDir
+						const embedder = embedCacheBaseDir
 							? new CachingEmbedder(rawEmbedder, {
-									cacheDir: embedCacheDir,
+									cacheDir: namespacedCacheDir(embedCacheBaseDir, runConfigFingerprint),
 									provider: "openai-compatible",
 									modelVersion: "unknown",
 								})
@@ -440,33 +473,6 @@ async function main() {
 		}
 	}
 
-	const runConfig = buildRunConfig({
-		collectionId: values.collection!,
-		manifest: head.manifest,
-		goldFixtureVersion: GOLD_STANDARD_QUERIES_VERSION,
-		goldFixture: GOLD_STANDARD_QUERIES,
-		embedder: {
-			url: values["embedder-url"] ?? "",
-			model: values["embedder-model"] ?? "",
-		},
-		extractor:
-			values["extractor-url"] && values["extractor-model"]
-				? { url: values["extractor-url"], model: values["extractor-model"] }
-				: null,
-		reranker: rerankerType
-			? {
-					type: rerankerType,
-					url: rerankerUrl ?? "",
-					model: values["reranker-model"] ?? values["extractor-model"],
-				}
-			: null,
-		grader: null,
-		retrieval: defaultQualityQueriesRetrieval({
-			autoRoute: values["auto-route"] ?? false,
-			diversityEnforce: values["diversity-enforce"] ?? false,
-		}),
-	});
-
 	const report: ExtendedDogfoodReport = {
 		reportSchemaVersion: "1.0.0",
 		timestamp: new Date().toISOString(),
@@ -476,7 +482,7 @@ async function main() {
 		verdict: aggregateVerdict(stageResults),
 		durationMs: Math.round(performance.now() - t0),
 		runConfig,
-		runConfigFingerprint: computeRunConfigFingerprint(runConfig),
+		runConfigFingerprint,
 		fingerprintVersion: FINGERPRINT_VERSION,
 		costComparable: costs.comparability(),
 	};
