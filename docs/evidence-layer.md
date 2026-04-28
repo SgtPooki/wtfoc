@@ -51,6 +51,22 @@ Ship someone a CID and they have everything: the chunks, the embeddings, the edg
 
 The two commands expose two different retrieval surfaces. Your RAG stack picks whichever matches the question — pure similarity for a quick lookup, edge-walking trace for a provenance-rich answer.
 
+### Derived layers on top of evidence
+
+Evidence-backed edges are the trusted base layer — every edge cites a source span and an extractor that produced it. Some structure that consumers want is harder to ground at that standard: emergent concepts that recur across sources under different wording, or "these two chunks are talking about the same thing" connections that no extractor explicitly emits.
+
+`wtfoc` handles those by adding **derived layers** on top of the evidence layer rather than relaxing evidence-edge standards. Two derived layers are planned:
+
+- **Concept layer** — append-only, model-versioned artifact carrying grounded concept candidates (with support snippets, aliases, and provenance) and promoted concept nodes. Identity is separate from any single source's lexical form, so a concept can appear under different names across code, docs, issues, and chat without fragmenting. State machine: `candidate → promoted → curated`. Tracked in [#262](https://github.com/SgtPooki/wtfoc/issues/262) / [#276](https://github.com/SgtPooki/wtfoc/issues/276).
+- **Similarity-edge layer** — planned derived similarity relationships between existing chunks/nodes, produced by ANN over the embedding space. The exact artifact shape is still under design, but the intent is stable: persist append-only similarity metadata with enough provenance to expose the structural neighborhood map a consumer needs for forking, navigation, and cross-source drift detection. Tracked in [#310](https://github.com/SgtPooki/wtfoc/issues/310).
+
+Two non-goals keep the trust story clean:
+
+1. **Derived layers do not relax evidence-edge standards.** Trusted edges keep their grounding rules. A similarity edge is a different artifact with a different (and weaker) trust claim, and consumers opt into it explicitly.
+2. **Derived layers are not a substitute for the evidence layer.** Concepts and similarity edges are useful precisely because the evidence layer is solid underneath them. Pulling them out alone would reproduce the opaque-RAG problem this document opens with.
+
+The two layers compose: similarity edges suggest concept-candidate clusters, concept promotion stabilizes nodes, and curated concepts then anchor cross-source navigation that pure top-K retrieval cannot.
+
 ## How it plugs into existing RAG stacks
 
 `wtfoc` is deliberately not a full RAG framework. It ingests, extracts edges, embeds, and stores. Retrieval and trace are exposed as libraries (`@wtfoc/search`) and an HTTP server (`wtfoc serve`). You keep your LLM orchestration, your prompt logic, your agent loop, your UI.

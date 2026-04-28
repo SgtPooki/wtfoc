@@ -14,6 +14,28 @@ An AI agent asks the same question and gets the same answer — grounded, citabl
 
 Another team pulls the collection via IPFS, adds their own sources, improves the edges, and publishes a new version. The CID chain shows exactly what changed and who contributed. Private data stays encrypted — only keyholders can read the content, but the collection structure and CIDs remain verifiable.
 
+## What collections are for
+
+A wtfoc collection is a shareable, composable knowledge substrate — not a retrieval cache. Once built, a collection should serve four distinct use cases, ordered by how strongly they justify investment in derived structure on top of raw chunks:
+
+### 1. Extend
+
+Someone forks an existing collection to customize it for their team or use case. They need a *map of seams*: where concepts cluster, where the gaps are, what's orphaned, what's connected. Raw chunks plus a bag of vectors are not enough — the structural map (concepts, similarity neighborhoods, evidence edges) is what makes a collection forkable.
+
+### 2. RAG over a complex ecosystem
+
+Use the collection as-is to help an LLM navigate a corpus that spans code, docs, issues, PRs, and chat. Graph-aware retrieval primitives ("path from A to B", "neighborhood of X", typed-edge traversal) materially outperform top-K nearest neighbors when the question crosses source types or hops through related artifacts.
+
+### 3. Share
+
+A curated collection is an asset. The opinionated structure on top of raw content — promoted concepts, curated edges, taxonomy decisions — encodes a domain expert's understanding. That structure is the value being shared, not just the bytes.
+
+### 4. Customer pain points / API drift
+
+Detect where the same concept appears worded differently across code comments, changelog entries, GitHub issues, and Slack — and where those descriptions diverge from each other. This is the strongest single argument for derived layers. Cross-source canonicalization (concept layer) and cross-source similarity edges (similarity-edge layer) are what make this use case work at all; pure ANN search collapses the distinction between "same concept, different wording" and "different concepts, similar phrasing".
+
+These four cases compose: a curated collection is shared (#3), forked and extended (#1), used as a RAG backend (#2), and run against fresh sources to detect drift (#4). The architectural implication — that derived layers (concepts, similarity edges) sit on top of trusted evidence edges without weakening their standards — is detailed in [evidence-layer.md](./evidence-layer.md).
+
 ## North-Star Goals
 
 ### 1. Living Collections
