@@ -58,7 +58,7 @@ Evidence-backed edges are the trusted base layer — every edge cites a source s
 `wtfoc` handles those by adding **derived layers** on top of the evidence layer rather than relaxing evidence-edge standards. Two derived layers are planned:
 
 - **Concept layer** — append-only, model-versioned artifact carrying grounded concept candidates (with support snippets, aliases, and provenance) and promoted concept nodes. Identity is separate from any single source's lexical form, so a concept can appear under different names across code, docs, issues, and chat without fragmenting. State machine: `candidate → promoted → curated`. Tracked in [#262](https://github.com/SgtPooki/wtfoc/issues/262) / [#276](https://github.com/SgtPooki/wtfoc/issues/276).
-- **Similarity-edge layer** — derived edges (`kind: "similarity"`) between existing chunks/nodes, produced by ANN over the embedding space. Persisted append-only with embedder id, metric, threshold, and run timestamp. Surfaces the structural neighborhood map a consumer needs for forking, navigation, and cross-source drift detection. Tracked in [#310](https://github.com/SgtPooki/wtfoc/issues/310).
+- **Similarity-edge layer** — planned derived similarity relationships between existing chunks/nodes, produced by ANN over the embedding space. The exact artifact shape is still under design, but the intent is stable: persist append-only similarity metadata with enough provenance to expose the structural neighborhood map a consumer needs for forking, navigation, and cross-source drift detection. Tracked in [#310](https://github.com/SgtPooki/wtfoc/issues/310).
 
 Two non-goals keep the trust story clean:
 
