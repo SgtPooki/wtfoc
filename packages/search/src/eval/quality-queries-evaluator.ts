@@ -50,6 +50,15 @@ interface QueryScore {
 	sourceTypesReached: string[];
 	/** #217 — per-query lineage metrics (null when trace failed). */
 	lineage: LineageMetrics | null;
+	/**
+	 * #311 (Phase 0e) — evidence-diversity per query. Counts distinct
+	 * source identifiers and source-types across the union of `query()`
+	 * results and `trace()` reached hops. Lets the autoresearch loop
+	 * detect retrieval narrowing (improvements that look better on
+	 * pass-rate but kill cross-source evidence).
+	 */
+	distinctDocs: number;
+	distinctSourceTypes: number;
 }
 
 /**
@@ -277,6 +286,11 @@ export async function evaluateQualityQueries(
 			lineage: aggregateLineageMetrics(
 				scores.map((s) => s.lineage).filter((m): m is LineageMetrics => m !== null),
 			),
+			// #311 (Phase 0e) — evidence-diversity averages. Computed over
+			// applicable queries only (passing-only and overall) so the
+			// autoresearch loop can detect retrieval narrowing — variants
+			// that improve pass-rate while shrinking cross-source evidence.
+			evidenceDiversity: aggregateDiversity(scores),
 		},
 		checks,
 	};
@@ -311,6 +325,34 @@ function resolveSkip(gq: GoldStandardQuery, ctx: QualityQueriesContext): string 
 	return null;
 }
 
+interface DiversityAggregate {
+	passingAvgDistinctDocs: number;
+	passingAvgDistinctSourceTypes: number;
+	applicableAvgDistinctDocs: number;
+	applicableAvgDistinctSourceTypes: number;
+	passingCount: number;
+	applicableCount: number;
+}
+
+function avg(nums: number[]): number {
+	if (nums.length === 0) return 0;
+	const sum = nums.reduce((a, b) => a + b, 0);
+	return sum / nums.length;
+}
+
+function aggregateDiversity(scores: QueryScore[]): DiversityAggregate {
+	const applicable = scores.filter((s) => !s.skipped);
+	const passing = applicable.filter((s) => s.passed);
+	return {
+		passingAvgDistinctDocs: avg(passing.map((s) => s.distinctDocs)),
+		passingAvgDistinctSourceTypes: avg(passing.map((s) => s.distinctSourceTypes)),
+		applicableAvgDistinctDocs: avg(applicable.map((s) => s.distinctDocs)),
+		applicableAvgDistinctSourceTypes: avg(applicable.map((s) => s.distinctSourceTypes)),
+		passingCount: passing.length,
+		applicableCount: applicable.length,
+	};
+}
+
 function skippedScore(gq: GoldStandardQuery, reason: string): QueryScore {
 	return {
 		id: gq.id,
@@ -328,6 +370,8 @@ function skippedScore(gq: GoldStandardQuery, reason: string): QueryScore {
 		crossSourceFound: true,
 		sourceTypesReached: [],
 		lineage: null,
+		distinctDocs: 0,
+		distinctSourceTypes: 0,
 	};
 }
 
@@ -352,6 +396,8 @@ async function scoreQuery(
 	let crossSourceFound = true; // default true if not required
 	const sourceTypesReached: string[] = [];
 	let lineage: LineageMetrics | null = null;
+	const distinctSources = new Set<string>();
+	const distinctTypes = new Set<string>();
 
 	try {
 		const boosts = autoRoute ? classifyQueryPersona(gq.queryText).sourceTypeBoosts : undefined;
@@ -375,6 +421,10 @@ async function scoreQuery(
 			...(diversityOption ? { diversityEnforce: diversityOption } : {}),
 		});
 		resultCount = qResult.results.length;
+		for (const r of qResult.results) {
+			distinctSources.add(r.source);
+			distinctTypes.add(r.sourceType);
+		}
 
 		const resultSourceTypes = new Set(qResult.results.map((r) => r.sourceType));
 		requiredTypesFoundQueryOnly = gq.requiredSourceTypes.every((st) => resultSourceTypes.has(st));
@@ -399,6 +449,10 @@ async function scoreQuery(
 		});
 
 		for (const st of tResult.stats.sourceTypes) sourceTypesReached.push(st);
+		for (const hop of tResult.hops) {
+			distinctSources.add(hop.source);
+			distinctTypes.add(hop.sourceType);
+		}
 
 		lineage = computeLineageMetrics(tResult);
 
@@ -444,5 +498,7 @@ async function scoreQuery(
 		crossSourceFound,
 		sourceTypesReached,
 		lineage,
+		distinctDocs: distinctSources.size,
+		distinctSourceTypes: distinctTypes.size,
 	};
 }

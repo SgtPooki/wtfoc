@@ -244,6 +244,55 @@ describe("evaluateQualityQueries", () => {
 		});
 	});
 
+	describe("evidence-diversity per query (#311 Phase 0e)", () => {
+		it("counts distinct sources + source-types across query + trace", async () => {
+			mockQuery.mockResolvedValue(
+				makeQueryResult([
+					{ sourceType: "code", source: "/src/a.ts", score: 0.9 },
+					{ sourceType: "code", source: "/src/b.ts", score: 0.8 },
+					{ sourceType: "github-issue", source: "owner/repo#1", score: 0.7 },
+				]),
+			);
+			mockTrace.mockResolvedValue(
+				makeTraceResult([
+					{ method: "edge", sourceType: "markdown" },
+					{ method: "semantic", sourceType: "code" },
+				]),
+			);
+
+			const result = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
+			const scores = result.metrics.scores as Array<{
+				skipped?: boolean;
+				distinctDocs: number;
+				distinctSourceTypes: number;
+			}>;
+			const applicable = scores.filter((s) => !s.skipped);
+			expect(applicable.length).toBeGreaterThan(0);
+			// Trace helper hardcodes source="test" for all hops, so every
+			// applicable score should see distinctDocs >= 1.
+			for (const s of applicable) {
+				expect(s.distinctDocs).toBeGreaterThanOrEqual(1);
+				expect(s.distinctSourceTypes).toBeGreaterThanOrEqual(1);
+			}
+		});
+
+		it("emits evidenceDiversity aggregate at the metrics level", async () => {
+			mockQuery.mockResolvedValue(makeQueryResult([]));
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+			const result = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
+			const ed = result.metrics.evidenceDiversity as {
+				passingAvgDistinctDocs: number;
+				applicableAvgDistinctDocs: number;
+				passingCount: number;
+				applicableCount: number;
+			};
+			expect(ed).toBeDefined();
+			expect(typeof ed.applicableAvgDistinctDocs).toBe("number");
+			expect(typeof ed.passingAvgDistinctDocs).toBe("number");
+			expect(ed.applicableCount).toBeGreaterThan(0);
+		});
+	});
+
 	describe("fixture versioning and determinism (#261)", () => {
 		it("emits the gold-queries fixture version in metrics (equals exported constant)", async () => {
 			mockQuery.mockResolvedValue(
