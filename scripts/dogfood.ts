@@ -34,12 +34,20 @@ import { formatDogfoodReport } from "./dogfood-formatter.js";
 import { buildRunConfig, defaultQualityQueriesRetrieval } from "./lib/build-run-config.js";
 import { namespacedCacheDir } from "./lib/cache-namespace.js";
 import { CostAggregator } from "./lib/cost-aggregator.js";
+import {
+	GRADER_PROMPT_VERSION,
+	GRADER_SYSTEM_PROMPT,
+	SYNTHESIS_PROMPT_VERSION,
+	SYNTHESIS_SYSTEM_PROMPT,
+} from "./lib/grounding-prompts.js";
+import { runGrounding } from "./lib/grounding-runner.js";
 import type { LlmUsage } from "./lib/llm-usage.js";
 import {
 	computeRunConfigFingerprint,
 	type ExtendedDogfoodReport,
 	FINGERPRINT_VERSION,
 } from "./lib/run-config.js";
+import { sha256Hex } from "./lib/run-config.js";
 import { SubstageTimer } from "./lib/substage-timer.js";
 import { TimingVectorIndex } from "./lib/timing-vector-index.js";
 
@@ -160,6 +168,33 @@ async function main() {
 		segments.push(JSON.parse(text) as Segment);
 	}
 
+	// Citation/grounding configuration. Off by default; opt-in with
+	// WTFOC_GROUND_CHECK=1. Grader and synthesizer prompts are pinned
+	// and hashed into the run fingerprint so any prompt edit produces
+	// a fresh fingerprint + namespaced cache.
+	const groundingEnabled = process.env.WTFOC_GROUND_CHECK === "1";
+	const graderConfig = groundingEnabled
+		? {
+				url: process.env.WTFOC_GRADER_URL ?? "https://vllm.bt.sgtpooki.com/v1",
+				model: process.env.WTFOC_GRADER_MODEL ?? "qwen3.6-27b",
+				apiKey: process.env.WTFOC_GRADER_KEY,
+			}
+		: null;
+	const synthesizerConfig =
+		groundingEnabled && values["extractor-url"] && values["extractor-model"]
+			? {
+					url: values["extractor-url"],
+					model: values["extractor-model"],
+					apiKey: values["extractor-key"],
+				}
+			: null;
+	const promptHashes: Record<string, string> = groundingEnabled
+		? {
+				synthesis: `${SYNTHESIS_PROMPT_VERSION}:${sha256Hex(SYNTHESIS_SYSTEM_PROMPT)}`,
+				grader: `${GRADER_PROMPT_VERSION}:${sha256Hex(GRADER_SYSTEM_PROMPT)}`,
+			}
+		: {};
+
 	// Build the run identity record + fingerprint up front so cache
 	// namespacing can use it before any stage runs. Variants with
 	// different fingerprints share no on-disk caches.
@@ -184,11 +219,12 @@ async function main() {
 						model: values["reranker-model"] ?? values["extractor-model"],
 					}
 				: null,
-		grader: null,
+		grader: graderConfig ? { url: graderConfig.url, model: graderConfig.model } : null,
 		retrieval: defaultQualityQueriesRetrieval({
 			autoRoute: values["auto-route"] ?? false,
 			diversityEnforce: values["diversity-enforce"] ?? false,
 		}),
+		promptHashes,
 	});
 	const runConfigFingerprint = computeRunConfigFingerprint(runConfig);
 
@@ -443,13 +479,54 @@ async function main() {
 						},
 						values["diversity-enforce"] ?? false,
 					);
-					// Attach timing + cost telemetry to the stage's metrics
-					// payload — published `EvalStageResult.metrics` is
-					// `Record<string, unknown>` so this is additive.
+
+					// Phase 0f — citation/grounding on the synthesis tier. Off
+					// by default; opt-in via WTFOC_GROUND_CHECK=1 (single
+					// pinned grader, no escalation, no rate-limit risk on
+					// local vLLM). Synthesis prompts the extractor to emit
+					// claims; grader (stronger model than extractor) verdicts
+					// each claim against the same retrieved evidence.
+					let grounding: Awaited<ReturnType<typeof runGrounding>> | null = null;
+					if (groundingEnabled && graderConfig && synthesizerConfig) {
+						const synthSink = (u: LlmUsage): void => {
+							if (typeof u.durationMs === "number") timer.record("synthesize", u.durationMs);
+							costs.record("synthesize", u);
+						};
+						const graderSink = (u: LlmUsage): void => {
+							if (typeof u.durationMs === "number") timer.record("grade", u.durationMs);
+							costs.record("grade", u);
+						};
+						const synthQueries = GOLD_STANDARD_QUERIES.filter(
+							(q) =>
+								q.category === "synthesis" &&
+								(!q.collectionScopePattern ||
+									new RegExp(q.collectionScopePattern).test(values.collection!)),
+						).map((q) => ({ id: q.id, queryText: q.queryText }));
+						console.error(
+							`[dogfood] grounding: ${synthQueries.length} synthesis-tier queries (grader=${graderConfig.model})`,
+						);
+						grounding = await runGrounding({
+							queries: synthQueries,
+							synthesizer: synthesizerConfig,
+							grader: graderConfig,
+							embedder,
+							vectorIndex,
+							reranker,
+							topK: 10,
+							synthesizerUsageSink: synthSink,
+							graderUsageSink: graderSink,
+						});
+					}
+
+					// Attach timing + cost telemetry (and grounding when run)
+					// to the stage's metrics payload — published
+					// `EvalStageResult.metrics` is `Record<string, unknown>`
+					// so this is additive.
 					result.metrics = {
 						...result.metrics,
 						timing: timer.allStats(),
 						cost: costs.allStats(),
+						...(grounding ? { grounding } : {}),
 					};
 					}
 					break;
