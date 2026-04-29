@@ -476,6 +476,7 @@ async function main() {
 							collectionId: values.collection!,
 							corpusSourceTypes,
 							perQueryHook: (id, ms) => timer.record("per-query-total", ms),
+							checkParaphrases: process.env.WTFOC_CHECK_PARAPHRASES === "1",
 						},
 						values["diversity-enforce"] ?? false,
 					);

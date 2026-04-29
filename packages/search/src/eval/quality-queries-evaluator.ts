@@ -69,6 +69,24 @@ interface QueryScore {
 	recallAtK: number | null;
 	/** Top-K depth used to compute `recallAtK` (currently 10). */
 	recallK: number | null;
+	/**
+	 * #311 (Phase 1a) — paraphrase invariance check. Populated only when
+	 * `QualityQueriesContext.checkParaphrases === true` AND the fixture
+	 * has `paraphrases` for this query.
+	 */
+	paraphraseScores?: ParaphraseScore[];
+	/**
+	 * True iff the canonical query passed AND every paraphrase passed.
+	 * Brittle queries (canonical pass + ≥1 paraphrase fail) surface as
+	 * false. Undefined when paraphrases not checked.
+	 */
+	paraphraseInvariant?: boolean;
+}
+
+export interface ParaphraseScore {
+	text: string;
+	passed: boolean;
+	passedQueryOnly: boolean;
 }
 
 /**
@@ -92,6 +110,14 @@ export interface QualityQueriesContext {
 	 * across the fixture; consumers leave it unset.
 	 */
 	perQueryHook?: (queryId: string, durationMs: number) => void;
+	/**
+	 * Run each fixture query's `paraphrases` through the same scoring
+	 * pipeline and report per-query `paraphraseInvariant`. Default off
+	 * because paraphrase scoring multiplies wall-clock cost by ~(1+N)
+	 * paraphrases per query; on for autoresearch sweeps that need
+	 * brittleness signal.
+	 */
+	checkParaphrases?: boolean;
 }
 
 export async function evaluateQualityQueries(
@@ -135,6 +161,7 @@ export async function evaluateQualityQueries(
 			reranker,
 			autoRoute,
 			diversityEnforce,
+			context.checkParaphrases ?? false,
 		);
 		context.perQueryHook?.(gq.id, performance.now() - queryStart);
 		scores.push(score);
@@ -306,6 +333,12 @@ export async function evaluateQualityQueries(
 			// tier in v1.7.0). Reports the mean recall@K across those
 			// queries plus the per-tier average for demo-critical.
 			recallAtK: aggregateRecall(scores),
+			// #311 (Phase 1a) — paraphrase invariance aggregate. Only
+			// emitted when paraphrase checking ran. A query is "brittle"
+			// when canonical passes but ≥1 paraphrase fails — directly
+			// measures the memorization-not-retrieval risk peer-review
+			// flagged at #311.
+			paraphraseInvariance: aggregateParaphraseInvariance(scores),
 		},
 		checks,
 	};
@@ -379,6 +412,26 @@ function aggregateRecall(scores: QueryScore[]): RecallAggregate {
 	};
 }
 
+interface ParaphraseInvarianceAggregate {
+	checked: boolean;
+	withParaphrases: number;
+	allInvariant: number;
+	brittle: number;
+	invariantFraction: number;
+}
+
+function aggregateParaphraseInvariance(scores: QueryScore[]): ParaphraseInvarianceAggregate {
+	const withP = scores.filter((s) => !s.skipped && s.paraphraseInvariant !== undefined);
+	const allInvariant = withP.filter((s) => s.paraphraseInvariant === true).length;
+	return {
+		checked: withP.length > 0,
+		withParaphrases: withP.length,
+		allInvariant,
+		brittle: withP.length - allInvariant,
+		invariantFraction: withP.length > 0 ? allInvariant / withP.length : 0,
+	};
+}
+
 function aggregateDiversity(scores: QueryScore[]): DiversityAggregate {
 	const applicable = scores.filter((s) => !s.skipped);
 	const passing = applicable.filter((s) => s.passed);
@@ -416,7 +469,25 @@ function skippedScore(gq: GoldStandardQuery, reason: string): QueryScore {
 	};
 }
 
-async function scoreQuery(
+interface InnerScore {
+	passed: boolean;
+	passedQueryOnly: boolean;
+	resultCount: number;
+	requiredTypesFound: boolean;
+	requiredTypesFoundQueryOnly: boolean;
+	substringFound: boolean;
+	edgeHopFound: boolean;
+	crossSourceFound: boolean;
+	sourceTypesReached: string[];
+	lineage: LineageMetrics | null;
+	distinctDocs: number;
+	distinctSourceTypes: number;
+	recallAtK: number | null;
+	recallK: number | null;
+}
+
+async function scoreText(
+	queryText: string,
 	gq: GoldStandardQuery,
 	embedder: Embedder,
 	vectorIndex: VectorIndex,
@@ -426,7 +497,7 @@ async function scoreQuery(
 	reranker?: Reranker,
 	autoRoute = false,
 	diversityEnforce = false,
-): Promise<QueryScore> {
+): Promise<InnerScore> {
 	let resultCount = 0;
 	let requiredTypesFound = false;
 	// #261 — captured before trace rescue so we can report retrieval quality
@@ -443,7 +514,7 @@ async function scoreQuery(
 	let recallK: number | null = null;
 
 	try {
-		const boosts = autoRoute ? classifyQueryPersona(gq.queryText).sourceTypeBoosts : undefined;
+		const boosts = autoRoute ? classifyQueryPersona(queryText).sourceTypeBoosts : undefined;
 		// File-level gold queries (#286) get an automatic boost on file-summary
 		// chunks (#287). Category-based rather than persona-classifier-based
 		// because the gold fixture already tags intent explicitly. Value chosen
@@ -455,7 +526,7 @@ async function scoreQuery(
 		const diversityOption = diversityEnforce ? { minScoreRatio: 0.65 } : undefined;
 
 		// Query phase
-		const qResult = await query(gq.queryText, embedder, vectorIndex, {
+		const qResult = await query(queryText, embedder, vectorIndex, {
 			topK: 10,
 			signal,
 			reranker,
@@ -496,7 +567,7 @@ async function scoreQuery(
 		}
 
 		// Trace phase
-		const tResult = await trace(gq.queryText, embedder, vectorIndex, segments, {
+		const tResult = await trace(queryText, embedder, vectorIndex, segments, {
 			mode: "analytical",
 			signal,
 			overlayEdges: overlayEdges.length > 0 ? overlayEdges : undefined,
@@ -543,9 +614,6 @@ async function scoreQuery(
 		resultCount >= gq.minResults && requiredTypesFoundQueryOnly && substringFound;
 
 	return {
-		id: gq.id,
-		category: gq.category,
-		queryText: gq.queryText,
 		passed,
 		passedQueryOnly,
 		resultCount,
@@ -560,5 +628,62 @@ async function scoreQuery(
 		distinctSourceTypes: distinctTypes.size,
 		recallAtK,
 		recallK,
+	};
+}
+
+async function scoreQuery(
+	gq: GoldStandardQuery,
+	embedder: Embedder,
+	vectorIndex: VectorIndex,
+	segments: Segment[],
+	signal?: AbortSignal,
+	overlayEdges: Edge[] = [],
+	reranker?: Reranker,
+	autoRoute = false,
+	diversityEnforce = false,
+	checkParaphrases = false,
+): Promise<QueryScore> {
+	const inner = await scoreText(
+		gq.queryText,
+		gq,
+		embedder,
+		vectorIndex,
+		segments,
+		signal,
+		overlayEdges,
+		reranker,
+		autoRoute,
+		diversityEnforce,
+	);
+
+	let paraphraseScores: ParaphraseScore[] | undefined;
+	let paraphraseInvariant: boolean | undefined;
+	if (checkParaphrases && gq.paraphrases && gq.paraphrases.length > 0) {
+		paraphraseScores = [];
+		for (const p of gq.paraphrases) {
+			const ps = await scoreText(
+				p,
+				gq,
+				embedder,
+				vectorIndex,
+				segments,
+				signal,
+				overlayEdges,
+				reranker,
+				autoRoute,
+				diversityEnforce,
+			);
+			paraphraseScores.push({ text: p, passed: ps.passed, passedQueryOnly: ps.passedQueryOnly });
+		}
+		paraphraseInvariant = inner.passed && paraphraseScores.every((p) => p.passed);
+	}
+
+	return {
+		id: gq.id,
+		category: gq.category,
+		queryText: gq.queryText,
+		...inner,
+		...(paraphraseScores ? { paraphraseScores } : {}),
+		...(paraphraseInvariant !== undefined ? { paraphraseInvariant } : {}),
 	};
 }

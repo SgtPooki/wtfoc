@@ -244,6 +244,65 @@ describe("evaluateQualityQueries", () => {
 		});
 	});
 
+	describe("paraphrase invariance (#311 Phase 1a)", () => {
+		it("populates paraphraseScores + paraphraseInvariant when checkParaphrases is on", async () => {
+			mockQuery.mockResolvedValue(
+				makeQueryResult([
+					{ sourceType: "code", source: "/src/ingest/pipeline.ts", score: 0.9 },
+					{ sourceType: "code", source: "/src/ingest/chunker.ts", score: 0.8 },
+				]),
+			);
+			mockTrace.mockResolvedValue(
+				makeTraceResult([
+					{ method: "edge", sourceType: "code" },
+					{ method: "edge", sourceType: "github-issue" },
+				]),
+			);
+
+			const result = await evaluateQualityQueries(
+				mockEmbedder,
+				mockVectorIndex,
+				mockSegments,
+				undefined,
+				[],
+				undefined,
+				false,
+				{ checkParaphrases: true },
+			);
+			const scores = result.metrics.scores as Array<{
+				id: string;
+				paraphraseScores?: Array<{ text: string; passed: boolean }>;
+				paraphraseInvariant?: boolean;
+			}>;
+			// No query in the current fixture has paraphrases (Phase 1b
+			// will add them), so the per-score paraphrase fields are
+			// undefined and the aggregate reports checked=false.
+			for (const s of scores) {
+				expect(s.paraphraseScores).toBeUndefined();
+				expect(s.paraphraseInvariant).toBeUndefined();
+			}
+			const inv = result.metrics.paraphraseInvariance as {
+				checked: boolean;
+				withParaphrases: number;
+			};
+			expect(inv.checked).toBe(false);
+			expect(inv.withParaphrases).toBe(0);
+		});
+
+		it("emits paraphraseInvariance aggregate at the metrics level", async () => {
+			mockQuery.mockResolvedValue(makeQueryResult([]));
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+			const result = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
+			const inv = result.metrics.paraphraseInvariance as {
+				checked: boolean;
+				withParaphrases: number;
+				invariantFraction: number;
+			};
+			expect(inv).toBeDefined();
+			expect(typeof inv.invariantFraction).toBe("number");
+		});
+	});
+
 	describe("retrieval recall@K (#311 Phase 0d)", () => {
 		it("computes recall@10 for queries with goldSupportingSources", async () => {
 			// wl-1 has goldSupportingSources: ["piece.ts", "pieceCid"].

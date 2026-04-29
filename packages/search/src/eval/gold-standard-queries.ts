@@ -28,7 +28,7 @@
  * separate changes coincide on the same version — a new change always gets
  * a fresh bump.
  */
-export const GOLD_STANDARD_QUERIES_VERSION = "1.7.0";
+export const GOLD_STANDARD_QUERIES_VERSION = "1.8.0";
 
 export interface GoldStandardQuery {
 	/** Unique identifier for this query */
@@ -124,6 +124,21 @@ export interface GoldStandardQuery {
 	 * baseline yet).
 	 */
 	goldSupportingSources?: string[];
+	/**
+	 * Paraphrase variants for invariance testing (Phase 1 of #311 — added
+	 * v1.8.0). Each entry is a rewording of `queryText` that preserves
+	 * intent + difficulty (not synonym-swapped trivia). When the
+	 * autoresearch loop's `WTFOC_CHECK_PARAPHRASES=1` flag is set, the
+	 * evaluator scores every paraphrase and reports per-query
+	 * `paraphraseInvariant` (canonical AND all paraphrases pass).
+	 *
+	 * A query is "brittle" if the canonical passes but any paraphrase
+	 * fails — exactly the memorization-not-retrieval failure mode
+	 * peer-review flagged at #311.
+	 *
+	 * Aim for ≥3 paraphrases per gold query.
+	 */
+	paraphrases?: string[];
 }
 
 export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
