@@ -44,21 +44,20 @@ interface Threshold {
 }
 
 const THRESHOLDS = {
-	// v1.8.0 re-baseline (#311 Phase 1f): fixture grew 45 → 67 base
-	// queries (+10 synthesis-tier expansion, +12 hard negatives). Hard
-	// negatives bring inverted scoring — pass when retrieval correctly
-	// returns no strong false positives. Today's flagship retrieval
-	// hallucinate-matches all 12 hard negatives (real signal), so the
-	// hard-negative pass rate drags overall pass rate down. Floors here
-	// reflect post-expansion numbers with one-cycle buffer.
-	overallMin: 0.6, // was 0.8 (v1.7.0). Re-baselined from 66.7% — captures regression without alarming on hard-negative drag.
-	workLineageMin: 0.875, // 7/8 — unchanged
-	demoCriticalMin: 1.0, // 5/5 hard floor — unchanged
-	fileLevelMin: 1.0, // unchanged
-	// Portability floor (v1.6.0 → v1.8.0). Was 70% on a 13-query portable
-	// set; now 26 portable queries (added port-* + portable synthesis +
-	// portable hard-negatives). Re-baselined from 46.2% — flagship
-	// regression detector, not gating.
+	// v1.9.0 re-baseline (#311 peer-review (a)): fixture grew 67 → 157
+	// base queries via parallel subagent pass (codex/cursor/gemini).
+	// Many new queries are deliberately harder than the original 45 —
+	// reaching ≥150 INDEPENDENT base queries the way reviewer (peer-
+	// review (a)) flagged is mandatory means the per-category pass
+	// rates drop by construction. Floors here reflect post-expansion
+	// numbers with one-cycle buffer.
+	overallMin: 0.55, // re-baselined from 56.9% — captures regression without flapping on the now-much-harder fixture.
+	workLineageMin: 0.6, // was 0.875 (8/9). Now 27 wl queries; 17 pass = 63%. Floor = 60% with one-query buffer.
+	demoCriticalMin: 1.0, // 5/5 hard floor — unchanged. Demo-critical remains the original wl-1..wl-5 set.
+	fileLevelMin: 0.7, // was 1.0 (4/4). Now 12 fl queries; 9 pass = 75%. Floor at 70%.
+	// Portability floor (v1.6.0 → v1.9.0). Was 70% on 13 portable;
+	// now ~30 portable. Re-baselined from 46% — flagship regression
+	// detector, not gating.
 	portableMin: 0.4,
 	// Applicability floor. A high pass rate on a low applicable rate is
 	// the overfit-and-skip signature — warn if the fixture can barely
@@ -70,10 +69,10 @@ const THRESHOLDS = {
 	// cross-source dispersion check) lands. Tracked so a regression
 	// that fabricates more false positives is visible immediately.
 	hardNegativeMin: 0.0,
-	// Paraphrase invariance fraction. v1.8.0 first-pass observed 0.80
-	// across the 41 queries with paraphrases (4 of 45 skipped on this
-	// corpus). Floor at 0.7 with one-cycle buffer — invariance dropping
-	// below this signals brittleness creeping in.
+	// Paraphrase invariance fraction. v1.9.0 has 135 paraphrased
+	// queries (45 original + 90 new). Floor at 0.7 with one-cycle
+	// buffer — invariance dropping below this signals brittleness
+	// creeping in.
 	paraphraseInvariantMin: 0.7,
 } as const;
 

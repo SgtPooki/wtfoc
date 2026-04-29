@@ -1239,6 +1239,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["storage/manager.ts"],
 		minResults: 1,
 		portability: "portable",
+		paraphrases: [
+			"What file contains the upload coordinator that fronts multiple providers and drives store, pull, and commit steps?",
+			"Where is the multi-provider upload facade implemented that sequences storing, pulling, and committing?",
+			"Which source file is responsible for orchestrating store/pull/commit through a unified multi-provider upload layer?",
+		],
 	},
 	{
 		id: "dl-10",
@@ -1248,6 +1253,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["calculate-deposit-needed.ts", "get-upload-costs.ts"],
 		minResults: 2,
 		portability: "portable",
+		paraphrases: [
+			"What helper calculates the runway, safety buffer, and full deposit needed before starting an upload?",
+			"Which utility figures out required upload funding, including runway, buffer, and total deposit?",
+			"Where is the pre-upload deposit calculator that derives runway, buffer, and overall required funds?",
+		],
 	},
 	{
 		id: "dl-11",
@@ -1258,6 +1268,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["piece/download.ts"],
 		minResults: 1,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Which file performs streaming validation of a downloaded blob against a target PieceCID?",
+			"Where is downloaded content checked on the fly to ensure it matches the expected PieceCID?",
+			"What source file verifies a streamed download against an expected PieceCID while reading it?",
+		],
 	},
 	{
 		id: "dl-12",
@@ -1271,6 +1286,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		],
 		minResults: 2,
 		portability: "portable",
+		paraphrases: [
+			"Which typed-data files are used to sign the create-data-set and add-pieces messages?",
+			"Where are the EIP-712-style modules for signing create-data-set and add-pieces payloads defined?",
+			"What typed-data modules cover signatures for both dataset creation and piece addition requests?",
+		],
 	},
 	{
 		id: "dl-13",
@@ -1280,6 +1300,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["use-service-price.ts"],
 		minResults: 1,
 		portability: "portable",
+		paraphrases: [
+			"Which React hook exposes the current service price via react-query?",
+			"Where is the hook that fetches and returns the current service price using react-query?",
+			"What React hook provides service pricing through a react-query-backed call?",
+		],
 	},
 	{
 		id: "dl-14",
@@ -1290,6 +1315,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["use-create-data-set.ts"],
 		minResults: 1,
 		portability: "portable",
+		paraphrases: [
+			"Which hook creates a dataset, polls a status URL until completion, and then invalidates cached dataset queries?",
+			"Where is the React hook that submits dataset creation, waits on the returned status endpoint, and refreshes dataset cache entries?",
+			"What hook handles create-data-set, follows the status URL, and finally invalidates react-query dataset caches?",
+		],
 	},
 	{
 		id: "dl-15",
@@ -1300,6 +1330,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["select-providers.ts", "fetch-provider-selection-input.ts"],
 		minResults: 2,
 		portability: "portable",
+		paraphrases: [
+			"Which provider-picking logic favors datasets whose metadata matches and deliberately avoids health checks?",
+			"Where is the selection flow that prioritizes metadata-aligned datasets while explicitly skipping provider health probes?",
+			"What code chooses providers by preferring metadata matches and not running health checks?",
+		],
 	},
 	{
 		id: "dl-16",
@@ -1313,6 +1348,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		],
 		minResults: 2,
 		portability: "portable",
+		paraphrases: [
+			"Which generated Solidity reader contract is used for eth_call state access, and what script generates it?",
+			"Where is the auto-generated Solidity view wrapper for eth_call reads, and which script builds it?",
+			"What generated contract wraps on-chain state reads for eth_call, and what generation script produces that artifact?",
+		],
 	},
 	{
 		id: "dl-17",
@@ -1323,6 +1363,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["synapse.ts"],
 		minResults: 1,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Which file declares the Synapse class that composes payments, providers, warm storage, FilBeam, and StorageManager?",
+			"Where is the main Synapse class defined that wires together payment handling, provider logic, warm storage, FilBeam, and the storage manager?",
+			"What source file contains the Synapse class integrating payments, providers, warm storage, FilBeam, and StorageManager?",
+		],
 	},
 	{
 		id: "dl-18",
@@ -1332,6 +1377,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["piece/piece.ts"],
 		minResults: 1,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Where in synapse-core is getSizeFromPieceCID implemented for PieceCIDv2 values?",
+			"Which synapse-core file contains the PieceCIDv2-specific getSizeFromPieceCID logic?",
+			"What location in synapse-core handles size extraction from PieceCIDv2 through getSizeFromPieceCID?",
+		],
 	},
 	{
 		id: "dl-19",
@@ -1341,6 +1391,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["filsnap.ts"],
 		minResults: 1,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Which file defines the useFilsnap hook built around wagmi account effects?",
+			"Where is the React hook useFilsnap implemented with wagmi account effect handling?",
+			"What source file contains the useFilsnap hook that reacts to wagmi account changes?",
+		],
 	},
 	{
 		id: "dl-20",
@@ -1351,6 +1406,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["SignatureVerificationLib.sol"],
 		minResults: 1,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Where is EIP-712 metadata hashing plus signature recovery implemented for FilecoinWarmStorageService?",
+			"Which file contains the metadata hash and signature recovery logic used by FilecoinWarmStorageService?",
+			"What contract-side implementation handles typed-data metadata hashing and signer recovery for FilecoinWarmStorageService?",
+		],
 	},
 	{
 		id: "dl-21",
@@ -1361,6 +1421,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["ServiceProviderRegistry.sol"],
 		minResults: 1,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Which contract is responsible for provider registration and the addProduct, updateProduct, and removeProduct functions?",
+			"Where are provider enrollment and product add/update/remove operations owned on-chain?",
+			"What contract manages service provider registration along with addProduct, updateProduct, and removeProduct?",
+		],
 	},
 	{
 		id: "dl-22",
@@ -1374,6 +1439,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		],
 		minResults: 2,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Where do the filecoin-services contracts derive Active versus Inactive dataset status for off-chain consumers?",
+			"Which contract code computes whether a dataset is Active or Inactive for off-chain state readers?",
+			"What part of filecoin-services determines dataset Active/Inactive status in state exposed to off-chain readers?",
+		],
 	},
 	{
 		id: "dl-23",
@@ -1384,6 +1454,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["session-key/login.ts", "session-key/permissions.ts"],
 		minResults: 2,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Which session-key files contain the login transaction helper and the default FWSS permission hash definitions?",
+			"Where are the login helper for session keys and the default FWSS permission hashes implemented?",
+			"What session-key source files define both the login transaction utility and the default FWSS permission hash set?",
+		],
 	},
 	{
 		id: "cs-8",
@@ -1399,6 +1474,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 3,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		paraphrases: [
+			"Which release note says provider selection was moved into a core package, and what files now implement multi-copy provider selection?",
+			"Where is the release documentation for provider selection shifting into core, and which source files realize the multi-copy selection path?",
+			"What changelog entry covers moving provider choice into the core package, and where is the multi-copy selection flow implemented?",
+		],
 	},
 	{
 		id: "cs-9",
@@ -1410,6 +1490,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 3,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		paraphrases: [
+			"How do the README explanations of datasets, pieces, and payment rails correspond to the storage context code?",
+			"Map the README concepts around data sets, pieces, and payment rails onto the actual storage context implementation.",
+			"Where do the README-level ideas for datasets, pieces, and payment rails show up in storage context code?",
+		],
 	},
 	{
 		id: "cs-10",
@@ -1425,6 +1510,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 3,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		paraphrases: [
+			"How is off-chain contract state access described in docs, and how is it realized through a generated view wrapper plus extsload libraries?",
+			"What documentation explains off-chain contract reads, and how do the generated view contract and extsload-based libraries implement that design?",
+			"Trace the path from docs about off-chain state reading to the generated wrapper and extsload libraries that implement it.",
+		],
 	},
 	{
 		id: "cs-11",
@@ -1441,6 +1531,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		paraphrases: [
+			"Which issue introduced viem-based session keys, and what files implement the login flow and permission handling?",
+			"What GitHub issue added session-key support with viem, and where are the login and permission components in source?",
+			"Which issue tracks viem session keys, and which files contain the resulting login helper and permission logic?",
+		],
 	},
 	{
 		id: "cs-12",
@@ -1457,6 +1552,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		paraphrases: [
+			"Which issue added the storage facade built around context objects, and where was that work implemented?",
+			"What issue introduced a context-based storage facade, and which source files landed the implementation?",
+			"Trace the issue that brought in the storage facade with context objects and identify where it was coded.",
+		],
 	},
 	{
 		id: "cs-13",
@@ -1469,6 +1569,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Which issue changed how PieceCIDv2 size extraction works, and where is the updated helper implemented?",
+			"What issue covers the PieceCIDv2 size-extraction change, and which file contains the helper now?",
+			"Trace the issue that modified PieceCIDv2 size parsing and point to the helper implementation.",
+		],
 	},
 	{
 		id: "cs-14",
@@ -1480,6 +1585,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 2,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		paraphrases: [
+			"How do docs describe signature verification for typed dataset and add-pieces actions, and where is that logic implemented in contract code?",
+			"Where is signature verification for dataset creation and piece addition documented, and which contract library actually performs it?",
+			"Trace the documented story for typed dataset/add-pieces signature checking into the contract library implementation.",
+		],
 	},
 	{
 		id: "cs-15",
@@ -1496,6 +1606,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"How was synapse-sdk issue #618 reflected across synapse-core, synapse-sdk, and synapse-react?",
+			"What changed for synapse-sdk issue #618 across the core package, the SDK, and the React layer?",
+			"Trace how issue #618 in synapse-sdk landed across synapse-core, synapse-sdk, and synapse-react.",
+		],
 	},
 	{
 		id: "cs-16",
@@ -1512,6 +1627,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"How did synapse-sdk issue #209 introduce session keys, and which exported session-key modules now carry that functionality?",
+			"Trace issue #209 from session-key support design to the currently exported session-key modules.",
+			"What was the implementation path for synapse-sdk issue #209, and which session-key exports represent that feature today?",
+		],
 	},
 	{
 		id: "cs-17",
@@ -1527,6 +1647,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"How did synapse-sdk issue #489 alter StorageContext caching for clientDataSetId?",
+			"What changed in StorageContext clientDataSetId caching as part of synapse-sdk issue #489?",
+			"Trace the effect of issue #489 on how StorageContext caches clientDataSetId values.",
+		],
 	},
 	{
 		id: "cs-18",
@@ -1543,6 +1668,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"How did synapse-sdk issue #438 remove getClientDataSetsWithDetails from createStorageContext?",
+			"What changes from issue #438 caused createStorageContext to stop exposing getClientDataSetsWithDetails?",
+			"Trace issue #438 and explain how getClientDataSetsWithDetails was removed from createStorageContext.",
+		],
 	},
 	{
 		id: "cs-19",
@@ -1558,6 +1688,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 3,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"How do filecoin-services deployment docs and scripts manage linking SignatureVerificationLib into FilecoinWarmStorageService?",
+			"Where do the deployment instructions and scripts show SignatureVerificationLib being linked into FilecoinWarmStorageService?",
+			"Trace how documentation and deployment scripts handle library linking for SignatureVerificationLib and FilecoinWarmStorageService.",
+		],
 	},
 	{
 		id: "cs-20",
@@ -1573,6 +1708,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 3,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"How do the filecoin-services upgrade docs and scripts correspond to announcePlannedUpgrade and nextUpgrade support in contracts?",
+			"What documentation and scripting around upgrades lines up with the contract support for announcePlannedUpgrade and nextUpgrade?",
+			"Trace the relationship between upgrade docs/scripts and the Solidity implementation of announcePlannedUpgrade plus nextUpgrade.",
+		],
 	},
 	{
 		id: "cs-21",
@@ -1589,6 +1729,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 3,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"How do the Synapse SDK breaking-change notes for Warm Storage, Data Sets, Pieces, and Service Providers map onto the current code layout?",
+			"Where do the breaking-change notes about warm storage, datasets, pieces, and service providers show up in actual package structure?",
+			"Map the Synapse SDK breaking-change documentation for Warm Storage/Data Sets/Pieces/Service Providers to the real code organization.",
+		],
 	},
 	{
 		id: "cs-22",
@@ -1605,6 +1750,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"How did synapse-sdk issue #156 surface in Curio CommPv2 compatibility updates and PieceCID terminology changes?",
+			"Trace issue #156 through the CommPv2 compatibility work in Curio and the related PieceCID naming changes.",
+			"What code and docs reflect synapse-sdk issue #156 in terms of Curio CommPv2 support and updated PieceCID terminology?",
+		],
 	},
 
 	// cursor pass — coverage + work-lineage on filecoin-pin +
@@ -1618,6 +1768,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["ipni", "advertisement", "validate"],
 		minResults: 3,
 		portability: "portable",
+		paraphrases: [
+			"What IPNI advertisement handling themes are present here, including validation, publishing, and error paths?",
+			"Survey the corpus for IPNI advertisement logic such as validation rules, publication flows, and failure handling.",
+			"Which categories of IPNI advertisement behavior appear across the code and docs, from publish to validation to error management?",
+		],
 	},
 	{
 		id: "cov-10",
@@ -1628,6 +1783,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["CommP", "piece", "verify"],
 		minResults: 3,
 		portability: "corpus-specific",
+		paraphrases: [
+			"What CommP-related logic exists across the corpus, covering calculation, verification, and format validation?",
+			"Survey the repository for CommP functionality, including generation, checking, and format-related safeguards.",
+			"Which kinds of CommP code paths appear here, from computing values to verifying them and checking representation details?",
+		],
 	},
 	{
 		id: "cov-11",
@@ -1638,6 +1798,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["pdp", "proof", "challenge"],
 		minResults: 3,
 		portability: "corpus-specific",
+		paraphrases: [
+			"What PDP artifacts are represented, such as challenge handling, proof generation, and proof verification?",
+			"Inventory the PDP-related material in the corpus, including proof creation, proof checking, and challenge-flow logic.",
+			"Which PDP components show up across the codebase, covering challenges, proof generation, and verifier-side behavior?",
+		],
 	},
 	{
 		id: "cov-12",
@@ -1648,6 +1813,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["service_contracts", "abi", "sol"],
 		minResults: 3,
 		portability: "corpus-specific",
+		paraphrases: [
+			"What categories of Filecoin service contract artifacts exist here, including Solidity source, ABIs, and view/state interfaces?",
+			"Survey the corpus for filecoin-services contract artifacts like Solidity contracts, ABI outputs, and state-reading interfaces.",
+			"Which kinds of service-contract deliverables are present, from Solidity implementations to ABI files and view-layer interfaces?",
+		],
 	},
 	{
 		id: "cov-13",
@@ -1658,6 +1828,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["DataSetStatus", "dataset", "state"],
 		minResults: 2,
 		portability: "corpus-specific",
+		paraphrases: [
+			"What dataset lifecycle states and state transitions are documented or implemented in this corpus?",
+			"Survey the repository for dataset lifecycle stages and the transitions between them, whether described or coded.",
+			"Which dataset lifecycle statuses and movement rules appear across docs and implementation?",
+		],
 	},
 	{
 		id: "cov-14",
@@ -1668,6 +1843,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["billing", "deposit", "funding"],
 		minResults: 3,
 		portability: "portable",
+		paraphrases: [
+			"What billing rail behaviors appear in the corpus, including deposit, funding, charging, and settlement flows?",
+			"Survey the codebase for payment-rail mechanics such as funding, deposits, charge application, and settlement-related steps.",
+			"Which categories of billing-rail logic are represented here, from prefunding through charging and settlement?",
+		],
 	},
 	{
 		id: "cov-15",
@@ -1678,6 +1858,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["retry", "backoff", "circuit"],
 		minResults: 3,
 		portability: "portable",
+		paraphrases: [
+			"What retry and resilience patterns show up in the codebase, including retries, backoff, and circuit-breaker-style protections?",
+			"Survey the repository for transient-failure handling patterns such as retry loops, backoff strategies, and guardrails around repeated failures.",
+			"Which kinds of resilience logic are implemented across the code, including retry semantics, delay policies, and breaker-like checks?",
+		],
 	},
 	{
 		id: "cov-16",
@@ -1688,6 +1873,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["indexer", "ipni", "sync"],
 		minResults: 3,
 		portability: "portable",
+		paraphrases: [
+			"What categories of indexer integration behavior are present, including ad ingestion, lookup flows, and synchronization?",
+			"Survey the corpus for indexer-related logic such as advertisement ingestion, query/lookup behavior, and sync processes.",
+			"Which kinds of indexer integration appear across the repo, from advertisement intake to lookup and synchronization handling?",
+		],
 	},
 	{
 		id: "cov-17",
@@ -1698,6 +1888,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["synapse-core", "service_contracts", "abi"],
 		minResults: 2,
 		portability: "corpus-specific",
+		paraphrases: [
+			"What cross-language boundaries between TypeScript and Solidity artifacts exist in this corpus?",
+			"Survey where TypeScript code interfaces with Solidity outputs or contracts across the repository.",
+			"Which parts of the corpus sit at the TS/Solidity boundary, such as generated artifacts, ABI use, or contract wrappers?",
+		],
 	},
 	{
 		id: "cov-18",
@@ -1708,6 +1903,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["sector", "deal", "validate"],
 		minResults: 3,
 		portability: "portable",
+		paraphrases: [
+			"What sector and deal validation logic is present, including checks on sectors, deals, and proof prerequisites?",
+			"Survey the repository for validation around sectors and deals, including preconditions needed before proofs can proceed.",
+			"Which categories of sector/deal checking appear here, from acceptance validation to proof-related prerequisite checks?",
+		],
 	},
 	{
 		id: "cov-19",
@@ -1718,6 +1918,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["upgrade", "contract", "service_contracts"],
 		minResults: 2,
 		portability: "corpus-specific",
+		paraphrases: [
+			"What contract upgrade mechanisms or upgrade-related discussions exist across the service contracts and surrounding code?",
+			"Survey the corpus for upgrade patterns in contracts and any related implementation or documentation about upgrades.",
+			"Which kinds of contract-upgrade support and upgrade discussion are represented across service contracts and their tooling?",
+		],
 	},
 	{
 		id: "cov-20",
@@ -1728,6 +1933,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["stake", "slot", "lease"],
 		minResults: 2,
 		portability: "portable",
+		paraphrases: [
+			"What staking or slot-leasing mechanics are represented in contracts and adjacent implementation artifacts?",
+			"Survey the code and docs for staking behavior or slot-leasing rules and their supporting implementation.",
+			"Which categories of staking and leasing mechanics appear across the repository, both on-chain and in surrounding code?",
+		],
 	},
 	{
 		id: "wl-9",
@@ -1739,8 +1949,13 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
-		tier: "demo-critical",
+		tier: "diagnostic",
 		portability: "corpus-specific",
+		paraphrases: [
+			"Where is IPNI advertisement validation coded, and which PRs or issues explain why those checks were introduced?",
+			"Trace IPNI advertisement validation from implementation files back to the PR or issue discussions that justified it.",
+			"What source implements IPNI ad validation, and what issue or PR commentary explains the reasoning for those validations?",
+		],
 	},
 	{
 		id: "wl-10",
@@ -1752,8 +1967,13 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
-		tier: "demo-critical",
+		tier: "diagnostic",
 		portability: "corpus-specific",
+		paraphrases: [
+			"Trace CommP verification from the implementation to the PR comment history that discussed correctness and edge cases.",
+			"Where is CommP verification implemented, and what PR discussion debated whether it handled corner cases correctly?",
+			"Follow the lineage of CommP verification in code and identify the review threads that argued about correctness details.",
+		],
 	},
 	{
 		id: "wl-11",
@@ -1765,8 +1985,13 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
-		tier: "demo-critical",
+		tier: "diagnostic",
 		portability: "corpus-specific",
+		paraphrases: [
+			"How is the dataset lifecycle state machine implemented in filecoin-services, and what issue or PR discussions explain the transition decisions?",
+			"Trace dataset lifecycle state handling in filecoin-services code back to issue or review threads that justify the state transitions.",
+			"Where does filecoin-services implement dataset state transitions, and which PRs or issues document the rationale behind them?",
+		],
 	},
 	{
 		id: "wl-12",
@@ -1778,8 +2003,13 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
-		tier: "demo-critical",
+		tier: "diagnostic",
 		portability: "corpus-specific",
+		paraphrases: [
+			"Show how curio PDP proof-verification code connects to PRs discussing verifier behavior and failure handling.",
+			"Trace curio's PDP verifier implementation to the PR threads that talk about failure modes and verifier semantics.",
+			"Which curio proof-verification files map to PR discussions about PDP verifier behavior and handling verification failures?",
+		],
 	},
 	{
 		id: "wl-13",
@@ -1792,6 +2022,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Which synapse-core TypeScript modules consume contract ABIs or service-contract interfaces, and what PR or issue history explains those integration points?",
+			"Trace the TypeScript modules in synapse-core that depend on contract ABIs or service interfaces, along with the issue/PR rationale for those boundaries.",
+			"What TS components in synapse-core sit on contract-interface boundaries, and which PRs or issues explain why they are structured that way?",
+		],
 	},
 	{
 		id: "wl-14",
@@ -1804,6 +2039,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Trace indexer integration work from implementation files to the PR discussions that mention IPNI/indexer sync behavior.",
+			"Where is indexer synchronization implemented, and which PR or issue threads talk about IPNI sync expectations?",
+			"Follow the code path for indexer integration into the review history that discusses synchronization with IPNI or indexers.",
+		],
 	},
 	{
 		id: "wl-15",
@@ -1816,6 +2056,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		paraphrases: [
+			"Where are retry or backoff patterns implemented for external calls, and what PR or issue history explains those resilience decisions?",
+			"Trace network-call retry and backoff code to the discussions that justify the chosen resilience behavior.",
+			"Which files implement retries around external interactions, and what issue or PR commentary explains the backoff strategy?",
+		],
 	},
 	{
 		id: "wl-16",
@@ -1828,6 +2073,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"How did contract upgrade work move from Solidity and ABI changes into PR review, and what migration-safety concerns came up?",
+			"Trace contract upgrade support from implementation artifacts to review discussions that raised migration or upgrade safety risks.",
+			"Where do the contract upgrade changes land in code, and what PR comments discuss safe migration concerns?",
+		],
 	},
 	{
 		id: "wl-17",
@@ -1840,6 +2090,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Trace deal-lifecycle validation from curio code paths to the issues or PRs that discuss invalid deal and sector edge cases.",
+			"Where is deal validation implemented on the curio side, and which review threads discuss rejected deals or sector-related corner cases?",
+			"Follow curio's deal-validation paths into the issue/PR history that covers invalid-deal and sector edge-case handling.",
+		],
 	},
 	{
 		id: "wl-18",
@@ -1852,6 +2107,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Where is billing-rail logic for funding and deposit flows implemented, and what PR or issue discussions explain charging or settlement changes?",
+			"Trace deposit/funding code for the billing rail back to issue or PR commentary about charging and settlement behavior.",
+			"Which implementation files handle billing funding flows, and what review history explains shifts in charge or settlement semantics?",
+		],
 	},
 	{
 		id: "wl-19",
@@ -1864,6 +2124,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Which PDP challenge-generation or validation changes can be tied to PR comments about proof reliability and operator impact?",
+			"Trace PDP challenge creation or checking changes to review discussions focused on proof robustness and operational consequences.",
+			"What code changes around PDP challenge generation/validation line up with PR commentary about verifier reliability or operator burden?",
+		],
 	},
 	{
 		id: "wl-20",
@@ -1876,6 +2141,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Trace how service-contract state and view interfaces are consumed in implementation code and connected to issues or PRs clarifying contract semantics.",
+			"Where are state/view interfaces from the service contracts used, and which issue or review threads explain what those interfaces mean?",
+			"Follow the use of service-contract read interfaces in code back to PRs or issues that clarified their semantics.",
+		],
 	},
 	{
 		id: "wl-21",
@@ -1888,6 +2158,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Where are slot-leasing mechanics implemented, and what PR or issue history explains the leasing rules, limits, or arbitration?",
+			"Trace slot-leasing code to the issue or PR discussions that define limits, rule enforcement, or dispute handling.",
+			"Which files implement slot leasing, and what review history explains how leasing constraints or arbitration are supposed to work?",
+		],
 	},
 	{
 		id: "wl-22",
@@ -1900,6 +2175,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Trace staking mechanics from contract implementation to issue or PR commentary about stake requirements, slashing exposure, or incentives.",
+			"Where is staking behavior coded, and which PR or issue discussions cover required stake levels, slashing risk, or incentive design?",
+			"Follow staking-related contracts and code into the review history that discusses stake sizing, slashing, and incentive alignment.",
+		],
 	},
 	{
 		id: "wl-23",
@@ -1912,6 +2192,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		paraphrases: [
+			"How did indexer advertisement ingestion evolve from code changes to issue or PR discussion about malformed advertisements?",
+			"Trace the implementation history of advertisement ingestion into review threads focused on malformed IPNI ads.",
+			"Where are indexer ad-ingestion changes implemented, and what PR or issue commentary discusses bad or malformed advertisement handling?",
+		],
 	},
 	{
 		id: "wl-24",
@@ -1924,6 +2209,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Which curio PDP implementation files correspond to cross-org PRs referencing filecoin-services contract assumptions, and what was resolved in review?",
+			"Trace curio PDP files to external or cross-org PR discussions that depended on filecoin-services contract assumptions, and summarize what review settled.",
+			"What curio PDP source changes map to PRs mentioning filecoin-services contract assumptions, and what conclusions came out of review comments?",
+		],
 	},
 	{
 		id: "wl-25",
@@ -1936,6 +2226,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		paraphrases: [
+			"Trace TypeScript-to-Solidity boundary changes where SDK code paths were updated alongside contract artifacts, including the issue and PR lineage.",
+			"Where did TS SDK code and Solidity artifacts change together, and what issue/PR trail documents that boundary work?",
+			"Follow updates that touched both SDK TypeScript paths and contract artifacts, along with the linked issue and PR history.",
+		],
 	},
 	{
 		id: "wl-26",
@@ -1948,6 +2243,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Where do curio sector-validation checks connect to issue and PR discussion about deal acceptance criteria and proof prerequisites?",
+			"Trace curio's sector validation logic to the issue or review history covering deal-admission rules and proof preconditions.",
+			"Which curio sector-checking files line up with PR or issue discussions about acceptance criteria for deals and required proof conditions?",
+		],
 	},
 
 	// gemini pass — portable + file-level + synthesis tier:
@@ -1960,6 +2260,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		paraphrases: [
+			"How is the CLI organized, and where are its subcommands declared?",
+			"What is the structure of the command-line interface, and in which files are command definitions registered?",
+			"Where can I see how the CLI is assembled and where each subcommand gets defined?",
+		],
 	},
 	{
 		id: "port-5",
@@ -1970,6 +2275,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 2,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		paraphrases: [
+			"What recurring error-handling patterns does the codebase use, and how are those errors processed?",
+			"Survey the common error styles in the project and explain how failures are handled.",
+			"How does this codebase typically model and respond to errors across modules?",
+		],
 	},
 	{
 		id: "port-6",
@@ -1979,6 +2289,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 2,
 		requireEdgeHop: true,
 		portability: "portable",
+		paraphrases: [
+			"What dependency-injection or service-registration pattern does the project use?",
+			"How are services wired together in this system; is there a DI or registration mechanism?",
+			"Describe how components are instantiated and registered if the codebase uses dependency injection or a service container.",
+		],
 	},
 	{
 		id: "port-7",
@@ -1988,6 +2303,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 2,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		paraphrases: [
+			"How are secrets and sensitive env vars validated and managed?",
+			"What is the pattern for handling confidential configuration values and checking that required environment variables are present?",
+			"Where does the system define and validate secrets or sensitive environment-based settings?",
+		],
 	},
 	{
 		id: "port-8",
@@ -1998,6 +2318,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		paraphrases: [
+			"What approach does the project take for async work or background-job processing?",
+			"How are asynchronous tasks and background jobs modeled and executed in the system?",
+			"Describe the strategy for running deferred or background work across the codebase.",
+		],
 	},
 	{
 		id: "port-9",
@@ -2006,6 +2331,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["markdown"],
 		minResults: 2,
 		portability: "portable",
+		paraphrases: [
+			"Which docs are the best entry points for understanding the overall architecture?",
+			"What documentation files give the clearest high-level system overview?",
+			"If I want the architectural big picture, which docs should I read first?",
+		],
 	},
 	{
 		id: "port-10",
@@ -2016,6 +2346,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 2,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		paraphrases: [
+			"Do the docs or issues mention any known performance bottlenecks or optimization targets?",
+			"Where are performance concerns or optimization goals called out in documentation or issue history?",
+			"Are there documented hotspots, scaling concerns, or stated optimization priorities anywhere in the repo?",
+		],
 	},
 	{
 		id: "port-11",
@@ -2026,6 +2361,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		paraphrases: [
+			"How does the codebase integrate with external APIs or third-party services?",
+			"What are the main patterns for calling outside services and third-party APIs?",
+			"Where and how does the system talk to external platforms or vendor APIs?",
+		],
 	},
 	{
 		id: "port-12",
@@ -2035,6 +2375,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 2,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		paraphrases: [
+			"What log levels exist, and where is the logger configured or created?",
+			"Which logging severities are supported by the project, and where does logger initialization happen?",
+			"How is logging set up, including the available levels and the code that boots the logger?",
+		],
 	},
 	{
 		id: "port-13",
@@ -2045,6 +2390,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		paraphrases: [
+			"How is persistence handled, and what database or storage backend does the system use?",
+			"What storage engine or database underlies the application, and how does the code manage persistence?",
+			"Describe the project's data persistence layer and the backing database or storage mechanism it relies on.",
+		],
 	},
 	{
 		id: "port-14",
@@ -2054,6 +2404,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["markdown"],
 		minResults: 1,
 		portability: "portable",
+		paraphrases: [
+			"What do the development guidelines say about test coverage for new features?",
+			"How are contributors expected to test new functionality according to the project's guidelines?",
+			"What is the stated testing expectation for newly added features?",
+		],
 	},
 	{
 		id: "port-15",
@@ -2065,6 +2420,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 3,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		paraphrases: [
+			"Are there any TODOs or known-unimplemented features mentioned in code or issue discussions?",
+			"Where does the repo call out unfinished work, whether as TODO comments or open issue notes?",
+			"What unimplemented features or pending tasks are explicitly mentioned in source or issue history?",
+		],
 	},
 	{
 		id: "port-16",
@@ -2075,6 +2435,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 3,
 		requireEdgeHop: true,
 		portability: "portable",
+		paraphrases: [
+			"What are the main entity types or core data structures in the system?",
+			"Which types or structs model the primary concepts this project revolves around?",
+			"Describe the foundational data structures that represent the system's key entities.",
+		],
 	},
 	{
 		id: "port-17",
@@ -2084,6 +2449,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 2,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		paraphrases: [
+			"How is CI/CD set up, and what are the major build or test stages?",
+			"What does the pipeline configuration look like, including the main steps for build, test, and delivery?",
+			"Where is the CI/CD workflow defined, and what are its principal stages?",
+		],
 	},
 	{
 		id: "port-18",
@@ -2094,6 +2464,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 1,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		paraphrases: [
+			"Are any functions or modules marked as deprecated or no longer recommended?",
+			"What parts of the codebase are considered deprecated and should be avoided?",
+			"Does the repository identify any APIs or modules as obsolete?",
+		],
 	},
 	{
 		id: "fl-5",
@@ -2103,6 +2478,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["HierarchicalCodeChunker"],
 		minResults: 1,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Which file contains the HierarchicalCodeChunker class definition?",
+			"Where is HierarchicalCodeChunker implemented?",
+			"What source file declares the HierarchicalCodeChunker class?",
+		],
 	},
 	{
 		id: "fl-6",
@@ -2112,6 +2492,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["cli", "main"],
 		minResults: 1,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Where is the CLI's main entry point implemented?",
+			"Which file contains the primary startup code for the command-line interface?",
+			"What source file serves as the main entry point for the CLI?",
+		],
 	},
 	{
 		id: "fl-7",
@@ -2121,6 +2506,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["config", "schema"],
 		minResults: 1,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Which file defines the configuration schema or interfaces?",
+			"Where are the project's config types or schema definitions located?",
+			"What source file contains the configuration interface or validation schema?",
+		],
 	},
 	{
 		id: "fl-8",
@@ -2130,6 +2520,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["github", "client"],
 		minResults: 1,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Where is GitHub API integration and event handling implemented?",
+			"Which file manages GitHub API calls along with event-processing logic?",
+			"What source file contains the code for GitHub integration and incoming event handling?",
+		],
 	},
 	{
 		id: "fl-9",
@@ -2139,6 +2534,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["store", "interface"],
 		minResults: 1,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Which file defines the storage interface for the Fact Oriented Codebase?",
+			"Where is the core storage contract for the Fact Oriented Codebase declared?",
+			"What file contains the storage interface used by the Fact Oriented Codebase?",
+		],
 	},
 	{
 		id: "fl-10",
@@ -2148,6 +2548,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["embed", "embedding"],
 		minResults: 1,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Where is the embedding logic for the RAG pipeline implemented?",
+			"Which file contains the code that generates embeddings in the RAG flow?",
+			"What source file handles embedding generation for the retrieval pipeline?",
+		],
 	},
 	{
 		id: "fl-11",
@@ -2157,6 +2562,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["slack", "chat", "ingest"],
 		minResults: 1,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Which file is responsible for ingesting Slack or chat messages?",
+			"Where is the code that processes Slack or other chat-message ingestion?",
+			"What source file manages chat-message ingestion, including Slack data?",
+		],
 	},
 	{
 		id: "fl-12",
@@ -2166,6 +2576,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["edge", "extract"],
 		minResults: 1,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Where are the edge-extraction constants and helper utilities defined?",
+			"Which file contains shared constants and utility functions used for edge extraction?",
+			"What source file defines the reusable helpers and constants for extracting edges?",
+		],
 	},
 	{
 		id: "syn-18",
@@ -2177,6 +2592,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"What is the system's observability approach, including logging conventions and any telemetry or tracing hooks?",
+			"Describe how observability is handled here, covering logs, metrics, traces, or instrumentation if present.",
+			"How does the project approach observability across logging patterns and any telemetry or tracing support?",
+		],
 	},
 	{
 		id: "syn-19",
@@ -2188,6 +2608,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"How are retry policies and transient-failure handling implemented across components that make network calls?",
+			"Describe the way network-bound modules deal with temporary failures, including retries and related semantics.",
+			"What are the retry and transient-error strategies used by components that depend on remote services?",
+		],
 	},
 	{
 		id: "syn-20",
@@ -2199,6 +2624,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Analyze the threat model: how does ingestion treat untrusted input, and how are tenant boundaries enforced?",
+			"What security model governs untrusted ingested data and isolation between tenants?",
+			"How does the system defend against malicious input during ingestion while preserving cross-tenant separation?",
+		],
 	},
 	{
 		id: "syn-21",
@@ -2210,6 +2640,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"What is the migration strategy for schema evolution, and how are older facts re-indexed?",
+			"Describe how the project handles schema changes over time and reprocessing of historical indexed data.",
+			"How do data migrations work here, including schema updates and re-indexing past facts?",
+		],
 	},
 	{
 		id: "syn-22",
@@ -2221,6 +2656,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Describe the testing strategy across unit, integration, and end-to-end levels, and how CI verifies each layer.",
+			"How does the project split testing between unit, integration, and e2e coverage, and what does CI run to enforce it?",
+			"What is the overall test approach, distinguishing unit/integration/e2e work and the way those tests are checked in CI?",
+		],
 	},
 	{
 		id: "syn-23",
@@ -2232,6 +2672,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"How is dependency injection or the plugin architecture structured to support extensible ingestion sources?",
+			"What architecture lets the system add new ingestion-source plugins or injected services?",
+			"Describe how the codebase is organized so ingestion sources can be extended through plugins or dependency wiring.",
+		],
 	},
 	{
 		id: "syn-24",
@@ -2243,5 +2688,10 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		paraphrases: [
+			"Are performance benchmarks or scalability thresholds documented, and how does the implementation respond to those limits?",
+			"What documented benchmarks, scale triggers, or capacity thresholds exist, and what code addresses them?",
+			"Does the project spell out performance or scalability tripwires, and how are those concerns handled in implementation?",
+		],
 	},
 ];
