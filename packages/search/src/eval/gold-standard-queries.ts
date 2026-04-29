@@ -28,7 +28,7 @@
  * separate changes coincide on the same version — a new change always gets
  * a fresh bump.
  */
-export const GOLD_STANDARD_QUERIES_VERSION = "1.8.0";
+export const GOLD_STANDARD_QUERIES_VERSION = "1.8.1";
 
 export interface GoldStandardQuery {
 	/** Unique identifier for this query */
@@ -722,7 +722,18 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		tier: "demo-critical",
 		requiredSourceTypes: ["code", "github-pr-comment", "markdown"],
 		expectedSourceSubstrings: ["piece.ts", "pieceCid"],
-		goldSupportingSources: ["piece.ts", "pieceCid"],
+		// Hand-curated v1.8.1 (#311 peer-review item (c)): replace
+		// the substring-mirror with the actual canonical sources where
+		// PieceCID validation lives. Phase 0d's mirror was a calibrated
+		// proxy; this is the real ground truth, sourced via direct
+		// inspection of the v12 corpus chunks (ranked by content-term
+		// frequency on PieceCID/validate). recall@K now measures whether
+		// retrieval surfaces the canonical implementation, not whether
+		// it surfaces a chunk that happens to mention "piece.ts".
+		goldSupportingSources: [
+			"synapse-sdk/packages/synapse-core/src/piece/piece.ts",
+			"synapse-sdk/packages/synapse-sdk/src/storage/context.ts",
+		],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -748,7 +759,15 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		// supported set.
 		requiredSourceTypes: ["code", "github-pr", "markdown"],
 		expectedSourceSubstrings: ["DataSetStatus", "filecoin-services"],
-		goldSupportingSources: ["DataSetStatus", "filecoin-services"],
+		// Hand-curated v1.8.1 (#311 peer-review item (c)): the literal
+		// "DataSetStatus" symbol exists in only two ABI files in the v12
+		// corpus, both inside filecoin-services service_contracts.
+		// Pinning gold to those exact files breaks the substring-mirror
+		// circularity (where "filecoin-services" matched 1200+ chunks).
+		goldSupportingSources: [
+			"filecoin-services/service_contracts/abi/FilecoinWarmStorageServiceStateLibrary.abi.json",
+			"filecoin-services/service_contracts/abi/FilecoinWarmStorageServiceStateView.abi.json",
+		],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -775,7 +794,16 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		// plus its lineage via edges within the code graph.
 		requiredSourceTypes: ["code"],
 		expectedSourceSubstrings: ["payments", "synapse-core"],
-		goldSupportingSources: ["payments", "synapse-core"],
+		// Hand-curated v1.8.1 (#311 peer-review item (c)): the actual
+		// deposit implementation lives in synapse-core/src/pay/deposit.ts
+		// (the canonical entry point) and the broader payments service
+		// lives in synapse-sdk/src/payments/service.ts. Mirrored gold
+		// would have matched any chunk containing "payments" — far too
+		// loose for ranking variants on retrieval quality.
+		goldSupportingSources: [
+			"synapse-sdk/packages/synapse-core/src/pay/deposit.ts",
+			"synapse-sdk/packages/synapse-sdk/src/payments/service.ts",
+		],
 		minResults: 3,
 		requireEdgeHop: true,
 		paraphrases: [
@@ -793,7 +821,15 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		// Query top-N surfaces filecoin-pin source files + CHANGELOG and
 		// synapse-sdk#... PR URLs. Pin on repo names that appear there.
 		expectedSourceSubstrings: ["filecoin-pin", "synapse-sdk"],
-		goldSupportingSources: ["filecoin-pin", "synapse-sdk"],
+		// Hand-curated v1.8.1 (#311 peer-review item (c)): cross-repo
+		// validation lives in synapse-core's piece.ts (canonical) AND
+		// filecoin-pin's IPNI advertisement validator. Mirrored gold
+		// would have matched any chunk under filecoin-pin/* OR
+		// synapse-sdk/* — almost the whole corpus.
+		goldSupportingSources: [
+			"synapse-sdk/packages/synapse-core/src/piece/piece.ts",
+			"filecoin-pin/src/core/utils/validate-ipni-advertisement.ts",
+		],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -810,7 +846,15 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		tier: "demo-critical",
 		requiredSourceTypes: ["code", "markdown"],
 		expectedSourceSubstrings: ["payments", "deposit"],
-		goldSupportingSources: ["payments", "deposit"],
+		// Hand-curated v1.8.1 (#311 peer-review item (c)): payments
+		// implementation in filecoin-pin lives across these two files
+		// (top content-frequency rank for `deposit` + `payment` +
+		// `filecoin-pin`). Mirrored gold "payments" + "deposit" would
+		// have matched any chunk anywhere mentioning either word.
+		goldSupportingSources: [
+			"filecoin-pin/src/core/payments/index.ts",
+			"filecoin-pin/src/core/payments/funding.ts",
+		],
 		minResults: 3,
 		requireEdgeHop: true,
 		paraphrases: [

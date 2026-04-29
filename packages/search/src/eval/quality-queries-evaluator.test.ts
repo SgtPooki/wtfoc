@@ -332,13 +332,22 @@ describe("evaluateQualityQueries", () => {
 
 	describe("retrieval recall@K (#311 Phase 0d)", () => {
 		it("computes recall@10 for queries with goldSupportingSources", async () => {
-			// wl-1 has goldSupportingSources: ["piece.ts", "pieceCid"].
-			// Provide top-K with both substrings present in source paths →
+			// wl-1 has goldSupportingSources pinned to the canonical
+			// PieceCID source paths in v12 (#311 peer-review item (c)).
+			// Provide top-K with both gold paths in result sources →
 			// expect recallAtK = 1.0.
 			mockQuery.mockResolvedValue(
 				makeQueryResult([
-					{ sourceType: "code", source: "/src/piece.ts", score: 0.95 },
-					{ sourceType: "markdown", source: "docs/pieceCid-spec.md", score: 0.9 },
+					{
+						sourceType: "code",
+						source: "synapse-sdk/packages/synapse-core/src/piece/piece.ts",
+						score: 0.95,
+					},
+					{
+						sourceType: "code",
+						source: "synapse-sdk/packages/synapse-sdk/src/storage/context.ts",
+						score: 0.9,
+					},
 				]),
 			);
 			mockTrace.mockResolvedValue(makeTraceResult([]));
