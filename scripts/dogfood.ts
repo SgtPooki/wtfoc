@@ -175,8 +175,8 @@ async function main() {
 	const groundingEnabled = process.env.WTFOC_GROUND_CHECK === "1";
 	const graderConfig = groundingEnabled
 		? {
-				url: process.env.WTFOC_GRADER_URL ?? "https://vllm.bt.sgtpooki.com/v1",
-				model: process.env.WTFOC_GRADER_MODEL ?? "qwen3.6-27b",
+				url: process.env.WTFOC_GRADER_URL ?? "https://raw-vllm.bt.sgtpooki.com/v1",
+				model: process.env.WTFOC_GRADER_MODEL ?? "qwen36-27b-aeon",
 				apiKey: process.env.WTFOC_GRADER_KEY,
 			}
 		: null;

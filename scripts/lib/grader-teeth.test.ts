@@ -6,16 +6,15 @@ import { gradeClaims } from "./grounding-runner.js";
  *
  * # Validated graders (verdict-accuracy floor 0.80, 10-case fixture)
  *
- *   ollama qwen3:14b ........... PASS (2026-04-29)
+ *   raw-vllm qwen36-27b-aeon ... PASS (2026-04-29) — production grader,
+ *     direct vLLM at https://raw-vllm.bt.sgtpooki.com/v1, model id
+ *     qwen36-27b-aeon (= Qwen3.6-27B-AEON-Ultimate-Uncensored-NVFP4).
+ *   ollama qwen3:14b ........... PASS (2026-04-29) — Mac fallback.
  *
  * Untested:
- *   ollama qwen3.6:27b-nvfp4 ... TIMED OUT under default settings;
- *     Metal GPU timeouts on the host machine. Re-run with longer
- *     ollama keep-alive or a less-loaded session before treating
- *     this model as the default grader.
- *   vllm qwen3.6-27b ............ endpoint behind cloudflare returned
- *     schema-shaped responses, not real completions, when polled
- *     2026-04-29; not yet validated.
+ *   ollama qwen3.6:27b-nvfp4 ... Metal GPU timeouts on this session;
+ *     re-run with longer ollama keep-alive or less-loaded host before
+ *     treating it as the default grader.
  *
  * Maintainer: when adding a grader to this list, run with
  *   WTFOC_GRADER_TEETH=1 WTFOC_GRADER_URL=... WTFOC_GRADER_MODEL=...

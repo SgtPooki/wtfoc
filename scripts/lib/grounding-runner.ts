@@ -2,14 +2,15 @@
  * Synthesis + grading runner for the synthesis tier. Maintainer-only.
  *
  * Off by default. Enable with `WTFOC_GROUND_CHECK=1`. Grader config:
- *   WTFOC_GRADER_URL   default: https://vllm.bt.sgtpooki.com/v1
- *   WTFOC_GRADER_MODEL default: qwen3.6-27b
+ *   WTFOC_GRADER_URL   default: https://raw-vllm.bt.sgtpooki.com/v1
+ *   WTFOC_GRADER_MODEL default: qwen36-27b-aeon (= Qwen3.6-27B-AEON-...-NVFP4)
  *   WTFOC_GRADER_KEY   optional bearer token
  *
  * The grader MUST be at least as strong as the extractor — peer-review
- * consensus. Default points at a local vLLM serving qwen3.6-27b
- * (stronger than haiku-class extractors). Mac fallback is ollama
- * qwen3.6:27b-nvfp4 — same model family + size, just different host.
+ * consensus. Default points at the homelab raw-vllm (direct vLLM,
+ * bypasses admin proxy) serving qwen36-27b-aeon, which passed the
+ * grader-teeth adversarial fixture (>=80% verdict accuracy). Mac
+ * fallback: ollama qwen3:14b (also validated on the same fixture).
  *
  * No multi-grader escalation. Single pinned grader is the Phase 0f cut;
  * disagreement protocols are explicit creep.
