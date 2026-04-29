@@ -168,7 +168,7 @@ function summarize(results: SweepRunResult[]): void {
 	const lb = paretoLeaderboard(inputs);
 	logErr(formatLeaderboard(lb));
 
-	if (results[0]?.decisionVsBaseline) {
+	if (results.some((r) => r.decisionVsBaseline)) {
 		logErr("");
 		logErr("=== Decision vs baseline (paired bootstrap) ===");
 		logErr("variantId                   | accept | meanΔ   | probB>A | gates  | reasons");
