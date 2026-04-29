@@ -18,7 +18,8 @@
 		"clean": "pnpm -r exec rm -rf dist",
 		"dogfood": "tsx --tsconfig scripts/tsconfig.json scripts/dogfood.ts",
 		"dogfood:setup": "tsx --tsconfig scripts/tsconfig.json scripts/dogfood-setup.ts",
-		"dogfood:flagship": "bash scripts/dogfood-flagship.sh"
+		"dogfood:flagship": "bash scripts/dogfood-flagship.sh",
+		"autoresearch:sweep": "tsx --tsconfig scripts/tsconfig.json scripts/autoresearch/sweep.ts"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.8",
