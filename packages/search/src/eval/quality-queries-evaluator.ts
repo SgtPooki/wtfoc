@@ -181,6 +181,7 @@ export async function evaluateQualityQueries(
 		"synthesis",
 		"file-level",
 		"work-lineage",
+		"hard-negative",
 	] as const;
 	const categoryBreakdown: Record<
 		string,
@@ -601,17 +602,29 @@ async function scoreText(
 		// Query/trace failure = no results
 	}
 
+	// Hard-negative scoring is INVERTED. A hard negative passes when
+	// retrieval correctly does NOT pile on strong-looking false positives.
+	// Phase 1c floor: pass when resultCount stays under a small threshold.
+	// A retrieval variant that "improves" by surfacing more results for
+	// hard negatives is worse, not better. Tightening (top-K score floor +
+	// cross-source dispersion check) is Phase 1+ work.
+	const HARD_NEGATIVE_RESULT_CEILING = 3;
+
 	const passed =
-		resultCount >= gq.minResults &&
-		requiredTypesFound &&
-		substringFound &&
-		edgeHopFound &&
-		crossSourceFound;
+		gq.category === "hard-negative"
+			? resultCount < HARD_NEGATIVE_RESULT_CEILING
+			: resultCount >= gq.minResults &&
+				requiredTypesFound &&
+				substringFound &&
+				edgeHopFound &&
+				crossSourceFound;
 
 	// Query-only pass: same criteria EXCEPT use the pre-trace requiredTypes check
 	// and ignore edge-hop/cross-source requirements (those are inherently trace-assisted).
 	const passedQueryOnly =
-		resultCount >= gq.minResults && requiredTypesFoundQueryOnly && substringFound;
+		gq.category === "hard-negative"
+			? resultCount < HARD_NEGATIVE_RESULT_CEILING
+			: resultCount >= gq.minResults && requiredTypesFoundQueryOnly && substringFound;
 
 	return {
 		passed,

@@ -59,7 +59,8 @@ export interface GoldStandardQuery {
 		| "coverage"
 		| "synthesis"
 		| "file-level"
-		| "work-lineage";
+		| "work-lineage"
+		| "hard-negative";
 	/** Source types that MUST appear in query results OR trace hops for the query to pass */
 	requiredSourceTypes: string[];
 	/** Substrings that should appear in at least one result source */
@@ -150,6 +151,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["code"],
 		expectedSourceSubstrings: ["ingest", "/src/"],
 		minResults: 2,
+		paraphrases: [
+			"What steps does the ingestion pipeline follow when handling input files?",
+			"Walk me through how source documents move through ingest processing.",
+			"How are source files read, transformed, and passed along during ingestion?",
+		],
 	},
 	{
 		id: "dl-2",
@@ -158,6 +164,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["code"],
 		expectedSourceSubstrings: ["manifest", ".ts"],
 		minResults: 1,
+		paraphrases: [
+			"What structure does a collection manifest use?",
+			"Describe the schema that defines collection manifests.",
+			"Which fields and layout make up the collection manifest format?",
+		],
 	},
 	{
 		id: "dl-3",
@@ -171,6 +182,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		// simply doesn't exist.
 		collectionScopePattern: "^(wtfoc-|default$)",
 		collectionScopeReason: "probes wtfoc-self edge-extractor internals",
+		paraphrases: [
+			"Within this codebase, how are edges derived from ingested content?",
+			"What is the local edge-extraction process used by the system?",
+			"How does this project extract semantic links from source material?",
+		],
 	},
 
 	// ── Cross-source tracing ──────────────────────────────────
@@ -182,6 +198,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 2,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
+		paraphrases: [
+			"Which issues talk about edge resolution, and where was the solution implemented?",
+			"Find the issue threads about resolving edges and the code that landed for them.",
+			"What issue discussions cover edge resolution, and what implementation files correspond to them?",
+		],
 	},
 	{
 		id: "cs-2",
@@ -191,6 +212,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 2,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
+		paraphrases: [
+			"Which pull requests modified search or trace behavior, and what files changed in those PRs?",
+			"Find PRs that touched search or tracing and list the source files they updated.",
+			"What code was affected by pull requests that changed search or trace features?",
+		],
 	},
 	{
 		id: "cs-3",
@@ -205,6 +231,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["markdown"],
 		minResults: 2,
 		requireCrossSourceHops: true,
+		paraphrases: [
+			"Which TypeScript files contain the storage logic described by the synapse-sdk docs?",
+			"Map the storage operations in synapse-sdk documentation to the implementing TypeScript source files.",
+			"What TS source files implement the storage behaviors documented in synapse-sdk?",
+		],
 	},
 
 	// ── Coverage (positive presence queries, not absence) ─────
@@ -215,6 +246,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["code"],
 		minResults: 3,
 		portability: "portable",
+		paraphrases: [
+			"What kinds of sources are included in this collection?",
+			"Which source categories show up across the collected material?",
+			"What source types does this corpus contain?",
+		],
 	},
 	{
 		id: "cov-2",
@@ -231,6 +267,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["github-issue"],
 		minResults: 1,
 		requireEdgeHop: true,
+		paraphrases: [
+			"Find the FilOzone filecoin-services issue about emitting an event from dataSetDeleted and signed user auth.",
+			"Which issue in filecoin-services covers a dataSetDeleted event plus signed user authentication?",
+			"Locate the Filecoin services issue discussing dataSetDeleted event emission together with signed auth for users.",
+		],
 	},
 
 	{
@@ -240,6 +281,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["code"],
 		expectedSourceSubstrings: ["chunk", "index"],
 		minResults: 1,
+		paraphrases: [
+			"How are chunks persisted and made searchable in the vector index?",
+			"What is the storage and indexing flow for chunks used in vector search?",
+			"How does the system save chunks and register them for embedding-based retrieval?",
+		],
 	},
 	{
 		id: "dl-5",
@@ -249,6 +295,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["config"],
 		minResults: 1,
 		portability: "portable",
+		paraphrases: [
+			"What configuration settings does the project support?",
+			"Which options can be configured in this system?",
+			"What are the available project-level configuration knobs?",
+		],
 	},
 
 	// ── Cross-source tracing ──────────────────────────────────
@@ -260,6 +311,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 2,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
+		paraphrases: [
+			"Which PRs fixed chunking bugs, and what files did those fixes modify?",
+			"Find pull requests for chunking-related bug fixes and the files they touched.",
+			"What bug-fix PRs addressed chunking problems, and where in the code were the changes made?",
+		],
 	},
 	{
 		id: "cs-5",
@@ -274,6 +330,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 1,
 		requireEdgeHop: true,
 		portability: "portable",
+		paraphrases: [
+			"Which PR conversations were about dependency upgrades, and how were those updates resolved?",
+			"Find pull request discussions covering dependency bumps and their final resolution.",
+			"What PR threads discuss dependency updates, and what outcome did they reach?",
+		],
 	},
 
 	// ── Coverage ──────────────────────────────────────────────
@@ -284,6 +345,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["markdown", "code"],
 		minResults: 1,
 		portability: "portable",
+		paraphrases: [
+			"Where is test coverage defined, reported, or documented?",
+			"Which files or docs describe how test coverage is configured?",
+			"Where can I find coverage configuration or coverage documentation?",
+		],
 	},
 	{
 		id: "cov-4",
@@ -292,6 +358,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["markdown"],
 		minResults: 1,
 		portability: "portable",
+		paraphrases: [
+			"What software licenses govern the code in this collection?",
+			"Which licenses apply across the repository contents?",
+			"What licensing terms are attached to the code gathered here?",
+		],
 	},
 
 	// ── Synthesis ─────────────────────────────────────────────
@@ -307,6 +378,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		// don't map.
 		collectionScopePattern: "^(wtfoc-|default$)",
 		collectionScopeReason: "probes wtfoc-self ingest→embed→search pipeline",
+		paraphrases: [
+			"In this system, how does content move from ingest through embeddings into search output?",
+			"Explain the end-to-end pipeline here from ingestion to embedding generation to returned search results.",
+			"What is the local flow from source ingestion, through indexing, to final search responses?",
+		],
 	},
 	{
 		id: "syn-2",
@@ -315,6 +391,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["markdown"],
 		minResults: 3,
 		portability: "portable",
+		paraphrases: [
+			"What is the high-level system architecture?",
+			"Describe the overall design of the platform.",
+			"How is the system organized at an architectural level?",
+		],
 	},
 	{
 		id: "syn-3",
@@ -324,6 +405,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 2,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
+		paraphrases: [
+			"How are edges used to link information across multiple source types?",
+			"Explain how content from different sources gets connected through edges.",
+			"In what way do edges bridge documents or artifacts from separate sources?",
+		],
 	},
 	{
 		id: "syn-4",
@@ -332,6 +418,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["markdown", "github-pr"],
 		minResults: 2,
 		portability: "portable",
+		paraphrases: [
+			"How are releases cut, and what is the version-tagging process?",
+			"What workflow is used for publishing releases and applying version tags?",
+			"Describe the release procedure, including how versions are tagged.",
+		],
 	},
 	{
 		id: "syn-5",
@@ -340,6 +431,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["code"],
 		minResults: 2,
 		portability: "portable",
+		paraphrases: [
+			"How does the project deal with errors, exceptions, or failed operations?",
+			"What mechanisms are used to handle failures in the system?",
+			"How are errors surfaced and managed across the system?",
+		],
 	},
 
 	// ── Coverage extras ───────────────────────────────────────
@@ -350,6 +446,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["code", "markdown"],
 		minResults: 1,
 		portability: "portable",
+		paraphrases: [
+			"What CI pipelines or GitHub Actions are defined?",
+			"Which automation workflows run in CI for this repository?",
+			"What GitHub Actions or other CI workflows exist in the project?",
+		],
 	},
 
 	// ── Direct lookup extras ──────────────────────────────────
@@ -361,6 +462,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["README"],
 		minResults: 1,
 		portability: "portable",
+		paraphrases: [
+			"What information does the README cover?",
+			"Summarize the topics explained in the main README.",
+			"What does the README say about the project and its usage?",
+		],
 	},
 	{
 		id: "dl-7",
@@ -376,6 +482,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		// today. Revisit if we start including manifest-level files.
 		collectionScopePattern: "^(wtfoc-|default$)",
 		collectionScopeReason: "requires ingested package.json manifest files",
+		paraphrases: [
+			"In the FilOz/Synapse materials, what are the primary dependencies in use?",
+			"What main libraries and packages does the FilOz-scoped codebase rely on?",
+			"Which core dependencies appear across the FilOz-related repository content?",
+		],
 	},
 
 	// ── Ecosystem-specific queries (filoz-ecosystem primary target) ──
@@ -390,6 +501,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["github-pr"],
 		expectedSourceSubstrings: ["PDP", "proof"],
 		minResults: 2,
+		paraphrases: [
+			"What recent PRs changed PDP, proof sets, or proof verification logic?",
+			"Find the latest pull requests that altered PDP or proof verification behavior.",
+			"Which recent PRs touched proof-set handling or PDP-related verification?",
+		],
 	},
 
 	{
@@ -401,6 +517,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["synapse-sdk", "filecoin-pin"],
 		minResults: 2,
 		requireCrossSourceHops: true,
+		paraphrases: [
+			"How does synapse-sdk publish data using filecoin-pin or delegated storage services?",
+			"What is the integration path between synapse-sdk and filecoin-pin or delegated storage when publishing content?",
+			"Explain how publishing data from synapse-sdk hooks into filecoin-pin or delegated storage providers.",
+		],
 	},
 	{
 		id: "cs-7",
@@ -411,6 +532,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["synapse-sdk"],
 		minResults: 2,
 		requireCrossSourceHops: true,
+		paraphrases: [
+			"How do Synapse docs describe configuring a storage provider or proof service, and how does the TypeScript code do it?",
+			"Compare the provider or proof-service setup in Synapse documentation with the TypeScript implementation.",
+			"Where do the Synapse docs and TS implementation differ or align on configuring storage or proof services?",
+		],
 	},
 
 	{
@@ -425,6 +551,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["filecoin-services", "payments"],
 		minResults: 2,
 		requireCrossSourceHops: true,
+		paraphrases: [
+			"What bugs or reported issues involved payment flows in the Filecoin services ecosystem repositories?",
+			"Find reported problems around payments across the Filecoin services repos.",
+			"Which issues describe broken or problematic payment flows in the Filecoin services ecosystem?",
+		],
 	},
 	{
 		id: "cov-7",
@@ -438,6 +569,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["PieceCID", "CommP", "piece"],
 		minResults: 2,
 		requireCrossSourceHops: true,
+		paraphrases: [
+			"How does piece.ts perform PieceCID and CommP validation in relation to synapse-core and filecoin-pin?",
+			"Explain the PieceCID and CommP checks implemented in piece.ts across synapse-core and filecoin-pin.",
+			"What validation logic for PieceCID and CommP appears in piece.ts, and how does it relate to synapse-core and filecoin-pin?",
+		],
 	},
 
 	{
@@ -455,6 +591,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 2,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
+		paraphrases: [
+			"What PR comments debated the design of the proof set or PDP service contract in filecoin-services?",
+			"Find discussion threads in PRs that argued about proof-set or PDP contract design for filecoin-services.",
+			"Which pull request discussions challenged or defended the proof set or PDP service contract design?",
+		],
 	},
 	{
 		id: "syn-7",
@@ -465,6 +606,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		expectedSourceSubstrings: ["curio", "synapse"],
 		minResults: 2,
 		requireCrossSourceHops: true,
+		paraphrases: [
+			"How do Curio ideas like sectors or deal storage relate to the Synapse client storage workflow?",
+			"Connect Curio sector or deal-storage concepts to how the Synapse client handles storage.",
+			"What is the relationship between Curio storage concepts and the Synapse client’s storage flow?",
+		],
 	},
 
 	{
@@ -474,6 +620,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["doc-page"],
 		expectedSourceSubstrings: ["docs.filecoin.io", "storage"],
 		minResults: 1,
+		paraphrases: [
+			"Which official Filecoin docs pages explain storage providers?",
+			"Find the canonical Filecoin documentation about storage providers.",
+			"What official Filecoin documentation covers storage-provider concepts?",
+		],
 	},
 
 	// ── File-level (#252 / #286) ──────────────────────────────
@@ -489,6 +640,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["code"],
 		expectedSourceSubstrings: ["synapse.ts", "synapse-sdk"],
 		minResults: 1,
+		paraphrases: [
+			"Where is the Synapse class or the createSynapse factory defined?",
+			"Which file contains the Synapse constructor or factory implementation?",
+			"What source file declares Synapse or createSynapse?",
+		],
 	},
 	{
 		id: "fl-2",
@@ -497,6 +653,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["code"],
 		expectedSourceSubstrings: ["piece"],
 		minResults: 1,
+		paraphrases: [
+			"Which file contains PieceCID and the logic for piece identity?",
+			"Where is PieceCID defined along with the piece identity implementation?",
+			"What source file owns PieceCID and related piece-identification logic?",
+		],
 	},
 	{
 		id: "fl-3",
@@ -505,6 +666,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["code"],
 		expectedSourceSubstrings: ["piece"],
 		minResults: 2,
+		paraphrases: [
+			"Which source files in the Synapse client import PieceCID?",
+			"Find all Synapse client files that reference PieceCID via import.",
+			"Where is PieceCID imported throughout the client code?",
+		],
 	},
 	{
 		id: "fl-4",
@@ -513,6 +679,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["code"],
 		expectedSourceSubstrings: ["context.ts", "storage"],
 		minResults: 1,
+		paraphrases: [
+			"What file defines StorageContext in synapse-sdk?",
+			"Where is the StorageContext type or interface declared in synapse-sdk?",
+			"Which source file contains the StorageContext definition?",
+		],
 	},
 
 	// ── Work-lineage (flagship, #264 / US-015, added v1.2.0) ──
@@ -536,6 +707,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
+		paraphrases: [
+			"In the FilOz scope, where is PieceCID validated, and what concerns were discussed about that validation?",
+			"What code performs PieceCID validation, and what objections or risks were raised about it in FilOz materials?",
+			"Locate PieceCID validation and the related concerns discussed around it within the FilOz corpus.",
+		],
 	},
 	{
 		id: "wl-2",
@@ -557,6 +733,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
+		paraphrases: [
+			"What are the DataSetStatus enum values in filecoin-services, and how do status changes happen?",
+			"List the DataSetStatus enum members and the transitions between them in filecoin-services.",
+			"How is DataSetStatus modeled in filecoin-services, including its possible values and state progression?",
+		],
 	},
 	{
 		id: "wl-3",
@@ -578,6 +759,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		goldSupportingSources: ["payments", "synapse-core"],
 		minResults: 3,
 		requireEdgeHop: true,
+		paraphrases: [
+			"Where is the deposit implementation for payments in synapse-sdk written in TypeScript?",
+			"Find the TypeScript code that implements deposits in the synapse-sdk payments flow.",
+			"Which synapse-sdk source handles payment deposits?",
+		],
 	},
 	{
 		id: "wl-4",
@@ -592,6 +778,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
+		paraphrases: [
+			"Within the FilOz materials, show the piece.ts validation logic across synapse-core and filecoin-pin, along with the PR discussion about it.",
+			"How does piece.ts validation work across synapse-core and filecoin-pin, and what did the related PR discussion say?",
+			"Find both the cross-repo piece.ts validation code and the PR conversation surrounding it in the FilOz scope.",
+		],
 	},
 	{
 		id: "wl-5",
@@ -603,6 +794,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		goldSupportingSources: ["payments", "deposit"],
 		minResults: 3,
 		requireEdgeHop: true,
+		paraphrases: [
+			"Where is the Payments module deposit function implemented in filecoin-pin, and what docs explain it?",
+			"Find the filecoin-pin deposit function in the Payments module together with any documentation context.",
+			"Show the filecoin-pin Payments deposit implementation and the docs that describe that behavior.",
+		],
 	},
 
 	// Diagnostic — lineage-only, no expectation of code surfacing
@@ -618,6 +814,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
+		paraphrases: [
+			"How was Curio connected to the synapse-sdk PDP layer through issues and pull requests?",
+			"Trace Curio’s integration with the synapse-sdk PDP layer using the relevant issues and PRs.",
+			"Which issues and PRs document Curio integration into the Synapse PDP layer?",
+		],
 	},
 	{
 		id: "wl-7",
@@ -631,6 +832,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
+		paraphrases: [
+			"What discussions covered migrating Piece CID from v1 to v2 across Curio and filecoin-services PRs?",
+			"Find PR conversations about the Piece CID v1-to-v2 migration in Curio and filecoin-services.",
+			"How was the Piece CID v1 versus v2 migration debated across Curio and filecoin-services?",
+		],
 	},
 	{
 		id: "wl-8",
@@ -643,6 +849,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		// names rather than the semantic words "storage" / "cost".
 		expectedSourceSubstrings: ["synapse-sdk", "filecoin-pin"],
 		minResults: 2,
+		paraphrases: [
+			"What storage cost and billing concepts are documented across synapse-sdk and filecoin-services?",
+			"Find documentation about pricing, billing, or storage costs in synapse-sdk and filecoin-services.",
+			"Which concepts related to storage charges and billing appear across the FilOz Synapse and filecoin-services docs?",
+		],
 	},
 
 	// ── Portable cross-source queries (v1.6.0) ────────────────
@@ -665,6 +876,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
+		paraphrases: [
+			"Locate an issue for a bug, the PR that fixed it, and the exact code changes involved.",
+			"Find a bug report, then trace it to the closing pull request and modified source files.",
+			"Can you connect a reported bug to the fixing PR and the implementation diff?",
+		],
 	},
 	{
 		id: "port-2",
@@ -678,6 +894,11 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		minResults: 2,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
+		paraphrases: [
+			"Follow a recent pull request discussion through to the files it changed.",
+			"Take a recent PR thread and map the conversation to the source files modified by that PR.",
+			"Trace one of the latest PR discussions back to the code it actually touched.",
+		],
 	},
 	{
 		id: "port-3",
@@ -689,5 +910,249 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		requiredSourceTypes: ["markdown", "code"],
 		minResults: 2,
 		requireCrossSourceHops: true,
+		paraphrases: [
+			"Find docs that describe a behavior and then identify the source code that implements that behavior.",
+			"Map documentation statements about behavior to the implementation files behind them.",
+			"Which documentation sections explain behavior that can be matched directly to code?",
+		],
+	},
+
+	// ── Synthesis (#311 Phase 1d expansion) ───────────────────
+	{
+		// Should produce claims about specific retry algorithms, backoff constants, and discrepancies between code behavior and README/architecture specs.
+		id: "syn-8",
+		queryText:
+			"Explain the system's global retry and backoff strategy for external service dependencies, and identify any documented architectural requirements that the current implementation fails to meet.",
+		category: "synthesis",
+		requiredSourceTypes: ["code", "markdown"],
+		minResults: 3,
+		requireCrossSourceHops: true,
+		portability: "portable",
+	},
+	{
+		// Should produce claims regarding the chosen auth protocol (JWT, mTLS, etc.) and specific security vulnerabilities discussed by reviewers.
+		id: "syn-9",
+		queryText:
+			"How is cross-service authentication handled, and what were the primary security concerns or alternative protocols debated in PR reviews during the initial implementation?",
+		category: "synthesis",
+		requiredSourceTypes: ["code", "github-pr-comment"],
+		minResults: 3,
+		requireCrossSourceHops: true,
+		portability: "portable",
+	},
+	{
+		// Should identify the logging library/wrapper used and link specific exclusion patterns to historical data leak issues.
+		id: "syn-10",
+		queryText:
+			"Describe the standard for structured logging and PII scrubbing across the codebase, and summarize the historical incidents mentioned in issues that led to these specific logging rules.",
+		category: "synthesis",
+		requiredSourceTypes: ["code", "github-issue"],
+		minResults: 4,
+		requireCrossSourceHops: true,
+		portability: "portable",
+	},
+	{
+		// Should produce claims about the validation logic sequence and specific UX pain points or feature requests sourced from Slack.
+		id: "syn-11",
+		queryText:
+			"What is the end-to-end PieceCID and CommP validation flow, and what improvements to the error reporting UX were suggested in Slack messages to help node operators?",
+		category: "synthesis",
+		requiredSourceTypes: ["code", "slack-message"],
+		minResults: 3,
+		requireCrossSourceHops: true,
+		portability: "corpus-specific",
+	},
+	{
+		// Should produce claims about valid state transitions and specific race conditions or logic errors flagged by PR reviewers.
+		id: "syn-12",
+		queryText:
+			"Analyze the DataSetStatus state machine: what are the terminal states, and what edge cases were identified in PR reviews that could cause a dataset to become 'stuck'?",
+		category: "synthesis",
+		requiredSourceTypes: ["code", "github-pr"],
+		minResults: 3,
+		requireCrossSourceHops: true,
+		portability: "corpus-specific",
+	},
+	{
+		// Should produce claims about database setup/teardown logic and specific environmental factors causing test non-determinism.
+		id: "syn-13",
+		queryText:
+			"How does the project maintain data isolation and consistency during integration tests, and what challenges with flaky test environments have been reported in recent issues?",
+		category: "synthesis",
+		requiredSourceTypes: ["code", "github-issue"],
+		minResults: 3,
+		requireCrossSourceHops: true,
+		portability: "portable",
+	},
+	{
+		// Should produce claims about confirmation depth thresholds and operational workarounds proposed for network instability.
+		id: "syn-14",
+		queryText:
+			"Explain the Filecoin Pay deposit lifecycle and how the implementation addresses chain re-orgs or high-latency periods as discussed in community Slack threads.",
+		category: "synthesis",
+		requiredSourceTypes: ["code", "slack-message"],
+		minResults: 3,
+		requireCrossSourceHops: true,
+		portability: "corpus-specific",
+	},
+	{
+		// Should produce claims about current secret storage (e.g. Vault, K8s secrets) and the specific limitations of the old system documented in PRs.
+		id: "syn-15",
+		queryText:
+			"What is the strategy for secret management and environment configuration, and what was the technical rationale for migrating away from the previous configuration approach?",
+		category: "synthesis",
+		requiredSourceTypes: ["code", "github-pr-comment", "markdown"],
+		minResults: 4,
+		requireCrossSourceHops: true,
+		portability: "portable",
+	},
+	{
+		// Should produce claims about the PDP protocol steps and specific resource contention issues (CPU/IO) noted during testing.
+		id: "syn-16",
+		queryText:
+			"How do Curio and the Synapse PDP integration coordinate for proof generation, and what performance bottlenecks were identified during the initial bench-marking discussed in issues?",
+		category: "synthesis",
+		requiredSourceTypes: ["code", "github-issue", "github-pr-comment"],
+		minResults: 4,
+		requireCrossSourceHops: true,
+		portability: "corpus-specific",
+	},
+	{
+		// Should produce claims about locking primitives used (Redis/Etcd vs. sync.Mutex) and link them to specific historical bug reports.
+		id: "syn-17",
+		queryText:
+			"Examine the concurrency and locking models used across the repository; where are distributed locks employed versus local mutexes, and what deadlock scenarios have been historically reported?",
+		category: "synthesis",
+		requiredSourceTypes: ["code", "github-issue"],
+		minResults: 3,
+		requireCrossSourceHops: true,
+		portability: "portable",
+	},
+
+	// ── Hard negatives (#311 Phase 1c) ───────────────────────
+	// These queries should NOT have a clean answer in the corpus.
+	// A retrieval variant that surfaces strong-looking false positives
+	// for these is worse, not better. minResults: 0 = vacuous pass on
+	// the existing rubric — Phase 1+ tightens this with negative-
+	// scoring (top-K score floor + cross-source dispersion check).
+	{
+		// Implies a GraphQL tenant API and DataLoader-style batching that this corpus does not describe, tempting lexical hits on unrelated API or fetch code.
+		id: "hn-1",
+		queryText:
+			"Where is the GraphQL schema for the public tenant API defined, and how are N+1 queries batched in the resolver layer?",
+		category: "hard-negative",
+		requiredSourceTypes: [],
+		minResults: 0,
+		portability: "portable",
+	},
+	{
+		// Uses realistic SSO language with no matching auth stack, probing whether retrieval fabricates security-adjacent snippets from issues or comments.
+		id: "hn-2",
+		queryText:
+			"How does the auth middleware refresh OAuth2 bearer tokens when the upstream IdP session expires?",
+		category: "hard-negative",
+		requiredSourceTypes: [],
+		minResults: 0,
+		portability: "portable",
+	},
+	{
+		// Observability plus ML-shaped wording should not map to storage or payment code, catching spurious matches on metrics or latency mentions.
+		id: "hn-3",
+		queryText:
+			"What Grafana dashboard JSON shows p95 embedding latency for the retrieval reranker service?",
+		category: "hard-negative",
+		requiredSourceTypes: [],
+		minResults: 0,
+		portability: "portable",
+	},
+	{
+		// Mobile and signing jargon is absent from the flagship corpus, testing resistance to generic CI or container chatter.
+		id: "hn-4",
+		queryText:
+			"Which Dockerfile stage cross-compiles the iOS client frameworks to arm64 and signs them with the enterprise distribution certificate?",
+		category: "hard-negative",
+		requiredSourceTypes: [],
+		minResults: 0,
+		portability: "portable",
+	},
+	{
+		// ML training and object-storage layout are out of scope, so hits on S3-like storage APIs should stay off-topic or empty.
+		id: "hn-5",
+		queryText:
+			"Where do we shard the fine-tuned LoRA adapter checkpoints across S3 prefixes for A/B evaluation?",
+		category: "hard-negative",
+		requiredSourceTypes: [],
+		minResults: 0,
+		portability: "portable",
+	},
+	{
+		// Kubernetes operator and HPA semantics are unrelated to Filecoin storage flows, guarding against vague infra keyword overlap.
+		id: "hn-6",
+		queryText:
+			"How does the Kubernetes operator reconcile HPA custom metrics from the Prometheus adapter when the metrics API is throttled?",
+		category: "hard-negative",
+		requiredSourceTypes: [],
+		minResults: 0,
+		portability: "portable",
+	},
+	{
+		// Near-real DevOps-on-Slack phrasing may co-occur with Slack dumps but should not yield a coherent rollback-and-Argo story.
+		id: "hn-7",
+		queryText:
+			"In the Slack incident bot, which slash command rolls back a canary deployment and posts the Argo CD diff to the war room channel?",
+		category: "hard-negative",
+		requiredSourceTypes: [],
+		minResults: 1,
+		portability: "portable",
+	},
+	{
+		// Mingles Filecoin Pay with Stripe and ACH, a plausible billing question whose premise is false for this corpus.
+		id: "hn-8",
+		queryText:
+			"How does Filecoin Pay route failed ACH debits through Stripe Radar risk scores before retrying the on-chain deposit?",
+		category: "hard-negative",
+		requiredSourceTypes: [],
+		minResults: 2,
+		portability: "corpus-specific",
+	},
+	{
+		// Stacks real ecosystem nouns into a validation story that does not hold, baiting conflation of PieceCID, CommD, Curio, and PDP.
+		id: "hn-9",
+		queryText:
+			"Where does Curio reject PieceCID values that fail CommD alignment checks during PDP proof aggregation?",
+		category: "hard-negative",
+		requiredSourceTypes: [],
+		minResults: 0,
+		portability: "corpus-specific",
+	},
+	{
+		// Invents a browser WebSocket feed for DataSetStatus, a tempting blend of SDK and state-machine terms with no such surface.
+		id: "hn-10",
+		queryText:
+			"Which synapse-sdk WebSocket channel pushes live DataSetStatus transitions to browser clients without polling?",
+		category: "hard-negative",
+		requiredSourceTypes: [],
+		minResults: 0,
+		portability: "corpus-specific",
+	},
+	{
+		// Pins OIDC and RBAC onto filecoin-pin despite no such auth model, risking retrieval of unrelated key or config strings.
+		id: "hn-11",
+		queryText:
+			"How does filecoin-pin enforce per-tenant OIDC group claims when minting scoped API keys for pin jobs?",
+		category: "hard-negative",
+		requiredSourceTypes: [],
+		minResults: 0,
+		portability: "corpus-specific",
+	},
+	{
+		// Near-duplicate of real PieceCID discussions but swaps in libp2p peer-id routing, a cross-domain confusion that must not stitch a fake helper.
+		id: "hn-12",
+		queryText:
+			"Show the helper that converts a PieceCID to a CIDv1 libp2p peer id for gossipsub routing in the storage node.",
+		category: "hard-negative",
+		requiredSourceTypes: [],
+		minResults: 0,
+		portability: "corpus-specific",
 	},
 ];
