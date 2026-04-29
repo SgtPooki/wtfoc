@@ -6,19 +6,11 @@ import { gradeClaims } from "./grounding-runner.js";
  *
  * # Validated graders (verdict-accuracy floor 0.80, 10-case fixture)
  *
- *   raw-vllm qwen36-27b-aeon ... PASS (2026-04-29) — production grader,
- *     direct vLLM at https://raw-vllm.bt.sgtpooki.com/v1, model id
- *     qwen36-27b-aeon (= Qwen3.6-27B-AEON-Ultimate-Uncensored-NVFP4).
- *   ollama qwen3:14b ........... PASS (2026-04-29) — Mac fallback.
- *
- * Untested:
- *   ollama qwen3.6:27b-nvfp4 ... Metal GPU timeouts on this session;
- *     re-run with longer ollama keep-alive or less-loaded host before
- *     treating it as the default grader.
- *
- * Maintainer: when adding a grader to this list, run with
- *   WTFOC_GRADER_TEETH=1 WTFOC_GRADER_URL=... WTFOC_GRADER_MODEL=...
- * and update the validated-graders comment with the date.
+ * Maintainers: validate any candidate grader against this fixture
+ * before treating it as production-grade. Run with:
+ *   WTFOC_GRADER_TEETH=1 WTFOC_GRADER_URL=<your-endpoint> WTFOC_GRADER_MODEL=<id>
+ * Track validation results in your own notes — model identity stays
+ * out of source control to keep deployment specifics private.
  *
  * Phase 0f's grading pipeline produced 0% hallucination on a 6-query
  * sample — too clean to be informative. Reviewers flagged this as
@@ -34,12 +26,12 @@ import { gradeClaims } from "./grounding-runner.js";
  *
  * # Why opt-in
  *
- * The test calls a real LLM endpoint (default vLLM at
- * vllm.bt.sgtpooki.com, fallback ollama qwen3.6:27b-nvfp4 on Mac).
- * Real-call latency makes it unsuitable for the default pnpm test
- * loop. Opt in with `WTFOC_GRADER_TEETH=1`. The default-skipped run
- * still type-checks and is flat-failable — the adversarial fixture
- * doubles as documentation of the grader's expected behavior.
+ * The test calls a real LLM endpoint. Real-call latency makes it
+ * unsuitable for the default pnpm test loop. Opt in with
+ * `WTFOC_GRADER_TEETH=1`. WTFOC_GRADER_URL + WTFOC_GRADER_MODEL must
+ * also be set. The default-skipped run still type-checks and is
+ * flat-failable — the adversarial fixture doubles as documentation
+ * of the grader's expected behavior.
  *
  * # The accuracy floor
  *
@@ -52,10 +44,14 @@ import { gradeClaims } from "./grounding-runner.js";
  */
 
 const TEETH_ENABLED = process.env.WTFOC_GRADER_TEETH === "1";
-const GRADER_URL =
-	process.env.WTFOC_GRADER_URL ?? "https://vllm.bt.sgtpooki.com/v1";
-const GRADER_MODEL = process.env.WTFOC_GRADER_MODEL ?? "qwen3.6-27b";
+const GRADER_URL = process.env.WTFOC_GRADER_URL ?? "";
+const GRADER_MODEL = process.env.WTFOC_GRADER_MODEL ?? "";
 const GRADER_KEY = process.env.WTFOC_GRADER_KEY;
+if (TEETH_ENABLED && (!GRADER_URL || !GRADER_MODEL)) {
+	throw new Error(
+		"WTFOC_GRADER_TEETH=1 requires WTFOC_GRADER_URL and WTFOC_GRADER_MODEL",
+	);
+}
 
 interface AdversarialCase {
 	claim: string;

@@ -173,13 +173,21 @@ async function main() {
 	// and hashed into the run fingerprint so any prompt edit produces
 	// a fresh fingerprint + namespaced cache.
 	const groundingEnabled = process.env.WTFOC_GROUND_CHECK === "1";
+	if (groundingEnabled && !process.env.WTFOC_GRADER_URL) {
+		throw new Error(
+			"WTFOC_GROUND_CHECK=1 requires WTFOC_GRADER_URL (OpenAI-compatible /v1 endpoint) and WTFOC_GRADER_MODEL",
+		);
+	}
 	const graderConfig = groundingEnabled
 		? {
-				url: process.env.WTFOC_GRADER_URL ?? "https://raw-vllm.bt.sgtpooki.com/v1",
-				model: process.env.WTFOC_GRADER_MODEL ?? "qwen36-27b-aeon",
+				url: process.env.WTFOC_GRADER_URL!,
+				model: process.env.WTFOC_GRADER_MODEL ?? "",
 				apiKey: process.env.WTFOC_GRADER_KEY,
 			}
 		: null;
+	if (graderConfig && !graderConfig.model) {
+		throw new Error("WTFOC_GROUND_CHECK=1 requires WTFOC_GRADER_MODEL");
+	}
 	const synthesizerConfig =
 		groundingEnabled && values["extractor-url"] && values["extractor-model"]
 			? {
