@@ -33,6 +33,14 @@ export interface RunLogRow {
 	matrixName: string;
 	/** Variant id within the matrix (e.g. "ar_div_rrLlm-haiku"). */
 	variantId: string;
+	/**
+	 * Sweep stage tag. Free-form string ("discovery", "confirmation",
+	 * "smoke", etc.). Lets analysis distinguish a Stage 2 paraphrase
+	 * rerun of the same variantId from the original Stage 1 row even
+	 * before fingerprint differences kick in. Optional — older rows
+	 * have no stage.
+	 */
+	stage?: string;
 	/** Run identity — same as the report carries. */
 	runConfig: RunConfig;
 	runConfigFingerprint: string;
@@ -84,6 +92,7 @@ export function buildRunLogRow(input: {
 	report: ExtendedDogfoodReport;
 	durationMs: number;
 	replicateIdx?: number;
+	stage?: string;
 }): RunLogRow {
 	const qq = input.report.stages.find((s) => s.stage === "quality-queries");
 	const m = qq?.metrics as
@@ -153,6 +162,7 @@ export function buildRunLogRow(input: {
 		},
 		durationMs: Math.round(input.durationMs),
 		...(input.replicateIdx !== undefined ? { replicateIdx: input.replicateIdx } : {}),
+		...(input.stage !== undefined ? { stage: input.stage } : {}),
 	};
 }
 

@@ -224,6 +224,10 @@ async function main() {
 			autoRoute: values["auto-route"] ?? false,
 			diversityEnforce: values["diversity-enforce"] ?? false,
 		}),
+		evaluation: {
+			checkParaphrases: process.env.WTFOC_CHECK_PARAPHRASES === "1",
+			groundCheck: groundingEnabled,
+		},
 		promptHashes,
 	});
 	const runConfigFingerprint = computeRunConfigFingerprint(runConfig);

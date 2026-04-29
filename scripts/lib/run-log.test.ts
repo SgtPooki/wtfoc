@@ -31,6 +31,10 @@ function makeReport(overrides: Partial<RunConfig> = {}): ExtendedDogfoodReport {
 			autoRoute: false,
 			diversityEnforce: false,
 		},
+		evaluation: {
+			checkParaphrases: false,
+			groundCheck: false,
+		},
 		promptHashes: {},
 		seed: 0,
 		gitSha: null,
@@ -157,6 +161,27 @@ describe("buildRunLogRow", () => {
 			replicateIdx: 2,
 		});
 		expect(row.replicateIdx).toBe(2);
+	});
+
+	it("includes stage when set; omits when not set", () => {
+		const withStage = buildRunLogRow({
+			sweepId: "sweep-1",
+			matrixName: "m",
+			variantId: "v",
+			report: makeReport(),
+			durationMs: 1,
+			stage: "confirmation",
+		});
+		expect(withStage.stage).toBe("confirmation");
+
+		const without = buildRunLogRow({
+			sweepId: "sweep-1",
+			matrixName: "m",
+			variantId: "v",
+			report: makeReport(),
+			durationMs: 1,
+		});
+		expect(without.stage).toBeUndefined();
 	});
 });
 

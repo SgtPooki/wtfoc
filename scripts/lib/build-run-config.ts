@@ -8,6 +8,7 @@ import type { HeadManifest } from "@wtfoc/common";
 import {
 	CACHE_NAMESPACE_SCHEME_VERSION,
 	canonicalJson,
+	type EvaluationConfig,
 	readGitSha,
 	readNodeMajorMinor,
 	readPackageVersions,
@@ -26,6 +27,7 @@ interface BuildRunConfigInput {
 	reranker: { type: string; url: string; model?: string } | null;
 	grader: { url: string; model: string } | null;
 	retrieval: RetrievalConfig;
+	evaluation: EvaluationConfig;
 	promptHashes?: Record<string, string>;
 	seed?: number;
 }
@@ -60,6 +62,7 @@ export function buildRunConfig(input: BuildRunConfigInput): RunConfig {
 		reranker: input.reranker,
 		grader: input.grader,
 		retrieval: input.retrieval,
+		evaluation: input.evaluation,
 		promptHashes: input.promptHashes ?? {},
 		seed: input.seed ?? 0,
 		gitSha: readGitSha(),

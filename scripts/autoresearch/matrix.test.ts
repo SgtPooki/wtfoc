@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { enumerateVariants, type Matrix } from "./matrix.js";
+import {
+	enumerateVariants,
+	filterVariants,
+	type Matrix,
+	normalizeCollections,
+} from "./matrix.js";
 
 const baseMatrix: Matrix = {
 	name: "test",
@@ -48,6 +53,64 @@ describe("enumerateVariants", () => {
 		const a = enumerateVariants(baseMatrix).map((v) => v.variantId);
 		const b = enumerateVariants(baseMatrix).map((v) => v.variantId);
 		expect(a).toEqual(b);
+	});
+
+	it("filterVariants narrows to allowList ids in input order", () => {
+		const variants = enumerateVariants(baseMatrix);
+		const filtered = filterVariants(variants, ["noar_nodiv_rrOff", "ar_div_rrLlm-haiku"]);
+		expect(filtered.map((v) => v.variantId)).toEqual([
+			"noar_nodiv_rrOff",
+			"ar_div_rrLlm-haiku",
+		]);
+	});
+
+	it("filterVariants throws on unknown variantIds", () => {
+		const variants = enumerateVariants(baseMatrix);
+		expect(() => filterVariants(variants, ["noar_nodiv_rrOff", "bogus"])).toThrow(/bogus/);
+	});
+
+	it("normalizeCollections accepts legacy single-corpus collection", () => {
+		const pair = normalizeCollections({
+			collection: "single",
+			embedderUrl: "u",
+			embedderModel: "m",
+		});
+		expect(pair).toEqual({ primary: "single" });
+	});
+
+	it("normalizeCollections accepts modern collections.primary", () => {
+		const pair = normalizeCollections({
+			collections: { primary: "v12" },
+			embedderUrl: "u",
+			embedderModel: "m",
+		});
+		expect(pair).toEqual({ primary: "v12" });
+	});
+
+	it("normalizeCollections returns both primary and secondary when set", () => {
+		const pair = normalizeCollections({
+			collections: { primary: "v12", secondary: "v3" },
+			embedderUrl: "u",
+			embedderModel: "m",
+		});
+		expect(pair).toEqual({ primary: "v12", secondary: "v3" });
+	});
+
+	it("normalizeCollections rejects when both legacy and modern shapes are set", () => {
+		expect(() =>
+			normalizeCollections({
+				collection: "single",
+				collections: { primary: "v12" },
+				embedderUrl: "u",
+				embedderModel: "m",
+			}),
+		).toThrow(/both/);
+	});
+
+	it("normalizeCollections rejects when neither shape is set", () => {
+		expect(() =>
+			normalizeCollections({ embedderUrl: "u", embedderModel: "m" }),
+		).toThrow(/either/);
 	});
 
 	it("defaults to a single variant when no axes are configured", () => {

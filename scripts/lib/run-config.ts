@@ -33,6 +33,18 @@ export interface ModelConfig {
 	model: string;
 }
 
+/**
+ * Evaluation-mode toggles. These flip what the dogfood pipeline
+ * actually does (paraphrase scoring, claim grounding) and therefore
+ * MUST participate in the runConfig fingerprint — otherwise two runs
+ * that produce different reports could share a fingerprint and stomp
+ * each other's cache namespace / hide as duplicate rows in analysis.
+ */
+export interface EvaluationConfig {
+	checkParaphrases: boolean;
+	groundCheck: boolean;
+}
+
 export interface RunConfig {
 	collectionId: string;
 	corpusDigest: string;
@@ -43,6 +55,7 @@ export interface RunConfig {
 	reranker: { type: string; url: string; model?: string } | null;
 	grader: ModelConfig | null;
 	retrieval: RetrievalConfig;
+	evaluation: EvaluationConfig;
 	promptHashes: Record<string, string>;
 	seed: number;
 	gitSha: string | null;

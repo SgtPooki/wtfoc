@@ -28,6 +28,10 @@ function baseConfig(): RunConfig {
 			autoRoute: false,
 			diversityEnforce: true,
 		},
+		evaluation: {
+			checkParaphrases: false,
+			groundCheck: false,
+		},
 		promptHashes: {},
 		seed: 0,
 		gitSha: "abc1234",
@@ -88,6 +92,12 @@ describe("computeRunConfigFingerprint", () => {
 			},
 			(c) => {
 				c.cacheNamespaceSchemeVersion = 2;
+			},
+			(c) => {
+				c.evaluation.checkParaphrases = true;
+			},
+			(c) => {
+				c.evaluation.groundCheck = true;
 			},
 		];
 		for (const mutate of cases) {

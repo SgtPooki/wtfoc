@@ -31,8 +31,25 @@
  *   - matrices live in source control, diffable, reviewable
  */
 
+/**
+ * Two-corpus pair. The headline scalar is `sqrt(primary × secondary)`
+ * computed on portable-tier pass rates. `secondary` is optional —
+ * single-corpus matrices fall back to `portable_primary` directly.
+ */
+export interface CorpusPair {
+	primary: string;
+	secondary?: string;
+}
+
 export interface BaseConfig {
-	collection: string;
+	/**
+	 * Legacy single-corpus shape (pre-cross-corpus harness). Kept so
+	 * existing matrix files keep loading. New matrices should set
+	 * `collections` instead.
+	 */
+	collection?: string;
+	/** Cross-corpus shape — primary required, secondary optional. */
+	collections?: CorpusPair;
 	embedderUrl: string;
 	embedderModel: string;
 	embedderKey?: string;
@@ -40,6 +57,31 @@ export interface BaseConfig {
 	extractorUrl?: string;
 	extractorModel?: string;
 	extractorKey?: string;
+}
+
+/**
+ * Resolve the effective corpus pair from a BaseConfig that may use
+ * the legacy `collection` field, the new `collections` field, or
+ * (illegally) both. Throws when both or neither are set.
+ */
+export function normalizeCollections(baseConfig: BaseConfig): CorpusPair {
+	const legacy = baseConfig.collection;
+	const modern = baseConfig.collections;
+	if (legacy && modern) {
+		throw new Error(
+			`matrix baseConfig sets both "collection" (legacy) and "collections" (cross-corpus); pick one`,
+		);
+	}
+	if (legacy) return { primary: legacy };
+	if (modern) {
+		if (!modern.primary) {
+			throw new Error(`matrix baseConfig.collections.primary is required`);
+		}
+		return modern;
+	}
+	throw new Error(
+		`matrix baseConfig must set either "collection" (single-corpus) or "collections.primary"`,
+	);
 }
 
 export type RerankerSpec =
@@ -117,6 +159,27 @@ export function enumerateVariants(matrix: Matrix): Variant[] {
 		}
 	}
 	return out;
+}
+
+/**
+ * Filter an enumerated variant list to only those whose `variantId`
+ * appears in `allowList`. Used by the sweep driver's
+ * `--variant-filter` flag for Stage 2 shortlist reruns.
+ *
+ * Throws when any allowList entry does not match a known variantId —
+ * a typo would silently shrink the sweep, which is worse than failing
+ * loudly.
+ */
+export function filterVariants(variants: Variant[], allowList: string[]): Variant[] {
+	const known = new Set(variants.map((v) => v.variantId));
+	const unknown = allowList.filter((id) => !known.has(id));
+	if (unknown.length > 0) {
+		throw new Error(
+			`unknown variantIds in --variant-filter: ${unknown.join(", ")} (known: ${[...known].join(", ")})`,
+		);
+	}
+	const wanted = new Set(allowList);
+	return variants.filter((v) => wanted.has(v.variantId));
 }
 
 function formatVariantId(autoRoute: boolean, diversityEnforce: boolean, reranker: RerankerSpec): string {
