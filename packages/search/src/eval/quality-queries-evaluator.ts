@@ -70,6 +70,13 @@ interface QueryScore {
 	/** Top-K depth used to compute `recallAtK` (currently 10). */
 	recallK: number | null;
 	/**
+	 * Highest score in the query top-K. Used for hard-negative scoring
+	 * (#311 reviewer feedback): a hard-negative passes only when the
+	 * top result's confidence is below `HARD_NEGATIVE_SCORE_CEILING`,
+	 * even if `resultCount` is small.
+	 */
+	topScore: number | null;
+	/**
 	 * #311 (Phase 1a) — paraphrase invariance check. Populated only when
 	 * `QualityQueriesContext.checkParaphrases === true` AND the fixture
 	 * has `paraphrases` for this query.
@@ -467,6 +474,7 @@ function skippedScore(gq: GoldStandardQuery, reason: string): QueryScore {
 		distinctSourceTypes: 0,
 		recallAtK: null,
 		recallK: null,
+		topScore: null,
 	};
 }
 
@@ -485,6 +493,13 @@ interface InnerScore {
 	distinctSourceTypes: number;
 	recallAtK: number | null;
 	recallK: number | null;
+	/**
+	 * Highest score in the query top-K (cosine similarity, etc). Captured
+	 * for hard-negative scoring: a hard-negative fails if the retrieval
+	 * surfaced ANY high-confidence result, regardless of count. Phase
+	 * 1+ tightening of #311 (b).
+	 */
+	topScore: number | null;
 }
 
 async function scoreText(
@@ -513,6 +528,7 @@ async function scoreText(
 	const distinctTypes = new Set<string>();
 	let recallAtK: number | null = null;
 	let recallK: number | null = null;
+	let topScore: number | null = null;
 
 	try {
 		const boosts = autoRoute ? classifyQueryPersona(queryText).sourceTypeBoosts : undefined;
@@ -539,6 +555,9 @@ async function scoreText(
 		for (const r of qResult.results) {
 			distinctSources.add(r.source);
 			distinctTypes.add(r.sourceType);
+			if (typeof r.score === "number" && (topScore === null || r.score > topScore)) {
+				topScore = r.score;
+			}
 		}
 
 		const resultSourceTypes = new Set(qResult.results.map((r) => r.sourceType));
@@ -604,15 +623,27 @@ async function scoreText(
 
 	// Hard-negative scoring is INVERTED. A hard negative passes when
 	// retrieval correctly does NOT pile on strong-looking false positives.
-	// Phase 1c floor: pass when resultCount stays under a small threshold.
-	// A retrieval variant that "improves" by surfacing more results for
-	// hard negatives is worse, not better. Tightening (top-K score floor +
-	// cross-source dispersion check) is Phase 1+ work.
+	// Two checks combined:
+	//   1. resultCount < HARD_NEGATIVE_RESULT_CEILING — fewer false hits
+	//   2. topScore < HARD_NEGATIVE_SCORE_CEILING — even if a couple
+	//      results slip through, none should look high-confidence
+	//
+	// Reviewer (peer-review on Phase 1) flagged that count-only scoring
+	// rewards "fewer but high-confidence false positives" — a strictly
+	// worse failure mode. The score ceiling closes that loophole.
+	//
+	// Score ceiling chosen at 0.6 — empirically the boundary above which
+	// vector cosine similarity on bge-base means the chunk is genuinely
+	// on-topic. Tunable; a future PR can swap to a corpus-relative
+	// percentile threshold if 0.6 turns out to be over- or under-tight.
 	const HARD_NEGATIVE_RESULT_CEILING = 3;
+	const HARD_NEGATIVE_SCORE_CEILING = 0.6;
+
+	const hardNegativeNoStrongHits = topScore === null || topScore < HARD_NEGATIVE_SCORE_CEILING;
 
 	const passed =
 		gq.category === "hard-negative"
-			? resultCount < HARD_NEGATIVE_RESULT_CEILING
+			? resultCount < HARD_NEGATIVE_RESULT_CEILING && hardNegativeNoStrongHits
 			: resultCount >= gq.minResults &&
 				requiredTypesFound &&
 				substringFound &&
@@ -623,7 +654,7 @@ async function scoreText(
 	// and ignore edge-hop/cross-source requirements (those are inherently trace-assisted).
 	const passedQueryOnly =
 		gq.category === "hard-negative"
-			? resultCount < HARD_NEGATIVE_RESULT_CEILING
+			? resultCount < HARD_NEGATIVE_RESULT_CEILING && hardNegativeNoStrongHits
 			: resultCount >= gq.minResults && requiredTypesFoundQueryOnly && substringFound;
 
 	return {
@@ -641,6 +672,7 @@ async function scoreText(
 		distinctSourceTypes: distinctTypes.size,
 		recallAtK,
 		recallK,
+		topScore,
 	};
 }
 
