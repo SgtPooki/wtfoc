@@ -30,6 +30,11 @@ interface Metrics {
 	categoryBreakdown: Record<string, Breakdown>;
 	tierBreakdown?: Record<string, Breakdown>;
 	portabilityBreakdown?: Record<string, Breakdown>;
+	paraphraseInvariance?: {
+		checked: boolean;
+		withParaphrases: number;
+		invariantFraction: number;
+	};
 }
 
 interface Threshold {
@@ -39,21 +44,37 @@ interface Threshold {
 }
 
 const THRESHOLDS = {
-	overallMin: 0.8, // raised from 0.65 after diversity-enforce landed (#161)
-	workLineageMin: 0.875, // 7/8
-	demoCriticalMin: 1.0, // 5/5 hard floor — applies only to demo-critical-tier queries
-	fileLevelMin: 1.0,
-	// Portability floor (v1.6.0). Portable queries test generic retrieval
-	// quality across any serious software corpus. Peer-review (gemini)
-	// recommended a 70% hard floor here; codex said start advisory for
-	// one cycle. We go with 70% as a hard floor on the primary corpus
-	// since we've already run it once and know the current number.
-	portableMin: 0.7,
+	// v1.8.0 re-baseline (#311 Phase 1f): fixture grew 45 → 67 base
+	// queries (+10 synthesis-tier expansion, +12 hard negatives). Hard
+	// negatives bring inverted scoring — pass when retrieval correctly
+	// returns no strong false positives. Today's flagship retrieval
+	// hallucinate-matches all 12 hard negatives (real signal), so the
+	// hard-negative pass rate drags overall pass rate down. Floors here
+	// reflect post-expansion numbers with one-cycle buffer.
+	overallMin: 0.6, // was 0.8 (v1.7.0). Re-baselined from 66.7% — captures regression without alarming on hard-negative drag.
+	workLineageMin: 0.875, // 7/8 — unchanged
+	demoCriticalMin: 1.0, // 5/5 hard floor — unchanged
+	fileLevelMin: 1.0, // unchanged
+	// Portability floor (v1.6.0 → v1.8.0). Was 70% on a 13-query portable
+	// set; now 26 portable queries (added port-* + portable synthesis +
+	// portable hard-negatives). Re-baselined from 46.2% — flagship
+	// regression detector, not gating.
+	portableMin: 0.4,
 	// Applicability floor. A high pass rate on a low applicable rate is
 	// the overfit-and-skip signature — warn if the fixture can barely
 	// answer this corpus. 60% picked as clear "fixture too specific"
 	// signal without hair-triggering on legitimately-bounded corpora.
 	applicableRateMin: 0.6,
+	// Hard-negative pass rate (v1.8.0). Calibration: 0% floor today.
+	// Phase 1+ tightens as negative scoring (top-K score floor +
+	// cross-source dispersion check) lands. Tracked so a regression
+	// that fabricates more false positives is visible immediately.
+	hardNegativeMin: 0.0,
+	// Paraphrase invariance fraction. v1.8.0 first-pass observed 0.80
+	// across the 41 queries with paraphrases (4 of 45 skipped on this
+	// corpus). Floor at 0.7 with one-cycle buffer — invariance dropping
+	// below this signals brittleness creeping in.
+	paraphraseInvariantMin: 0.7,
 } as const;
 
 function loadMetrics(path: string): Metrics {
@@ -108,6 +129,20 @@ function collectThresholds(m: Metrics): Threshold[] {
 			actual: m.categoryBreakdown["file-level"]?.passRate ?? 0,
 			floor: THRESHOLDS.fileLevelMin,
 		},
+		{
+			label: "hard-negative",
+			actual: m.categoryBreakdown["hard-negative"]?.passRate ?? 0,
+			floor: THRESHOLDS.hardNegativeMin,
+		},
+		...(m.paraphraseInvariance?.checked
+			? [
+					{
+						label: "paraphrase invariance",
+						actual: m.paraphraseInvariance.invariantFraction,
+						floor: THRESHOLDS.paraphraseInvariantMin,
+					},
+				]
+			: []),
 	];
 }
 

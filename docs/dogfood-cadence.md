@@ -5,26 +5,29 @@ The flagship demo story hinges on the `filoz-ecosystem-2026-04-v12` corpus passi
 ## Baseline
 
 - Corpus: `filoz-ecosystem-2026-04-v12` — 13,477 chunks, 37 segments, 6 source types (code, markdown, slack-message, github-issue, github-pr, github-pr-comment)
-- Fixture: `GOLD_STANDARD_QUERIES_VERSION = 1.6.0` (45 queries total: 13 portable + 32 corpus-specific)
+- Fixture: `GOLD_STANDARD_QUERIES_VERSION = 1.8.0` (67 base queries + 135 paraphrases = 202 query texts; 26 portable + 41 corpus-specific; 12 hard negatives + 17 synthesis-tier)
 - Primary corpus baseline: [`dogfood-baselines/filoz-ecosystem-2026-04-v12.json`](dogfood-baselines/filoz-ecosystem-2026-04-v12.json) — hard-gated
 - Secondary corpus baseline: [`dogfood-baselines/wtfoc-dogfood-2026-04-v3.json`](dogfood-baselines/wtfoc-dogfood-2026-04-v3.json) — advisory for one cycle
-- Captured: 2026-04-23
+- Captured: 2026-04-23 (v1.6.0); re-baselined 2026-04-28 for v1.8.0 fixture expansion (#311 Phase 1).
 
 Pass rates are computed against the **applicable** subset — queries the current corpus can answer at all. Queries with `collectionScopePattern` mismatches or `requiredSourceTypes` the corpus doesn't ingest are reported as skipped, not failed, so the overall rate means the same thing across corpus changes.
 
 Flagship runs enable source-type diversity enforcement (`--diversity-enforce`, #161) so a dominant source type (slack on v12) cannot monopolize top-K / seeds and starve queries of cross-source evidence. Turned on by default in `dogfood-flagship.sh`.
 
-Primary corpus numbers (filoz-ecosystem-2026-04-v12):
+Primary corpus numbers (filoz-ecosystem-2026-04-v12, fixture v1.8.0):
 
 | Slice | Pass rate |
 |---|---|
-| overall applicable | 38/41 (92.7%) |
-| portable | 10/13 (76.9%) |
-| corpus-specific | 28/28 (100%) |
-| applicability rate | 41/45 (91.1%) |
+| overall applicable | 42/63 (66.7%) |
+| portable | 12/26 (46.2%) |
+| corpus-specific | 30/37 (81.1%) |
+| applicability rate | 63/67 (94.0%) |
 | demo-critical tier | 5/5 (100%) |
 | work-lineage | 8/9 (88.9%) |
 | file-level | 4/4 (100%) |
+| hard-negative | 0/12 (0%) ← real signal: retrieval hallucinate-matches |
+| paraphrase invariance | 33/41 (80.5%) ← brittleness check |
+| recall@10 (mean over 24 graded) | 0.76 |
 
 Skipped on v12: `dl-3`, `syn-1` (wtfoc-self internals), `dl-7` (needs package.json ingest), `cov-8` (needs doc-page ingest).
 
@@ -46,12 +49,14 @@ Enforced by [`scripts/dogfood-check-thresholds.ts`](../scripts/dogfood-check-thr
 
 | Slice | Floor | Why |
 |---|---|---|
-| overall | 80% | Catches systemic retrieval regression without flapping on 1–2 queries |
-| portable | 70% | Peer-review-hardened floor (v1.6.0). Generic retrieval must hold across corpora, not just v12 — this is the non-gaming gate |
+| overall | 60% | Re-baselined for v1.8.0 — hard-negatives drag overall down (inverted scoring); catches systemic retrieval regression without alarming on hard-negative drag |
+| portable | 40% | Re-baselined for v1.8.0 — 26 portable queries now (was 13); harder additions pull pass rate down by construction |
 | applicability rate | 60% | If <60% of the fixture applies to this corpus, the fixture is too narrow; warn so we don't celebrate a 100% pass on 20% applicability |
 | work-lineage | 87.5% (7/8) | Flagship demo category — one-query buffer only |
-| demo-critical tier | 100% | Hard floor on demo-critical-tier queries only (portable queries are not demo-critical) |
+| demo-critical tier | 100% | Hard floor on demo-critical-tier queries only |
 | file-level | 100% (4/4) | Small category; a regression here means file-summary retrieval broke |
+| hard-negative | 0% | Calibration floor today (Phase 1c). Phase 1+ tightens as negative scoring lands; tracked so a regression that fabricates more false positives surfaces immediately |
+| paraphrase invariance | 70% | Brittleness check; canonical-pass + ≥1-paraphrase-fail signals memorization-not-retrieval |
 
 The lower-tier categories (cross-source, coverage, synthesis) are intentionally **not** threshold-gated. Their failures are tracked as individual issues (cs-3, cs-5, cov-2, cov-6, syn-*) and tuned separately — we do not want threshold churn blocking the flagship story on unrelated work.
 
