@@ -29,13 +29,49 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtendedDogfoodReport } from "../lib/run-config.js";
 import { appendRunLogRow, buildRunLogRow } from "../lib/run-log.js";
+import { decide, type DecisionVerdict } from "./decision.js";
+import { computeHeadline, type Headline } from "./headline.js";
 import { enumerateVariants, type Matrix, type Variant } from "./matrix.js";
+import { formatLeaderboard, paretoLeaderboard, type ParetoInput } from "./pareto.js";
 
 interface SweepRunResult {
 	variantId: string;
 	variant: Variant;
 	report: ExtendedDogfoodReport;
 	durationMs: number;
+	headline: Headline;
+	decisionVsBaseline?: DecisionVerdict;
+}
+
+function summaryMetrics(report: ExtendedDogfoodReport) {
+	const qq = report.stages.find((s) => s.stage === "quality-queries");
+	const m = qq?.metrics as
+		| {
+				cost?: Record<string, { cost_usd?: number | null }>;
+				timing?: Record<string, { p95Ms?: number }>;
+		  }
+		| undefined;
+	let costUsdTotal: number | null = 0;
+	if (m?.cost) {
+		for (const sub of Object.values(m.cost)) {
+			if (sub?.cost_usd === null) {
+				costUsdTotal = null;
+				break;
+			}
+			if (typeof sub?.cost_usd === "number") costUsdTotal += sub.cost_usd;
+		}
+	} else {
+		costUsdTotal = null;
+	}
+	let latencyP95Ms: number | null = null;
+	if (m?.timing) {
+		const p95s: number[] = [];
+		for (const sub of Object.values(m.timing)) {
+			if (typeof sub?.p95Ms === "number") p95s.push(sub.p95Ms);
+		}
+		if (p95s.length > 0) latencyP95Ms = Math.max(...p95s);
+	}
+	return { costUsdTotal, latencyP95Ms };
 }
 
 function logErr(...parts: unknown[]): void {
@@ -116,40 +152,37 @@ function runVariant(matrix: Matrix, variant: Variant): SweepRunResult {
 }
 
 function summarize(results: SweepRunResult[]): void {
-	const rows = results.map((r) => {
-		const qq = r.report.stages.find((s) => s.stage === "quality-queries");
-		const m = qq?.metrics as
-			| {
-					passRate?: number;
-					applicableTotal?: number;
-					passCount?: number;
-					portabilityBreakdown?: { portable?: { passRate?: number } };
-			  }
-			| undefined;
-		const passRate = m?.passRate ?? 0;
-		const portable = m?.portabilityBreakdown?.portable?.passRate ?? 0;
+	logErr("");
+	logErr("=== Pareto leaderboard ===");
+	const inputs: ParetoInput[] = results.map((r) => {
+		const sm = summaryMetrics(r.report);
 		return {
 			variantId: r.variantId,
-			fingerprint: r.report.runConfigFingerprint?.slice(0, 12) ?? "??",
-			passRate,
-			portable,
-			durationMs: Math.round(r.durationMs),
+			quality: r.headline.scalar,
+			costUsdTotal: sm.costUsdTotal,
+			latencyP95Ms: sm.latencyP95Ms,
+			costComparable: r.report.costComparable?.value ?? false,
+			allGatesPassed: r.headline.allGatesPassed,
 		};
 	});
-	rows.sort((a, b) => b.passRate - a.passRate);
-	logErr("");
-	logErr("=== sweep summary ===");
-	logErr("variantId                   | fingerprint  | pass     | portable | duration");
-	logErr("---------------------------+--------------+----------+----------+----------");
-	for (const r of rows) {
-		const line = [
-			r.variantId.padEnd(27),
-			r.fingerprint.padEnd(12),
-			`${(r.passRate * 100).toFixed(1)}%`.padEnd(8),
-			`${(r.portable * 100).toFixed(1)}%`.padEnd(8),
-			`${(r.durationMs / 1000).toFixed(1)}s`,
-		].join(" | ");
-		logErr(line);
+	const lb = paretoLeaderboard(inputs);
+	logErr(formatLeaderboard(lb));
+
+	if (results[0]?.decisionVsBaseline) {
+		logErr("");
+		logErr("=== Decision vs baseline (paired bootstrap) ===");
+		logErr("variantId                   | accept | meanΔ   | probB>A | gates  | reasons");
+		logErr("---------------------------+--------+---------+---------+--------+---------");
+		for (const r of results) {
+			if (!r.decisionVsBaseline) continue;
+			const v = r.decisionVsBaseline;
+			const acc = v.accept ? " ✓ yes  " : " ✗ no   ";
+			const meanD = `${(v.bootstrap.meanDelta * 100).toFixed(1)}pp`.padStart(7);
+			const prob = v.bootstrap.probBgreaterA.toFixed(3).padEnd(7);
+			const gates = v.gateResults.every((g) => g.ok) ? " ✓ all  " : " ✗ fail ";
+			const reasons = v.reasons.length > 0 ? v.reasons.join("; ") : "—";
+			logErr(`${r.variantId.padEnd(27)} | ${acc} | ${meanD} | ${prob} | ${gates} | ${reasons}`);
+		}
 	}
 }
 
@@ -183,8 +216,22 @@ async function main(): Promise<void> {
 	const sweepId = `sweep-${matrix.name}-${Date.now()}`;
 	logErr(`[sweep] matrix=${matrix.name} variants=${variants.length} sweepId=${sweepId}`);
 	const results: SweepRunResult[] = [];
+	let baselineReport: ExtendedDogfoodReport | null = null;
 	for (const v of variants) {
-		const result = runVariant(matrix, v);
+		const runResult = runVariant(matrix, v);
+		const headline = computeHeadline({ v12: runResult.report });
+		const result: SweepRunResult = { ...runResult, headline };
+		// Decide vs the FIRST variant in enumeration order (the
+		// reference / baseline). Phase 2d may switch this to a pinned
+		// baseline once Stage A/B pruning lands.
+		if (baselineReport) {
+			result.decisionVsBaseline = decide({
+				baseline: baselineReport,
+				candidate: result.report,
+			});
+		} else {
+			baselineReport = result.report;
+		}
 		results.push(result);
 		const row = buildRunLogRow({
 			sweepId,
