@@ -160,6 +160,35 @@ function parseGraderResponse(text: string, claims: string[]): ClaimGrade[] {
 	return grades.slice(0, claims.length);
 }
 
+/**
+ * Standalone grader call. Takes a claim list + the same evidence the
+ * synthesizer saw, returns per-claim verdicts. Exposed for adversarial
+ * grader-teeth testing (peer-review review-of-review batch): inject
+ * deliberately-wrong claims, verify the grader catches them. If a
+ * grader cannot reliably fail planted hallucinations, the
+ * hallucinationRate metric is a vanity number.
+ */
+export async function gradeClaims(input: {
+	claims: string[];
+	evidence: ReadonlyArray<{ source: string; content: string }>;
+	grader: GraderConfig;
+	usageSink: UsageSink;
+	signal?: AbortSignal;
+}): Promise<ClaimGrade[]> {
+	if (input.claims.length === 0) return [];
+	const res = await chatCompletion(
+		input.grader,
+		{
+			model: input.grader.model,
+			systemPrompt: GRADER_SYSTEM_PROMPT,
+			userMessage: buildGraderUserMessage(input.claims, input.evidence),
+		},
+		input.usageSink,
+		input.signal,
+	);
+	return parseGraderResponse(res.text, input.claims);
+}
+
 export interface RunGroundingInput {
 	queries: GroundingQuery[];
 	synthesizer: GraderConfig;
@@ -199,20 +228,13 @@ export async function runGrounding(input: RunGroundingInput): Promise<GroundingR
 			);
 			const { answer, claims } = parseSynthesisResponse(synthRes.text);
 
-			let grades: ClaimGrade[] = [];
-			if (claims.length > 0) {
-				const graderRes = await chatCompletion(
-					input.grader,
-					{
-						model: input.grader.model,
-						systemPrompt: GRADER_SYSTEM_PROMPT,
-						userMessage: buildGraderUserMessage(claims, evidence),
-					},
-					input.graderUsageSink,
-					input.signal,
-				);
-				grades = parseGraderResponse(graderRes.text, claims);
-			}
+			const grades = await gradeClaims({
+				claims,
+				evidence,
+				grader: input.grader,
+				usageSink: input.graderUsageSink,
+				signal: input.signal,
+			});
 
 			const supported = grades.filter((g) => g.verdict === "supported").length;
 			const partial = grades.filter((g) => g.verdict === "partial").length;
