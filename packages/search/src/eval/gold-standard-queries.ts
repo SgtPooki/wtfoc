@@ -150,6 +150,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "direct-lookup",
 		requiredSourceTypes: ["code"],
 		expectedSourceSubstrings: ["ingest", "/src/"],
+		goldSupportingSources: ["ingest", "/src/"],
 		minResults: 2,
 		paraphrases: [
 			"What steps does the ingestion pipeline follow when handling input files?",
@@ -163,6 +164,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "direct-lookup",
 		requiredSourceTypes: ["code"],
 		expectedSourceSubstrings: ["manifest", ".ts"],
+		goldSupportingSources: ["manifest", ".ts"],
 		minResults: 1,
 		paraphrases: [
 			"What structure does a collection manifest use?",
@@ -176,6 +178,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "direct-lookup",
 		requiredSourceTypes: ["code", "markdown"],
 		expectedSourceSubstrings: ["edge", "/src/"],
+		goldSupportingSources: ["edge", "/src/"],
 		minResults: 1,
 		// Probes wtfoc's own edge-extractor source tree. Not applicable on
 		// third-party corpora (filoz-ecosystem, etc.) where the concept
@@ -280,6 +283,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "direct-lookup",
 		requiredSourceTypes: ["code"],
 		expectedSourceSubstrings: ["chunk", "index"],
+		goldSupportingSources: ["chunk", "index"],
 		minResults: 1,
 		paraphrases: [
 			"How are chunks persisted and made searchable in the vector index?",
@@ -293,6 +297,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "direct-lookup",
 		requiredSourceTypes: ["markdown", "code"],
 		expectedSourceSubstrings: ["config"],
+		goldSupportingSources: ["config"],
 		minResults: 1,
 		portability: "portable",
 		paraphrases: [
@@ -460,6 +465,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "direct-lookup",
 		requiredSourceTypes: ["markdown"],
 		expectedSourceSubstrings: ["README"],
+		goldSupportingSources: ["README"],
 		minResults: 1,
 		portability: "portable",
 		paraphrases: [
@@ -474,6 +480,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "direct-lookup",
 		requiredSourceTypes: ["code", "markdown"],
 		expectedSourceSubstrings: ["package.json", "dependencies"],
+		goldSupportingSources: ["package.json", "dependencies"],
 		minResults: 1,
 		// package.json manifest files are commonly ignored by ingest (they
 		// don't carry semantic content that helps retrieval). On corpora
@@ -500,6 +507,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "direct-lookup",
 		requiredSourceTypes: ["github-pr"],
 		expectedSourceSubstrings: ["PDP", "proof"],
+		goldSupportingSources: ["PDP", "proof"],
 		minResults: 2,
 		paraphrases: [
 			"What recent PRs changed PDP, proof sets, or proof verification logic?",
@@ -515,6 +523,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "cross-source",
 		requiredSourceTypes: ["github-pr", "github-pr-comment"],
 		expectedSourceSubstrings: ["synapse-sdk", "filecoin-pin"],
+		goldSupportingSources: ["synapse-sdk", "filecoin-pin"],
 		minResults: 2,
 		requireCrossSourceHops: true,
 		paraphrases: [
@@ -530,6 +539,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "cross-source",
 		requiredSourceTypes: ["markdown", "code"],
 		expectedSourceSubstrings: ["synapse-sdk"],
+		goldSupportingSources: ["synapse-sdk"],
 		minResults: 2,
 		requireCrossSourceHops: true,
 		paraphrases: [
@@ -549,6 +559,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		// and "synapse-sdk" / "synapse-core" for client-side payments code.
 		// The original "filecoin-pay" substring never resolved on v12.
 		expectedSourceSubstrings: ["filecoin-services", "payments"],
+		goldSupportingSources: ["filecoin-services", "payments"],
 		minResults: 2,
 		requireCrossSourceHops: true,
 		paraphrases: [
@@ -567,6 +578,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "coverage",
 		requiredSourceTypes: ["code", "markdown"],
 		expectedSourceSubstrings: ["PieceCID", "CommP", "piece"],
+		goldSupportingSources: ["PieceCID", "CommP", "piece"],
 		minResults: 2,
 		requireCrossSourceHops: true,
 		paraphrases: [
@@ -588,6 +600,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "synthesis",
 		requiredSourceTypes: ["github-pr-comment", "github-pr"],
 		expectedSourceSubstrings: ["filecoin-services", "PDP"],
+		goldSupportingSources: ["filecoin-services", "PDP"],
 		minResults: 2,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -604,6 +617,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "synthesis",
 		requiredSourceTypes: ["github-pr", "github-pr-comment", "code"],
 		expectedSourceSubstrings: ["curio", "synapse"],
+		goldSupportingSources: ["curio", "synapse"],
 		minResults: 2,
 		requireCrossSourceHops: true,
 		paraphrases: [
@@ -619,6 +633,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "coverage",
 		requiredSourceTypes: ["doc-page"],
 		expectedSourceSubstrings: ["docs.filecoin.io", "storage"],
+		goldSupportingSources: ["docs.filecoin.io", "storage"],
 		minResults: 1,
 		paraphrases: [
 			"Which official Filecoin docs pages explain storage providers?",
@@ -639,6 +654,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "file-level",
 		requiredSourceTypes: ["code"],
 		expectedSourceSubstrings: ["synapse.ts", "synapse-sdk"],
+		goldSupportingSources: ["synapse.ts", "synapse-sdk"],
 		minResults: 1,
 		paraphrases: [
 			"Where is the Synapse class or the createSynapse factory defined?",
@@ -652,6 +668,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "file-level",
 		requiredSourceTypes: ["code"],
 		expectedSourceSubstrings: ["piece"],
+		goldSupportingSources: ["piece"],
 		minResults: 1,
 		paraphrases: [
 			"Which file contains PieceCID and the logic for piece identity?",
@@ -665,6 +682,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "file-level",
 		requiredSourceTypes: ["code"],
 		expectedSourceSubstrings: ["piece"],
+		goldSupportingSources: ["piece"],
 		minResults: 2,
 		paraphrases: [
 			"Which source files in the Synapse client import PieceCID?",
@@ -678,6 +696,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		category: "file-level",
 		requiredSourceTypes: ["code"],
 		expectedSourceSubstrings: ["context.ts", "storage"],
+		goldSupportingSources: ["context.ts", "storage"],
 		minResults: 1,
 		paraphrases: [
 			"What file defines StorageContext in synapse-sdk?",
@@ -811,6 +830,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		// Top-N surfaces synapse-sdk URLs (PR #344 etc). "curio" does not
 		// appear in those URL paths; use the repo name that does.
 		expectedSourceSubstrings: ["synapse-sdk"],
+		goldSupportingSources: ["synapse-sdk"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -829,6 +849,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		// Top-N is curio-dominated (curio#656, #1048, …). Match the repo
 		// name that actually shows up.
 		expectedSourceSubstrings: ["curio"],
+		goldSupportingSources: ["curio"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -848,6 +869,7 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 		// Top-N is README/CHANGELOG/docs paths from both repos. Match repo
 		// names rather than the semantic words "storage" / "cost".
 		expectedSourceSubstrings: ["synapse-sdk", "filecoin-pin"],
+		goldSupportingSources: ["synapse-sdk", "filecoin-pin"],
 		minResults: 2,
 		paraphrases: [
 			"What storage cost and billing concepts are documented across synapse-sdk and filecoin-services?",

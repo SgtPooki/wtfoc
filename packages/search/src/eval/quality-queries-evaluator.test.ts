@@ -90,9 +90,7 @@ describe("evaluateQualityQueries", () => {
 		// substring + required-type + cross-source checks. Excluding
 		// hard-negatives, passRate is 0 → verdict should be "fail".
 		mockQuery.mockResolvedValue(
-			makeQueryResult([
-				{ sourceType: "code", source: "/unrelated/file.txt", score: 0.1 },
-			]),
+			makeQueryResult([{ sourceType: "code", source: "/unrelated/file.txt", score: 0.1 }]),
 		);
 		mockTrace.mockResolvedValue(makeTraceResult([]));
 
@@ -366,9 +364,12 @@ describe("evaluateQualityQueries", () => {
 				id: string;
 				recallAtK: number | null;
 			}>;
-			// dl-1 has no goldSupportingSources in fixture today — must be null.
-			const dl1 = scores.find((s) => s.id === "dl-1");
-			expect(dl1?.recallAtK).toBeNull();
+			// cs-1 has no goldSupportingSources in v1.8.0 (it has no
+			// expectedSourceSubstrings either) — recallAtK must be null.
+			// Phase 1+ may add gold for cs-1 once stable supporting
+			// sources are curated.
+			const cs1 = scores.find((s) => s.id === "cs-1");
+			expect(cs1?.recallAtK).toBeNull();
 		});
 
 		it("emits recallAtK aggregate at the metrics level", async () => {
