@@ -25,7 +25,7 @@ Primary corpus numbers (filoz-ecosystem-2026-04-v12, fixture v1.9.0):
 | work-lineage | 17/27 (63.0%) ← cursor expanded with hard cross-org queries |
 | file-level | 9/12 (75.0%) ← gemini expansion |
 | hard-negative | 0/12 (0%) ← retrieval hallucinate-matches all 12 (top scores 0.67–0.75) |
-| paraphrase invariance | 80.5% (when WTFOC_CHECK_PARAPHRASES=1) |
+| paraphrase invariance | 80.5% on v1.8.1 (41 applicable); 48.1% on v1.9.0 (more queries, more brittleness exposed) |
 | recall@10 (demo-critical mean) | 0.50 ← v1.8.1 broke substring-mirror circularity; lower number is real signal |
 | recall@10 (overall mean over 24 graded) | 0.70 |
 
@@ -56,7 +56,7 @@ Enforced by [`scripts/dogfood-check-thresholds.ts`](../scripts/dogfood-check-thr
 | demo-critical tier | 100% | Hard floor — original wl-1..wl-5 only |
 | file-level | 70% | Was 100% on 4/4; now 12 fl queries (gemini expansion). Floor at 70% |
 | hard-negative | 0% | Calibration floor today; tightens with score-ceiling now in place |
-| paraphrase invariance | 70% | Brittleness check; canonical-pass + ≥1-paraphrase-fail signals memorization |
+| paraphrase invariance | 70% | Brittleness check; canonical-pass + ≥1-paraphrase-fail signals memorization. Stability validated 2026-04-29: 2× back-to-back flagship runs on v1.8.1 produced **identical per-query verdicts** for all 41 applicable queries (0 flapping). The 8 brittle queries (syn-3, cs-6, syn-7, wl-1, wl-6, port-1, port-2, port-3) are consistently brittle, not retrieval noise. (#311 peer-review (e).) |
 
 The lower-tier categories (cross-source, coverage, synthesis) are intentionally **not** threshold-gated. Their failures are tracked as individual issues (cs-3, cs-5, cov-2, cov-6, syn-*) and tuned separately — we do not want threshold churn blocking the flagship story on unrelated work.
 
