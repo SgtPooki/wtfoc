@@ -1,6 +1,6 @@
 {
 	"name": "@wtfoc/search",
-	"version": "0.0.3",
+	"version": "0.0.4",
 	"description": "Embedding, vector search, and cross-source trace engine for wtfoc",
 	"type": "module",
 	"license": "MIT",

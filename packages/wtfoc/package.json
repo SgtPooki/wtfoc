@@ -1,6 +1,6 @@
 {
 	"name": "wtfoc",
-	"version": "0.0.3",
+	"version": "0.0.4",
 	"description": "Cross-source knowledge graph — trace any question across code, issues, PRs, docs, Slack, and Discord",
 	"type": "module",
 	"bin": {
