@@ -22,6 +22,7 @@
 		"autoresearch:sweep": "tsx --tsconfig scripts/tsconfig.json scripts/autoresearch/sweep.ts",
 		"autoresearch:detect-regression": "tsx --tsconfig scripts/tsconfig.json scripts/autoresearch/detect-regression.ts",
 		"autoresearch:file-regression-issue": "tsx --tsconfig scripts/tsconfig.json scripts/autoresearch/file-regression-issue.ts",
+		"autoresearch:autonomous": "tsx --tsconfig scripts/tsconfig.json scripts/autoresearch/autonomous-loop.ts",
 		"autoresearch:nightly": "bash scripts/autoresearch/cron/run-nightly.sh"
 	},
 	"devDependencies": {

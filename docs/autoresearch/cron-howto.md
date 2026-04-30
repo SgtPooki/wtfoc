@@ -4,7 +4,7 @@ One-page guide for the autoresearch nightly cron (Phase 4 of #311). Tracking iss
 
 ## What it does
 
-Every night at 03:00 local, the cron:
+Every night at 03:00 local, the cron runs the alarm pipeline AND the autonomous loop. The pipeline:
 
 1. Probes local services (extractor, embedder, optional reranker). If any are down, marks the night `DEGRADED` and exits without filing a quality issue.
 2. Runs `pnpm autoresearch:sweep retrieval-baseline --stage nightly-cron` over the production variant on both corpora.
@@ -13,6 +13,16 @@ Every night at 03:00 local, the cron:
    - any hard gate is breached (overall, demoCritical, workLineage, fileLevel, hardNegative, applicableRate, paraphraseInvariant), OR
    - a majority of comparable baseline runs convincingly beat the latest by paired bootstrap (probBgreaterA ≥ 0.95 ∧ meanΔ ≥ 0.04).
 5. Suppresses duplicate issues with a 7-day silence window keyed on `(variantId, corpus, findingType, metric, fingerprintVersion)`.
+6. **Autonomous loop (#331):** when a finding is filed, the loop:
+   - Reads the latest archived report + tried-log + knob inventory.
+   - Calls a local LLM (`WTFOC_ANALYSIS_LLM_URL`, default `http://127.0.0.1:4523/v1`) with the flipped queries + finding context.
+   - Validates the LLM's `{ axis, value }` proposal against the inventory + checks tried-log to avoid repeats.
+   - Materializes a single-variant matrix file under `~/.wtfoc/autoresearch/proposals/<id>/matrix.ts` (out of repo).
+   - Runs the candidate sweep + paired-bootstrap-decides vs production.
+   - Appends a tried-log row with the verdict (`accepted` / `rejected` / `errored`) — persistent memory across cycles.
+   - On accept: branches off main, applies the regex-targeted axis change to the production matrix file, commits, and `gh pr create --draft`. Maintainer reviews + merges manually. Never auto-merge.
+   - On reject: noop (regression issue is already filed by step 4).
+   - Disable: `WTFOC_AUTONOMOUS_LOOP=0`.
 
 ## Install
 
@@ -36,6 +46,10 @@ Required env on the cron host (set in the user's shell environment OR a launchd-
 | `WTFOC_PRODUCTION_VARIANT` | override matrix `productionVariantId` | (read from matrix) |
 | `WTFOC_AUTORESEARCH_DIR` | state directory | `~/.wtfoc/autoresearch` |
 | `WTFOC_REGRESSION_SILENCE_DAYS` | silence window between re-files | `7` |
+| `WTFOC_AUTONOMOUS_LOOP` | `0` to disable LLM-proposes-PR loop | `1` |
+| `WTFOC_ANALYSIS_LLM_URL` | OpenAI-compatible LLM endpoint for the proposer | `http://127.0.0.1:4523/v1` |
+| `WTFOC_ANALYSIS_LLM_MODEL` | model name | `haiku` |
+| `WTFOC_ANALYSIS_LLM_API_KEY` | optional bearer token | unset |
 
 ## Inspect
 

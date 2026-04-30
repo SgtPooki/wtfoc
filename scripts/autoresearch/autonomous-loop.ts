@@ -1,0 +1,296 @@
+#!/usr/bin/env tsx
+/**
+ * Autonomous loop entry point. Maintainer-only.
+ *
+ * Reads a finding JSON (from `detect-regression`) and walks the full
+ * loop: explain → analyze + propose → tried-log check → materialize →
+ * tried-log append → (accept) promote-via-pr OR (reject) noop.
+ *
+ * Usage:
+ *   pnpm autoresearch:autonomous \
+ *     --findings /path/to/findings.json \
+ *     --matrix retrieval-baseline \
+ *     [--dry-run] \
+ *     [--skip-llm]    # use a placeholder analysis when LLM unreachable
+ *     [--skip-pr]     # skip PR creation even on accept
+ *
+ * Returns exit 0 on every non-fatal path so the cron wrapper can chain
+ * it after `file-regression-issue` without breaking the chain.
+ *
+ * Hard rules:
+ *   - LLM call is best-effort. On failure, the loop exits cleanly with
+ *     a `status=llm-unavailable` note. The regression issue is still
+ *     filed by the caller (file-regression-issue runs first).
+ *   - No PR ever happens unless decide() accepts AND maintainer review
+ *     is triggered via `gh pr create --draft`.
+ *   - tried-log gets a row regardless of accept/reject (so the LLM has
+ *     full memory next cycle).
+ */
+
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { analyzeAndPropose } from "./analyze-and-propose.js";
+import type { DetectionOutcome, Finding } from "./detect-regression.js";
+import { explainFinding } from "./explain-finding.js";
+import { materializeVariant } from "./materialize-variant.js";
+import type { Matrix } from "./matrix.js";
+import { promoteViaPr } from "./promote-via-pr.js";
+import { alreadyTried, appendTriedRow, readTriedLog } from "./tried-log.js";
+import type { ExtendedDogfoodReport } from "../lib/run-config.js";
+
+interface CliArgs {
+	findingsPath: string;
+	matrixName: string;
+	dryRun: boolean;
+	skipLlm: boolean;
+	skipPr: boolean;
+}
+
+interface LoopOutcome {
+	status:
+		| "no-finding"
+		| "llm-unavailable"
+		| "no-proposal"
+		| "already-tried"
+		| "materialize-failed"
+		| "rejected"
+		| "accepted-no-pr"
+		| "accepted-pr-skipped"
+		| "accepted-pr-created";
+	notes: string[];
+	prUrl?: string | null;
+}
+
+function parseArgs(argv: string[]): CliArgs {
+	const args = argv.slice(2);
+	let findingsPath: string | null = null;
+	let matrixName: string | null = null;
+	let dryRun = false;
+	let skipLlm = false;
+	let skipPr = false;
+	for (let i = 0; i < args.length; i++) {
+		const a = args[i] ?? "";
+		const eat = (): string => {
+			const v = args[++i];
+			if (!v) throw new Error(`${a} requires a value`);
+			return v;
+		};
+		if (a === "--findings") findingsPath = eat();
+		else if (a.startsWith("--findings=")) findingsPath = a.slice("--findings=".length);
+		else if (a === "--matrix") matrixName = eat();
+		else if (a.startsWith("--matrix=")) matrixName = a.slice("--matrix=".length);
+		else if (a === "--dry-run") dryRun = true;
+		else if (a === "--skip-llm") skipLlm = true;
+		else if (a === "--skip-pr") skipPr = true;
+		else throw new Error(`unknown flag: ${a}`);
+	}
+	if (!findingsPath || !matrixName) {
+		throw new Error("usage: --findings <path> --matrix <name>");
+	}
+	return { findingsPath, matrixName, dryRun, skipLlm, skipPr };
+}
+
+async function loadMatrix(matrixName: string): Promise<Matrix> {
+	const here = dirname(fileURLToPath(import.meta.url));
+	const matrixPath = join(here, "matrices", `${matrixName}.ts`);
+	const mod = (await import(matrixPath)) as { default: Matrix };
+	return mod.default;
+}
+
+function pickMostRelevantFinding(outcome: DetectionOutcome): Finding | null {
+	if (outcome.findings.length === 0) return null;
+	// Prefer breach (hard floor violation) over regression for the
+	// proposer. Breach is more actionable + has clearer target metric.
+	const breach = outcome.findings.find((f) => f.type === "breach");
+	return breach ?? outcome.findings[0] ?? null;
+}
+
+function findReportForFinding(finding: Finding): ExtendedDogfoodReport | null {
+	// Latest run's report is archived under the sweep dir. We read it
+	// via the detect-regression output's note about reportPath, but the
+	// finding itself only carries identity. Fallback: walk runs.jsonl
+	// for the (variantId, corpus, sweepId) tuple and load reportPath.
+	const baseDir = process.env.WTFOC_AUTORESEARCH_DIR ?? `${process.env.HOME}/.wtfoc/autoresearch`;
+	const candidatePath = join(
+		baseDir,
+		"reports",
+		finding.latestSweepId,
+		`${finding.variantId}__${finding.corpus}.json`,
+	);
+	try {
+		return JSON.parse(readFileSync(candidatePath, "utf-8")) as ExtendedDogfoodReport;
+	} catch {
+		return null;
+	}
+}
+
+async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
+	const notes: string[] = [];
+	const outcome = JSON.parse(readFileSync(cli.findingsPath, "utf-8")) as DetectionOutcome;
+	const finding = pickMostRelevantFinding(outcome);
+	if (!finding) {
+		return { status: "no-finding", notes: ["no actionable finding in detection outcome"] };
+	}
+
+	const matrix = await loadMatrix(cli.matrixName);
+	const latestReport = findReportForFinding(finding);
+	if (!latestReport) {
+		notes.push(
+			`could not load latest report for sweep=${finding.latestSweepId}; using minimal context`,
+		);
+	}
+	const explainMd = latestReport
+		? explainFinding({ finding, latest: latestReport })
+		: `# Finding\n${finding.reason}\n`;
+
+	const triedRows = readTriedLog();
+
+	if (cli.skipLlm) {
+		notes.push("--skip-llm: bypassing LLM proposer");
+		return { status: "llm-unavailable", notes };
+	}
+
+	const llmRes = await analyzeAndPropose({
+		matrixName: cli.matrixName,
+		explainMarkdown: explainMd,
+		triedRows,
+	});
+	if (!llmRes.llmCallSucceeded) {
+		notes.push(`LLM unavailable: ${llmRes.error ?? "unknown"}`);
+		return { status: "llm-unavailable", notes };
+	}
+	if (!llmRes.proposal) {
+		notes.push(
+			llmRes.error
+				? `LLM returned no usable proposal: ${llmRes.error}`
+				: "LLM returned no proposal (axis=null)",
+		);
+		return { status: "no-proposal", notes };
+	}
+
+	const prior = alreadyTried(triedRows, cli.matrixName, llmRes.proposal.axis, llmRes.proposal.value);
+	if (prior) {
+		notes.push(
+			`proposal already tried on ${prior.loggedAt} (verdict=${prior.verdict}); skipping`,
+		);
+		return { status: "already-tried", notes };
+	}
+
+	if (cli.dryRun) {
+		notes.push(
+			`DRY-RUN proposal: ${llmRes.proposal.axis}=${JSON.stringify(llmRes.proposal.value)} — ${llmRes.proposal.rationale}`,
+		);
+		return { status: "accepted-no-pr", notes };
+	}
+
+	let materialize;
+	try {
+		materialize = await materializeVariant({
+			productionMatrix: matrix,
+			productionMatrixName: cli.matrixName,
+			proposal: llmRes.proposal,
+		});
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		notes.push(`materialize failed: ${msg}`);
+		appendTriedRow({
+			schemaVersion: 1,
+			loggedAt: new Date().toISOString(),
+			matrixName: cli.matrixName,
+			variantId: "(failed)",
+			proposal: llmRes.proposal,
+			verdict: "errored",
+			reasons: [msg],
+		});
+		return { status: "materialize-failed", notes };
+	}
+
+	// Always log the attempt (accept or reject) so memory persists.
+	const candidateRow = materialize.candidateRows[0];
+	appendTriedRow({
+		schemaVersion: 1,
+		loggedAt: new Date().toISOString(),
+		matrixName: cli.matrixName,
+		variantId: materialize.candidateVariantId,
+		proposal: llmRes.proposal,
+		sweepId: candidateRow?.sweepId,
+		runConfigFingerprint: candidateRow?.runConfigFingerprint,
+		verdict: materialize.aggregateAccept ? "accepted" : "rejected",
+		reasons: materialize.decisions.flatMap((d) => d.verdict?.reasons ?? [d.reason ?? ""]),
+		metrics: candidateRow?.summary
+			? {
+					passRate: candidateRow.summary.passRate,
+					demoCriticalPassRate: candidateRow.summary.demoCriticalPassRate,
+					recallAtKMean: candidateRow.summary.recallAtKMean,
+					latencyP95Ms: candidateRow.summary.latencyP95Ms,
+				}
+			: undefined,
+	});
+
+	if (!materialize.aggregateAccept) {
+		notes.push(
+			`materialized variant rejected by decide(): ${materialize.decisions
+				.map((d) => `${d.corpus}=${d.verdict?.accept ? "accept" : "reject"}`)
+				.join(", ")}`,
+		);
+		return { status: "rejected", notes };
+	}
+
+	if (cli.skipPr) {
+		notes.push(
+			`accepted: ${llmRes.proposal.axis}=${JSON.stringify(llmRes.proposal.value)} — PR creation skipped`,
+		);
+		return { status: "accepted-pr-skipped", notes };
+	}
+
+	const verdictSummary = materialize.decisions
+		.map(
+			(d) =>
+				`- ${d.corpus}: ${d.verdict?.accept ? "✓ accept" : "✗ reject"} ${d.verdict ? `(meanΔ=${d.verdict.bootstrap.meanDelta.toFixed(3)}, probBgreaterA=${d.verdict.bootstrap.probBgreaterA.toFixed(3)})` : ""}`,
+		)
+		.join("\n");
+
+	const promote = await promoteViaPr({
+		proposalId: materialize.proposalId,
+		matrixName: cli.matrixName,
+		proposal: llmRes.proposal,
+		candidateVariantId: materialize.candidateVariantId,
+		rationale: llmRes.proposal.rationale,
+		verdictSummary,
+	});
+	if (promote.skippedReason) {
+		notes.push(`promotion skipped: ${promote.skippedReason}`);
+		return { status: "accepted-no-pr", notes };
+	}
+	notes.push(`PR created: ${promote.prUrl ?? promote.branch}`);
+	return { status: "accepted-pr-created", notes, prUrl: promote.prUrl };
+}
+
+async function main(): Promise<void> {
+	const cli = parseArgs(process.argv);
+	const out = await runLoop(cli);
+	console.log(JSON.stringify(out, null, 2));
+}
+
+const isMain = (() => {
+	try {
+		const here = fileURLToPath(import.meta.url);
+		return process.argv[1] === here;
+	} catch {
+		return false;
+	}
+})();
+
+if (isMain) {
+	main().catch((err) => {
+		console.error(
+			"[autonomous-loop] fatal:",
+			err instanceof Error ? err.message : String(err),
+		);
+		process.exit(1);
+	});
+}
+
+export { runLoop };
+export type { LoopOutcome };
