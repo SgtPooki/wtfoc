@@ -11,7 +11,7 @@
 If you discover a security vulnerability, please report it responsibly:
 
 1. **Do NOT open a public GitHub issue**
-2. Email: security@sgtpooki.com (or open a private security advisory on GitHub)
+2. File a [GitHub Private Security Advisory](https://github.com/SgtPooki/wtfoc/security/advisories/new) — this keeps the report private until a fix is ready and gives us a structured workflow for coordinated disclosure
 3. Include: description, reproduction steps, impact assessment
 4. We aim to respond within 72 hours
 

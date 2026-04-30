@@ -10,7 +10,6 @@ import { parseArgs } from "node:util";
 import { writeFileSync, mkdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
-	type DogfoodReport,
 	type EvalStageResult,
 	type Segment,
 	aggregateVerdict,
@@ -23,13 +22,34 @@ import {
 	evaluateQualityQueries,
 	evaluateSearch,
 	evaluateThemes,
+	GOLD_STANDARD_QUERIES,
+	GOLD_STANDARD_QUERIES_VERSION,
 	InMemoryVectorIndex,
 	LlmReranker,
 	OpenAIEmbedder,
 	type Reranker,
 } from "@wtfoc/search";
-import { evaluateStorage, createStore, type Store } from "@wtfoc/store";
+import { evaluateStorage, createStore } from "@wtfoc/store";
 import { formatDogfoodReport } from "./dogfood-formatter.js";
+import { buildRunConfig, defaultQualityQueriesRetrieval } from "./lib/build-run-config.js";
+import { namespacedCacheDir } from "./lib/cache-namespace.js";
+import { CostAggregator } from "./lib/cost-aggregator.js";
+import {
+	GRADER_PROMPT_VERSION,
+	GRADER_SYSTEM_PROMPT,
+	SYNTHESIS_PROMPT_VERSION,
+	SYNTHESIS_SYSTEM_PROMPT,
+} from "./lib/grounding-prompts.js";
+import { runGrounding } from "./lib/grounding-runner.js";
+import type { LlmUsage } from "./lib/llm-usage.js";
+import {
+	computeRunConfigFingerprint,
+	type ExtendedDogfoodReport,
+	FINGERPRINT_VERSION,
+} from "./lib/run-config.js";
+import { sha256Hex } from "./lib/run-config.js";
+import { SubstageTimer } from "./lib/substage-timer.js";
+import { TimingVectorIndex } from "./lib/timing-vector-index.js";
 
 const VALID_STAGES = [
 	"ingest",
@@ -148,6 +168,92 @@ async function main() {
 		segments.push(JSON.parse(text) as Segment);
 	}
 
+	// Citation/grounding configuration. Off by default; opt-in with
+	// WTFOC_GROUND_CHECK=1. Grader and synthesizer prompts are pinned
+	// and hashed into the run fingerprint so any prompt edit produces
+	// a fresh fingerprint + namespaced cache.
+	const groundingEnabled = process.env.WTFOC_GROUND_CHECK === "1";
+	if (groundingEnabled && !process.env.WTFOC_GRADER_URL) {
+		throw new Error(
+			"WTFOC_GROUND_CHECK=1 requires WTFOC_GRADER_URL (OpenAI-compatible /v1 endpoint) and WTFOC_GRADER_MODEL",
+		);
+	}
+	const graderConfig = groundingEnabled
+		? {
+				url: process.env.WTFOC_GRADER_URL!,
+				model: process.env.WTFOC_GRADER_MODEL ?? "",
+				apiKey: process.env.WTFOC_GRADER_KEY,
+			}
+		: null;
+	if (graderConfig && !graderConfig.model) {
+		throw new Error("WTFOC_GROUND_CHECK=1 requires WTFOC_GRADER_MODEL");
+	}
+	const synthesizerConfig =
+		groundingEnabled && values["extractor-url"] && values["extractor-model"]
+			? {
+					url: values["extractor-url"],
+					model: values["extractor-model"],
+					apiKey: values["extractor-key"],
+				}
+			: null;
+	const promptHashes: Record<string, string> = groundingEnabled
+		? {
+				synthesis: `${SYNTHESIS_PROMPT_VERSION}:${sha256Hex(SYNTHESIS_SYSTEM_PROMPT)}`,
+				grader: `${GRADER_PROMPT_VERSION}:${sha256Hex(GRADER_SYSTEM_PROMPT)}`,
+			}
+		: {};
+
+	// Build the run identity record + fingerprint up front so cache
+	// namespacing can use it before any stage runs. Variants with
+	// different fingerprints share no on-disk caches.
+	const runConfig = buildRunConfig({
+		collectionId: values.collection!,
+		manifest: head.manifest,
+		goldFixtureVersion: GOLD_STANDARD_QUERIES_VERSION,
+		goldFixture: GOLD_STANDARD_QUERIES,
+		embedder: {
+			url: values["embedder-url"] ?? "",
+			model: values["embedder-model"] ?? "",
+		},
+		extractor:
+			values["extractor-url"] && values["extractor-model"]
+				? { url: values["extractor-url"], model: values["extractor-model"] }
+				: null,
+		reranker:
+			values["reranker-type"] && values["reranker-url"]
+				? {
+						type: values["reranker-type"],
+						url: values["reranker-url"],
+						model: values["reranker-model"] ?? values["extractor-model"],
+					}
+				: null,
+		grader: graderConfig ? { url: graderConfig.url, model: graderConfig.model } : null,
+		retrieval: defaultQualityQueriesRetrieval({
+			autoRoute: values["auto-route"] ?? false,
+			diversityEnforce: values["diversity-enforce"] ?? false,
+		}),
+		evaluation: {
+			checkParaphrases: process.env.WTFOC_CHECK_PARAPHRASES === "1",
+			groundCheck: groundingEnabled,
+		},
+		promptHashes,
+	});
+	const runConfigFingerprint = computeRunConfigFingerprint(runConfig);
+
+	// Per-substage telemetry — maintainer-only. Captures wall-clock + token
+	// usage across the quality-queries stage. Sinks pipe into the timer +
+	// aggregator, which become metrics in the resulting report.
+	const timer = new SubstageTimer();
+	const costs = new CostAggregator();
+	const embedderUsageSink = (u: LlmUsage): void => {
+		if (typeof u.durationMs === "number") timer.record("embed-call", u.durationMs);
+		costs.record("embed-call", u);
+	};
+	const rerankerUsageSink = (u: LlmUsage): void => {
+		if (typeof u.durationMs === "number") timer.record("rerank", u.durationMs);
+		costs.record("rerank", u);
+	};
+
 	// Build optional reranker
 	let reranker: Reranker | undefined;
 	const rerankerType = values["reranker-type"];
@@ -160,6 +266,7 @@ async function main() {
 			baseUrl: rerankerUrl,
 			model: values["reranker-model"] ?? values["extractor-model"],
 			apiKey: values["extractor-key"],
+			usageSink: rerankerUsageSink,
 		});
 		console.error(`[dogfood] Reranker: llm (${rerankerUrl}, model=${values["reranker-model"] ?? values["extractor-model"]})`);
 	}
@@ -324,17 +431,18 @@ async function main() {
 							apiKey: values["embedder-key"] || values["extractor-key"] || "no-key",
 							baseUrl: values["embedder-url"],
 							model: values["embedder-model"],
+							usageSink: embedderUsageSink,
 						});
-						const embedCacheDir =
+						const embedCacheBaseDir =
 							values["embedder-cache-dir"] ?? process.env.WTFOC_EMBEDDER_CACHE_DIR;
-						const embedder = embedCacheDir
+						const embedder = embedCacheBaseDir
 							? new CachingEmbedder(rawEmbedder, {
-									cacheDir: embedCacheDir,
+									cacheDir: namespacedCacheDir(embedCacheBaseDir, runConfigFingerprint),
 									provider: "openai-compatible",
 									modelVersion: "unknown",
 								})
 							: rawEmbedder;
-						const vectorIndex = new InMemoryVectorIndex();
+						const baseVectorIndex = new InMemoryVectorIndex();
 						for (const seg of segments) {
 							const entries = seg.chunks
 								.filter((c: { embedding?: number[] }) => c.embedding && c.embedding.length > 0)
@@ -354,9 +462,12 @@ async function main() {
 									},
 								}));
 							if (entries.length > 0) {
-								await vectorIndex.add(entries);
+								await baseVectorIndex.add(entries);
 							}
 						}
+						const vectorIndex = new TimingVectorIndex(baseVectorIndex, (ms) =>
+							timer.record("vector-retrieve", ms),
+						);
 						const qqManifestDir =
 							(store.manifests as { dir?: string }).dir ??
 							`${process.env.HOME ?? "."}.wtfoc/projects`;
@@ -373,9 +484,63 @@ async function main() {
 						qqOverlayEdges,
 						reranker,
 						values["auto-route"] ?? false,
-						{ collectionId: values.collection!, corpusSourceTypes },
+						{
+							collectionId: values.collection!,
+							corpusSourceTypes,
+							perQueryHook: (id, ms) => timer.record("per-query-total", ms),
+							checkParaphrases: process.env.WTFOC_CHECK_PARAPHRASES === "1",
+						},
 						values["diversity-enforce"] ?? false,
 					);
+
+					// Phase 0f — citation/grounding on the synthesis tier. Off
+					// by default; opt-in via WTFOC_GROUND_CHECK=1 (single
+					// pinned grader, no escalation, no rate-limit risk on
+					// local vLLM). Synthesis prompts the extractor to emit
+					// claims; grader (stronger model than extractor) verdicts
+					// each claim against the same retrieved evidence.
+					let grounding: Awaited<ReturnType<typeof runGrounding>> | null = null;
+					if (groundingEnabled && graderConfig && synthesizerConfig) {
+						const synthSink = (u: LlmUsage): void => {
+							if (typeof u.durationMs === "number") timer.record("synthesize", u.durationMs);
+							costs.record("synthesize", u);
+						};
+						const graderSink = (u: LlmUsage): void => {
+							if (typeof u.durationMs === "number") timer.record("grade", u.durationMs);
+							costs.record("grade", u);
+						};
+						const synthQueries = GOLD_STANDARD_QUERIES.filter(
+							(q) =>
+								q.category === "synthesis" &&
+								(!q.collectionScopePattern ||
+									new RegExp(q.collectionScopePattern).test(values.collection!)),
+						).map((q) => ({ id: q.id, queryText: q.queryText }));
+						console.error(
+							`[dogfood] grounding: ${synthQueries.length} synthesis-tier queries (grader=${graderConfig.model})`,
+						);
+						grounding = await runGrounding({
+							queries: synthQueries,
+							synthesizer: synthesizerConfig,
+							grader: graderConfig,
+							embedder,
+							vectorIndex,
+							reranker,
+							topK: 10,
+							synthesizerUsageSink: synthSink,
+							graderUsageSink: graderSink,
+						});
+					}
+
+					// Attach timing + cost telemetry (and grounding when run)
+					// to the stage's metrics payload — published
+					// `EvalStageResult.metrics` is `Record<string, unknown>`
+					// so this is additive.
+					result.metrics = {
+						...result.metrics,
+						timing: timer.allStats(),
+						cost: costs.allStats(),
+						...(grounding ? { grounding } : {}),
+					};
 					}
 					break;
 				}
@@ -398,7 +563,7 @@ async function main() {
 		}
 	}
 
-	const report: DogfoodReport = {
+	const report: ExtendedDogfoodReport = {
 		reportSchemaVersion: "1.0.0",
 		timestamp: new Date().toISOString(),
 		collectionId: head.manifest.collectionId,
@@ -406,6 +571,10 @@ async function main() {
 		stages: stageResults,
 		verdict: aggregateVerdict(stageResults),
 		durationMs: Math.round(performance.now() - t0),
+		runConfig,
+		runConfigFingerprint,
+		fingerprintVersion: FINGERPRINT_VERSION,
+		costComparable: costs.comparability(),
 	};
 
 	// Output

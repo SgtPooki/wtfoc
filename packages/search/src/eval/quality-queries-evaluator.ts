@@ -50,6 +50,50 @@ interface QueryScore {
 	sourceTypesReached: string[];
 	/** #217 — per-query lineage metrics (null when trace failed). */
 	lineage: LineageMetrics | null;
+	/**
+	 * #311 (Phase 0e) — evidence-diversity per query. Counts distinct
+	 * source identifiers and source-types across the union of `query()`
+	 * results and `trace()` reached hops. Lets the autoresearch loop
+	 * detect retrieval narrowing (improvements that look better on
+	 * pass-rate but kill cross-source evidence).
+	 */
+	distinctDocs: number;
+	distinctSourceTypes: number;
+	/**
+	 * #311 (Phase 0d) — retrieval recall@K against gold supporting
+	 * sources, computed only for queries with a `goldSupportingSources`
+	 * mapping in the fixture (demo-critical tier in v1.7.0). null when
+	 * the fixture has no recall baseline for this query, or when the
+	 * query failed before retrieval (resultCount === 0).
+	 */
+	recallAtK: number | null;
+	/** Top-K depth used to compute `recallAtK` (currently 10). */
+	recallK: number | null;
+	/**
+	 * Highest score in the query top-K. Used for hard-negative scoring
+	 * (#311 reviewer feedback): a hard-negative passes only when the
+	 * top result's confidence is below `HARD_NEGATIVE_SCORE_CEILING`,
+	 * even if `resultCount` is small.
+	 */
+	topScore: number | null;
+	/**
+	 * #311 (Phase 1a) — paraphrase invariance check. Populated only when
+	 * `QualityQueriesContext.checkParaphrases === true` AND the fixture
+	 * has `paraphrases` for this query.
+	 */
+	paraphraseScores?: ParaphraseScore[];
+	/**
+	 * True iff the canonical query passed AND every paraphrase passed.
+	 * Brittle queries (canonical pass + ≥1 paraphrase fail) surface as
+	 * false. Undefined when paraphrases not checked.
+	 */
+	paraphraseInvariant?: boolean;
+}
+
+export interface ParaphraseScore {
+	text: string;
+	passed: boolean;
+	passedQueryOnly: boolean;
 }
 
 /**
@@ -66,6 +110,21 @@ export interface QualityQueriesContext {
 	 * corpus coverage gap, not a retrieval regression.
 	 */
 	corpusSourceTypes?: ReadonlySet<string>;
+	/**
+	 * Per-query timing hook. Maintainer-only: dogfood and the autoresearch
+	 * sweep harness pass a callback that receives `(queryId, durationMs)`
+	 * after each query is scored. Used to compute end-to-end p50/p95
+	 * across the fixture; consumers leave it unset.
+	 */
+	perQueryHook?: (queryId: string, durationMs: number) => void;
+	/**
+	 * Run each fixture query's `paraphrases` through the same scoring
+	 * pipeline and report per-query `paraphraseInvariant`. Default off
+	 * because paraphrase scoring multiplies wall-clock cost by ~(1+N)
+	 * paraphrases per query; on for autoresearch sweeps that need
+	 * brittleness signal.
+	 */
+	checkParaphrases?: boolean;
 }
 
 export async function evaluateQualityQueries(
@@ -98,6 +157,7 @@ export async function evaluateQualityQueries(
 			skippedReasons.push({ id: gq.id, reason: skip });
 			continue;
 		}
+		const queryStart = performance.now();
 		const score = await scoreQuery(
 			gq,
 			embedder,
@@ -108,7 +168,9 @@ export async function evaluateQualityQueries(
 			reranker,
 			autoRoute,
 			diversityEnforce,
+			context.checkParaphrases ?? false,
 		);
+		context.perQueryHook?.(gq.id, performance.now() - queryStart);
 		scores.push(score);
 		if (score.passed) passCount++;
 		if (score.passedQueryOnly) queryOnlyPassCount++;
@@ -126,6 +188,7 @@ export async function evaluateQualityQueries(
 		"synthesis",
 		"file-level",
 		"work-lineage",
+		"hard-negative",
 	] as const;
 	const categoryBreakdown: Record<
 		string,
@@ -268,6 +331,22 @@ export async function evaluateQualityQueries(
 			lineage: aggregateLineageMetrics(
 				scores.map((s) => s.lineage).filter((m): m is LineageMetrics => m !== null),
 			),
+			// #311 (Phase 0e) — evidence-diversity averages. Computed over
+			// applicable queries only (passing-only and overall) so the
+			// autoresearch loop can detect retrieval narrowing — variants
+			// that improve pass-rate while shrinking cross-source evidence.
+			evidenceDiversity: aggregateDiversity(scores),
+			// #311 (Phase 0d) — recall@K aggregate over queries that have a
+			// goldSupportingSources mapping in the fixture (demo-critical
+			// tier in v1.7.0). Reports the mean recall@K across those
+			// queries plus the per-tier average for demo-critical.
+			recallAtK: aggregateRecall(scores),
+			// #311 (Phase 1a) — paraphrase invariance aggregate. Only
+			// emitted when paraphrase checking ran. A query is "brittle"
+			// when canonical passes but ≥1 paraphrase fails — directly
+			// measures the memorization-not-retrieval risk peer-review
+			// flagged at #311.
+			paraphraseInvariance: aggregateParaphraseInvariance(scores),
 		},
 		checks,
 	};
@@ -302,6 +381,78 @@ function resolveSkip(gq: GoldStandardQuery, ctx: QualityQueriesContext): string 
 	return null;
 }
 
+interface DiversityAggregate {
+	passingAvgDistinctDocs: number;
+	passingAvgDistinctSourceTypes: number;
+	applicableAvgDistinctDocs: number;
+	applicableAvgDistinctSourceTypes: number;
+	passingCount: number;
+	applicableCount: number;
+}
+
+function avg(nums: number[]): number {
+	if (nums.length === 0) return 0;
+	const sum = nums.reduce((a, b) => a + b, 0);
+	return sum / nums.length;
+}
+
+interface RecallAggregate {
+	k: number | null;
+	graded: number;
+	avgRecallAtK: number;
+	demoCriticalAvgRecallAtK: number;
+	demoCriticalGraded: number;
+}
+
+function aggregateRecall(scores: QueryScore[]): RecallAggregate {
+	const graded = scores.filter((s) => !s.skipped && s.recallAtK !== null && s.recallK !== null);
+	const demoCriticalIds = new Set(
+		GOLD_STANDARD_QUERIES.filter((q) => q.tier === "demo-critical").map((q) => q.id),
+	);
+	const demoCriticalGraded = graded.filter((s) => demoCriticalIds.has(s.id));
+	const k = graded[0]?.recallK ?? null;
+	return {
+		k,
+		graded: graded.length,
+		avgRecallAtK: avg(graded.map((s) => s.recallAtK ?? 0)),
+		demoCriticalAvgRecallAtK: avg(demoCriticalGraded.map((s) => s.recallAtK ?? 0)),
+		demoCriticalGraded: demoCriticalGraded.length,
+	};
+}
+
+interface ParaphraseInvarianceAggregate {
+	checked: boolean;
+	withParaphrases: number;
+	allInvariant: number;
+	brittle: number;
+	invariantFraction: number;
+}
+
+function aggregateParaphraseInvariance(scores: QueryScore[]): ParaphraseInvarianceAggregate {
+	const withP = scores.filter((s) => !s.skipped && s.paraphraseInvariant !== undefined);
+	const allInvariant = withP.filter((s) => s.paraphraseInvariant === true).length;
+	return {
+		checked: withP.length > 0,
+		withParaphrases: withP.length,
+		allInvariant,
+		brittle: withP.length - allInvariant,
+		invariantFraction: withP.length > 0 ? allInvariant / withP.length : 0,
+	};
+}
+
+function aggregateDiversity(scores: QueryScore[]): DiversityAggregate {
+	const applicable = scores.filter((s) => !s.skipped);
+	const passing = applicable.filter((s) => s.passed);
+	return {
+		passingAvgDistinctDocs: avg(passing.map((s) => s.distinctDocs)),
+		passingAvgDistinctSourceTypes: avg(passing.map((s) => s.distinctSourceTypes)),
+		applicableAvgDistinctDocs: avg(applicable.map((s) => s.distinctDocs)),
+		applicableAvgDistinctSourceTypes: avg(applicable.map((s) => s.distinctSourceTypes)),
+		passingCount: passing.length,
+		applicableCount: applicable.length,
+	};
+}
+
 function skippedScore(gq: GoldStandardQuery, reason: string): QueryScore {
 	return {
 		id: gq.id,
@@ -319,10 +470,40 @@ function skippedScore(gq: GoldStandardQuery, reason: string): QueryScore {
 		crossSourceFound: true,
 		sourceTypesReached: [],
 		lineage: null,
+		distinctDocs: 0,
+		distinctSourceTypes: 0,
+		recallAtK: null,
+		recallK: null,
+		topScore: null,
 	};
 }
 
-async function scoreQuery(
+interface InnerScore {
+	passed: boolean;
+	passedQueryOnly: boolean;
+	resultCount: number;
+	requiredTypesFound: boolean;
+	requiredTypesFoundQueryOnly: boolean;
+	substringFound: boolean;
+	edgeHopFound: boolean;
+	crossSourceFound: boolean;
+	sourceTypesReached: string[];
+	lineage: LineageMetrics | null;
+	distinctDocs: number;
+	distinctSourceTypes: number;
+	recallAtK: number | null;
+	recallK: number | null;
+	/**
+	 * Highest score in the query top-K (cosine similarity, etc). Captured
+	 * for hard-negative scoring: a hard-negative fails if the retrieval
+	 * surfaced ANY high-confidence result, regardless of count. Phase
+	 * 1+ tightening of #311 (b).
+	 */
+	topScore: number | null;
+}
+
+async function scoreText(
+	queryText: string,
 	gq: GoldStandardQuery,
 	embedder: Embedder,
 	vectorIndex: VectorIndex,
@@ -332,7 +513,7 @@ async function scoreQuery(
 	reranker?: Reranker,
 	autoRoute = false,
 	diversityEnforce = false,
-): Promise<QueryScore> {
+): Promise<InnerScore> {
 	let resultCount = 0;
 	let requiredTypesFound = false;
 	// #261 — captured before trace rescue so we can report retrieval quality
@@ -343,9 +524,14 @@ async function scoreQuery(
 	let crossSourceFound = true; // default true if not required
 	const sourceTypesReached: string[] = [];
 	let lineage: LineageMetrics | null = null;
+	const distinctSources = new Set<string>();
+	const distinctTypes = new Set<string>();
+	let recallAtK: number | null = null;
+	let recallK: number | null = null;
+	let topScore: number | null = null;
 
 	try {
-		const boosts = autoRoute ? classifyQueryPersona(gq.queryText).sourceTypeBoosts : undefined;
+		const boosts = autoRoute ? classifyQueryPersona(queryText).sourceTypeBoosts : undefined;
 		// File-level gold queries (#286) get an automatic boost on file-summary
 		// chunks (#287). Category-based rather than persona-classifier-based
 		// because the gold fixture already tags intent explicitly. Value chosen
@@ -357,7 +543,7 @@ async function scoreQuery(
 		const diversityOption = diversityEnforce ? { minScoreRatio: 0.65 } : undefined;
 
 		// Query phase
-		const qResult = await query(gq.queryText, embedder, vectorIndex, {
+		const qResult = await query(queryText, embedder, vectorIndex, {
 			topK: 10,
 			signal,
 			reranker,
@@ -366,6 +552,13 @@ async function scoreQuery(
 			...(diversityOption ? { diversityEnforce: diversityOption } : {}),
 		});
 		resultCount = qResult.results.length;
+		for (const r of qResult.results) {
+			distinctSources.add(r.source);
+			distinctTypes.add(r.sourceType);
+			if (typeof r.score === "number" && (topScore === null || r.score > topScore)) {
+				topScore = r.score;
+			}
+		}
 
 		const resultSourceTypes = new Set(qResult.results.map((r) => r.sourceType));
 		requiredTypesFoundQueryOnly = gq.requiredSourceTypes.every((st) => resultSourceTypes.has(st));
@@ -378,8 +571,23 @@ async function scoreQuery(
 			);
 		}
 
+		// #311 Phase 0d — recall@K against gold supporting sources.
+		// Computed against query-stage top-K only (no trace rescue) so the
+		// metric measures retrieval quality independently of the graph.
+		if (gq.goldSupportingSources && gq.goldSupportingSources.length > 0) {
+			const k = 10;
+			const topKSources = qResult.results.slice(0, k).map((r) => r.source.toLowerCase());
+			let matched = 0;
+			for (const goldSub of gq.goldSupportingSources) {
+				const subLower = goldSub.toLowerCase();
+				if (topKSources.some((src) => src.includes(subLower))) matched++;
+			}
+			recallAtK = matched / gq.goldSupportingSources.length;
+			recallK = k;
+		}
+
 		// Trace phase
-		const tResult = await trace(gq.queryText, embedder, vectorIndex, segments, {
+		const tResult = await trace(queryText, embedder, vectorIndex, segments, {
 			mode: "analytical",
 			signal,
 			overlayEdges: overlayEdges.length > 0 ? overlayEdges : undefined,
@@ -390,6 +598,10 @@ async function scoreQuery(
 		});
 
 		for (const st of tResult.stats.sourceTypes) sourceTypesReached.push(st);
+		for (const hop of tResult.hops) {
+			distinctSources.add(hop.source);
+			distinctTypes.add(hop.sourceType);
+		}
 
 		lineage = computeLineageMetrics(tResult);
 
@@ -409,22 +621,43 @@ async function scoreQuery(
 		// Query/trace failure = no results
 	}
 
+	// Hard-negative scoring is INVERTED. A hard negative passes when
+	// retrieval correctly does NOT pile on strong-looking false positives.
+	// Two checks combined:
+	//   1. resultCount < HARD_NEGATIVE_RESULT_CEILING — fewer false hits
+	//   2. topScore < HARD_NEGATIVE_SCORE_CEILING — even if a couple
+	//      results slip through, none should look high-confidence
+	//
+	// Reviewer (peer-review on Phase 1) flagged that count-only scoring
+	// rewards "fewer but high-confidence false positives" — a strictly
+	// worse failure mode. The score ceiling closes that loophole.
+	//
+	// Score ceiling chosen at 0.6 — empirically the boundary above which
+	// vector cosine similarity on bge-base means the chunk is genuinely
+	// on-topic. Tunable; a future PR can swap to a corpus-relative
+	// percentile threshold if 0.6 turns out to be over- or under-tight.
+	const HARD_NEGATIVE_RESULT_CEILING = 3;
+	const HARD_NEGATIVE_SCORE_CEILING = 0.6;
+
+	const hardNegativeNoStrongHits = topScore === null || topScore < HARD_NEGATIVE_SCORE_CEILING;
+
 	const passed =
-		resultCount >= gq.minResults &&
-		requiredTypesFound &&
-		substringFound &&
-		edgeHopFound &&
-		crossSourceFound;
+		gq.category === "hard-negative"
+			? resultCount < HARD_NEGATIVE_RESULT_CEILING && hardNegativeNoStrongHits
+			: resultCount >= gq.minResults &&
+				requiredTypesFound &&
+				substringFound &&
+				edgeHopFound &&
+				crossSourceFound;
 
 	// Query-only pass: same criteria EXCEPT use the pre-trace requiredTypes check
 	// and ignore edge-hop/cross-source requirements (those are inherently trace-assisted).
 	const passedQueryOnly =
-		resultCount >= gq.minResults && requiredTypesFoundQueryOnly && substringFound;
+		gq.category === "hard-negative"
+			? resultCount < HARD_NEGATIVE_RESULT_CEILING && hardNegativeNoStrongHits
+			: resultCount >= gq.minResults && requiredTypesFoundQueryOnly && substringFound;
 
 	return {
-		id: gq.id,
-		category: gq.category,
-		queryText: gq.queryText,
 		passed,
 		passedQueryOnly,
 		resultCount,
@@ -435,5 +668,67 @@ async function scoreQuery(
 		crossSourceFound,
 		sourceTypesReached,
 		lineage,
+		distinctDocs: distinctSources.size,
+		distinctSourceTypes: distinctTypes.size,
+		recallAtK,
+		recallK,
+		topScore,
+	};
+}
+
+async function scoreQuery(
+	gq: GoldStandardQuery,
+	embedder: Embedder,
+	vectorIndex: VectorIndex,
+	segments: Segment[],
+	signal?: AbortSignal,
+	overlayEdges: Edge[] = [],
+	reranker?: Reranker,
+	autoRoute = false,
+	diversityEnforce = false,
+	checkParaphrases = false,
+): Promise<QueryScore> {
+	const inner = await scoreText(
+		gq.queryText,
+		gq,
+		embedder,
+		vectorIndex,
+		segments,
+		signal,
+		overlayEdges,
+		reranker,
+		autoRoute,
+		diversityEnforce,
+	);
+
+	let paraphraseScores: ParaphraseScore[] | undefined;
+	let paraphraseInvariant: boolean | undefined;
+	if (checkParaphrases && gq.paraphrases && gq.paraphrases.length > 0) {
+		paraphraseScores = [];
+		for (const p of gq.paraphrases) {
+			const ps = await scoreText(
+				p,
+				gq,
+				embedder,
+				vectorIndex,
+				segments,
+				signal,
+				overlayEdges,
+				reranker,
+				autoRoute,
+				diversityEnforce,
+			);
+			paraphraseScores.push({ text: p, passed: ps.passed, passedQueryOnly: ps.passedQueryOnly });
+		}
+		paraphraseInvariant = inner.passed && paraphraseScores.every((p) => p.passed);
+	}
+
+	return {
+		id: gq.id,
+		category: gq.category,
+		queryText: gq.queryText,
+		...inner,
+		...(paraphraseScores ? { paraphraseScores } : {}),
+		...(paraphraseInvariant !== undefined ? { paraphraseInvariant } : {}),
 	};
 }

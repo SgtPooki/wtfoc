@@ -36,6 +36,20 @@ export interface OpenAIEmbedderOptions {
 	 * window so old requests age out before retry. Default: 60000.
 	 */
 	providerErrorBaseDelayMs?: number;
+	/**
+	 * Optional per-call telemetry hook. Maintainer-only: dogfood and the
+	 * autoresearch sweep harness pass a sink to capture token usage,
+	 * response model id (drift detection), and call duration. Consumers
+	 * leave this unset and pay zero overhead.
+	 */
+	usageSink?: (usage: {
+		requestModelId: string;
+		providerResponseModelId?: string;
+		promptTokens?: number;
+		completionTokens?: number;
+		totalTokens?: number;
+		durationMs: number;
+	}) => void;
 }
 
 /**
@@ -56,6 +70,7 @@ export class OpenAIEmbedder implements Embedder {
 	readonly #maxDelayMs: number;
 	readonly #minRequestIntervalMs: number;
 	readonly #providerErrorBaseDelayMs: number;
+	readonly #usageSink: OpenAIEmbedderOptions["usageSink"];
 	#lastRequestAt = 0;
 
 	readonly model: string;
@@ -87,6 +102,7 @@ export class OpenAIEmbedder implements Embedder {
 		this.#maxDelayMs = options.maxDelayMs ?? DEFAULT_MAX_DELAY_MS;
 		this.#minRequestIntervalMs = options.minRequestIntervalMs ?? 0;
 		this.#providerErrorBaseDelayMs = options.providerErrorBaseDelayMs ?? 60_000;
+		this.#usageSink = options.usageSink;
 
 		const base = options.baseUrl ?? API_URL;
 		this.#baseUrl = base.endsWith("/embeddings") ? base : `${base.replace(/\/$/, "")}/embeddings`;
@@ -125,6 +141,7 @@ export class OpenAIEmbedder implements Embedder {
 			}
 		}
 		this.#lastRequestAt = Date.now();
+		const callStart = performance.now();
 
 		// Truncate inputs that exceed the model's context limit
 		let truncatedCount = 0;
@@ -233,6 +250,19 @@ export class OpenAIEmbedder implements Embedder {
 			const firstEmbedding = sorted[0];
 			if (firstEmbedding && this.#dimensions === null) {
 				this.#dimensions = firstEmbedding.embedding.length;
+			}
+
+			if (this.#usageSink) {
+				const usage = (json as { usage?: { prompt_tokens?: number; total_tokens?: number } } | null)
+					?.usage;
+				const responseModel = (json as { model?: string } | null)?.model;
+				this.#usageSink({
+					requestModelId: this.model,
+					providerResponseModelId: responseModel,
+					promptTokens: usage?.prompt_tokens,
+					totalTokens: usage?.total_tokens,
+					durationMs: performance.now() - callStart,
+				});
 			}
 
 			return sorted.map((d) => new Float32Array(d.embedding));
