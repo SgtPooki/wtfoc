@@ -1,2 +1,0 @@
-sentence-transformers==3.4.1
-torch==2.6.0
