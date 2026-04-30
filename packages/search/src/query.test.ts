@@ -365,4 +365,77 @@ describe("query", () => {
 			expect(result.results[0]?.sourceType).toBe("code");
 		});
 	});
+
+	describe("rerank pool-preservation contract (#311 audit)", () => {
+		// Phase 3 audit (docs/autoresearch/audits/2026-04-30-rerank-pipeline-collapse.md)
+		// found that pre-trimming the reranker output to `topK` collapsed
+		// the diverse candidate pool that `diversityEnforce` was meant to
+		// rescue from. These tests lock in the contract: when a reranker
+		// is wired in, query.ts MUST forward the full pre-rerank pool to
+		// it (no `topN` pre-trim) so downstream selectors see the full
+		// re-scored pool.
+
+		function makeRecordingReranker() {
+			const calls: Array<{
+				candidates: { id: string; text: string }[];
+				topN: number | undefined;
+			}> = [];
+			const reranker = {
+				async rerank(
+					_query: string,
+					candidates: { id: string; text: string }[],
+					options?: { topN?: number; signal?: AbortSignal },
+				) {
+					calls.push({ candidates: [...candidates], topN: options?.topN });
+					return candidates.map((c, i) => ({ id: c.id, score: candidates.length - i }));
+				},
+			};
+			return { reranker, calls };
+		}
+
+		it("forwards the full fetchK pool to the reranker (NOT pre-trimmed to topK)", async () => {
+			// Seed 30 entries so fetchK = topK * 3 = 30 (no diversity boost).
+			const entries = Array.from({ length: 30 }, (_, i) =>
+				makeEntry(`e${i}`, [1 - i * 0.01, i * 0.01, 0]),
+			);
+			const index = await seedIndex(...entries);
+			const { reranker, calls } = makeRecordingReranker();
+
+			await query("upload", embedder, index, { topK: 10, reranker });
+
+			expect(calls).toHaveLength(1);
+			// fetchK = topK * 3 = 30 when reranker is on (line 144 of query.ts)
+			expect(calls[0]?.candidates.length).toBeGreaterThanOrEqual(30);
+			// Critically: topN must NOT be set, so the reranker returns all
+			// scored candidates and downstream selectors see the full pool.
+			expect(calls[0]?.topN).toBeUndefined();
+		});
+
+		it("with diversityEnforce, forwards fetchK = topK * 10 candidates to reranker", async () => {
+			// Build 60 entries spanning multiple source types so the wider
+			// diversity-enforce fetch pool is meaningful.
+			const types = ["code", "markdown", "github-pr", "github-issue", "slack-message"];
+			const entries = Array.from({ length: 60 }, (_, i) =>
+				makeEntry(`e${i}`, [1 - i * 0.01, i * 0.01, 0], {
+					sourceType: types[i % types.length] ?? "code",
+				}),
+			);
+			const index = await seedIndex(...entries);
+			const { reranker, calls } = makeRecordingReranker();
+
+			await query("upload", embedder, index, {
+				topK: 5,
+				reranker,
+				diversityEnforce: { minScoreRatio: 0.65 },
+			});
+
+			expect(calls).toHaveLength(1);
+			// With diversityEnforce, fetchK = topK * 10 = 50 (line 161 of query.ts).
+			// Reranker MUST see at least the full diversity-widened pool, not
+			// just topK. Phase 3 measured a −17pp regression when this was
+			// pre-trimmed.
+			expect(calls[0]?.candidates.length).toBeGreaterThanOrEqual(50);
+			expect(calls[0]?.topN).toBeUndefined();
+		});
+	});
 });

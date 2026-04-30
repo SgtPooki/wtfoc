@@ -260,13 +260,18 @@ export async function trace(
 
 	if (options?.reranker && seeds.length > 0) {
 		options.signal?.throwIfAborted();
+		// Do NOT pass `topN: maxTotal` — diversity-enforce already ran
+		// at line 254 to produce a balanced `seeds` pool. Pre-trimming
+		// the rerank output back to maxTotal undoes that diversity by
+		// promoting same-source-type candidates that score highest on
+		// pure relevance. See `docs/autoresearch/audits/2026-04-30-rerank-pipeline-collapse.md`.
 		const reranked = await options.reranker.rerank(
 			query,
 			seeds.map((seed) => ({
 				id: seed.entry.id,
 				text: seed.entry.metadata.content ?? "",
 			})),
-			{ topN: maxTotal, signal: options.signal },
+			{ signal: options.signal },
 		);
 		if (reranked.length > 0) {
 			const scoreMap = new Map<string, number>(reranked.map((r) => [r.id, r.score]));
