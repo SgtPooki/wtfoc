@@ -1,6 +1,8 @@
 # AGENTS.md — wtfoc
 
-**Mission:** wtfoc builds shareable, improvable knowledge graphs. Any agent — AI or human — can ingest sources, extract semantic edges, and publish a collection to Filecoin. Any other agent can fetch it, improve it (better edges, new sources, re-chunking), and republish. The knowledge gets better with each contributor.
+**Mission:** wtfoc is an evidence-backed **trace engine with explicit typed edges across any content type**. Builds shareable, improvable knowledge graphs. Any agent — AI or human — can ingest sources, extract evidence-backed edges (pattern, code, heuristic, temporal, LLM extractors run in parallel), and publish a content-addressed collection. Any other agent can fetch, improve, and republish. The knowledge gets better with each contributor.
+
+**Read before framing or scope proposals:** [`docs/vision.md`](docs/vision.md) (north-star goals + anti-goals) and [`docs/why.md`](docs/why.md) (search vs trace, the four collection use cases — Extend / RAG / Share / Drift-detection). Collections hold any content type (engineering artifacts, customer data, time-series, audio metadata, anything). FOC is the *default* StorageBackend, not a requirement — pluggable seam.
 
 Agent operating instructions for this repository.
 
