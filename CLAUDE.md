@@ -2,6 +2,16 @@
 
 **Baseline rules**: [`AGENTS.md`](AGENTS.md) defines project-wide operating rules (style, seams, commit discipline, edit checklist). Follow AGENTS.md as the foundation.
 
+## Vision and mission — read before reasoning about wtfoc
+
+These two docs define what wtfoc is and where it's going. Read them before making framing claims, scope proposals, or design decisions. Don't reduce wtfoc to "RAG" or "Filecoin storage" — both are wrong. **wtfoc is a trace engine with explicit typed edges across any content type.** RAG is one of four collection use cases. FOC is the *default* StorageBackend, not a requirement.
+
+- [`docs/vision.md`](docs/vision.md) — north-star goals, what "done" looks like, anti-goals
+- [`docs/why.md`](docs/why.md) — what the differentiator is (search vs trace), how it compares to other tools
+- [`docs/autoresearch/autonomous-loop-runbook.md`](docs/autoresearch/autonomous-loop-runbook.md) — operational guide for the closed-loop improvement system
+
+Collections can hold any content (engineering artifacts, customer data, financial time-series, audio metadata, etc.). The substrate-of-community-improvable-collections is the moat — not retrieval quality.
+
 ## Skills
 
 Available via `/skill-name` or `Skill({ skill: "name" })`:

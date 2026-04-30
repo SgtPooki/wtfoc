@@ -31,11 +31,14 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeAndPropose } from "./analyze-and-propose.js";
+import { analyzeAndProposePatch } from "./analyze-and-propose-patch.js";
 import type { DetectionOutcome, Finding } from "./detect-regression.js";
 import { explainFinding } from "./explain-finding.js";
+import { materializePatchProposal } from "./materialize-patch.js";
 import { materializeVariant } from "./materialize-variant.js";
 import type { Matrix } from "./matrix.js";
 import { planNextCandidate, reconcileWithPlanner } from "./planner.js";
+import { promotePatchViaPr } from "./promote-patch-via-pr.js";
 import { promoteViaPr } from "./promote-via-pr.js";
 import { alreadyTried, appendTriedRow, readTriedLog } from "./tried-log.js";
 import type { ExtendedDogfoodReport } from "../lib/run-config.js";
@@ -59,7 +62,11 @@ interface LoopOutcome {
 		| "rejected"
 		| "accepted-no-pr"
 		| "accepted-pr-skipped"
-		| "accepted-pr-created";
+		| "accepted-pr-created"
+		| "patch-accepted-pr-created"
+		| "patch-rejected"
+		| "patch-llm-unavailable"
+		| "patch-no-proposal";
 	notes: string[];
 	prUrl?: string | null;
 }
@@ -157,6 +164,89 @@ function findBaselineForFinding(finding: Finding): ExtendedDogfoodReport | null 
 	return null;
 }
 
+async function runPatchPath(input: {
+	cli: CliArgs;
+	matrix: Matrix;
+	finding: Finding;
+	explainMd: string;
+	triedRows: readonly RunLogRow[] | readonly import("./tried-log.js").TriedLogRow[];
+	notes: string[];
+}): Promise<LoopOutcome> {
+	const { cli, matrix, finding, explainMd, notes } = input;
+	const triedRows = input.triedRows as readonly import("./tried-log.js").TriedLogRow[];
+
+	const llm = await analyzeAndProposePatch({
+		matrixName: cli.matrixName,
+		explainMarkdown: explainMd,
+		triedRows,
+	});
+	if (!llm.llmCallSucceeded) {
+		notes.push(`patch LLM unavailable: ${llm.error ?? "unknown"}`);
+		return { status: "patch-llm-unavailable", notes };
+	}
+	if (!llm.proposal) {
+		notes.push(
+			llm.error ? `patch LLM returned no usable proposal: ${llm.error}` : "patch LLM emitted NO_PATCH",
+		);
+		return { status: "patch-no-proposal", notes };
+	}
+
+	if (cli.dryRun) {
+		notes.push(
+			`DRY-RUN patch proposal: baseSha=${llm.proposal.baseSha}, +${llm.proposal.unifiedDiff.split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++")).length}/-${llm.proposal.unifiedDiff.split("\n").filter((l) => l.startsWith("-") && !l.startsWith("---")).length} lines`,
+		);
+		return { status: "accepted-no-pr", notes };
+	}
+
+	const materialize = await materializePatchProposal({
+		productionMatrix: matrix,
+		productionMatrixName: cli.matrixName,
+		proposal: llm.proposal,
+	});
+
+	// Persist a tried-log row regardless of outcome.
+	appendTriedRow({
+		schemaVersion: 1,
+		loggedAt: new Date().toISOString(),
+		matrixName: cli.matrixName,
+		variantId: `patch_${materialize.proposalId}`,
+		proposal: {
+			axis: "(code-patch)",
+			value: llm.proposal.baseSha,
+			rationale: llm.proposal.rationale.slice(0, 200),
+		},
+		verdict: materialize.aggregateAccept ? "accepted" : "rejected",
+		reasons: materialize.decisions.flatMap((d) => d.verdict?.reasons ?? [d.reason ?? ""]).concat(materialize.notes),
+	});
+
+	if (!materialize.aggregateAccept) {
+		const reason = materialize.skippedReason ?? materialize.decisions.map((d) => `${d.corpus}: ${d.verdict?.accept ? "ok" : "reject"}`).join(", ");
+		notes.push(`patch rejected: ${reason}`);
+		return { status: "patch-rejected", notes };
+	}
+
+	if (cli.skipPr) {
+		notes.push("--skip-pr: patch accepted but PR creation skipped");
+		return { status: "accepted-pr-skipped", notes };
+	}
+
+	const promote = await promotePatchViaPr({
+		materializeResult: materialize,
+		proposal: llm.proposal,
+		matrixName: cli.matrixName,
+	});
+	if (promote.skippedReason) {
+		notes.push(`patch promotion skipped: ${promote.skippedReason}`);
+		return { status: "accepted-no-pr", notes };
+	}
+	notes.push(`patch PR created: ${promote.prUrl ?? promote.branch}`);
+	return {
+		status: "patch-accepted-pr-created",
+		notes,
+		...(promote.prUrl !== null ? { prUrl: promote.prUrl } : {}),
+	};
+}
+
 async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 	const notes: string[] = [];
 	const outcome = JSON.parse(readFileSync(cli.findingsPath, "utf-8")) as DetectionOutcome;
@@ -212,7 +302,20 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 	if (!proposal) {
 		const plan = planNextCandidate({ matrixName: cli.matrixName, triedRows });
 		if (!plan) {
-			notes.push("LLM returned no proposal; planner queue exhausted (every materializable tuple within silence window)");
+			notes.push("LLM returned no proposal; planner queue exhausted");
+			// Config space exhausted. Try the code-patch path when enabled.
+			if (process.env.WTFOC_ALLOW_PATCHES === "1") {
+				notes.push("WTFOC_ALLOW_PATCHES=1 → attempting code-patch proposal");
+				return await runPatchPath({
+					cli,
+					matrix,
+					finding,
+					explainMd,
+					triedRows,
+					notes,
+				});
+			}
+			notes.push("WTFOC_ALLOW_PATCHES is unset — config space exhausted, no patch attempted");
 			return { status: "no-proposal", notes };
 		}
 		notes.push(
