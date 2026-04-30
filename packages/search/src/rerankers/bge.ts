@@ -6,9 +6,13 @@ export interface BgeRerankerOptions {
 }
 
 /**
- * Cross-encoder reranker backed by BAAI/bge-reranker-v2-m3 via a local HTTP sidecar.
- * Much faster and more accurate than LLM reranking (~50ms vs ~2-3s per call).
- * Start the sidecar with: docker compose up bge-reranker
+ * Cross-encoder reranker speaking the {query, candidates, top_n} → {results}
+ * protocol. Compatible with the wtfoc-shipped local sidecar (BAAI/bge-reranker-v2-m3
+ * by default, see `services/bge-reranker/`) AND any other server implementing
+ * the same contract. Much faster than LLM reranking when GPU-accelerated;
+ * the local sidecar runs natively on host so PyTorch can use Metal/CUDA.
+ *
+ * Start the local sidecar with: `./services/bge-reranker/run-native.sh`.
  */
 export class BgeReranker implements Reranker {
 	readonly #url: string;

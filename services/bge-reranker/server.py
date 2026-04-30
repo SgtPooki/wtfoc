@@ -17,13 +17,29 @@ MODEL_NAME = os.environ.get("MODEL", "BAAI/bge-reranker-v2-m3")
 MAX_LENGTH = int(os.environ.get("MAX_LENGTH", "512"))
 MAX_CANDIDATES = int(os.environ.get("MAX_CANDIDATES", "100"))
 
-print(f"[bge-reranker] Loading model {MODEL_NAME} ...", flush=True)
+# Device auto-detect — `DEVICE` env override > CUDA > MPS (Apple Silicon
+# Metal GPU) > CPU. Docker on Linux+nvidia hits CUDA. Native python on
+# Apple Silicon hits MPS — orders of magnitude faster than the CPU-only
+# Docker path on Mac (Docker can't see the Metal GPU). Native run via
+# run-native.sh.
+import torch  # noqa: E402
+
+DEVICE = os.environ.get("DEVICE", "").strip()
+if not DEVICE:
+    if torch.cuda.is_available():
+        DEVICE = "cuda"
+    elif torch.backends.mps.is_available():
+        DEVICE = "mps"
+    else:
+        DEVICE = "cpu"
+
+print(f"[bge-reranker] Loading model {MODEL_NAME} on device={DEVICE} ...", flush=True)
 
 from sentence_transformers import CrossEncoder  # noqa: E402
 
-model = CrossEncoder(MODEL_NAME, max_length=MAX_LENGTH)
+model = CrossEncoder(MODEL_NAME, max_length=MAX_LENGTH, device=DEVICE)
 
-print(f"[bge-reranker] Model loaded. Listening on :{PORT}", flush=True)
+print(f"[bge-reranker] Model loaded on {DEVICE}. Listening on :{PORT}", flush=True)
 
 
 def rerank(query: str, candidates: list[dict], top_n: int | None) -> list[dict]:
@@ -63,7 +79,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/health":
-            self._send_json(200, {"status": "ok", "model": MODEL_NAME})
+            self._send_json(200, {"status": "ok", "model": MODEL_NAME, "device": DEVICE})
         else:
             self._send_json(404, {"error": "Not found"})
 
