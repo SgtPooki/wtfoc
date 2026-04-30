@@ -169,13 +169,20 @@ export async function query(
 
 	if (reranker && matches.length > 0) {
 		options?.signal?.throwIfAborted();
+		// Do NOT pass `topN: topK` here — that pre-trims the candidate
+		// pool to topK before downstream `diversityEnforce` operates on
+		// it. The whole point of `fetchK = topK * 10` (line 161) was to
+		// give diversity-enforce a wide pool to rescue source types
+		// from. Phase 3 measured a −17pp regression because the rerank
+		// trim collapsed the diverse pool back to a single source-type
+		// cluster. See `docs/autoresearch/audits/2026-04-30-rerank-pipeline-collapse.md`.
 		const reranked = await reranker.rerank(
 			queryText,
 			matches.map((match) => ({
 				id: match.entry.storageId,
 				text: match.entry.metadata.content ?? "",
 			})),
-			{ topN: topK, signal: options?.signal },
+			{ signal: options?.signal },
 		);
 		if (reranked.length > 0) {
 			rerankedScores = new Map(reranked.map((result) => [result.id, result.score]));

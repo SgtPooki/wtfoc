@@ -55,11 +55,21 @@ export class LlmReranker implements Reranker {
 		if (candidates.length === 0) return [];
 		options?.signal?.throwIfAborted();
 
+		// Per-candidate context window: 2000 chars (~500 tokens). Up from
+		// the original 400 chars (~80 tokens) — Phase 3 audit found the
+		// 400-char window left the reranker LESS-informed than the
+		// embedder it was meant to refine, since bge-base-en-v1.5
+		// embeds the full ~512-token chunk while the reranker was
+		// scoring on the first 100 tokens. See
+		// `docs/autoresearch/audits/2026-04-30-rerank-pipeline-collapse.md`.
+		const PER_CANDIDATE_CHAR_LIMIT = 2000;
 		const userMessage = [
 			`Query: ${query}`,
 			"",
 			"Candidates:",
-			...candidates.map((c, i) => `[${i + 1}] id="${c.id}"\n${c.text.slice(0, 400)}`),
+			...candidates.map(
+				(c, i) => `[${i + 1}] id="${c.id}"\n${c.text.slice(0, PER_CANDIDATE_CHAR_LIMIT)}`,
+			),
 		].join("\n");
 
 		const headers: Record<string, string> = { "Content-Type": "application/json" };
