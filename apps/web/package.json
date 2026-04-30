@@ -31,7 +31,7 @@
 		"@wtfoc/store": "workspace:*",
 		"d3-force": "^3.0.0",
 		"d3-selection": "^3.0.0",
-		"hono": "^4.12.9",
+		"hono": "^4.12.14",
 		"node-pg-migrate": "^8.0.4",
 		"pg": "^8.20.0",
 		"pg-boss": "^12.15.0",
