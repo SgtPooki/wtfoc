@@ -6,7 +6,9 @@ Operational guide for running and monitoring the autoresearch closed-loop. Audie
 
 A nightly closed-loop that detects regressions in wtfoc's retrieval/synthesis quality, has a local LLM propose a fix, A/B tests the fix against production, and (on accept) opens a draft PR for the maintainer to review.
 
-**The wtfoc thing being optimized.** Per [`project_mission_and_value`](../../) wtfoc is a decentralized RAG / knowledge-base layer on Filecoin. The loop optimizes the **pipeline quality on whatever corpus is configured** — chunking, embedding, retrieval, traversal, synthesis. The goal is "wtfoc generalizes well across content types," NOT "this corpus is good." Diverse corpora are stress-tests, not subjects under test (#328 tracks growing the corpus matrix).
+**The wtfoc thing being optimized.** wtfoc is an evidence-backed **trace engine with explicit, typed edges across any content type**. NOT a RAG, NOT FOC-only, NOT engineering-only. Read [`docs/vision.md`](vision.md) and [`docs/why.md`](why.md) for the authoritative framing — RAG is one of four collection use cases (Extend / RAG / Share / Drift-detection), and FOC is the *default* StorageBackend, not a requirement. Collections can hold any domain (engineering artifacts, customer support data, financial time-series, audio metadata — anything).
+
+The loop optimizes the **pipeline quality on whatever corpus is configured** — chunking, embedding, retrieval, edge extraction, traversal, synthesis. The goal is "wtfoc generalizes across content types," NOT "this corpus is good." Diverse corpora are stress-tests, not subjects under test (#328 tracks growing the corpus matrix).
 
 ## Metrics to optimize (and explicitly drop)
 
