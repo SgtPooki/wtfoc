@@ -68,8 +68,16 @@ export interface Finding {
 	reason: string;
 }
 
-export interface DetectionOutcome {
-	status: "ok" | "breach" | "regression" | "both" | "insufficient-history";
+export type CorpusStatus =
+	| "ok"
+	| "breach"
+	| "regression"
+	| "both"
+	| "insufficient-history";
+
+export interface CorpusSummary {
+	corpus: string;
+	status: CorpusStatus;
 	latest: {
 		sweepId: string;
 		loggedAt: string;
@@ -78,11 +86,18 @@ export interface DetectionOutcome {
 		corpus: string;
 	} | null;
 	baselineCount: number;
+}
+
+export interface DetectionOutcome {
+	/** Aggregate status across all corpora — worst-of. */
+	status: CorpusStatus;
+	/** Per-corpus summary. Tests + CLI iterate over this. */
+	corpora: CorpusSummary[];
 	findings: Finding[];
 	notes: string[];
 }
 
-export interface DetectionInputs {
+export interface SingleCorpusInputs {
 	rows: RunLogRow[];
 	variantId: string;
 	corpus: string;
@@ -95,10 +110,15 @@ export interface DetectionInputs {
 	loadReport?: (row: RunLogRow) => ExtendedDogfoodReport | null;
 }
 
+export interface DetectionInputs extends Omit<SingleCorpusInputs, "corpus"> {
+	/** One or more corpora — each gets its own per-corpus summary + findings. */
+	corpora: string[];
+}
+
 interface CliArgs {
 	matrixName: string;
 	variantId: string | null;
-	corpus: string | null;
+	corpora: string[] | null;
 	stage: string | null;
 	minBaseline: number;
 	output: string | null;
@@ -108,7 +128,7 @@ function parseArgs(argv: string[]): CliArgs {
 	const args = argv.slice(2);
 	let matrixName: string | null = null;
 	let variantId: string | null = null;
-	let corpus: string | null = null;
+	let corpora: string[] | null = null;
 	let stage: string | null = null;
 	let minBaseline = DEFAULT_MIN_BASELINE;
 	let output: string | null = null;
@@ -135,12 +155,20 @@ function parseArgs(argv: string[]): CliArgs {
 			variantId = a.slice("--variant=".length);
 			continue;
 		}
-		if (a === "--corpus") {
-			corpus = next();
+		if (a === "--corpus" || a === "--corpora") {
+			corpora = next()
+				.split(",")
+				.map((s) => s.trim())
+				.filter((s) => s.length > 0);
 			continue;
 		}
-		if (a.startsWith("--corpus=")) {
-			corpus = a.slice("--corpus=".length);
+		if (a.startsWith("--corpus=") || a.startsWith("--corpora=")) {
+			const eq = a.indexOf("=");
+			corpora = a
+				.slice(eq + 1)
+				.split(",")
+				.map((s) => s.trim())
+				.filter((s) => s.length > 0);
 			continue;
 		}
 		if (a === "--stage") {
@@ -175,7 +203,7 @@ function parseArgs(argv: string[]): CliArgs {
 	if (!Number.isFinite(minBaseline) || minBaseline < 1) {
 		throw new Error(`--min-baseline must be a positive integer (got ${minBaseline})`);
 	}
-	return { matrixName, variantId, corpus, stage, minBaseline, output };
+	return { matrixName, variantId, corpora, stage, minBaseline, output };
 }
 
 function loadReportFromPath(row: RunLogRow): ExtendedDogfoodReport | null {
@@ -189,11 +217,47 @@ function loadReportFromPath(row: RunLogRow): ExtendedDogfoodReport | null {
 }
 
 /**
- * Pure detection logic. Takes pre-loaded rows for testability.
- * The CLI wrapper around this resolves matrix → variant + corpus and
- * loads runs.jsonl from disk.
+ * Multi-corpus public entry point. Detects regressions per corpus and
+ * aggregates findings into a single outcome. The aggregate `status` is
+ * the worst-of across corpora.
  */
 export function detectRegression(input: DetectionInputs): DetectionOutcome {
+	const findings: Finding[] = [];
+	const notes: string[] = [];
+	const corpora: CorpusSummary[] = [];
+	for (const corpus of input.corpora) {
+		const single = detectRegressionForCorpus({ ...input, corpus });
+		findings.push(...single.findings);
+		notes.push(...single.notes);
+		corpora.push({
+			corpus,
+			status: single.status,
+			latest: single.latest,
+			baselineCount: single.baselineCount,
+		});
+	}
+
+	let status: CorpusStatus = "ok";
+	const breach = findings.some((f) => f.type === "breach");
+	const regression = findings.some((f) => f.type === "regression");
+	if (breach && regression) status = "both";
+	else if (breach) status = "breach";
+	else if (regression) status = "regression";
+	else if (corpora.every((c) => c.status === "insufficient-history"))
+		status = "insufficient-history";
+
+	return { status, corpora, findings, notes };
+}
+
+interface SingleCorpusOutcome {
+	status: CorpusStatus;
+	latest: CorpusSummary["latest"];
+	baselineCount: number;
+	findings: Finding[];
+	notes: string[];
+}
+
+function detectRegressionForCorpus(input: SingleCorpusInputs): SingleCorpusOutcome {
 	const gates = input.gates ?? DEFAULT_GATES;
 	const minBaseline = input.minBaseline ?? DEFAULT_MIN_BASELINE;
 	const loadReport = input.loadReport ?? loadReportFromPath;
@@ -245,6 +309,9 @@ export function detectRegression(input: DetectionInputs): DetectionOutcome {
 	}
 
 	if (baseline.length < minBaseline) {
+		notes.push(
+			`baseline window has ${baseline.length} comparable run(s) for corpus=${input.corpus}; need >= ${minBaseline}`,
+		);
 		return {
 			status: "insufficient-history",
 			latest: {
@@ -256,10 +323,7 @@ export function detectRegression(input: DetectionInputs): DetectionOutcome {
 			},
 			baselineCount: baseline.length,
 			findings: [],
-			notes: [
-				...notes,
-				`baseline window has ${baseline.length} comparable run(s); need >= ${minBaseline}`,
-			],
+			notes,
 		};
 	}
 
@@ -267,7 +331,7 @@ export function detectRegression(input: DetectionInputs): DetectionOutcome {
 	const latestReport = loadReport(latest);
 	if (!latestReport) {
 		notes.push(
-			`could not load full report for latest run (${latest.sweepId}); breach + regression checks skipped`,
+			`could not load full report for latest run (${latest.sweepId}) on corpus=${input.corpus}; breach + regression checks skipped`,
 		);
 		return {
 			status: "insufficient-history",
@@ -362,7 +426,7 @@ export function detectRegression(input: DetectionInputs): DetectionOutcome {
 
 	const breachCount = findings.filter((f) => f.type === "breach").length;
 	const regressionCount = findings.filter((f) => f.type === "regression").length;
-	let status: DetectionOutcome["status"];
+	let status: CorpusStatus;
 	if (breachCount === 0 && regressionCount === 0) status = "ok";
 	else if (breachCount > 0 && regressionCount > 0) status = "both";
 	else if (breachCount > 0) status = "breach";
@@ -416,18 +480,32 @@ async function main(): Promise<void> {
 				`--variant not given, WTFOC_PRODUCTION_VARIANT not set`,
 		);
 	}
-	const corpus =
-		cli.corpus ??
-		matrix.baseConfig.collections?.primary ??
-		matrix.baseConfig.collection;
-	if (!corpus) throw new Error(`no corpus resolvable from matrix ${cli.matrixName}`);
+	let corpora: string[];
+	if (cli.corpora && cli.corpora.length > 0) {
+		corpora = cli.corpora;
+	} else {
+		const matrixCorpora: string[] = [];
+		if (matrix.baseConfig.collections?.primary) {
+			matrixCorpora.push(matrix.baseConfig.collections.primary);
+		}
+		if (matrix.baseConfig.collections?.secondary) {
+			matrixCorpora.push(matrix.baseConfig.collections.secondary);
+		}
+		if (matrixCorpora.length === 0 && matrix.baseConfig.collection) {
+			matrixCorpora.push(matrix.baseConfig.collection);
+		}
+		if (matrixCorpora.length === 0) {
+			throw new Error(`no corpora resolvable from matrix ${cli.matrixName}`);
+		}
+		corpora = matrixCorpora;
+	}
 
 	const paths: RunLogPaths = runLogPaths();
 	const rows = readRunLog(paths);
 	const outcome = detectRegression({
 		rows,
 		variantId,
-		corpus,
+		corpora,
 		matrixName: cli.matrixName,
 		...(cli.stage ? { stage: cli.stage } : {}),
 		minBaseline: cli.minBaseline,

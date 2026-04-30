@@ -35,14 +35,20 @@ function makeFinding(overrides: Partial<Finding> = {}): Finding {
 function makeOutcome(findings: Finding[]): DetectionOutcome {
 	return {
 		status: findings.length > 0 ? "regression" : "ok",
-		latest: {
-			sweepId: "bad",
-			loggedAt: "2026-04-29T03:00:00Z",
-			fingerprint: "fp-abc",
-			variantId: "noar_div_rrOff",
-			corpus: "filoz-ecosystem-2026-04-v12",
-		},
-		baselineCount: 4,
+		corpora: [
+			{
+				corpus: "filoz-ecosystem-2026-04-v12",
+				status: findings.length > 0 ? "regression" : "ok",
+				latest: {
+					sweepId: "bad",
+					loggedAt: "2026-04-29T03:00:00Z",
+					fingerprint: "fp-abc",
+					variantId: "noar_div_rrOff",
+					corpus: "filoz-ecosystem-2026-04-v12",
+				},
+				baselineCount: 4,
+			},
+		],
 		findings,
 		notes: [],
 	};

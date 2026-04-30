@@ -150,7 +150,7 @@ export function buildIssueBody(
 	lines.push("## Reproduce locally");
 	lines.push("");
 	lines.push("```bash");
-	lines.push(`pnpm autoresearch:sweep ${outcome.latest?.variantId ? "<matrix>" : "<matrix>"} \\`);
+	lines.push(`pnpm autoresearch:sweep <matrix> \\`);
 	lines.push(`  --variant-filter ${finding.variantId} \\`);
 	lines.push(`  --stage repro`);
 	lines.push("```");

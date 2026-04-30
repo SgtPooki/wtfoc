@@ -226,9 +226,20 @@ if [ "$rc" -ne 0 ]; then
     exit 0
 fi
 
-# Step 2: sweep.
-log "sweep starting"
-pnpm autoresearch:sweep "$MATRIX" --stage "$STAGE"
+# Step 2: sweep — production variant only.
+# Resolve the variant id: explicit env override > matrix.productionVariantId.
+PROD_VARIANT="${WTFOC_PRODUCTION_VARIANT:-}"
+if [ -z "$PROD_VARIANT" ]; then
+    PROD_VARIANT=$(pnpm exec tsx --tsconfig scripts/tsconfig.json scripts/autoresearch/cron/resolve-production-variant.ts "$MATRIX" 2>/dev/null | tr -d '[:space:]')
+    if [ -z "$PROD_VARIANT" ]; then
+        log "no productionVariantId in matrix $MATRIX — refusing to sweep ALL variants (cost-unsafe)"
+        log "set WTFOC_PRODUCTION_VARIANT or matrix.productionVariantId to fix"
+        write_degraded_status "no productionVariantId resolvable"
+        exit 0
+    fi
+fi
+log "sweep starting variant=$PROD_VARIANT"
+pnpm autoresearch:sweep "$MATRIX" --stage "$STAGE" --variant-filter "$PROD_VARIANT"
 rc=$?
 if [ "$rc" -ne 0 ]; then
     log "sweep failed rc=$rc"

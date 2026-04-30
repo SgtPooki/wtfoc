@@ -8,7 +8,7 @@ Every night at 03:00 local, the cron:
 
 1. Probes local services (extractor, embedder, optional reranker). If any are down, marks the night `DEGRADED` and exits without filing a quality issue.
 2. Runs `pnpm autoresearch:sweep retrieval-baseline --stage nightly-cron` over the production variant on both corpora.
-3. Compares the latest run against a baseline window (last ≥3 nightly runs with the same `runConfigFingerprint`).
+3. Compares the latest run on **each corpus configured in the matrix** (primary + secondary) against a per-corpus baseline window (last ≥3 nightly runs with the same `runConfigFingerprint` on the same corpus).
 4. Files a GitHub issue when:
    - any hard gate is breached (overall, demoCritical, workLineage, fileLevel, hardNegative, applicableRate, paraphraseInvariant), OR
    - a majority of comparable baseline runs convincingly beat the latest by paired bootstrap (probBgreaterA ≥ 0.95 ∧ meanΔ ≥ 0.04).

@@ -153,7 +153,7 @@ describe("detectRegression", () => {
 		const out = detectRegression({
 			rows: [],
 			variantId: VARIANT,
-			corpus: CORPUS,
+			corpora: [CORPUS],
 		});
 		expect(out.status).toBe("insufficient-history");
 	});
@@ -167,12 +167,12 @@ describe("detectRegression", () => {
 		const out = detectRegression({
 			rows: fixtures.map(row),
 			variantId: VARIANT,
-			corpus: CORPUS,
+			corpora: [CORPUS],
 			minBaseline: 3,
 			loadReport: makeLoader(reports),
 		});
 		expect(out.status).toBe("insufficient-history");
-		expect(out.baselineCount).toBe(1);
+		expect(out.corpora[0]?.baselineCount).toBe(1);
 	});
 
 	it("returns ok when latest run matches baseline", () => {
@@ -186,7 +186,7 @@ describe("detectRegression", () => {
 		const out = detectRegression({
 			rows: fixtures.map(row),
 			variantId: VARIANT,
-			corpus: CORPUS,
+			corpora: [CORPUS],
 			minBaseline: 3,
 			loadReport: makeLoader(reports),
 		});
@@ -212,7 +212,7 @@ describe("detectRegression", () => {
 		const out = detectRegression({
 			rows: fixtures.map(row),
 			variantId: VARIANT,
-			corpus: CORPUS,
+			corpora: [CORPUS],
 			minBaseline: 3,
 			loadReport: makeLoader(reports),
 		});
@@ -238,7 +238,7 @@ describe("detectRegression", () => {
 		const out = detectRegression({
 			rows: fixtures.map(row),
 			variantId: VARIANT,
-			corpus: CORPUS,
+			corpora: [CORPUS],
 			minBaseline: 3,
 			loadReport: makeLoader(reports),
 		});
@@ -261,7 +261,7 @@ describe("detectRegression", () => {
 		const out = detectRegression({
 			rows: fixtures.map(row),
 			variantId: VARIANT,
-			corpus: CORPUS,
+			corpora: [CORPUS],
 			minBaseline: 3,
 			loadReport: makeLoader(reports),
 		});
@@ -287,12 +287,45 @@ describe("detectRegression", () => {
 		const out = detectRegression({
 			rows: fixtures.map(row),
 			variantId: VARIANT,
-			corpus: CORPUS,
+			corpora: [CORPUS],
 			minBaseline: 3,
 			loadReport: makeLoader(reports),
 		});
 		expect(out.status).toBe("insufficient-history");
 		expect(out.notes.some((n) => n.includes("rollover"))).toBe(true);
+	});
+
+	it("detects regression on secondary corpus when primary is clean", () => {
+		const SECONDARY = "wtfoc-dogfood-2026-04-v3";
+		const primary: RowFixture[] = Array.from({ length: 5 }, (_, i) => ({
+			sweepId: `p${i}`,
+			loggedAt: `2026-04-2${5 + i}T03:00:00Z`,
+			scores: STABLE_75(),
+			passRate: 0.75,
+		}));
+		const secondary: RowFixture[] = [
+			{ sweepId: "sb1", loggedAt: "2026-04-25T03:01:00Z", scores: STABLE_75(), passRate: 0.75, corpus: SECONDARY },
+			{ sweepId: "sb2", loggedAt: "2026-04-26T03:01:00Z", scores: STABLE_75(), passRate: 0.75, corpus: SECONDARY },
+			{ sweepId: "sb3", loggedAt: "2026-04-27T03:01:00Z", scores: STABLE_75(), passRate: 0.75, corpus: SECONDARY },
+			{ sweepId: "sb4", loggedAt: "2026-04-28T03:01:00Z", scores: STABLE_75(), passRate: 0.75, corpus: SECONDARY },
+			{ sweepId: "sbBad", loggedAt: "2026-04-29T03:01:00Z", scores: STABLE_60(), passRate: 0.6, corpus: SECONDARY },
+		];
+		const all = [...primary, ...secondary];
+		const reports = new Map(all.map((f) => [`/virtual/${f.sweepId}.json`, reportFor(f)]));
+		const out = detectRegression({
+			rows: all.map(row),
+			variantId: VARIANT,
+			corpora: [CORPUS, SECONDARY],
+			minBaseline: 3,
+			loadReport: makeLoader(reports),
+		});
+		expect(["regression", "both"]).toContain(out.status);
+		expect(out.corpora).toHaveLength(2);
+		const primaryCorpus = out.corpora.find((c) => c.corpus === CORPUS);
+		const secondaryCorpus = out.corpora.find((c) => c.corpus === SECONDARY);
+		expect(primaryCorpus?.status).toBe("ok");
+		expect(["regression", "both"]).toContain(secondaryCorpus?.status ?? "");
+		expect(out.findings.every((f) => f.corpus === SECONDARY)).toBe(true);
 	});
 
 	it("filters by stage tag when supplied", () => {
@@ -306,12 +339,12 @@ describe("detectRegression", () => {
 		const out = detectRegression({
 			rows: fixtures.map(row),
 			variantId: VARIANT,
-			corpus: CORPUS,
+			corpora: [CORPUS],
 			stage: "nightly-cron",
 			minBaseline: 3,
 			loadReport: makeLoader(reports),
 		});
 		expect(out.status).toBe("insufficient-history");
-		expect(out.baselineCount).toBe(0);
+		expect(out.corpora[0]?.baselineCount).toBe(0);
 	});
 });
