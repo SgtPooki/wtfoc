@@ -10,7 +10,12 @@ describe("buildUserPrompt", () => {
 			triedRows: [],
 		});
 		expect(prompt).toContain("Knob inventory");
-		expect(prompt).toContain("- topK");
+		// Default prompt shows materialized-only knobs.
+		expect(prompt).toContain("- autoRoute");
+		expect(prompt).toContain("- diversityEnforce");
+		expect(prompt).toContain("- reranker");
+		// Unmaterialized knobs are hidden from the LLM proposer.
+		expect(prompt).not.toContain("- topK");
 		expect(prompt).toContain("Past attempts");
 		expect(prompt).toContain("Finding context");
 		expect(prompt).toContain("variant: x");
@@ -89,7 +94,7 @@ describe("analyzeAndPropose", () => {
 
 	it("returns parsed proposal on a successful LLM response", async () => {
 		const llm = mockLlm(
-			`## Analysis\nlooks like K=10 too narrow.\n\n## Proposal\n\`\`\`json\n{ "axis": "topK", "value": 15, "rationale": "wider K" }\n\`\`\``,
+			`## Analysis\nautoRoute is harmful per Phase 3.\n\n## Proposal\n\`\`\`json\n{ "axis": "autoRoute", "value": false, "rationale": "stick with proven default" }\n\`\`\``,
 		);
 		const res = await analyzeAndPropose({
 			matrixName: "retrieval-baseline",
@@ -100,13 +105,16 @@ describe("analyzeAndPropose", () => {
 		expect(res.ok).toBe(true);
 		expect(res.llmCallSucceeded).toBe(true);
 		expect(res.proposal).not.toBeNull();
-		expect(res.proposal?.axis).toBe("topK");
-		expect(res.proposal?.value).toBe(15);
+		expect(res.proposal?.axis).toBe("autoRoute");
+		expect(res.proposal?.value).toBe(false);
 	});
 
-	it("rejects LLM proposals that violate the knob inventory (out-of-range)", async () => {
+	it("rejects LLM proposals that target unmaterialized knobs", async () => {
+		// topK is in the inventory but not yet materializable; the LLM
+		// shouldn't see it (we filter the prompt) but if it hallucinates
+		// the knob from training data we still reject the proposal.
 		const llm = mockLlm(
-			`## Analysis\n.\n\n## Proposal\n\`\`\`json\n{ "axis": "topK", "value": 100, "rationale": "x" }\n\`\`\``,
+			`## Analysis\n.\n\n## Proposal\n\`\`\`json\n{ "axis": "topK", "value": 15, "rationale": "x" }\n\`\`\``,
 		);
 		const res = await analyzeAndPropose({
 			matrixName: "retrieval-baseline",
@@ -117,7 +125,22 @@ describe("analyzeAndPropose", () => {
 		expect(res.ok).toBe(true);
 		expect(res.llmCallSucceeded).toBe(true);
 		expect(res.proposal).toBeNull();
-		expect(res.error).toMatch(/outside/);
+		expect(res.error).toMatch(/not yet materializable/);
+	});
+
+	it("rejects enum value outside the valid set on a materialized knob", async () => {
+		const llm = mockLlm(
+			`## Analysis\n.\n\n## Proposal\n\`\`\`json\n{ "axis": "reranker", "value": "cohere", "rationale": "x" }\n\`\`\``,
+		);
+		const res = await analyzeAndPropose({
+			matrixName: "retrieval-baseline",
+			explainMarkdown: "stub",
+			triedRows: [],
+			fetchFn: llm,
+		});
+		expect(res.ok).toBe(true);
+		expect(res.proposal).toBeNull();
+		expect(res.error).toMatch(/not in enum/);
 	});
 
 	it("rejects unknown knob name", async () => {

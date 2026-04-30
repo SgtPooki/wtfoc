@@ -38,6 +38,7 @@ import type { Matrix } from "./matrix.js";
 import { promoteViaPr } from "./promote-via-pr.js";
 import { alreadyTried, appendTriedRow, readTriedLog } from "./tried-log.js";
 import type { ExtendedDogfoodReport } from "../lib/run-config.js";
+import { readRunLog, type RunLogRow } from "../lib/run-log.js";
 
 interface CliArgs {
 	findingsPath: string;
@@ -107,10 +108,6 @@ function pickMostRelevantFinding(outcome: DetectionOutcome): Finding | null {
 }
 
 function findReportForFinding(finding: Finding): ExtendedDogfoodReport | null {
-	// Latest run's report is archived under the sweep dir. We read it
-	// via the detect-regression output's note about reportPath, but the
-	// finding itself only carries identity. Fallback: walk runs.jsonl
-	// for the (variantId, corpus, sweepId) tuple and load reportPath.
 	const baseDir = process.env.WTFOC_AUTORESEARCH_DIR ?? `${process.env.HOME}/.wtfoc/autoresearch`;
 	const candidatePath = join(
 		baseDir,
@@ -123,6 +120,40 @@ function findReportForFinding(finding: Finding): ExtendedDogfoodReport | null {
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * Find the most recent comparable nightly-cron baseline run for the
+ * (variantId, corpus, fingerprint) tuple of the finding — i.e. the run
+ * the LLM should diff the latest against. Returns null when no
+ * comparable baseline exists (cold start).
+ *
+ * Comparability rule mirrors the detector: same variantId + corpus +
+ * runConfigFingerprint, stage=nightly-cron, EXCLUDING the latest run
+ * itself.
+ */
+function findBaselineForFinding(finding: Finding): ExtendedDogfoodReport | null {
+	const rows = readRunLog();
+	const candidates = rows
+		.filter(
+			(r: RunLogRow) =>
+				r.variantId === finding.variantId &&
+				r.runConfig.collectionId === finding.corpus &&
+				r.runConfigFingerprint === finding.fingerprint &&
+				r.stage === "nightly-cron" &&
+				r.sweepId !== finding.latestSweepId &&
+				r.reportPath,
+		)
+		.sort((a, b) => b.loggedAt.localeCompare(a.loggedAt));
+	for (const row of candidates) {
+		if (!row.reportPath) continue;
+		try {
+			return JSON.parse(readFileSync(row.reportPath, "utf-8")) as ExtendedDogfoodReport;
+		} catch {
+			// keep scanning
+		}
+	}
+	return null;
 }
 
 async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
@@ -140,8 +171,18 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 			`could not load latest report for sweep=${finding.latestSweepId}; using minimal context`,
 		);
 	}
+	const baselineReport = latestReport ? findBaselineForFinding(finding) : null;
+	if (latestReport && !baselineReport) {
+		notes.push(
+			`no comparable baseline report for finding (variant=${finding.variantId} corpus=${finding.corpus} fp=${finding.fingerprint}); explainFinding will skip flipped queries`,
+		);
+	}
 	const explainMd = latestReport
-		? explainFinding({ finding, latest: latestReport })
+		? explainFinding({
+				finding,
+				latest: latestReport,
+				...(baselineReport ? { baseline: baselineReport } : {}),
+			})
 		: `# Finding\n${finding.reason}\n`;
 
 	const triedRows = readTriedLog();

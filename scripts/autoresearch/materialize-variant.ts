@@ -40,6 +40,11 @@ export interface MaterializeInputs {
 	/** Stage tag for the run. Default "autoresearch-proposal". */
 	stage?: string;
 	/**
+	 * Minimum number of comparable baseline runs required to accept the
+	 * proposal. Mirrors detector's `minBaseline`. Default 3.
+	 */
+	minBaseline?: number;
+	/**
 	 * Override the spawn function for tests — call with the same args
 	 * as `execFileSync`.
 	 */
@@ -185,47 +190,104 @@ export async function materializeVariant(
 		}
 	}
 
-	// For each corpus, decide() against the most-recent comparable
-	// production run (matching variant + corpus + fingerprint won't
-	// match by definition since this run has a new fingerprint, so we
-	// match on (variant, corpus) and use the latest stage=nightly-cron
-	// row as baseline).
+	// For each corpus, decide() against the LAST N comparable production
+	// runs (same variant + corpus + fingerprint, stage=nightly-cron).
+	// Acceptance requires the candidate to clear decide() vs a MAJORITY
+	// of those baseline runs — mirroring the regression detector's
+	// majority rule. Single-baseline accept is too noisy given the
+	// documented paraphrase brittleness (~48%).
 	const productionVariantId = input.productionMatrix.productionVariantId ?? "";
+	const minBaseline = input.minBaseline ?? 3;
 	const decisions: MaterializeResult["decisions"] = [];
 	const corpora = Array.from(new Set(reports.map((r) => r.runConfig.collectionId)));
 	const notes: string[] = [];
 	let allAccept = corpora.length > 0;
 	for (const corpus of corpora) {
-		const baselineRow = [...allRows]
+		const candidateReport = reports.find((r) => r.runConfig.collectionId === corpus);
+		if (!candidateReport) {
+			decisions.push({ corpus, verdict: null, reason: "no candidate report for corpus" });
+			allAccept = false;
+			continue;
+		}
+		// Build baseline window: latest N nightly-cron rows for the
+		// production variant on this corpus, sharing the SAME
+		// runConfigFingerprint. Comparability rule mirrors detector.
+		const candidateFingerprint = candidateReport.runConfigFingerprint;
+		const baselineRows = [...allRows]
 			.reverse()
-			.find(
+			.filter(
 				(r) =>
 					r.variantId === productionVariantId &&
 					r.runConfig.collectionId === corpus &&
 					r.stage === "nightly-cron" &&
+					r.runConfigFingerprint === candidateFingerprint &&
 					r.reportPath,
 			);
-		const candidateReport = reports.find((r) => r.runConfig.collectionId === corpus);
-		if (!baselineRow || !candidateReport || !baselineRow.reportPath) {
-			decisions.push({ corpus, verdict: null, reason: "no comparable production baseline" });
-			notes.push(`corpus=${corpus}: no comparable production baseline (insufficient history)`);
-			allAccept = false;
-			continue;
-		}
-		try {
-			const baselineReport = JSON.parse(readFileSync(baselineRow.reportPath, "utf-8")) as ExtendedDogfoodReport;
-			const verdict = decide({ baseline: baselineReport, candidate: candidateReport });
-			decisions.push({ corpus, verdict });
-			if (!verdict.accept) allAccept = false;
-		} catch (err) {
+		const window = baselineRows.slice(0, minBaseline);
+		if (window.length < minBaseline) {
 			decisions.push({
 				corpus,
 				verdict: null,
-				reason: `failed to load baseline: ${err instanceof Error ? err.message : String(err)}`,
+				reason: `only ${window.length} comparable production baseline(s); need >= ${minBaseline}`,
 			});
-			notes.push(`corpus=${corpus}: failed to load baseline report`);
+			notes.push(
+				`corpus=${corpus}: only ${window.length} comparable baseline(s) — accept blocked`,
+			);
 			allAccept = false;
+			continue;
 		}
+		// Run decide() against each baseline; require majority acceptance.
+		const perBaselineVerdicts: Array<{ ok: boolean; reasons: string[]; meanDelta: number; probBgreaterA: number }> = [];
+		let lastFullVerdict: ReturnType<typeof decide> | null = null;
+		for (const baseRow of window) {
+			if (!baseRow.reportPath) continue;
+			try {
+				const baselineReport = JSON.parse(
+					readFileSync(baseRow.reportPath, "utf-8"),
+				) as ExtendedDogfoodReport;
+				const verdict = decide({ baseline: baselineReport, candidate: candidateReport });
+				lastFullVerdict = verdict;
+				perBaselineVerdicts.push({
+					ok: verdict.accept,
+					reasons: verdict.reasons,
+					meanDelta: verdict.bootstrap.meanDelta,
+					probBgreaterA: verdict.bootstrap.probBgreaterA,
+				});
+			} catch (err) {
+				notes.push(
+					`corpus=${corpus}: failed to load baseline ${baseRow.sweepId}: ${err instanceof Error ? err.message : String(err)}`,
+				);
+			}
+		}
+		if (perBaselineVerdicts.length === 0) {
+			decisions.push({ corpus, verdict: null, reason: "all baseline reports failed to load" });
+			allAccept = false;
+			continue;
+		}
+		const accepts = perBaselineVerdicts.filter((v) => v.ok).length;
+		const majority = Math.floor(perBaselineVerdicts.length / 2) + 1;
+		const corpusAccept = accepts >= majority;
+		// Surface a synthetic verdict that summarises the window-level
+		// decision. The .reasons string captures the per-baseline tally
+		// so the LLM + tried-log have full context.
+		const aggregateVerdict = lastFullVerdict
+			? {
+					...lastFullVerdict,
+					accept: corpusAccept,
+					reasons: corpusAccept
+						? [
+								`window accept: ${accepts}/${perBaselineVerdicts.length} baselines clear decide() (majority ${majority})`,
+							]
+						: [
+								`window reject: only ${accepts}/${perBaselineVerdicts.length} baselines clear decide() (need ${majority})`,
+								...perBaselineVerdicts.flatMap((v, i) =>
+									v.ok ? [] : [`baseline[${i}]: ${v.reasons.join("; ")}`],
+								),
+							],
+				}
+			: null;
+		decisions.push({ corpus, verdict: aggregateVerdict });
+		if (!corpusAccept) allAccept = false;
 	}
 
 	const candidateVariantId = thisSweep[0]?.variantId ?? "(unknown)";

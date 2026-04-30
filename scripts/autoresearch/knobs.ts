@@ -26,6 +26,17 @@ export interface KnobBase {
 	name: string;
 	description: string;
 	/**
+	 * Whether the materializer + sweep harness can ACTUALLY execute a
+	 * variant that overrides this knob. When false, the knob exists in
+	 * the inventory for documentation but the LLM proposer does not
+	 * see it (proposing it would just produce a "materialize-failed"
+	 * tried-log row).
+	 *
+	 * Phase 4.5 starts with only autoRoute / diversityEnforce / reranker
+	 * materialized. PR #334 will plumb topK / trace* and flip these.
+	 */
+	materialized: boolean;
+	/**
 	 * Whether changing this knob invalidates the embedder cache /
 	 * requires a re-ingest. The proposer prefers cheap knobs first.
 	 */
@@ -79,6 +90,7 @@ export const KNOBS: readonly Knob[] = [
 			"Persona-based source-type boosts at retrieval time. Phase 3 evidence: harmful on every measured config (#314). Production default: false.",
 		type: "boolean",
 		productionDefault: false,
+		materialized: true,
 		requiresReingest: false,
 		coupledWith: [],
 	},
@@ -88,6 +100,7 @@ export const KNOBS: readonly Knob[] = [
 			"Enforce source-type diversity in the top-K results. Phase 3 evidence: +11pp portable lift; production-mandatory.",
 		type: "boolean",
 		productionDefault: true,
+		materialized: true,
 		requiresReingest: false,
 		coupledWith: ["reranker"],
 	},
@@ -98,6 +111,7 @@ export const KNOBS: readonly Knob[] = [
 		type: "enum",
 		values: ["off", "llm:haiku", "bge"],
 		productionDefault: "off",
+		materialized: true,
 		requiresReingest: false,
 		coupledWith: ["diversityEnforce"],
 	},
@@ -109,6 +123,7 @@ export const KNOBS: readonly Knob[] = [
 		min: 5,
 		max: 25,
 		productionDefault: 10,
+		materialized: false,
 		requiresReingest: false,
 		coupledWith: ["diversityEnforce"],
 	},
@@ -120,6 +135,7 @@ export const KNOBS: readonly Knob[] = [
 		min: 1,
 		max: 10,
 		productionDefault: 3,
+		materialized: false,
 		requiresReingest: false,
 		coupledWith: ["diversityEnforce", "topK"],
 	},
@@ -131,6 +147,7 @@ export const KNOBS: readonly Knob[] = [
 		min: 5,
 		max: 50,
 		productionDefault: 15,
+		materialized: false,
 		requiresReingest: false,
 		coupledWith: ["topK"],
 	},
@@ -142,6 +159,7 @@ export const KNOBS: readonly Knob[] = [
 		min: 0.1,
 		max: 0.6,
 		productionDefault: 0.3,
+		materialized: false,
 		requiresReingest: false,
 		coupledWith: [],
 	},
@@ -154,12 +172,22 @@ export function getKnob(name: string): Knob | undefined {
 }
 
 /**
+ * Subset of knobs the LLM proposer is allowed to see + propose. Hides
+ * knobs that the materializer can't yet execute, so the LLM doesn't
+ * waste a cycle on a proposal that fails-loud.
+ */
+export function materializableKnobs(): readonly Knob[] {
+	return KNOBS.filter((k) => k.materialized);
+}
+
+/**
  * Validate a proposed `{ axis, value }` pair against the inventory.
  * Returns null when valid, or a string describing why it's invalid.
  */
 export function validateProposal(name: string, value: unknown): string | null {
 	const knob = getKnob(name);
 	if (!knob) return `unknown knob: ${name}`;
+	if (!knob.materialized) return `knob "${name}" exists in inventory but is not yet materializable`;
 	switch (knob.type) {
 		case "boolean":
 			return typeof value === "boolean" ? null : `expected boolean for ${name}, got ${typeof value}`;
@@ -187,11 +215,14 @@ export function validateProposal(name: string, value: unknown): string | null {
 }
 
 /**
- * One-line summary suitable for an LLM prompt. The proposer reads this
- * to understand the search space.
+ * One-line summary suitable for an LLM prompt. By default emits only
+ * the materializable subset — knobs that the proposer can actually
+ * propose successfully. Pass `{ includeUnmaterialized: true }` to see
+ * the full inventory (useful for human-facing docs).
  */
-export function knobsToPromptLines(): string[] {
-	return KNOBS.map((k) => {
+export function knobsToPromptLines(opts: { includeUnmaterialized?: boolean } = {}): string[] {
+	const visible = opts.includeUnmaterialized ? KNOBS : materializableKnobs();
+	return visible.map((k) => {
 		const couplingNote =
 			k.coupledWith.length > 0 ? ` [coupled-with: ${k.coupledWith.join(", ")}]` : "";
 		const reingestNote = k.requiresReingest ? " [requires-reingest]" : "";
