@@ -63,6 +63,13 @@ export interface RunLogRow {
 	durationMs: number;
 	/** Replicate index when this is part of an N-replicate measurement (Phase 2d). 0 = primary. */
 	replicateIdx?: number;
+	/**
+	 * Absolute path to the archived full ExtendedDogfoodReport JSON for
+	 * this run. Optional — older rows won't have it; newer rows written
+	 * by the sweep harness do. Phase 4 cron detector requires this for
+	 * paired bootstrap (the per-query scores live only in the report).
+	 */
+	reportPath?: string;
 }
 
 export interface RunLogPaths {
@@ -93,6 +100,7 @@ export function buildRunLogRow(input: {
 	durationMs: number;
 	replicateIdx?: number;
 	stage?: string;
+	reportPath?: string;
 }): RunLogRow {
 	const qq = input.report.stages.find((s) => s.stage === "quality-queries");
 	const m = qq?.metrics as
@@ -163,6 +171,7 @@ export function buildRunLogRow(input: {
 		durationMs: Math.round(input.durationMs),
 		...(input.replicateIdx !== undefined ? { replicateIdx: input.replicateIdx } : {}),
 		...(input.stage !== undefined ? { stage: input.stage } : {}),
+		...(input.reportPath !== undefined ? { reportPath: input.reportPath } : {}),
 	};
 }
 

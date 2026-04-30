@@ -19,7 +19,10 @@
 		"dogfood": "tsx --tsconfig scripts/tsconfig.json scripts/dogfood.ts",
 		"dogfood:setup": "tsx --tsconfig scripts/tsconfig.json scripts/dogfood-setup.ts",
 		"dogfood:flagship": "bash scripts/dogfood-flagship.sh",
-		"autoresearch:sweep": "tsx --tsconfig scripts/tsconfig.json scripts/autoresearch/sweep.ts"
+		"autoresearch:sweep": "tsx --tsconfig scripts/tsconfig.json scripts/autoresearch/sweep.ts",
+		"autoresearch:detect-regression": "tsx --tsconfig scripts/tsconfig.json scripts/autoresearch/detect-regression.ts",
+		"autoresearch:file-regression-issue": "tsx --tsconfig scripts/tsconfig.json scripts/autoresearch/file-regression-issue.ts",
+		"autoresearch:nightly": "bash scripts/autoresearch/cron/run-nightly.sh"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.8",

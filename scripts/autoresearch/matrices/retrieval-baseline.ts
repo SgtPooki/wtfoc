@@ -22,6 +22,7 @@ const matrix: Matrix = {
 	name: "retrieval-baseline",
 	description:
 		"Cross-corpus retrieval-knob sweep on v12 + v3 (autoRoute × diversityEnforce × reranker on/off).",
+	productionVariantId: "noar_div_rrOff",
 	baseConfig: {
 		collections: {
 			primary: "filoz-ecosystem-2026-04-v12",

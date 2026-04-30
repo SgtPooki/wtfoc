@@ -53,6 +53,8 @@ interface PerCorpusRun {
 	report: ExtendedDogfoodReport;
 	durationMs: number;
 	decisionVsBaseline?: DecisionVerdict;
+	/** Path to the archived full report JSON. */
+	reportPath: string;
 }
 
 interface SweepRunResult {
@@ -174,7 +176,11 @@ function runVariantOnCorpus(
 	matrix: Matrix,
 	variant: Variant,
 	collection: string,
-): { report: ExtendedDogfoodReport; durationMs: number } {
+	sweepId: string,
+): { report: ExtendedDogfoodReport; durationMs: number; reportPath: string } {
+	const archiveDir = `${process.env.WTFOC_AUTORESEARCH_DIR ?? `${process.env.HOME}/.wtfoc/autoresearch`}/reports/${sweepId}`;
+	mkdirSync(archiveDir, { recursive: true });
+	const archivePath = join(archiveDir, `${variant.variantId}__${collection}.json`);
 	const tmp = mkdtempSync(join(tmpdir(), "wtfoc-sweep-"));
 	const outFile = join(tmp, `${variant.variantId}-${collection}.json`);
 	const args: string[] = [
@@ -227,7 +233,8 @@ function runVariantOnCorpus(
 
 	const reportText = readFileSync(outFile, "utf-8");
 	const report = JSON.parse(reportText) as ExtendedDogfoodReport;
-	return { report, durationMs };
+	writeFileSync(archivePath, reportText);
+	return { report, durationMs, reportPath: archivePath };
 }
 
 function summarize(results: SweepRunResult[]): void {
@@ -346,11 +353,12 @@ async function main(): Promise<void> {
 
 	for (const v of variants) {
 		// Primary corpus run.
-		const primaryRun = runVariantOnCorpus(matrix, v, corpora.primary);
+		const primaryRun = runVariantOnCorpus(matrix, v, corpora.primary, sweepId);
 		const primary: PerCorpusRun = {
 			corpus: corpora.primary,
 			report: primaryRun.report,
 			durationMs: primaryRun.durationMs,
+			reportPath: primaryRun.reportPath,
 		};
 		if (primaryBaselineReport) {
 			primary.decisionVsBaseline = decide({
@@ -367,6 +375,7 @@ async function main(): Promise<void> {
 				variantId: v.variantId,
 				report: primary.report,
 				durationMs: primary.durationMs,
+				reportPath: primary.reportPath,
 				...(stage ? { stage } : {}),
 			}),
 		);
@@ -374,11 +383,12 @@ async function main(): Promise<void> {
 		// Secondary corpus run (when configured).
 		let secondary: PerCorpusRun | undefined;
 		if (corpora.secondary) {
-			const secondaryRun = runVariantOnCorpus(matrix, v, corpora.secondary);
+			const secondaryRun = runVariantOnCorpus(matrix, v, corpora.secondary, sweepId);
 			secondary = {
 				corpus: corpora.secondary,
 				report: secondaryRun.report,
 				durationMs: secondaryRun.durationMs,
+				reportPath: secondaryRun.reportPath,
 			};
 			if (secondaryBaselineReport) {
 				secondary.decisionVsBaseline = decide({
@@ -395,6 +405,7 @@ async function main(): Promise<void> {
 					variantId: v.variantId,
 					report: secondary.report,
 					durationMs: secondary.durationMs,
+					reportPath: secondary.reportPath,
 					...(stage ? { stage } : {}),
 				}),
 			);
