@@ -40,12 +40,27 @@ describe("validateProposal", () => {
 		expect(validateProposal("autoRoute", 1)).toMatch(/expected boolean/);
 	});
 
-	it("rejects unmaterialized int knob even when value is in range", () => {
-		expect(validateProposal("topK", 10)).toMatch(/not yet materializable/);
+	it("accepts integer in range on materialized int knob", () => {
+		expect(validateProposal("topK", 10)).toBeNull();
+		expect(validateProposal("topK", 5)).toBeNull();
+		expect(validateProposal("topK", 25)).toBeNull();
 	});
 
-	it("rejects unmaterialized float knob", () => {
-		expect(validateProposal("traceMinScore", 0.4)).toMatch(/not yet materializable/);
+	it("rejects integer outside range", () => {
+		expect(validateProposal("topK", 4)).toMatch(/outside/);
+		expect(validateProposal("topK", 26)).toMatch(/outside/);
+	});
+
+	it("rejects non-integer for int knob", () => {
+		expect(validateProposal("topK", 10.5)).toMatch(/expected integer/);
+	});
+
+	it("accepts float in range on materialized float knob", () => {
+		expect(validateProposal("traceMinScore", 0.4)).toBeNull();
+	});
+
+	it("rejects float outside range", () => {
+		expect(validateProposal("traceMinScore", 0.05)).toMatch(/outside/);
 	});
 
 	it("accepts enum value in set on materialized knob", () => {
@@ -67,20 +82,21 @@ describe("materializableKnobs", () => {
 		const subset = materializableKnobs();
 		expect(subset.length).toBeGreaterThan(0);
 		expect(subset.every((k) => k.materialized)).toBe(true);
-		expect(subset.length).toBeLessThan(KNOBS.length);
 	});
 
-	it("includes the three Phase 4.5 axes", () => {
+	it("includes the seven Phase 4.5+334 axes", () => {
 		const names = materializableKnobs().map((k) => k.name);
-		expect(names).toContain("autoRoute");
-		expect(names).toContain("diversityEnforce");
-		expect(names).toContain("reranker");
-	});
-
-	it("excludes the un-plumbed numeric/float knobs", () => {
-		const names = materializableKnobs().map((k) => k.name);
-		expect(names).not.toContain("topK");
-		expect(names).not.toContain("traceMinScore");
+		for (const required of [
+			"autoRoute",
+			"diversityEnforce",
+			"reranker",
+			"topK",
+			"traceMaxPerSource",
+			"traceMaxTotal",
+			"traceMinScore",
+		]) {
+			expect(names).toContain(required);
+		}
 	});
 });
 
@@ -88,17 +104,15 @@ describe("knobsToPromptLines", () => {
 	it("emits one line per materialized knob by default (LLM-visible subset)", () => {
 		const lines = knobsToPromptLines();
 		expect(lines.length).toBe(materializableKnobs().length);
-		expect(lines.length).toBeLessThan(KNOBS.length);
 	});
 
 	it("includeUnmaterialized: true returns the full inventory", () => {
 		const lines = knobsToPromptLines({ includeUnmaterialized: true });
 		expect(lines.length).toBe(KNOBS.length);
-		expect(lines.some((l) => l.startsWith("- topK"))).toBe(true);
 	});
 
-	it("encodes ranges + defaults legibly when full inventory requested", () => {
-		const lines = knobsToPromptLines({ includeUnmaterialized: true });
+	it("encodes ranges + defaults legibly", () => {
+		const lines = knobsToPromptLines();
 		const topK = lines.find((l) => l.startsWith("- topK"));
 		expect(topK).toContain("[5, 25]");
 		expect(topK).toContain("default=10");
@@ -108,10 +122,5 @@ describe("knobsToPromptLines", () => {
 		const lines = knobsToPromptLines();
 		const div = lines.find((l) => l.startsWith("- diversityEnforce"));
 		expect(div).toContain("coupled-with: reranker");
-	});
-
-	it("default LLM view excludes unmaterialized knobs", () => {
-		const lines = knobsToPromptLines();
-		expect(lines.some((l) => l.startsWith("- topK"))).toBe(false);
 	});
 });

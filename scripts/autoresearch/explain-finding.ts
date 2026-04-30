@@ -34,6 +34,14 @@ interface QueryScore {
 	retrieved?: Array<{ source?: string; sourceType?: string; score?: number; excerpt?: string }>;
 	tier?: string;
 	category?: string;
+	/** #334 — gold-source proximity diagnostic from the wider retrieval. */
+	goldProximity?: {
+		widerK: number;
+		topKCutoff: number;
+		goldRank: number | null;
+		goldScore: number | null;
+		topKLastScore: number | null;
+	};
 }
 
 export interface ExplainOptions {
@@ -185,6 +193,26 @@ export function explainFinding(input: ExplainInputs): string {
 			if (q.question) lines.push(`Question: ${q.question}`);
 			if (q.expectedSources && q.expectedSources.length > 0) {
 				lines.push(`Expected sources: ${q.expectedSources.slice(0, 5).join(", ")}`);
+			}
+			if (q.goldProximity) {
+				const gp = q.goldProximity;
+				if (gp.goldRank !== null) {
+					const verdict =
+						gp.goldRank <= gp.topKCutoff
+							? "in top-K"
+							: gp.goldRank <= gp.topKCutoff + 5
+								? "JUST PAST top-K cutoff — widening K may rescue"
+								: gp.goldRank <= gp.widerK
+									? "well past top-K — retrieval ranks gold low, K alone won't fix"
+									: "absent from wider list";
+					lines.push(
+						`Gold proximity: rank ${gp.goldRank}/${gp.widerK}, score ${gp.goldScore?.toFixed(3) ?? "?"} (cutoff=${gp.topKCutoff}, last-in-cutoff score=${gp.topKLastScore?.toFixed(3) ?? "?"}) — ${verdict}`,
+					);
+				} else {
+					lines.push(
+						`Gold proximity: gold source NOT in top-${gp.widerK} — embedder/retrieval issue, not topK`,
+					);
+				}
 			}
 			if (q.retrieved && q.retrieved.length > 0) {
 				lines.push("Retrieved (top):");

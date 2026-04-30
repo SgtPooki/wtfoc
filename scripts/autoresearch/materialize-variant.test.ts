@@ -86,17 +86,32 @@ describe("materializeVariant — matrix synthesis", () => {
 		).rejects.toThrow(/unknown axis/);
 	});
 
-	it("rejects unsupported axis (knob exists in inventory but not in materializer yet)", async () => {
+	it("encodes topK numeric override into the derived matrix", async () => {
 		const stateDir = mkdtempSync(join(tmpdir(), "wtfoc-materialize-"));
-		await expect(
-			materializeVariant({
-				productionMatrix: baseMatrix(),
-				productionMatrixName: "retrieval-baseline",
-				proposal: { axis: "topK", value: 15, rationale: "wider K" },
-				spawnFn: () => Buffer.from(""),
-				stateDir,
-			}),
-		).rejects.toThrow(/not yet supported by the materializer/);
+		const result = await materializeVariant({
+			productionMatrix: baseMatrix(),
+			productionMatrixName: "retrieval-baseline",
+			proposal: { axis: "topK", value: 15, rationale: "wider K" },
+			spawnFn: () => Buffer.from(""),
+			stateDir,
+		});
+		const body = readFileSync(result.matrixPath, "utf-8");
+		const parsed = JSON.parse(body.split("export default ")[1]?.replace(/;\s*$/, "").trim() ?? "{}");
+		expect(parsed.axes.topK).toEqual([15]);
+	});
+
+	it("encodes traceMinScore float override into the derived matrix", async () => {
+		const stateDir = mkdtempSync(join(tmpdir(), "wtfoc-materialize-"));
+		const result = await materializeVariant({
+			productionMatrix: baseMatrix(),
+			productionMatrixName: "retrieval-baseline",
+			proposal: { axis: "traceMinScore", value: 0.4, rationale: "tighter floor" },
+			spawnFn: () => Buffer.from(""),
+			stateDir,
+		});
+		const body = readFileSync(result.matrixPath, "utf-8");
+		const parsed = JSON.parse(body.split("export default ")[1]?.replace(/;\s*$/, "").trim() ?? "{}");
+		expect(parsed.axes.traceMinScore).toEqual([0.4]);
 	});
 
 	it("encodes reranker enum values into the derived matrix", async () => {

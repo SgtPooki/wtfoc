@@ -103,6 +103,14 @@ export interface VariantAxes {
 	 * reranker to wire in. Each entry generates one variant.
 	 */
 	reranker?: RerankerSpec[];
+	/** topK override — `--top-k` flag. Each entry generates one variant. */
+	topK?: number[];
+	/** traceMaxPerSource override — `--trace-max-per-source`. */
+	traceMaxPerSource?: number[];
+	/** traceMaxTotal override — `--trace-max-total`. */
+	traceMaxTotal?: number[];
+	/** traceMinScore override — `--trace-min-score`. */
+	traceMinScore?: number[];
 }
 
 /**
@@ -116,6 +124,10 @@ export interface Variant {
 		autoRoute: boolean;
 		diversityEnforce: boolean;
 		reranker: RerankerSpec;
+		topK?: number;
+		traceMaxPerSource?: number;
+		traceMaxTotal?: number;
+		traceMinScore?: number;
 	};
 }
 
@@ -152,15 +164,40 @@ export function enumerateVariants(matrix: Matrix): Variant[] {
 	const autoRouteValues = matrix.axes.autoRoute ?? [false];
 	const diversityValues = matrix.axes.diversityEnforce ?? [false];
 	const rerankerValues = matrix.axes.reranker ?? ["off" as const];
+	const topKValues: (number | undefined)[] =
+		matrix.axes.topK && matrix.axes.topK.length > 0 ? [...matrix.axes.topK] : [undefined];
+	const traceMaxPerSourceValues: (number | undefined)[] =
+		matrix.axes.traceMaxPerSource && matrix.axes.traceMaxPerSource.length > 0
+			? [...matrix.axes.traceMaxPerSource]
+			: [undefined];
+	const traceMaxTotalValues: (number | undefined)[] =
+		matrix.axes.traceMaxTotal && matrix.axes.traceMaxTotal.length > 0
+			? [...matrix.axes.traceMaxTotal]
+			: [undefined];
+	const traceMinScoreValues: (number | undefined)[] =
+		matrix.axes.traceMinScore && matrix.axes.traceMinScore.length > 0
+			? [...matrix.axes.traceMinScore]
+			: [undefined];
+
 	const out: Variant[] = [];
 	for (const ar of autoRouteValues) {
 		for (const div of diversityValues) {
 			for (const rr of rerankerValues) {
-				const variantId = formatVariantId(ar, div, rr);
-				out.push({
-					variantId,
-					axes: { autoRoute: ar, diversityEnforce: div, reranker: rr },
-				});
+				for (const tk of topKValues) {
+					for (const tps of traceMaxPerSourceValues) {
+						for (const tmt of traceMaxTotalValues) {
+							for (const tms of traceMinScoreValues) {
+								const variantId = formatVariantId(ar, div, rr, tk, tps, tmt, tms);
+								const axes: Variant["axes"] = { autoRoute: ar, diversityEnforce: div, reranker: rr };
+								if (tk !== undefined) axes.topK = tk;
+								if (tps !== undefined) axes.traceMaxPerSource = tps;
+								if (tmt !== undefined) axes.traceMaxTotal = tmt;
+								if (tms !== undefined) axes.traceMinScore = tms;
+								out.push({ variantId, axes });
+							}
+						}
+					}
+				}
 			}
 		}
 	}
@@ -188,7 +225,15 @@ export function filterVariants(variants: Variant[], allowList: string[]): Varian
 	return variants.filter((v) => wanted.has(v.variantId));
 }
 
-function formatVariantId(autoRoute: boolean, diversityEnforce: boolean, reranker: RerankerSpec): string {
+function formatVariantId(
+	autoRoute: boolean,
+	diversityEnforce: boolean,
+	reranker: RerankerSpec,
+	topK?: number,
+	traceMaxPerSource?: number,
+	traceMaxTotal?: number,
+	traceMinScore?: number,
+): string {
 	const ar = autoRoute ? "ar" : "noar";
 	const div = diversityEnforce ? "div" : "nodiv";
 	const rr =
@@ -197,5 +242,11 @@ function formatVariantId(autoRoute: boolean, diversityEnforce: boolean, reranker
 			: reranker.type === "bge"
 				? "rrBge"
 				: `rrLlm-${reranker.model}`;
-	return `${ar}_${div}_${rr}`;
+	const numeric: string[] = [];
+	if (topK !== undefined) numeric.push(`k${topK}`);
+	if (traceMaxPerSource !== undefined) numeric.push(`tps${traceMaxPerSource}`);
+	if (traceMaxTotal !== undefined) numeric.push(`tmt${traceMaxTotal}`);
+	if (traceMinScore !== undefined) numeric.push(`tms${traceMinScore.toFixed(2).replace(/\./, "p")}`);
+	const numericTag = numeric.length > 0 ? `_${numeric.join("_")}` : "";
+	return `${ar}_${div}_${rr}${numericTag}`;
 }
