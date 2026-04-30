@@ -30,6 +30,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ensureMode, type GpuMode, resolveModeFromMatrix } from "../lib/mode-switch.js";
 import { analyzeAndPropose } from "./analyze-and-propose.js";
 import { analyzeAndProposePatch } from "./analyze-and-propose-patch.js";
 import type { DetectionOutcome, Finding } from "./detect-regression.js";
@@ -107,6 +108,26 @@ async function loadMatrix(matrixName: string): Promise<Matrix> {
 	return mod.default;
 }
 
+async function swapMode(
+	target: GpuMode,
+	reason: string,
+	notes: string[],
+): Promise<boolean> {
+	try {
+		const r = await ensureMode(target, { reason });
+		if (r.skipped) {
+			notes.push(`mode-switch skipped (${target}): ${r.skippedReason}`);
+		} else {
+			notes.push(`mode-switch ok: ${r.from ?? "?"}→${r.to ?? target} phase=${r.finalPhase ?? "?"}`);
+		}
+		return true;
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		notes.push(`mode-switch FAILED (${target}): ${msg}`);
+		return false;
+	}
+}
+
 function pickMostRelevantFinding(outcome: DetectionOutcome): Finding | null {
 	if (outcome.findings.length === 0) return null;
 	// Prefer breach (hard floor violation) over regression for the
@@ -174,6 +195,11 @@ async function runPatchPath(input: {
 }): Promise<LoopOutcome> {
 	const { cli, matrix, finding, explainMd, notes } = input;
 	const triedRows = input.triedRows as readonly import("./tried-log.js").TriedLogRow[];
+	const sweepMode = resolveModeFromMatrix(matrix);
+
+	if (!(await swapMode("chat", "patch-llm-analyze", notes))) {
+		return { status: "patch-llm-unavailable", notes };
+	}
 
 	const llm = await analyzeAndProposePatch({
 		matrixName: cli.matrixName,
@@ -196,6 +222,10 @@ async function runPatchPath(input: {
 			`DRY-RUN patch proposal: baseSha=${llm.proposal.baseSha}, +${llm.proposal.unifiedDiff.split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++")).length}/-${llm.proposal.unifiedDiff.split("\n").filter((l) => l.startsWith("-") && !l.startsWith("---")).length} lines`,
 		);
 		return { status: "accepted-no-pr", notes };
+	}
+
+	if (sweepMode && !(await swapMode(sweepMode, "patch-materialize-sweep", notes))) {
+		return { status: "patch-rejected", notes };
 	}
 
 	const materialize = await materializePatchProposal({
@@ -283,6 +313,12 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 		return { status: "llm-unavailable", notes };
 	}
 
+	const sweepMode = resolveModeFromMatrix(matrix);
+
+	if (!(await swapMode("chat", "loop-llm-analyze", notes))) {
+		return { status: "llm-unavailable", notes };
+	}
+
 	const llmRes = await analyzeAndPropose({
 		matrixName: cli.matrixName,
 		explainMarkdown: explainMd,
@@ -348,6 +384,10 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 			`DRY-RUN proposal: ${proposal.axis}=${JSON.stringify(proposal.value)} — ${proposal.rationale}`,
 		);
 		return { status: "accepted-no-pr", notes };
+	}
+
+	if (sweepMode && !(await swapMode(sweepMode, "loop-materialize-sweep", notes))) {
+		return { status: "materialize-failed", notes };
 	}
 
 	let materialize;

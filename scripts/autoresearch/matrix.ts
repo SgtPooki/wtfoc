@@ -152,6 +152,17 @@ export interface Matrix {
 	 * anchor (exploratory sweeps) leave it unset.
 	 */
 	productionVariantId?: string;
+	/**
+	 * Homelab GPU mode required for this matrix's sweep, when the matrix
+	 * targets the single-GPU vllm cluster. Drives `ensureMode` calls in
+	 * the autonomous loop wrapper. Leave unset/null for cloud-only or
+	 * always-on tier matrices (no swap performed).
+	 *
+	 * Set explicitly when the heuristic in `resolveModeFromMatrix`
+	 * (URL substring scan) is wrong — for example, an embedder URL that
+	 * routes through a non-`embedder-gpu` host but still requires GPU.
+	 */
+	gpuPhase?: "chat" | "rerank-gpu" | "embed-gpu" | null;
 }
 
 /**

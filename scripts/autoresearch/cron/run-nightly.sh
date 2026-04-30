@@ -30,6 +30,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 cd "$REPO_ROOT"
 
+# Source repo .env so launchd-spawned cron has access to OPENROUTER_API_KEY
+# and the WTFOC_* URLs/models. plist only exports PATH+HOME so without
+# this we'd run with a near-empty environment.
+if [ -f "$REPO_ROOT/.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . "$REPO_ROOT/.env"
+    set +a
+fi
+
 STATE_DIR="${WTFOC_AUTORESEARCH_DIR:-$HOME/.wtfoc/autoresearch}"
 mkdir -p "$STATE_DIR" "$STATE_DIR/regressions" "$STATE_DIR/reports"
 LOCK_DIR="$STATE_DIR/.cron.lock.d"
@@ -206,7 +216,23 @@ fi
 cleanup_lock() {
     rm -rf "$LOCK_DIR"
 }
-trap cleanup_lock EXIT
+
+# Best-effort GPU mode reset on exit. Only runs when WTFOC_VLLM_AUTOSWAP=1
+# (helper short-circuits otherwise). Failures here are non-fatal — the
+# idle-revert on the admin side will eventually restore chat.
+reset_mode_to_chat() {
+    if [ "${WTFOC_VLLM_AUTOSWAP:-0}" = "1" ]; then
+        WTFOC_MODE_SWITCH_REASON="cron-cleanup" \
+            pnpm exec tsx --tsconfig scripts/tsconfig.json \
+            scripts/lib/mode-switch-cli.ts chat 2>&1 | sed 's/^/[mode-reset] /' || true
+    fi
+}
+
+cleanup_all() {
+    reset_mode_to_chat
+    cleanup_lock
+}
+trap cleanup_all EXIT
 
 log "start matrix=$MATRIX stage=$STAGE state=$STATE_DIR"
 
@@ -243,6 +269,11 @@ if [ -z "$PROD_VARIANT" ]; then
     fi
 fi
 log "sweep starting variant=$PROD_VARIANT"
+# Pre-sweep mode swap: set GPU to whatever the matrix needs. No-op when
+# matrix is cloud-only or WTFOC_VLLM_AUTOSWAP!=1.
+WTFOC_MODE_SWITCH_REASON="cron-pre-sweep" \
+    pnpm exec tsx --tsconfig scripts/tsconfig.json \
+    scripts/lib/mode-switch-cli.ts --from-matrix "$MATRIX" 2>&1 | sed 's/^/[mode-pre-sweep] /' || true
 pnpm autoresearch:sweep "$MATRIX" --stage "$STAGE" --variant-filter "$PROD_VARIANT"
 rc=$?
 if [ "$rc" -ne 0 ]; then
@@ -270,6 +301,14 @@ status=$(grep -m1 '"status"' "$FINDINGS_FILE" | sed -E 's/.*"status": *"([^"]+)"
 log "detector status=$status"
 case "$status" in
     breach|regression|both)
+        # Switch to chat mode for analysis LLM (file-issue + autonomous-loop
+        # internal LLM calls). autonomous-loop also swaps internally between
+        # chat (analyze) and gpuPhase (materialize), but landing in chat
+        # here avoids the first internal swap when the GPU is already idle.
+        log "swapping to chat mode for analysis phase"
+        WTFOC_MODE_SWITCH_REASON="cron-pre-analyze" \
+            pnpm exec tsx --tsconfig scripts/tsconfig.json \
+            scripts/lib/mode-switch-cli.ts chat 2>&1 | sed 's/^/[mode-pre-analyze] /' || true
         log "filing issue(s)"
         pnpm exec tsx --tsconfig scripts/tsconfig.json scripts/autoresearch/file-regression-issue.ts \
                 --findings "$FINDINGS_FILE" \
