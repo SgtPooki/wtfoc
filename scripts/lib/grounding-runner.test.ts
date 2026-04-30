@@ -54,6 +54,7 @@ describe("runGrounding", () => {
 					sourceType: "code",
 					source: "/src/x.ts",
 					score: 0.9,
+					retrievalScore: 0.9,
 				},
 			],
 		});

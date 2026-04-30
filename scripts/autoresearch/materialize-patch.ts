@@ -37,6 +37,15 @@ export interface MaterializePatchInputs {
 	spawnFn?: (cmd: string, args: string[], opts?: { cwd?: string }) => Buffer | string;
 	allowedPaths?: readonly string[];
 	maxDiffLines?: number;
+	/**
+	 * Anti-overfit floor: maximum acceptable per-corpus DEGRADATION
+	 * (passRate delta) before the patch is rejected on that corpus
+	 * regardless of how much it improves other corpora. Default: 0.02
+	 * (2 percentage points). Asymmetric vs the standard accept rule —
+	 * a patch may improve filoz by 8pp but if it costs wtfoc-v3 more
+	 * than 2pp we refuse to ship.
+	 */
+	maxPerCorpusDegradationPp?: number;
 }
 
 export interface MaterializePatchResult {
@@ -281,15 +290,53 @@ export async function materializePatchProposal(
 		const accepts = verdicts.filter((v) => v.accept).length;
 		const majority = Math.floor(verdicts.length / 2) + 1;
 		const corpusAccept = accepts >= majority;
+
+		// Anti-overfit guard. Reject the patch on this corpus if its
+		// passRate drops by more than `maxPerCorpusDegradationPp` points
+		// vs ANY baseline in the window — even if it improves on
+		// average. The asymmetry is deliberate: the loop must not ship
+		// patches that help one corpus while quietly hurting another
+		// (over-fitting risk). Stricter than the standard accept rule.
+		const maxDegradation = input.maxPerCorpusDegradationPp ?? 0.02;
+		const candidateScores = (() => {
+			const qq = candidateReport.stages.find((s) => s.stage === "quality-queries");
+			const m = qq?.metrics as { passRate?: number } | undefined;
+			return m?.passRate ?? null;
+		})();
+		let worstDegradationVsAnyBaseline = 0;
+		if (candidateScores !== null) {
+			for (const r of baselineRows) {
+				if (!r.reportPath) continue;
+				try {
+					const b = JSON.parse(fs.readFileSync(r.reportPath, "utf-8")) as ExtendedDogfoodReport;
+					const qq = b.stages.find((s) => s.stage === "quality-queries");
+					const m = qq?.metrics as { passRate?: number } | undefined;
+					const baseRate = m?.passRate ?? null;
+					if (baseRate !== null) {
+						const drop = baseRate - candidateScores;
+						if (drop > worstDegradationVsAnyBaseline) worstDegradationVsAnyBaseline = drop;
+					}
+				} catch {
+					// skip
+				}
+			}
+		}
+		const overfitTripped = worstDegradationVsAnyBaseline > maxDegradation;
+
+		const finalCorpusAccept = corpusAccept && !overfitTripped;
 		const aggregate: DecisionVerdict = {
 			...verdicts[verdicts.length - 1]!,
-			accept: corpusAccept,
-			reasons: corpusAccept
-				? [`patch window: ${accepts}/${verdicts.length} baselines clear decide()`]
-				: [`patch window: only ${accepts}/${verdicts.length} clear decide() (need ${majority})`],
+			accept: finalCorpusAccept,
+			reasons: overfitTripped
+				? [
+						`anti-overfit: worst per-baseline degradation ${(worstDegradationVsAnyBaseline * 100).toFixed(1)}pp > floor ${(maxDegradation * 100).toFixed(1)}pp`,
+					]
+				: corpusAccept
+					? [`patch window: ${accepts}/${verdicts.length} baselines clear decide()`]
+					: [`patch window: only ${accepts}/${verdicts.length} clear decide() (need ${majority})`],
 		};
 		decisions.push({ corpus, verdict: aggregate });
-		if (!corpusAccept) allAccept = false;
+		if (!finalCorpusAccept) allAccept = false;
 	}
 
 	return {

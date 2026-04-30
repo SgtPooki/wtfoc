@@ -72,6 +72,7 @@ const runConfig: RunConfig = {
 		autoRoute: false,
 		diversityEnforce: false,
 	},
+	evaluation: { checkParaphrases: false, groundCheck: false },
 	promptHashes: {},
 	seed: 0,
 	gitSha: null,
