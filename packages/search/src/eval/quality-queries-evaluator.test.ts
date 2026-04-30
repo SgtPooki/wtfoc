@@ -9,7 +9,8 @@ const mockTrace = vi.hoisted(() => vi.fn<() => Promise<TraceResult>>());
 vi.mock("../query.js", () => ({ query: mockQuery }));
 vi.mock("../trace/trace.js", () => ({ trace: mockTrace }));
 
-const { evaluateQualityQueries } = await import("./quality-queries-evaluator.js");
+const { evaluateQualityQueries, getActiveQueries } = await import("./quality-queries-evaluator.js");
+const { GOLD_STANDARD_QUERIES } = await import("./gold-standard-queries.js");
 
 function makeQueryResult(
 	results: Array<{ sourceType: string; source: string; score: number }>,
@@ -507,6 +508,91 @@ describe("evaluateQualityQueries", () => {
 			});
 
 			expect(deterministic(run2)).toEqual(deterministic(run1));
+		});
+	});
+
+	describe("WTFOC_QUERY_FILTER subset filtering (#320)", () => {
+		// Tests `getActiveQueries()` directly — the helper exported for
+		// fast-iteration smokes (run a 20-30 query subset instead of the
+		// full 153-query fixture). Aggregate metrics noisier on subsets
+		// but per-query data stays real signal.
+
+		it("unset env var → no filter, returns full fixture", () => {
+			vi.stubEnv("WTFOC_QUERY_FILTER", "");
+			try {
+				const { queries, filter } = getActiveQueries();
+				expect(filter.active).toBe(false);
+				expect(filter.requestedIds).toEqual([]);
+				expect(filter.unknownIds).toEqual([]);
+				expect(filter.totalAvailable).toBe(GOLD_STANDARD_QUERIES.length);
+				expect(queries.length).toBe(GOLD_STANDARD_QUERIES.length);
+			} finally {
+				vi.unstubAllEnvs();
+			}
+		});
+
+		it("whitespace-only env var → no filter (defensive)", () => {
+			vi.stubEnv("WTFOC_QUERY_FILTER", "  ,  ,  ");
+			try {
+				const { filter } = getActiveQueries();
+				expect(filter.active).toBe(false);
+			} finally {
+				vi.unstubAllEnvs();
+			}
+		});
+
+		it("filter by known id returns only that query", () => {
+			const knownId = GOLD_STANDARD_QUERIES[0]?.id ?? "";
+			expect(knownId).toBeTruthy();
+			vi.stubEnv("WTFOC_QUERY_FILTER", knownId);
+			try {
+				const { queries, filter } = getActiveQueries();
+				expect(filter.active).toBe(true);
+				expect(filter.requestedIds).toEqual([knownId]);
+				expect(filter.unknownIds).toEqual([]);
+				expect(queries.length).toBe(1);
+				expect(queries[0]?.id).toBe(knownId);
+			} finally {
+				vi.unstubAllEnvs();
+			}
+		});
+
+		it("filter with unknown ids surfaces them in unknownIds", () => {
+			const knownId = GOLD_STANDARD_QUERIES[0]?.id ?? "";
+			vi.stubEnv("WTFOC_QUERY_FILTER", `${knownId},nonexistent-id`);
+			try {
+				const { queries, filter } = getActiveQueries();
+				expect(filter.active).toBe(true);
+				expect(filter.unknownIds).toEqual(["nonexistent-id"]);
+				expect(queries.length).toBe(1);
+			} finally {
+				vi.unstubAllEnvs();
+			}
+		});
+
+		it("filter with all-unknown ids returns empty queries + populated unknownIds", () => {
+			vi.stubEnv("WTFOC_QUERY_FILTER", "no-such-id,also-not-real");
+			try {
+				const { queries, filter } = getActiveQueries();
+				expect(filter.active).toBe(true);
+				expect(filter.unknownIds).toEqual(["no-such-id", "also-not-real"]);
+				expect(queries.length).toBe(0);
+			} finally {
+				vi.unstubAllEnvs();
+			}
+		});
+
+		it("filter with extra whitespace in ids tolerated", () => {
+			const knownId = GOLD_STANDARD_QUERIES[0]?.id ?? "";
+			vi.stubEnv("WTFOC_QUERY_FILTER", `  ${knownId}  ,  `);
+			try {
+				const { queries, filter } = getActiveQueries();
+				expect(filter.active).toBe(true);
+				expect(queries.length).toBe(1);
+				expect(queries[0]?.id).toBe(knownId);
+			} finally {
+				vi.unstubAllEnvs();
+			}
 		});
 	});
 });
