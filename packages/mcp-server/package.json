@@ -1,6 +1,6 @@
 {
 	"name": "@wtfoc/mcp-server",
-	"version": "0.0.3",
+	"version": "0.0.4",
 	"description": "Model Context Protocol server exposing wtfoc tools for Claude",
 	"type": "module",
 	"license": "MIT",

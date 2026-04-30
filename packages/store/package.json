@@ -1,6 +1,6 @@
 {
 	"name": "@wtfoc/store",
-	"version": "0.0.3",
+	"version": "0.0.4",
 	"description": "Storage backends and manifest management for wtfoc collections",
 	"type": "module",
 	"license": "MIT",
