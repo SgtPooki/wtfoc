@@ -23,6 +23,7 @@ function makeQueryResult(
 			source: r.source,
 			storageId: "s1",
 			score: r.score,
+			retrievalScore: r.score,
 		})),
 	};
 }

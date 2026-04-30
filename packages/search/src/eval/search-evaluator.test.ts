@@ -19,6 +19,7 @@ function makeQueryResult(results: Array<{ sourceType: string; score: number }>):
 			source: "test",
 			storageId: "s1",
 			score: r.score,
+			retrievalScore: r.score,
 		})),
 	};
 }
