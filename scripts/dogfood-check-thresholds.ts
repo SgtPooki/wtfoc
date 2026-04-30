@@ -3,7 +3,7 @@
  * Compare a dogfood report JSON against the flagship thresholds (wtfoc-vlk0).
  *
  * Usage:
- *   pnpm tsx scripts/dogfood-check-thresholds.ts <report.json>
+ *   pnpm exec tsx scripts/dogfood-check-thresholds.ts <report.json>
  *
  * Exit 0 on all thresholds met, 1 on any violation. Used by the weekly
  * flagship-corpus regression check — keep it strict enough to catch

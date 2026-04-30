@@ -76,7 +76,7 @@ function runCheck(
 	try {
 		const stdout = execFileSync(
 			"pnpm",
-			["tsx", "scripts/dogfood-check-thresholds.ts", ...flags, reportPath],
+			["exec", "tsx", "scripts/dogfood-check-thresholds.ts", ...flags, reportPath],
 			{ encoding: "utf-8" },
 		);
 		return { exitCode: 0, stdout };
