@@ -21,6 +21,54 @@ import {
 	type LineageMetrics,
 } from "./lineage-metrics.js";
 
+/**
+ * #320 — fast-iteration smoke support. When `WTFOC_QUERY_FILTER` is set
+ * to a comma-separated list of query ids, score only those queries from
+ * the gold fixture. Aggregate metrics get noisier (demo-critical
+ * pass-rate of 1/1 is not the same signal as 5/5) but per-query data
+ * stays real — useful for hypothesis testing on a 20-30 query subset
+ * before burning hours on the full 153-query fixture.
+ *
+ * Empty / unset / whitespace-only env var = no filter (default behavior).
+ * Unknown ids in the filter list are silently dropped. Missing ids in
+ * the fixture are reported in `queryFilter.unknownIds` so a typo doesn't
+ * silently shrink the run beyond expectation.
+ */
+export function getActiveQueries(): {
+	queries: ReadonlyArray<GoldStandardQuery>;
+	filter: { active: boolean; requestedIds: string[]; unknownIds: string[]; totalAvailable: number };
+} {
+	const raw = process.env.WTFOC_QUERY_FILTER ?? "";
+	const requested = raw
+		.split(",")
+		.map((s) => s.trim())
+		.filter((s) => s.length > 0);
+	if (requested.length === 0) {
+		return {
+			queries: GOLD_STANDARD_QUERIES,
+			filter: {
+				active: false,
+				requestedIds: [],
+				unknownIds: [],
+				totalAvailable: GOLD_STANDARD_QUERIES.length,
+			},
+		};
+	}
+	const wantedSet = new Set(requested);
+	const filtered = GOLD_STANDARD_QUERIES.filter((q) => wantedSet.has(q.id));
+	const matchedIds = new Set(filtered.map((q) => q.id));
+	const unknownIds = requested.filter((id) => !matchedIds.has(id));
+	return {
+		queries: filtered,
+		filter: {
+			active: true,
+			requestedIds: requested,
+			unknownIds,
+			totalAvailable: GOLD_STANDARD_QUERIES.length,
+		},
+	};
+}
+
 interface QueryScore {
 	id: string;
 	category: string;
@@ -148,7 +196,9 @@ export async function evaluateQualityQueries(
 	let skippedCount = 0;
 	const skippedReasons: Array<{ id: string; reason: string }> = [];
 
-	for (const gq of GOLD_STANDARD_QUERIES) {
+	const { queries: activeQueries, filter: queryFilter } = getActiveQueries();
+
+	for (const gq of activeQueries) {
 		signal?.throwIfAborted();
 		const skip = resolveSkip(gq, context);
 		if (skip) {
@@ -176,7 +226,7 @@ export async function evaluateQualityQueries(
 		if (score.passedQueryOnly) queryOnlyPassCount++;
 	}
 
-	const applicableTotal = GOLD_STANDARD_QUERIES.length - skippedCount;
+	const applicableTotal = activeQueries.length - skippedCount;
 	const passRate = applicableTotal > 0 ? passCount / applicableTotal : 0;
 	const queryOnlyPassRate = applicableTotal > 0 ? queryOnlyPassCount / applicableTotal : 0;
 
@@ -210,7 +260,7 @@ export async function evaluateQualityQueries(
 	// June 7 flagship to be safe. Surfaced separately so overall pass rate
 	// doesn't hide a demo-breaking regression.
 	const demoCriticalIds = new Set(
-		GOLD_STANDARD_QUERIES.filter((q) => q.tier === "demo-critical").map((q) => q.id),
+		activeQueries.filter((q) => q.tier === "demo-critical").map((q) => q.id),
 	);
 	const demoCriticalScores = scores.filter((s) => demoCriticalIds.has(s.id) && !s.skipped);
 	const demoCriticalPassed = demoCriticalScores.filter((s) => s.passed).length;
@@ -228,7 +278,7 @@ export async function evaluateQualityQueries(
 	// from masquerading as general retrieval. Peer-review (codex + gemini)
 	// required after overfitting audit flagged single-corpus tuning.
 	const portableIds = new Set(
-		GOLD_STANDARD_QUERIES.filter((q) => q.portability === "portable").map((q) => q.id),
+		activeQueries.filter((q) => q.portability === "portable").map((q) => q.id),
 	);
 	const portableScores = scores.filter((s) => portableIds.has(s.id) && !s.skipped);
 	const portablePassed = portableScores.filter((s) => s.passed).length;
@@ -251,9 +301,7 @@ export async function evaluateQualityQueries(
 	// Applicable rate (v1.6.0) — what fraction of the fixture this corpus
 	// can even answer. A high pass rate on a low applicable rate is the
 	// overfit-and-skip signature; threshold check should warn on this.
-	const applicableRate = GOLD_STANDARD_QUERIES.length
-		? applicableTotal / GOLD_STANDARD_QUERIES.length
-		: 0;
+	const applicableRate = activeQueries.length ? applicableTotal / activeQueries.length : 0;
 
 	// Verdict
 	let verdict: "pass" | "warn" | "fail" = "pass";
@@ -340,7 +388,12 @@ export async function evaluateQualityQueries(
 			// goldSupportingSources mapping in the fixture (demo-critical
 			// tier in v1.7.0). Reports the mean recall@K across those
 			// queries plus the per-tier average for demo-critical.
-			recallAtK: aggregateRecall(scores),
+			recallAtK: aggregateRecall(scores, activeQueries),
+			// #320 — when WTFOC_QUERY_FILTER is set, surface the filter
+			// state in metrics so analysts can see the run was a subset
+			// (and not compare aggregate metrics directly to full-fixture
+			// runs). `active: false` when no filter — analysts can ignore.
+			queryFilter,
 			// #311 (Phase 1a) — paraphrase invariance aggregate. Only
 			// emitted when paraphrase checking ran. A query is "brittle"
 			// when canonical passes but ≥1 paraphrase fails — directly
@@ -404,10 +457,13 @@ interface RecallAggregate {
 	demoCriticalGraded: number;
 }
 
-function aggregateRecall(scores: QueryScore[]): RecallAggregate {
+function aggregateRecall(
+	scores: QueryScore[],
+	activeQueries: ReadonlyArray<GoldStandardQuery>,
+): RecallAggregate {
 	const graded = scores.filter((s) => !s.skipped && s.recallAtK !== null && s.recallK !== null);
 	const demoCriticalIds = new Set(
-		GOLD_STANDARD_QUERIES.filter((q) => q.tier === "demo-critical").map((q) => q.id),
+		activeQueries.filter((q) => q.tier === "demo-critical").map((q) => q.id),
 	);
 	const demoCriticalGraded = graded.filter((s) => demoCriticalIds.has(s.id));
 	const k = graded[0]?.recallK ?? null;
