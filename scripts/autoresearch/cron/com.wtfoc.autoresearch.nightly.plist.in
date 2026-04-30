@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Phase 4 autoresearch nightly cron — launchd LaunchAgent template.
+  Maintainer-only.
+
+  Substituted by `scripts/autoresearch/cron/install.sh`:
+    @@WRAPPER@@   absolute path to scripts/autoresearch/cron/run-nightly.sh
+    @@HOME@@      absolute path to user home (for log + state defaults)
+    @@PATH@@      PATH for the wrapper to find pnpm/node/gh/etc.
+    @@CWD@@       repo root (so relative paths inside scripts work)
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.wtfoc.autoresearch.nightly</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>@@WRAPPER@@</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>@@PATH@@</string>
+        <key>HOME</key>
+        <string>@@HOME@@</string>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>@@CWD@@</string>
+
+    <key>StandardOutPath</key>
+    <string>@@HOME@@/.wtfoc/autoresearch/cron-stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>@@HOME@@/.wtfoc/autoresearch/cron-stderr.log</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

@@ -134,6 +134,12 @@ export interface Matrix {
 	 */
 	baseConfig: BaseConfig;
 	axes: VariantAxes;
+	/**
+	 * Variant id treated as the production config for cron-style
+	 * regression detection. Optional — matrices without a production
+	 * anchor (exploratory sweeps) leave it unset.
+	 */
+	productionVariantId?: string;
 }
 
 /**

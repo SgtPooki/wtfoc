@@ -81,7 +81,7 @@ function qq(report: ExtendedDogfoodReport): QQMetrics | undefined {
 	return report.stages.find((s) => s.stage === "quality-queries")?.metrics as QQMetrics | undefined;
 }
 
-function evaluateGates(
+export function evaluateGates(
 	candidate: ExtendedDogfoodReport,
 	gates: HardGates,
 ): DecisionVerdict["gateResults"] {
