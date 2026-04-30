@@ -33,7 +33,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtendedDogfoodReport } from "../lib/run-config.js";
 import { appendRunLogRow, buildRunLogRow } from "../lib/run-log.js";
@@ -178,7 +178,9 @@ function runVariantOnCorpus(
 	collection: string,
 	sweepId: string,
 ): { report: ExtendedDogfoodReport; durationMs: number; reportPath: string } {
-	const archiveDir = `${process.env.WTFOC_AUTORESEARCH_DIR ?? `${process.env.HOME}/.wtfoc/autoresearch`}/reports/${sweepId}`;
+	const archiveDir = resolve(
+		`${process.env.WTFOC_AUTORESEARCH_DIR ?? `${process.env.HOME}/.wtfoc/autoresearch`}/reports/${sweepId}`,
+	);
 	mkdirSync(archiveDir, { recursive: true });
 	const archivePath = join(archiveDir, `${variant.variantId}__${collection}.json`);
 	const tmp = mkdtempSync(join(tmpdir(), "wtfoc-sweep-"));

@@ -29,7 +29,14 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { DetectionOutcome, Finding } from "./detect-regression.js";
@@ -150,7 +157,8 @@ export function buildIssueBody(
 	lines.push("## Reproduce locally");
 	lines.push("");
 	lines.push("```bash");
-	lines.push(`pnpm autoresearch:sweep <matrix> \\`);
+	const matrix = outcome.matrixName ?? "<matrix-name>";
+	lines.push(`pnpm autoresearch:sweep ${matrix} \\`);
 	lines.push(`  --variant-filter ${finding.variantId} \\`);
 	lines.push(`  --stage repro`);
 	lines.push("```");
@@ -238,6 +246,52 @@ export function planFilings(input: FileIssueInputs): FileIssueDecision[] {
 		});
 	}
 
+	// State cleanup: for any incident state file whose (variantId, corpus,
+	// fingerprintVersion) maps to a corpus that the latest detection
+	// reports as "ok", emit a clear decision. The metric recovered (or the
+	// regression no longer convinces the bootstrap), so future re-regressions
+	// should be treated as new incidents rather than repeats.
+	const cleanCorporaKey = new Set<string>();
+	for (const c of input.outcome.corpora) {
+		if (c.status === "ok" && c.latest) {
+			const tuple = `${c.latest.variantId}|${c.corpus}`;
+			cleanCorporaKey.add(tuple);
+		}
+	}
+	if (cleanCorporaKey.size > 0 && existsSync(input.stateDir)) {
+		for (const entry of readdirSync(input.stateDir)) {
+			if (!entry.endsWith(".json")) continue;
+			const path = join(input.stateDir, entry);
+			const prior = loadState(path);
+			if (!prior) continue;
+			const tuple = `${prior.variantId}|${prior.corpus}`;
+			if (!cleanCorporaKey.has(tuple)) continue;
+			if (seenKeys.has(prior.incidentKey)) continue;
+			decisions.push({
+				action: "clear",
+				incidentKey: prior.incidentKey,
+				finding: {
+					type: prior.findingType,
+					variantId: prior.variantId,
+					corpus: prior.corpus,
+					corpusDigest: "",
+					fingerprint: "",
+					fingerprintVersion: prior.fingerprintVersion,
+					metric: prior.metric,
+					latestValue: null,
+					latestSweepId: "",
+					latestLoggedAt: "",
+					reason: "metric recovered — clearing state",
+				},
+				reason: `corpus=${prior.corpus} latest status=ok; clearing prior incident state`,
+				previouslyFiled: true,
+				...(prior.issueNumbers.length > 0
+					? { issueNumber: prior.issueNumbers[prior.issueNumbers.length - 1] }
+					: {}),
+			});
+		}
+	}
+
 	return decisions;
 }
 
@@ -294,6 +348,9 @@ function parseArgs(argv: string[]): CliArgs {
 		throw new Error(`unknown flag: ${a}`);
 	}
 	if (!findingsPath) throw new Error("usage: --findings <path>");
+	if (!Number.isFinite(silenceDays) || silenceDays < 0) {
+		throw new Error(`--silence-days must be a non-negative integer (got ${silenceDays})`);
+	}
 	return { findingsPath, dryRun, silenceDays, stateDir };
 }
 
@@ -312,7 +369,20 @@ async function main(): Promise<void> {
 			console.error(`[file-issue] SKIP ${d.incidentKey} — ${d.reason}`);
 			continue;
 		}
-		if (d.action === "clear") continue;
+		if (d.action === "clear") {
+			const path = statePath(cli.stateDir, d.incidentKey);
+			if (cli.dryRun) {
+				console.error(`[file-issue] DRY-RUN CLEAR ${d.incidentKey} — would unlink ${path}`);
+				continue;
+			}
+			try {
+				unlinkSync(path);
+				console.error(`[file-issue] CLEAR ${d.incidentKey} — ${d.reason}`);
+			} catch {
+				console.error(`[file-issue] CLEAR no-op ${d.incidentKey} (already absent)`);
+			}
+			continue;
+		}
 		// create
 		if (cli.dryRun) {
 			console.log("=== DRY RUN ===");

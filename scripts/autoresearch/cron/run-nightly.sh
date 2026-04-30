@@ -2,7 +2,11 @@
 # Phase 4 nightly cron wrapper. Maintainer-only.
 #
 # Sequence:
-#   1. Acquire exclusive flock on $LOCK_FILE (stale lock recovery).
+#   1. Acquire exclusive lock by atomic `mkdir $LOCK_DIR` (portable;
+#      macOS lacks `flock`). Stale-lock recovery: if the PID recorded in
+#      $PID_FILE is no longer alive, the lock dir is removed and the run
+#      proceeds. Otherwise the run is skipped with status
+#      SKIPPED_ALREADY_RUNNING.
 #   2. Run preflight; on exit 75, write DEGRADED status, increment
 #      consecutive-degraded counter, optionally file cron-health issue,
 #      exit 0 (launchd does not retry).

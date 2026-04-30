@@ -224,4 +224,92 @@ describe("planFilings", () => {
 		const key = incidentKeyFor(makeFinding());
 		expect(() => readFileSync(join(stateDir, `${key}.json`), "utf-8")).toThrow();
 	});
+
+	it("emits 'clear' decisions for prior incidents whose corpus is now ok", () => {
+		const stateDir = tmpStateDir();
+		const finding = makeFinding();
+		const key = incidentKeyFor(finding);
+		// Persist state from a prior cycle.
+		writeFileSync(
+			join(stateDir, `${key}.json`),
+			JSON.stringify({
+				incidentKey: key,
+				variantId: finding.variantId,
+				corpus: finding.corpus,
+				findingType: finding.type,
+				metric: finding.metric,
+				fingerprintVersion: finding.fingerprintVersion,
+				firstSeenAt: "2026-04-20T03:00:00Z",
+				lastNotifiedAt: "2026-04-20T03:00:00Z",
+				issueNumbers: [99],
+			}),
+		);
+		// Latest detection: corpus is now OK, no findings.
+		const okOutcome = makeOutcome([]);
+		const decisions = planFilings({ outcome: okOutcome, stateDir });
+		const clear = decisions.find((d) => d.action === "clear");
+		expect(clear).toBeDefined();
+		expect(clear?.incidentKey).toBe(key);
+		expect(clear?.issueNumber).toBe(99);
+	});
+
+	it("does NOT emit clear when the same incident is also in current findings (still regressed)", () => {
+		const stateDir = tmpStateDir();
+		const finding = makeFinding();
+		const key = incidentKeyFor(finding);
+		writeFileSync(
+			join(stateDir, `${key}.json`),
+			JSON.stringify({
+				incidentKey: key,
+				variantId: finding.variantId,
+				corpus: finding.corpus,
+				findingType: finding.type,
+				metric: finding.metric,
+				fingerprintVersion: finding.fingerprintVersion,
+				firstSeenAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+				lastNotifiedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+				issueNumbers: [42],
+			}),
+		);
+		// Same finding still present + corpus status NOT ok in outcome.
+		const stillRegressed: DetectionOutcome = {
+			...makeOutcome([finding]),
+			corpora: [
+				{
+					corpus: finding.corpus,
+					status: "regression",
+					latest: {
+						sweepId: "bad",
+						loggedAt: "2026-04-29T03:00:00Z",
+						fingerprint: "fp-abc",
+						variantId: finding.variantId,
+						corpus: finding.corpus,
+					},
+					baselineCount: 4,
+				},
+			],
+		};
+		const decisions = planFilings({ outcome: stillRegressed, stateDir });
+		expect(decisions.find((d) => d.action === "clear")).toBeUndefined();
+	});
+});
+
+describe("buildIssueBody — repro command uses real matrix name", () => {
+	function tmpStateDir(): string {
+		return mkdtempSync(join(tmpdir(), "wtfoc-regression-state-"));
+	}
+	it("substitutes outcome.matrixName when present", () => {
+		const finding = makeFinding();
+		const outcome: DetectionOutcome = {
+			...makeOutcome([finding]),
+			matrixName: "retrieval-baseline",
+		};
+		const body = buildIssueBody(finding, outcome, false);
+		expect(body).toContain("pnpm autoresearch:sweep retrieval-baseline");
+		expect(body).not.toContain("<matrix>");
+	});
+	it("falls back to a placeholder when matrixName missing", () => {
+		const body = buildIssueBody(makeFinding(), makeOutcome([makeFinding()]), false);
+		expect(body).toContain("<matrix-name>");
+	});
 });

@@ -328,6 +328,35 @@ describe("detectRegression", () => {
 		expect(out.findings.every((f) => f.corpus === SECONDARY)).toBe(true);
 	});
 
+	it("treats missing baseline reports as insufficient-history (does not silently report ok)", () => {
+		// 4 baseline rows, but reports map intentionally omits 3 of them so
+		// only 1 is loadable. With minBaseline=3, the regression check must
+		// NOT silently emit "ok" — it should surface the loss of coverage.
+		const fixtures: RowFixture[] = [
+			{ sweepId: "b1", loggedAt: "2026-04-25T03:00:00Z", scores: STABLE_75(), passRate: 0.75 },
+			{ sweepId: "b2", loggedAt: "2026-04-26T03:00:00Z", scores: STABLE_75(), passRate: 0.75 },
+			{ sweepId: "b3", loggedAt: "2026-04-27T03:00:00Z", scores: STABLE_75(), passRate: 0.75 },
+			{ sweepId: "b4", loggedAt: "2026-04-28T03:00:00Z", scores: STABLE_75(), passRate: 0.75 },
+			{ sweepId: "latest", loggedAt: "2026-04-29T03:00:00Z", scores: STABLE_75(), passRate: 0.75 },
+		];
+		// Only b1 + latest have reports; b2/b3/b4 missing → unloadable.
+		const reports = new Map([
+			[`/virtual/b1.json`, reportFor(fixtures[0]!)],
+			[`/virtual/latest.json`, reportFor(fixtures[4]!)],
+		]);
+		const out = detectRegression({
+			rows: fixtures.map(row),
+			variantId: VARIANT,
+			corpora: [CORPUS],
+			minBaseline: 3,
+			loadReport: makeLoader(reports),
+		});
+		expect(out.status).toBe("insufficient-history");
+		expect(
+			out.notes.some((n) => n.includes("usable for paired bootstrap")),
+		).toBe(true);
+	});
+
 	it("filters by stage tag when supplied", () => {
 		const fixtures: RowFixture[] = [
 			{ sweepId: "manual1", loggedAt: "2026-04-25T03:00:00Z", scores: STABLE_75(), stage: "discovery" },

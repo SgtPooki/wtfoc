@@ -95,6 +95,8 @@ export interface DetectionOutcome {
 	corpora: CorpusSummary[];
 	findings: Finding[];
 	notes: string[];
+	/** Matrix name when the detector was invoked with one — surfaced in issue bodies. */
+	matrixName?: string;
 }
 
 export interface SingleCorpusInputs {
@@ -246,7 +248,13 @@ export function detectRegression(input: DetectionInputs): DetectionOutcome {
 	else if (corpora.every((c) => c.status === "insufficient-history"))
 		status = "insufficient-history";
 
-	return { status, corpora, findings, notes };
+	return {
+		status,
+		corpora,
+		findings,
+		notes,
+		...(input.matrixName ? { matrixName: input.matrixName } : {}),
+	};
 }
 
 interface SingleCorpusOutcome {
@@ -398,8 +406,30 @@ function detectRegressionForCorpus(input: SingleCorpusInputs): SingleCorpusOutco
 		}
 	}
 	const usableBaseline = perBaselineDeltas.length;
+	if (usableBaseline < minBaseline) {
+		// We had >= minBaseline rows but lost some to missing reports / no
+		// aligned families. Don't emit a "regression" or "ok" verdict on
+		// thin air — surface it as insufficient-history so the cron knows
+		// the detector silently lost coverage.
+		notes.push(
+			`only ${usableBaseline} of ${baseline.length} baseline run(s) usable for paired bootstrap on corpus=${input.corpus} (need >= ${minBaseline}) — skipping regression check`,
+		);
+		return {
+			status: gateResults.some((g) => !g.ok) ? "breach" : "insufficient-history",
+			latest: {
+				sweepId: latest.sweepId,
+				loggedAt: latest.loggedAt,
+				fingerprint,
+				variantId: latest.variantId,
+				corpus: latest.runConfig.collectionId,
+			},
+			baselineCount: usableBaseline,
+			findings,
+			notes,
+		};
+	}
 	const majority = Math.floor(usableBaseline / 2) + 1;
-	if (usableBaseline >= minBaseline && baselineWins >= majority) {
+	if (baselineWins >= majority) {
 		const avgDelta = perBaselineDeltas.reduce((a, b) => a + b, 0) / perBaselineDeltas.length;
 		const avgProb = perBaselineProbs.reduce((a, b) => a + b, 0) / perBaselineProbs.length;
 		findings.push({
