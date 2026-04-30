@@ -210,7 +210,10 @@ describe("decide", () => {
 		expect(verdict.reasons.some((r) => r.includes("demoCritical"))).toBe(true);
 	});
 
-	it("REJECTS when costComparable is false", () => {
+	it("does NOT reject on costComparable=false (gate temporarily disabled per #331)", () => {
+		// TODO(#331): cost-comparable gate disabled while autonomous loop
+		// runs on local LLM ($0 by definition). When the gate re-enables,
+		// flip this back to: expect accept=false + a costComparable reason.
 		const baseScores = Array.from({ length: 30 }, (_, i) =>
 			score({ id: `q${i}`, passed: i < 18 }),
 		);
@@ -226,8 +229,7 @@ describe("decide", () => {
 			bootstrapIterations: 2000,
 			rng: seededRng(7),
 		});
-		expect(verdict.accept).toBe(false);
-		expect(verdict.reasons.some((r) => r.includes("costComparable"))).toBe(true);
+		expect(verdict.reasons.some((r) => r.includes("costComparable"))).toBe(false);
 	});
 
 	it("uses DEFAULT_GATES when none provided", () => {

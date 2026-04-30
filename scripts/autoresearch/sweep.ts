@@ -157,8 +157,13 @@ function logErr(...parts: unknown[]): void {
 }
 
 async function loadMatrix(matrixName: string): Promise<Matrix> {
+	// Accept absolute paths and ./relative paths verbatim — used by
+	// the autonomous loop's variant materializer to point at a temp
+	// matrix file outside the repo's matrices/ directory.
 	const here = dirname(fileURLToPath(import.meta.url));
-	const matrixPath = join(here, "matrices", `${matrixName}.ts`);
+	const isPath =
+		matrixName.startsWith("/") || matrixName.startsWith("./") || matrixName.startsWith("../");
+	const matrixPath = isPath ? matrixName : join(here, "matrices", `${matrixName}.ts`);
 	try {
 		const mod = (await import(matrixPath)) as { default: Matrix };
 		if (!mod.default) throw new Error(`matrix ${matrixName} does not export a default Matrix`);

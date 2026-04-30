@@ -265,7 +265,7 @@ if [ "$rc" -ne 0 ]; then
     exit 0
 fi
 
-# Step 4: file issue when findings present.
+# Step 4: file issue when findings present, then run autonomous loop.
 status=$(grep -m1 '"status"' "$FINDINGS_FILE" | sed -E 's/.*"status": *"([^"]+)".*/\1/')
 log "detector status=$status"
 case "$status" in
@@ -277,6 +277,19 @@ case "$status" in
         rc=$?
         if [ "$rc" -ne 0 ]; then
             log "file-issue crashed rc=$rc"
+        fi
+
+        if [ "${WTFOC_AUTONOMOUS_LOOP:-1}" = "1" ]; then
+            log "autonomous loop starting"
+            pnpm exec tsx --tsconfig scripts/tsconfig.json scripts/autoresearch/autonomous-loop.ts \
+                    --findings "$FINDINGS_FILE" \
+                    --matrix "$MATRIX"
+            rc=$?
+            if [ "$rc" -ne 0 ]; then
+                log "autonomous-loop crashed rc=$rc"
+            fi
+        else
+            log "WTFOC_AUTONOMOUS_LOOP=0 — skipping autonomous loop"
         fi
         ;;
     ok|insufficient-history|"")

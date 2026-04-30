@@ -149,10 +149,13 @@ export function decide(input: DecisionInputs): DecisionVerdict {
 			);
 		}
 	}
-	const cc = input.candidate.costComparable;
-	if (cc && cc.value === false) {
-		reasons.push(`costComparable=false (${cc.reasons.join(", ") || "no reasons"})`);
-	}
+	// TODO(#331): cost-comparable gate disabled while autonomous loop runs
+	// on local LLM ($0 by definition). Re-enable when paid-LLM proposals
+	// become a thing. Keep the type + payload so we don't lose the data.
+	// const cc = input.candidate.costComparable;
+	// if (cc && cc.value === false) {
+	// 	reasons.push(`costComparable=false (${cc.reasons.join(", ") || "no reasons"})`);
+	// }
 
 	return {
 		accept: reasons.length === 0,
