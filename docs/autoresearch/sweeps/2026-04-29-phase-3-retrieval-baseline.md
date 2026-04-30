@@ -1,13 +1,14 @@
-# Phase 3 — Retrieval-Baseline Sweep (2026-04-29)
+# Phase 3 — Retrieval-Baseline Sweep (2026-04-29 / 2026-04-30)
 
-First real research run of the autoresearch sweep harness (#311). Goal: sweep retrieval knobs (`autoRoute × diversityEnforce × reranker`) over the v12 + v3 corpus pair, identify the production-ready config, and capture next actions.
+First real research run of the autoresearch sweep harness (#311). Goal: sweep retrieval knobs (`autoRoute × diversityEnforce × reranker`) over the v12 + v3 corpus pair, identify the production-ready config, capture per-paraphrase brittleness, and document next actions.
 
 ## TL;DR
 
-- **Production winner: `noar_div_rrOff`** (autoRoute=false, diversityEnforce=true, no reranker). Matches v1.9.0 baseline numbers exactly. Only variant tested that passes the 55% overall hard gate AND demo-critical 100%.
-- **Reranker is not the lever.** Haiku rerank gave zero lift; qwen36-27b-aeon rerank actively regressed quality −17pp overall. Stage 1 dropped all rrLlm variants from the production candidate set.
+- **Production winner: `noar_div_rrOff`** (autoRoute=false, diversityEnforce=true, no reranker). Matches v1.9.0 baseline numbers exactly. Passes overall + demo-critical + workLineage + fileLevel hard gates.
+- **Tested LLM rerankers do not justify adoption right now.** Haiku rerank gave zero lift; qwen36-27b-aeon rerank regressed quality −17pp overall. Two models, two configs, two negative results — strong enough evidence to deprioritize the rerank axis until the prompt template / scoring approach changes (or a non-LLM cross-encoder is tried). NOT proof that reranking as a class is useless — see [#313](https://github.com/SgtPooki/wtfoc/issues/313).
 - **diversityEnforce is the lever.** +11pp portable v12, +12pp portable v3. Without it, every variant fails the overall gate.
-- **autoRoute is harmful.** `ar_nodiv_rrOff` broke demo-critical (dropped to 80%, 4/5 demo queries passing). Should not be enabled.
+- **autoRoute is harmful.** `ar_nodiv_rrOff` broke demo-critical (dropped to 80%). Should not be enabled. Follow-up: [#314](https://github.com/SgtPooki/wtfoc/issues/314).
+- **Paraphrase invariance is treated as diagnostic, not release-blocking, for this branch.** The 48.1% measurement matches the expected v1.9.0 number from Phase 1 — Phase 3 is surfacing pre-existing brittleness, not regressing it. The 70% threshold in `decision.ts` remains in place for sweep-time accept/reject decisions, but is explicitly waived for landing this branch. Highest-leverage follow-up: `wl-1` (demo-critical query with one reliably-failing paraphrase).
 
 ## Run identity
 
@@ -168,23 +169,59 @@ The current production config IS `noar_div_rrOff`. Stage 1 confirms it is the be
 
 Stage 1 token budget actually consumed (rrLlm-haiku × 2 corpora completed): 2.9M prompt + 622k completion through Claude proxy. At paid `claude-haiku-4.5` rates that would be ~$6.
 
-A full Stage 1 (8 rrOff + 8 rrLlm-haiku) would have been ~$24 paid. Phase 4 nightly cron at this matrix shape would be ~$720/mo at haiku-4.5 rates, or ~$60/mo at `gemini-2.5-flash-lite` ($0.10/$0.40 per Mtok). Given reranker is being dropped entirely, Phase 4 cron at rrOff-only = $0 in LLM cost (embedder is free on OpenRouter for bge-base).
+A full Stage 1 (8 rrOff + 8 rrLlm-haiku) would have been ~$24 paid. Phase 4 nightly cron at this matrix shape would be ~$720/mo at haiku-4.5 rates, or ~$60/mo at `gemini-2.5-flash-lite` ($0.10/$0.40 per Mtok). With the rerank axis deprioritized for now (pending [#313](https://github.com/SgtPooki/wtfoc/issues/313) prompt audit), Phase 4 cron at rrOff-only = $0 in LLM cost (embedder is free on OpenRouter for bge-base).
 
-## Brittle queries
+## Stage 2 — paraphrase confirmation on `noar_div_rrOff` (2026-04-30)
 
-Not measured this sweep — paraphrase checks were OFF. The known v1.9.0 brittle list (from #311) remains: `syn-3, cs-6, syn-7, wl-1, wl-6, port-1, port-2, port-3`. Stage 2 confirmation pass with `WTFOC_CHECK_PARAPHRASES=1` against the top 2-3 frontier variants is the unfinished follow-up — but given the frontier collapsed to a single dominant variant (`noar_div_rrOff`), Stage 2 simplifies to a single confirmation rerun.
+Single dogfood with `WTFOC_CHECK_PARAPHRASES=1` on the production config, v12 corpus. 23.7 min wallclock.
+
+| Metric | Stage 2 result | v1.9.0 baseline (#311) | Gate |
+|---|---|---|---|
+| overall passRate | **57%** (87/153) | 56.9% | ✓ ≥55% |
+| portable | **46%** | 46.2% | — |
+| demo-critical | **100%** | 100% | ✓ |
+| workLineage | **63%** | — (newly surfaced) | ✓ ≥60% |
+| fileLevel | **75%** | — (newly surfaced) | ✓ ≥70% |
+| hard-negative | 0% | 0% | ✓ ≥0% (calibrated) |
+| recall@10 | 0.701 | 0.70 | — |
+| **paraphrase invariance** | **48.1%** (63/131) | 48.1% (full v1.9.0) | **✗ ≥70% required** |
+
+The headline metrics confirm `noar_div_rrOff` reproduces the v1.9.0 baseline numbers exactly, **and** clears workLineage + fileLevel hard gates that weren't separately measured before. **Paraphrase invariance fails the 70% gate** at 48.1% — but that matches the expected v1.9.0 number from the original Phase 1 measurement, not a Phase 3 regression.
+
+### Demo-critical brittleness — `wl-1` confirmed broken
+
+| query | canonical | p1 | p2 | p3 | tier |
+|---|---|---|---|---|---|
+| **`wl-1`** | ✓ pass | ✓ pass | ✓ pass | **✗ fail** | **demo-critical** |
+| `wl-6` | ✓ pass | ✓ pass | ✗ fail | ✓ pass | work-lineage |
+
+`wl-1`'s third paraphrase reliably fails — a demo-critical query whose paraphrase variant breaks. Highest-priority brittle target. The other 7 known-brittle queries from #311 (`syn-3, cs-6, syn-7, wl-1, wl-6, port-1, port-2, port-3`) all reproduced their brittle pattern: canonical passes (or fails for port-*), at least one paraphrase fails.
+
+### Brittle-query population
+
+68 of 131 paraphrased queries are brittle. Distribution by category:
+
+- **direct-lookup**: most paraphrased dl-* queries fail every paraphrase (canonical also failing) — fundamental retrieval gap, not paraphrase noise
+- **cross-source**: 12+ brittle queries — canonical mixed pass/fail, paraphrases erratic
+- **work-lineage**: 2 brittle (`wl-1`, `wl-6`) — canonical passes, single paraphrase fails
+- **synthesis**: 2 brittle (`syn-3`, `syn-7`) — canonical passes, paraphrases scatter
+- **portable**: 3 brittle (`port-1, port-2, port-3`) — canonical fails (already in the 41 untested portable queries)
+
+The synthesis + work-lineage brittleness is the higher-value optimization signal — those queries DO retrieve correctly on canonical phrasing, so the gap is a retrieval-robustness problem (e.g., embedder semantic stability across rephrasings) rather than a missing-data problem.
 
 ## Open follow-ups
 
-1. **Stage 2 single-variant paraphrase confirmation** — rerun `noar_div_rrOff` on v12 with `WTFOC_CHECK_PARAPHRASES=1`, capture per-paraphrase invariance and confirm `wl-1` brittleness verdict. Single run, single corpus, ~30 min.
-2. **Reranker prompt audit** — the current LlmReranker prompt either ignores diversity context or actively re-promotes same-source candidates. Before adding any reranker variant to the production matrix, the prompt needs (a) explicit diversity awareness, or (b) be replaced with a smaller cross-encoder (BGE-reranker-v2-m3 etc.) that scores per-pair without an LLM in the loop.
-3. **Phase 4 nightly cron** — unblocked. Run at rrOff-only frontier (4 variants × 2 corpora × paraphrase=on) via cron. Cost at $0 (embedder free, no rerank). Expected wallclock ~30 min.
-4. **`autoRoute` killswitch** — given autoRoute is harmful on every test, consider whether `--auto-route` should be removed from the public CLI surface or warning-flagged in #265.
-5. **3 untested rrLlm-haiku variants** — `noar_div_rrLlm-haiku`, `ar_nodiv_rrLlm-haiku`, `ar_div_rrLlm-haiku`. Low priority given converging evidence rerank doesn't help, but a follow-up sweep via OpenRouter `gemini-2.5-flash-lite` at ~$2 total would close the matrix conclusively.
+1. ~~**Stage 2 single-variant paraphrase confirmation**~~ — done (this run).
+2. **Reranker prompt audit** — see [#313](https://github.com/SgtPooki/wtfoc/issues/313). Current `LlmReranker` prompt either ignores diversity context or actively re-promotes same-source candidates. Before adding any reranker variant to the production matrix, prompt needs (a) explicit diversity awareness, or (b) replacement with a small cross-encoder (BGE-reranker-v2-m3 etc.).
+3. **Phase 4 nightly cron** — unblocked. Run at rrOff-only frontier (4 variants × 2 corpora × paraphrase=on) via cron. Cost at $0 (embedder free, no rerank). Expected wallclock ~30 min/night, with paraphrase checks bumping it to ~2 hr.
+4. **`autoRoute` killswitch** — see [#314](https://github.com/SgtPooki/wtfoc/issues/314). Recommendation: remove the flag entirely (pre-v1, breaking changes acceptable, no measured benefit).
+5. **`wl-1` brittleness root-cause** — file separately as a quality issue. Demo-critical query with a single failing paraphrase is the highest-leverage retrieval fix on the board.
+6. **3 untested rrLlm-haiku variants** — low priority given converging evidence rerank does not help. A follow-up sweep via OpenRouter `gemini-2.5-flash-lite` at ~$2 total would close the matrix conclusively.
 
 ## Artifacts
 
-- Run-log JSONL: `~/.wtfoc/autoresearch/runs.jsonl` (8 rrOff rows + 2 rrLlm-haiku rows + 2 smoke-sweep rows from Phase 2)
+- Run-log JSONL: `~/.wtfoc/autoresearch/runs.jsonl` (8 rrOff rows + 2 rrLlm-haiku rows + 2 smoke-sweep rows from Phase 2; Stage 2 ran via `pnpm dogfood` directly so does not append a row)
 - Resume sweep summary: `~/.wtfoc/autoresearch/sweeps/sweep-retrieval-baseline-1777499815976.json`
 - raw-vllm smoke report: `~/.wtfoc/autoresearch/raw-vllm-rerank-smoke.json`
+- Stage 2 paraphrase report: `~/.wtfoc/autoresearch/stage2-noar_div_rrOff-paraphrase.json`
 - Halted sweep partial reports (per-variant temp files, may be GC'd): `/var/folders/.../wtfoc-sweep-*/`
