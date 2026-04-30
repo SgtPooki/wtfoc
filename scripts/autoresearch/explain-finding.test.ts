@@ -41,6 +41,13 @@ interface ScoreFixture {
 	category?: string;
 	expectedSources?: string[];
 	retrieved?: Array<{ source?: string; sourceType?: string; score?: number; excerpt?: string }>;
+	goldProximity?: {
+		widerK: number;
+		topKCutoff: number;
+		goldRank: number | null;
+		goldScore: number | null;
+		topKLastScore: number | null;
+	};
 }
 
 function report(scores: ScoreFixture[], passRate = 0.6): ExtendedDogfoodReport {
@@ -148,6 +155,64 @@ describe("explainFinding", () => {
 		const md = explainFinding({ finding: breach, latest: report([], 0.3) });
 		expect(md).toContain("## Breach details");
 		expect(md).toContain("gate: demoCritical");
+	});
+
+	it("renders gold-proximity verdict when gold ranked just past cutoff", () => {
+		const baselineScores: ScoreFixture[] = [
+			{ id: "q1", passed: true, question: "Q", tier: "portable" },
+		];
+		const latestScores: ScoreFixture[] = [
+			{
+				id: "q1",
+				passed: false,
+				question: "Q",
+				tier: "portable",
+				goldProximity: {
+					widerK: 50,
+					topKCutoff: 10,
+					goldRank: 13,
+					goldScore: 0.72,
+					topKLastScore: 0.78,
+				},
+			},
+		];
+		const md = explainFinding({
+			finding,
+			latest: report(latestScores, 0.5),
+			baseline: report(baselineScores, 1.0),
+		});
+		expect(md).toContain("Gold proximity:");
+		expect(md).toContain("rank 13/50");
+		expect(md).toContain("JUST PAST top-K cutoff");
+	});
+
+	it("renders gold-proximity 'absent' verdict when gold not in top-50", () => {
+		const baselineScores: ScoreFixture[] = [
+			{ id: "q1", passed: true, question: "Q", tier: "portable" },
+		];
+		const latestScores: ScoreFixture[] = [
+			{
+				id: "q1",
+				passed: false,
+				question: "Q",
+				tier: "portable",
+				goldProximity: {
+					widerK: 50,
+					topKCutoff: 10,
+					goldRank: null,
+					goldScore: null,
+					topKLastScore: 0.78,
+				},
+			},
+		];
+		const md = explainFinding({
+			finding,
+			latest: report(latestScores, 0.5),
+			baseline: report(baselineScores, 1.0),
+		});
+		expect(md).toContain("Gold proximity:");
+		expect(md).toContain("NOT in top-50");
+		expect(md).toContain("embedder/retrieval issue");
 	});
 
 	it("truncates output to maxChars", () => {

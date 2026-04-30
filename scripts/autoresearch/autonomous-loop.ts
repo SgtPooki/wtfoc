@@ -35,6 +35,7 @@ import type { DetectionOutcome, Finding } from "./detect-regression.js";
 import { explainFinding } from "./explain-finding.js";
 import { materializeVariant } from "./materialize-variant.js";
 import type { Matrix } from "./matrix.js";
+import { planNextCandidate, reconcileWithPlanner } from "./planner.js";
 import { promoteViaPr } from "./promote-via-pr.js";
 import { alreadyTried, appendTriedRow, readTriedLog } from "./tried-log.js";
 import type { ExtendedDogfoodReport } from "../lib/run-config.js";
@@ -201,16 +202,37 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 		notes.push(`LLM unavailable: ${llmRes.error ?? "unknown"}`);
 		return { status: "llm-unavailable", notes };
 	}
-	if (!llmRes.proposal) {
+
+	// Reconcile LLM proposal with the planner. If the LLM emitted a
+	// proposal the planner would skip (already-tried, unknown knob),
+	// fall back to the planner's queue order. If the LLM emitted no
+	// proposal at all (axis: null), still ask the planner — better to
+	// run a deterministic next candidate than to skip the cycle.
+	let proposal = llmRes.proposal;
+	if (!proposal) {
+		const plan = planNextCandidate({ matrixName: cli.matrixName, triedRows });
+		if (!plan) {
+			notes.push("LLM returned no proposal; planner queue exhausted (every materializable tuple within silence window)");
+			return { status: "no-proposal", notes };
+		}
 		notes.push(
-			llmRes.error
-				? `LLM returned no usable proposal: ${llmRes.error}`
-				: "LLM returned no proposal (axis=null)",
+			`LLM emitted no proposal — falling back to planner: phase=${plan.phase} ${plan.axis}=${JSON.stringify(plan.value)}`,
 		);
-		return { status: "no-proposal", notes };
+		proposal = { axis: plan.axis, value: plan.value, rationale: plan.rationale };
+	} else {
+		const nudge = reconcileWithPlanner(
+			{ matrixName: cli.matrixName, triedRows },
+			{ axis: proposal.axis, value: proposal.value },
+		);
+		if (nudge) {
+			notes.push(
+				`LLM proposed ${proposal.axis}=${JSON.stringify(proposal.value)} but planner nudges to phase=${nudge.phase} ${nudge.axis}=${JSON.stringify(nudge.value)}`,
+			);
+			proposal = { axis: nudge.axis, value: nudge.value, rationale: nudge.rationale };
+		}
 	}
 
-	const prior = alreadyTried(triedRows, cli.matrixName, llmRes.proposal.axis, llmRes.proposal.value);
+	const prior = alreadyTried(triedRows, cli.matrixName, proposal.axis, proposal.value);
 	if (prior) {
 		notes.push(
 			`proposal already tried on ${prior.loggedAt} (verdict=${prior.verdict}); skipping`,
@@ -220,7 +242,7 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 
 	if (cli.dryRun) {
 		notes.push(
-			`DRY-RUN proposal: ${llmRes.proposal.axis}=${JSON.stringify(llmRes.proposal.value)} — ${llmRes.proposal.rationale}`,
+			`DRY-RUN proposal: ${proposal.axis}=${JSON.stringify(proposal.value)} — ${proposal.rationale}`,
 		);
 		return { status: "accepted-no-pr", notes };
 	}
@@ -230,7 +252,7 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 		materialize = await materializeVariant({
 			productionMatrix: matrix,
 			productionMatrixName: cli.matrixName,
-			proposal: llmRes.proposal,
+			proposal: proposal,
 		});
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
@@ -240,7 +262,7 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 			loggedAt: new Date().toISOString(),
 			matrixName: cli.matrixName,
 			variantId: "(failed)",
-			proposal: llmRes.proposal,
+			proposal: proposal,
 			verdict: "errored",
 			reasons: [msg],
 		});
@@ -254,7 +276,7 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 		loggedAt: new Date().toISOString(),
 		matrixName: cli.matrixName,
 		variantId: materialize.candidateVariantId,
-		proposal: llmRes.proposal,
+		proposal: proposal,
 		sweepId: candidateRow?.sweepId,
 		runConfigFingerprint: candidateRow?.runConfigFingerprint,
 		verdict: materialize.aggregateAccept ? "accepted" : "rejected",
@@ -280,7 +302,7 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 
 	if (cli.skipPr) {
 		notes.push(
-			`accepted: ${llmRes.proposal.axis}=${JSON.stringify(llmRes.proposal.value)} — PR creation skipped`,
+			`accepted: ${proposal.axis}=${JSON.stringify(proposal.value)} — PR creation skipped`,
 		);
 		return { status: "accepted-pr-skipped", notes };
 	}
@@ -295,9 +317,9 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 	const promote = await promoteViaPr({
 		proposalId: materialize.proposalId,
 		matrixName: cli.matrixName,
-		proposal: llmRes.proposal,
+		proposal: proposal,
 		candidateVariantId: materialize.candidateVariantId,
-		rationale: llmRes.proposal.rationale,
+		rationale: proposal.rationale,
 		verdictSummary,
 	});
 	if (promote.skippedReason) {

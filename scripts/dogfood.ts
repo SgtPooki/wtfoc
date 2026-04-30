@@ -94,6 +94,12 @@ const { values } = parseArgs({
 		"reranker-model": { type: "string" }, // model name for llm reranker
 		"auto-route": { type: "boolean", default: false }, // enable persona-based boost routing (#265)
 		"diversity-enforce": { type: "boolean", default: false }, // enforce source-type diversity in top-K / seeds (#161)
+		// Numeric retrieval knobs — set by sweep harness for the autonomous
+		// loop (#334). When omitted, defaults match defaultQualityQueriesRetrieval.
+		"top-k": { type: "string" },
+		"trace-max-per-source": { type: "string" },
+		"trace-max-total": { type: "string" },
+		"trace-min-score": { type: "string" },
 		help: { type: "boolean", short: "h", default: false },
 	},
 	strict: true,
@@ -231,6 +237,18 @@ async function main() {
 		retrieval: defaultQualityQueriesRetrieval({
 			autoRoute: values["auto-route"] ?? false,
 			diversityEnforce: values["diversity-enforce"] ?? false,
+			...(values["top-k"] !== undefined
+				? { topK: Number.parseInt(values["top-k"], 10) }
+				: {}),
+			...(values["trace-max-per-source"] !== undefined
+				? { traceMaxPerSource: Number.parseInt(values["trace-max-per-source"], 10) }
+				: {}),
+			...(values["trace-max-total"] !== undefined
+				? { traceMaxTotal: Number.parseInt(values["trace-max-total"], 10) }
+				: {}),
+			...(values["trace-min-score"] !== undefined
+				? { traceMinScore: Number.parseFloat(values["trace-min-score"]) }
+				: {}),
 		}),
 		evaluation: {
 			checkParaphrases: process.env.WTFOC_CHECK_PARAPHRASES === "1",
@@ -476,6 +494,20 @@ async function main() {
 						for (const segSummary of head.manifest.segments) {
 							for (const st of segSummary.sourceTypes ?? []) corpusSourceTypes.add(st);
 						}
+						const retrievalOverrides: {
+							topK?: number;
+							traceMaxPerSource?: number;
+							traceMaxTotal?: number;
+							traceMinScore?: number;
+						} = {};
+						if (values["top-k"] !== undefined) retrievalOverrides.topK = Number.parseInt(values["top-k"], 10);
+						if (values["trace-max-per-source"] !== undefined)
+							retrievalOverrides.traceMaxPerSource = Number.parseInt(values["trace-max-per-source"], 10);
+						if (values["trace-max-total"] !== undefined)
+							retrievalOverrides.traceMaxTotal = Number.parseInt(values["trace-max-total"], 10);
+						if (values["trace-min-score"] !== undefined)
+							retrievalOverrides.traceMinScore = Number.parseFloat(values["trace-min-score"]);
+
 						result = await evaluateQualityQueries(
 						embedder,
 						vectorIndex,
@@ -489,6 +521,9 @@ async function main() {
 							corpusSourceTypes,
 							perQueryHook: (id, ms) => timer.record("per-query-total", ms),
 							checkParaphrases: process.env.WTFOC_CHECK_PARAPHRASES === "1",
+							...(Object.keys(retrievalOverrides).length > 0
+								? { retrievalOverrides }
+								: {}),
 						},
 						values["diversity-enforce"] ?? false,
 					);

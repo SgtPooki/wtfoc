@@ -136,6 +136,32 @@ interface QueryScore {
 	 * false. Undefined when paraphrases not checked.
 	 */
 	paraphraseInvariant?: boolean;
+	/**
+	 * #334 — gold-source proximity: where the expected source actually
+	 * landed in the wider candidate list (top-50). When the query
+	 * failed but the gold source was retrieved at a rank just past the
+	 * production top-K cutoff, this surfaces a direct mandate for the
+	 * autonomous loop's LLM proposer to widen K. When the gold source
+	 * is absent from the wider candidate list, that's a retrieval /
+	 * embedder problem, not a K problem.
+	 *
+	 * Computed only when:
+	 *   - the query has `goldSupportingSources`, AND
+	 *   - the canonical query failed (passed === false), AND
+	 *   - WTFOC_GOLD_PROXIMITY=1 OR the evaluator was given
+	 *     `recordGoldProximity: true` in context.
+	 *
+	 * `goldRank` is the (1-indexed) rank of the first matching gold
+	 * source in the WIDER top-50 list. null when the gold source did
+	 * not appear in top-50 at all.
+	 */
+	goldProximity?: {
+		widerK: number;
+		topKCutoff: number;
+		goldRank: number | null;
+		goldScore: number | null;
+		topKLastScore: number | null;
+	};
 }
 
 export interface ParaphraseScore {
@@ -173,6 +199,29 @@ export interface QualityQueriesContext {
 	 * brittleness signal.
 	 */
 	checkParaphrases?: boolean;
+	/**
+	 * Numeric retrieval-config overrides for the autoresearch loop
+	 * (#334). When unset, evaluator uses its built-in defaults
+	 * (topK=10, traceMaxPerSource=3, traceMaxTotal=15, traceMinScore=0.3).
+	 * The dogfood CLI exposes these as flags, the sweep harness threads
+	 * them through, and the run-config fingerprint records the effective
+	 * values so two variants with different topK never share caches or
+	 * baseline windows.
+	 */
+	retrievalOverrides?: {
+		topK?: number;
+		traceMaxPerSource?: number;
+		traceMaxTotal?: number;
+		traceMinScore?: number;
+	};
+	/**
+	 * #334 — when true, on a failed query with goldSupportingSources, run
+	 * a wider retrieval (topK=50) and record where the expected source
+	 * landed. Adds wall-clock overhead per failed query but produces
+	 * direct LLM-actionable signal ("gold ranked at 14, K cutoff at 10
+	 * — widen K"). Default: respects WTFOC_GOLD_PROXIMITY=1 env.
+	 */
+	recordGoldProximity?: boolean;
 }
 
 export async function evaluateQualityQueries(
@@ -219,6 +268,8 @@ export async function evaluateQualityQueries(
 			autoRoute,
 			diversityEnforce,
 			context.checkParaphrases ?? false,
+			context.retrievalOverrides ?? {},
+			context.recordGoldProximity ?? process.env.WTFOC_GOLD_PROXIMITY === "1",
 		);
 		context.perQueryHook?.(gq.id, performance.now() - queryStart);
 		scores.push(score);
@@ -556,6 +607,17 @@ interface InnerScore {
 	 * 1+ tightening of #311 (b).
 	 */
 	topScore: number | null;
+	/**
+	 * #334 — gold-source proximity diagnostic, when computed.
+	 */
+	goldProximity?: QueryScore["goldProximity"];
+}
+
+interface RetrievalOverrides {
+	topK?: number;
+	traceMaxPerSource?: number;
+	traceMaxTotal?: number;
+	traceMinScore?: number;
 }
 
 async function scoreText(
@@ -569,7 +631,13 @@ async function scoreText(
 	reranker?: Reranker,
 	autoRoute = false,
 	diversityEnforce = false,
+	overrides: RetrievalOverrides = {},
+	recordGoldProximity = false,
 ): Promise<InnerScore> {
+	const TOPK = overrides.topK ?? 10;
+	const TRACE_MAX_PER_SOURCE = overrides.traceMaxPerSource ?? 3;
+	const TRACE_MAX_TOTAL = overrides.traceMaxTotal ?? 15;
+	const TRACE_MIN_SCORE = overrides.traceMinScore ?? 0.3;
 	let resultCount = 0;
 	let requiredTypesFound = false;
 	// #261 — captured before trace rescue so we can report retrieval quality
@@ -600,7 +668,7 @@ async function scoreText(
 
 		// Query phase
 		const qResult = await query(queryText, embedder, vectorIndex, {
-			topK: 10,
+			topK: TOPK,
 			signal,
 			reranker,
 			sourceTypeBoosts: boosts,
@@ -631,7 +699,7 @@ async function scoreText(
 		// Computed against query-stage top-K only (no trace rescue) so the
 		// metric measures retrieval quality independently of the graph.
 		if (gq.goldSupportingSources && gq.goldSupportingSources.length > 0) {
-			const k = 10;
+			const k = TOPK;
 			const topKSources = qResult.results.slice(0, k).map((r) => r.source.toLowerCase());
 			let matched = 0;
 			for (const goldSub of gq.goldSupportingSources) {
@@ -650,6 +718,9 @@ async function scoreText(
 			reranker,
 			sourceTypeBoosts: boosts,
 			chunkLevelBoosts,
+			maxPerSource: TRACE_MAX_PER_SOURCE,
+			maxTotal: TRACE_MAX_TOTAL,
+			minScore: TRACE_MIN_SCORE,
 			...(diversityOption ? { diversityEnforce: diversityOption } : {}),
 		});
 
@@ -713,6 +784,51 @@ async function scoreText(
 			? resultCount < HARD_NEGATIVE_RESULT_CEILING && hardNegativeNoStrongHits
 			: resultCount >= gq.minResults && requiredTypesFoundQueryOnly && substringFound;
 
+	let goldProximity: InnerScore["goldProximity"];
+	if (
+		recordGoldProximity &&
+		!passed &&
+		gq.goldSupportingSources &&
+		gq.goldSupportingSources.length > 0
+	) {
+		try {
+			const widerK = 50;
+			const wider = await query(queryText, embedder, vectorIndex, {
+				topK: widerK,
+				signal,
+				reranker,
+				sourceTypeBoosts: autoRoute ? classifyQueryPersona(queryText).sourceTypeBoosts : undefined,
+				chunkLevelBoosts: gq.category === "file-level" ? { file: 1.4 } : undefined,
+				...(diversityEnforce ? { diversityEnforce: { minScoreRatio: 0.65 } } : {}),
+			});
+			let goldRank: number | null = null;
+			let goldScore: number | null = null;
+			for (let i = 0; i < wider.results.length; i++) {
+				const r = wider.results[i];
+				if (!r) continue;
+				const src = r.source.toLowerCase();
+				const matches = gq.goldSupportingSources.some((sub) => src.includes(sub.toLowerCase()));
+				if (matches) {
+					goldRank = i + 1;
+					goldScore = typeof r.score === "number" ? r.score : null;
+					break;
+				}
+			}
+			const cutoffEntry = wider.results[TOPK - 1];
+			const topKLastScore =
+				cutoffEntry && typeof cutoffEntry.score === "number" ? cutoffEntry.score : null;
+			goldProximity = {
+				widerK,
+				topKCutoff: TOPK,
+				goldRank,
+				goldScore,
+				topKLastScore,
+			};
+		} catch {
+			// best-effort diagnostic — never fail the score
+		}
+	}
+
 	return {
 		passed,
 		passedQueryOnly,
@@ -729,6 +845,7 @@ async function scoreText(
 		recallAtK,
 		recallK,
 		topScore,
+		...(goldProximity ? { goldProximity } : {}),
 	};
 }
 
@@ -743,6 +860,8 @@ async function scoreQuery(
 	autoRoute = false,
 	diversityEnforce = false,
 	checkParaphrases = false,
+	overrides: RetrievalOverrides = {},
+	recordGoldProximity = false,
 ): Promise<QueryScore> {
 	const inner = await scoreText(
 		gq.queryText,
@@ -755,6 +874,8 @@ async function scoreQuery(
 		reranker,
 		autoRoute,
 		diversityEnforce,
+		overrides,
+		recordGoldProximity,
 	);
 
 	let paraphraseScores: ParaphraseScore[] | undefined;
@@ -773,6 +894,7 @@ async function scoreQuery(
 				reranker,
 				autoRoute,
 				diversityEnforce,
+				overrides,
 			);
 			paraphraseScores.push({ text: p, passed: ps.passed, passedQueryOnly: ps.passedQueryOnly });
 		}

@@ -100,14 +100,21 @@ function applyAxisToMatrix(matrix: Matrix, knob: Knob, value: boolean | number |
 			else throw new Error(`unsupported reranker enum value: ${v}`);
 			break;
 		}
-		// Knobs that are NOT yet first-class in VariantAxes (topK,
-		// traceMaxPerSource, traceMaxTotal, traceMinScore) require sweep
-		// + dogfood plumbing. Until that lands, surface a clear error so
-		// the loop falls back to "no proposal applied" rather than
-		// silently running production again.
+		case "topK":
+			axes.topK = [value as number];
+			break;
+		case "traceMaxPerSource":
+			axes.traceMaxPerSource = [value as number];
+			break;
+		case "traceMaxTotal":
+			axes.traceMaxTotal = [value as number];
+			break;
+		case "traceMinScore":
+			axes.traceMinScore = [value as number];
+			break;
 		default:
 			throw new Error(
-				`knob "${knob.name}" not yet supported by the materializer — extend VariantAxes + sweep.ts before proposing it`,
+				`knob "${knob.name}" not yet supported by the materializer — extend the switch in materialize-variant.ts before proposing it`,
 			);
 	}
 

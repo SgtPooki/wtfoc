@@ -232,6 +232,13 @@ function runVariantOnCorpus(
 			args.push("--reranker-model", variant.axes.reranker.model);
 		}
 	}
+	if (variant.axes.topK !== undefined) args.push("--top-k", String(variant.axes.topK));
+	if (variant.axes.traceMaxPerSource !== undefined)
+		args.push("--trace-max-per-source", String(variant.axes.traceMaxPerSource));
+	if (variant.axes.traceMaxTotal !== undefined)
+		args.push("--trace-max-total", String(variant.axes.traceMaxTotal));
+	if (variant.axes.traceMinScore !== undefined)
+		args.push("--trace-min-score", String(variant.axes.traceMinScore));
 
 	logErr(`[sweep] running variant ${variant.variantId} on ${collection}`);
 	const t0 = performance.now();

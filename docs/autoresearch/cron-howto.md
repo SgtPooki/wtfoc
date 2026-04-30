@@ -50,6 +50,7 @@ Required env on the cron host (set in the user's shell environment OR a launchd-
 | `WTFOC_ANALYSIS_LLM_URL` | OpenAI-compatible LLM endpoint for the proposer | `http://127.0.0.1:4523/v1` |
 | `WTFOC_ANALYSIS_LLM_MODEL` | model name | `haiku` |
 | `WTFOC_ANALYSIS_LLM_API_KEY` | optional bearer token | unset |
+| `WTFOC_GOLD_PROXIMITY` | `1` to compute top-50 gold rank for failed queries (#334) | unset |
 
 ## Inspect
 

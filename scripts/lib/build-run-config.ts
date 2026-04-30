@@ -83,17 +83,30 @@ export function buildRunConfig(input: BuildRunConfigInput): RunConfig {
  * defaults in `trace.ts`); the fingerprint records them explicitly so a
  * future change to those literals invalidates prior fingerprints.
  */
+export const QUALITY_QUERIES_DEFAULTS = {
+	topK: 10,
+	traceMaxPerSource: 3,
+	traceMaxTotal: 15,
+	traceMaxHops: 3,
+	traceMinScore: 0.3,
+	traceMode: "analytical",
+} as const;
+
 export function defaultQualityQueriesRetrieval(opts: {
 	autoRoute: boolean;
 	diversityEnforce: boolean;
+	topK?: number;
+	traceMaxPerSource?: number;
+	traceMaxTotal?: number;
+	traceMinScore?: number;
 }): RetrievalConfig {
 	return {
-		topK: 10,
-		traceMaxPerSource: 3,
-		traceMaxTotal: 15,
-		traceMaxHops: 3,
-		traceMinScore: 0.3,
-		traceMode: "analytical",
+		topK: opts.topK ?? QUALITY_QUERIES_DEFAULTS.topK,
+		traceMaxPerSource: opts.traceMaxPerSource ?? QUALITY_QUERIES_DEFAULTS.traceMaxPerSource,
+		traceMaxTotal: opts.traceMaxTotal ?? QUALITY_QUERIES_DEFAULTS.traceMaxTotal,
+		traceMaxHops: QUALITY_QUERIES_DEFAULTS.traceMaxHops,
+		traceMinScore: opts.traceMinScore ?? QUALITY_QUERIES_DEFAULTS.traceMinScore,
+		traceMode: QUALITY_QUERIES_DEFAULTS.traceMode,
 		autoRoute: opts.autoRoute,
 		diversityEnforce: opts.diversityEnforce,
 	};
