@@ -52,11 +52,11 @@ run_corpus() {
 PRIMARY_OUT=$(run_corpus "$PRIMARY" | tail -1)
 echo ""
 echo "=== Threshold check (primary, hard-fail) ==="
-pnpm tsx scripts/dogfood-check-thresholds.ts "$PRIMARY_OUT"
+pnpm exec tsx scripts/dogfood-check-thresholds.ts "$PRIMARY_OUT"
 
 if [[ "${WTFOC_SKIP_SECONDARY:-0}" != "1" ]]; then
 	SECONDARY_OUT=$(run_corpus "$SECONDARY" | tail -1)
 	echo ""
 	echo "=== Threshold check (secondary, advisory) ==="
-	pnpm tsx scripts/dogfood-check-thresholds.ts --advisory "$SECONDARY_OUT"
+	pnpm exec tsx scripts/dogfood-check-thresholds.ts --advisory "$SECONDARY_OUT"
 fi

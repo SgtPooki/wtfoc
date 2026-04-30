@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -69,22 +69,45 @@ function makeReport(inputs: SyntheticInputs): unknown {
 	};
 }
 
+function findTsxBinary(): string {
+	// Prefer the binary directly from node_modules/.bin to avoid the
+	// pnpm-vs-npm bin-resolution differences that bit CI (`pnpm tsx` and
+	// `pnpm exec tsx` both exited 254 on hosted runners while working
+	// locally). Direct binary path works everywhere as long as install
+	// completed.
+	for (const candidate of [
+		resolve(process.cwd(), "node_modules", ".bin", "tsx"),
+		resolve(process.cwd(), "..", "node_modules", ".bin", "tsx"),
+		resolve(process.cwd(), "..", "..", "node_modules", ".bin", "tsx"),
+	]) {
+		if (existsSync(candidate)) return candidate;
+	}
+	throw new Error("tsx binary not found in node_modules/.bin");
+}
+
 function runCheck(
 	reportPath: string,
 	flags: string[] = [],
-): { exitCode: number; stdout: string } {
+): { exitCode: number; stdout: string; stderr: string } {
+	const tsx = findTsxBinary();
 	try {
 		const stdout = execFileSync(
-			"pnpm",
-			["tsx", "scripts/dogfood-check-thresholds.ts", ...flags, reportPath],
-			{ encoding: "utf-8" },
+			tsx,
+			["scripts/dogfood-check-thresholds.ts", ...flags, reportPath],
+			{ encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] },
 		);
-		return { exitCode: 0, stdout };
+		return { exitCode: 0, stdout, stderr: "" };
 	} catch (err) {
-		const e = err as { status?: number; stdout?: Buffer | string };
+		const e = err as {
+			status?: number;
+			stdout?: Buffer | string;
+			stderr?: Buffer | string;
+		};
 		const stdoutStr =
 			typeof e.stdout === "string" ? e.stdout : (e.stdout?.toString("utf-8") ?? "");
-		return { exitCode: e.status ?? -1, stdout: stdoutStr };
+		const stderrStr =
+			typeof e.stderr === "string" ? e.stderr : (e.stderr?.toString("utf-8") ?? "");
+		return { exitCode: e.status ?? -1, stdout: stdoutStr, stderr: stderrStr };
 	}
 }
 
