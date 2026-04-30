@@ -438,4 +438,109 @@ describe("query", () => {
 			expect(calls[0]?.topN).toBeUndefined();
 		});
 	});
+
+	describe("hybrid scoring contract — diversity uses retrievalScore (#313 audit)", () => {
+		// Phase 3 audit Step 3 (docs/autoresearch/audits/2026-04-30-rerank-pipeline-collapse.md)
+		// found that pool-preservation alone wasn't enough. The diversity
+		// floor `topScore * minScoreRatio` was operating on the
+		// reranked/composite `score` field, whose dynamic range under any
+		// LLM/cross-encoder reranker (0.0001..0.99) is far wider than the
+		// embedder cosine range (0.4..0.9). Score-range mismatch defeated
+		// the diversity rescue.
+		//
+		// The fix: persist `retrievalScore` (raw embedder cosine) on every
+		// result entry, and have `diversityEnforce` use it for floor +
+		// ratio decisions. `score` remains the composite for ranking.
+
+		it("retrievalScore is always populated and equals raw embedder cosine", async () => {
+			const index = await seedIndex(makeEntry("a", [1, 0, 0]), makeEntry("b", [0.7, 0.7, 0]));
+			const result = await query("upload", embedder, index);
+			for (const r of result.results) {
+				expect(r.retrievalScore).toBeDefined();
+				expect(r.retrievalScore).toBeGreaterThan(0);
+				// Without rerank or boosts, score == retrievalScore.
+				expect(r.score).toBe(r.retrievalScore);
+				expect(r.rerankScore).toBeUndefined();
+			}
+		});
+
+		it("retrievalScore survives rerank — rerank only sets rerankScore + score, not retrievalScore", async () => {
+			const entries = Array.from({ length: 30 }, (_, i) =>
+				makeEntry(`e${i}`, [1 - i * 0.01, i * 0.01, 0]),
+			);
+			const index = await seedIndex(...entries);
+			// Reranker that returns wildly different score range than embedder cosine.
+			const reranker = {
+				async rerank(
+					_q: string,
+					candidates: { id: string; text: string }[],
+				): Promise<Array<{ id: string; score: number }>> {
+					// Reverse the order, with rerank scores 0.001..0.999 — different
+					// dynamic range than embedder cosines (0.4..0.9 typical).
+					return candidates.map((c, i) => ({
+						id: c.id,
+						score: 0.001 + (i / candidates.length) * 0.998,
+					}));
+				},
+			};
+			const result = await query("upload", embedder, index, { topK: 5, reranker });
+			for (const r of result.results) {
+				expect(r.retrievalScore).toBeGreaterThan(0);
+				expect(r.retrievalScore).toBeLessThanOrEqual(1);
+				expect(r.rerankScore).toBeDefined();
+				// Composite `score` reflects rerank, not retrieval.
+				expect(r.score).toBe(r.rerankScore);
+				// And retrievalScore did NOT get clobbered by rerank.
+				expect(r.retrievalScore).not.toBe(r.rerankScore);
+			}
+		});
+
+		it("diversity rescue uses retrievalScore — recovers source-types even when rerank score range collapses them", async () => {
+			// Construct a corpus where rerank produces a wide score range
+			// that defeats the relative floor heuristic if applied to
+			// rerank scores, but where embedder cosines stay tight enough
+			// for retrievalScore-based diversity to rescue alternative
+			// source types.
+			const entries: VectorEntry[] = [];
+			// Three "code" candidates near the query (high embedder cosine)
+			entries.push(makeEntry("code-1", [1, 0, 0], { sourceType: "code" }));
+			entries.push(makeEntry("code-2", [0.95, 0.05, 0], { sourceType: "code" }));
+			entries.push(makeEntry("code-3", [0.9, 0.1, 0], { sourceType: "code" }));
+			// One "markdown" candidate slightly less near the query — but
+			// well above the 0.65 floor of the embedder top score (1.0).
+			entries.push(makeEntry("md-1", [0.85, 0.15, 0], { sourceType: "markdown" }));
+			// One "github-pr" candidate similarly above floor.
+			entries.push(makeEntry("pr-1", [0.8, 0.2, 0], { sourceType: "github-pr" }));
+			const index = await seedIndex(...entries);
+
+			// Reranker that scores all "code" candidates very high (~0.9+)
+			// and the cross-source candidates very low (<0.01) — exactly
+			// the BGE/qwen failure shape from the Phase 3 smoke.
+			const reranker = {
+				async rerank(
+					_q: string,
+					candidates: { id: string; text: string }[],
+				): Promise<Array<{ id: string; score: number }>> {
+					return candidates.map((c) => ({
+						id: c.id,
+						score: c.id.startsWith("code-") ? 0.9 : 0.001,
+					}));
+				},
+			};
+
+			const result = await query("upload", embedder, index, {
+				topK: 5,
+				reranker,
+				diversityEnforce: { minScoreRatio: 0.65 },
+			});
+
+			const types = new Set(result.results.map((r) => r.sourceType));
+			// Diversity rescue should keep at least 2 source types in top-K
+			// because the embedder cosines for md-1 and pr-1 are ~0.85 and
+			// ~0.8, well above the 0.65 floor (top embedder cosine = 1.0).
+			// Without the fix, rerank's 0.001 score would fall below
+			// 0.9 * 0.65 = 0.585 and the rescue would skip them.
+			expect(types.size).toBeGreaterThanOrEqual(2);
+		});
+	});
 });

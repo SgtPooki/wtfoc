@@ -70,7 +70,35 @@ export interface QueryResult {
 		source: string;
 		sourceUrl?: string;
 		storageId: string;
+		/**
+		 * Composite ranking score. Composed of `retrievalScore` plus any
+		 * boosts (sourceTypeBoosts, chunkLevelBoosts, signalFilter) and
+		 * optionally replaced by `rerankScore` when a reranker ran.
+		 * Use this for ranking and display; do NOT use it for
+		 * `diversityEnforce` floor decisions — the score range collapses
+		 * dramatically once a reranker is in the mix and the relative
+		 * floor heuristic stops working. Diversity uses `retrievalScore`.
+		 */
 		score: number;
+		/**
+		 * Raw embedder cosine similarity from the vector index. Always
+		 * populated; never overwritten by rerank or boosts. This is what
+		 * `diversityEnforce` uses for floor + ratio decisions, because
+		 * its calibration ("alternative source-type best is at least
+		 * 65% of top score") is anchored to the embedder's calibrated
+		 * similarity range, not the reranker's wider dynamic range.
+		 * Three-way peer-review (codex+cursor+gemini, 2026-04-30)
+		 * converged: diversity is a property of the retrieval
+		 * eligibility space; reranking is a property of pairwise
+		 * relevance ordering. They must operate on different scores.
+		 */
+		retrievalScore: number;
+		/**
+		 * Reranker output, present only when a reranker ran. Optional.
+		 * Useful for analysis (correlate rerank score with pass/fail);
+		 * do NOT use for `diversityEnforce` floor decisions.
+		 */
+		rerankScore?: number;
 		signalScores?: Record<string, number>;
 	}>;
 	/**
@@ -202,7 +230,12 @@ export async function query(
 				? (JSON.parse(signalScoresRaw) as Record<string, number>)
 				: undefined;
 
-			let boostedScore = rerankedScores?.get(m.entry.storageId) ?? m.score;
+			// Pin the raw embedder cosine score before any boost or rerank
+			// touches it. `diversityEnforce` uses this downstream — see
+			// the QueryResult interface comment.
+			const retrievalScore = m.score;
+			const rerankScore = rerankedScores?.get(m.entry.storageId);
+			let boostedScore = rerankScore ?? retrievalScore;
 			if (signalFilter && signalScores) {
 				const signalValue = signalScores[signalFilter] ?? 0;
 				// Boost: up to 20% increase for max signal score
@@ -228,6 +261,8 @@ export async function query(
 				sourceUrl: m.entry.metadata.sourceUrl,
 				storageId: m.entry.storageId,
 				score: boostedScore,
+				retrievalScore,
+				...(rerankScore !== undefined ? { rerankScore } : {}),
 				signalScores,
 			};
 		});
@@ -243,15 +278,27 @@ export async function query(
 	// compression — slack-heavy corpora triggered this on v12 for queries
 	// where required cross-source evidence was available but ranked below
 	// a slack flood.
+	//
+	// CRITICAL: floor + comparison use `retrievalScore`, not `score`.
+	// Reranker scores have a much wider dynamic range than embedder
+	// cosines (BGE / qwen / haiku rerank produce 0.0001..0.99 in practice;
+	// embedder cosines stay 0.4..0.9 in this corpus). Using the composite
+	// `score` for the relative floor heuristic collapses the rescue
+	// because alternative source-type bests fall below floor*0.65 by a
+	// score-range artifact, not because they're irrelevant. Phase 3
+	// audit + cross-reviewer convergence (codex+cursor+gemini, 2026-04-30)
+	// explicitly required diversity to operate on retrieval scores.
+	// See `docs/autoresearch/audits/2026-04-30-rerank-pipeline-collapse.md`.
 	let diversityReservedTypes: string[] | undefined;
 	if (options?.diversityEnforce && results.length > 0) {
 		const { minScoreRatio = 0.65 } = options.diversityEnforce;
-		const topScore = results[0]?.score ?? 0;
-		const floor = topScore * minScoreRatio;
+		const sortedByRetrieval = [...results].sort((a, b) => b.retrievalScore - a.retrievalScore);
+		const topRetrievalScore = sortedByRetrieval[0]?.retrievalScore ?? 0;
+		const floor = topRetrievalScore * minScoreRatio;
 
 		const bestPerType = new Map<string, (typeof results)[number]>();
-		for (const r of results) {
-			if (!bestPerType.has(r.sourceType) && r.score >= floor) {
+		for (const r of sortedByRetrieval) {
+			if (!bestPerType.has(r.sourceType) && r.retrievalScore >= floor) {
 				bestPerType.set(r.sourceType, r);
 			}
 		}
