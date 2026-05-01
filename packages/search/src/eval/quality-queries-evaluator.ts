@@ -11,15 +11,63 @@ import { classifyQueryPersona } from "../persona/classify-query.js";
 import { query } from "../query.js";
 import { trace } from "../trace/trace.js";
 import {
-	GOLD_STANDARD_QUERIES_LEGACY_VIEW as GOLD_STANDARD_QUERIES,
+	GOLD_STANDARD_QUERIES,
 	GOLD_STANDARD_QUERIES_VERSION,
-	type LegacyGoldQueryView as GoldStandardQuery,
+	type GoldQuery,
+	type QueryType,
 } from "./gold-standard-queries.js";
 import {
 	aggregateLineageMetrics,
 	computeLineageMetrics,
 	type LineageMetrics,
 } from "./lineage-metrics.js";
+
+/**
+ * Display category for breakdown/reporting. Derived from `GoldQuery.queryType`
+ * + `isHardNegative` + a chunking-hint heuristic that recovers the legacy
+ * `file-level` label (the only legacy category that doesn't correspond to a
+ * single `queryType` value). Step-3 query regeneration is expected to
+ * normalize this; for now the evaluator owns the mapping.
+ */
+type DisplayCategory =
+	| "direct-lookup"
+	| "cross-source"
+	| "coverage"
+	| "synthesis"
+	| "file-level"
+	| "work-lineage"
+	| "hard-negative";
+
+const QUERY_TYPE_TO_DISPLAY: Record<QueryType, DisplayCategory> = {
+	lookup: "direct-lookup",
+	trace: "cross-source",
+	compare: "cross-source",
+	temporal: "cross-source",
+	causal: "cross-source",
+	howto: "synthesis",
+	"entity-resolution": "coverage",
+};
+
+function displayCategoryOf(gq: GoldQuery): DisplayCategory {
+	if (gq.isHardNegative) return "hard-negative";
+	if (
+		gq.queryType === "lookup" &&
+		gq.targetLayerHints.length === 1 &&
+		gq.targetLayerHints[0] === "chunking"
+	) {
+		return "file-level";
+	}
+	if (gq.queryType === "trace" && gq.targetLayerHints.includes("edge-extraction")) {
+		// Legacy `work-lineage` was a trace + edge-extraction layer hint.
+		// `cross-source` queries had only the trace hint.
+		if (gq.targetLayerHints.includes("trace")) return "work-lineage";
+	}
+	return QUERY_TYPE_TO_DISPLAY[gq.queryType];
+}
+
+function isFileLevel(gq: GoldQuery): boolean {
+	return displayCategoryOf(gq) === "file-level";
+}
 
 /**
  * #320 — fast-iteration smoke support. When `WTFOC_QUERY_FILTER` is set
@@ -35,7 +83,7 @@ import {
  * silently shrink the run beyond expectation.
  */
 export function getActiveQueries(): {
-	queries: ReadonlyArray<GoldStandardQuery>;
+	queries: ReadonlyArray<GoldQuery>;
 	filter: { active: boolean; requestedIds: string[]; unknownIds: string[]; totalAvailable: number };
 } {
 	const raw = process.env.WTFOC_QUERY_FILTER ?? "";
@@ -466,15 +514,9 @@ export async function evaluateQualityQueries(
  *    ingested into the corpus, skip instead of failing (a coverage gap in
  *    the corpus is not a retrieval regression).
  */
-function resolveSkip(gq: GoldStandardQuery, ctx: QualityQueriesContext): string | null {
-	if (gq.collectionScopePattern && ctx.collectionId) {
-		const re = new RegExp(gq.collectionScopePattern);
-		if (!re.test(ctx.collectionId)) {
-			return (
-				gq.collectionScopeReason ??
-				`collection "${ctx.collectionId}" does not match scope pattern ${gq.collectionScopePattern}`
-			);
-		}
+function resolveSkip(gq: GoldQuery, ctx: QualityQueriesContext): string | null {
+	if (ctx.collectionId && !gq.applicableCorpora.includes(ctx.collectionId)) {
+		return `collection "${ctx.collectionId}" not in applicableCorpora [${gq.applicableCorpora.join(", ")}]`;
 	}
 	if (ctx.corpusSourceTypes) {
 		const missing = gq.requiredSourceTypes.filter((st) => !ctx.corpusSourceTypes?.has(st));
@@ -510,7 +552,7 @@ interface RecallAggregate {
 
 function aggregateRecall(
 	scores: QueryScore[],
-	activeQueries: ReadonlyArray<GoldStandardQuery>,
+	activeQueries: ReadonlyArray<GoldQuery>,
 ): RecallAggregate {
 	const graded = scores.filter((s) => !s.skipped && s.recallAtK !== null && s.recallK !== null);
 	const demoCriticalIds = new Set(
@@ -560,11 +602,11 @@ function aggregateDiversity(scores: QueryScore[]): DiversityAggregate {
 	};
 }
 
-function skippedScore(gq: GoldStandardQuery, reason: string): QueryScore {
+function skippedScore(gq: GoldQuery, reason: string): QueryScore {
 	return {
 		id: gq.id,
-		category: gq.category,
-		queryText: gq.queryText,
+		category: displayCategoryOf(gq),
+		queryText: gq.query,
 		skipped: true,
 		skipReason: reason,
 		passed: false,
@@ -622,7 +664,7 @@ interface RetrievalOverrides {
 
 async function scoreText(
 	queryText: string,
-	gq: GoldStandardQuery,
+	gq: GoldQuery,
 	embedder: Embedder,
 	vectorIndex: VectorIndex,
 	segments: Segment[],
@@ -654,6 +696,9 @@ async function scoreText(
 	let recallK: number | null = null;
 	let topScore: number | null = null;
 
+	const requiredArtifacts = gq.expectedEvidence.filter((e) => e.required).map((e) => e.artifactId);
+	const allArtifacts = gq.expectedEvidence.map((e) => e.artifactId);
+
 	try {
 		const boosts = autoRoute ? classifyQueryPersona(queryText).sourceTypeBoosts : undefined;
 		// File-level gold queries (#286) get an automatic boost on file-summary
@@ -662,7 +707,7 @@ async function scoreText(
 		// conservatively — enough to surface a well-matched file summary above
 		// prose chunks, not so high that a weakly-matched summary outranks a
 		// directly-relevant symbol chunk.
-		const chunkLevelBoosts = gq.category === "file-level" ? { file: 1.4 } : undefined;
+		const chunkLevelBoosts = isFileLevel(gq) ? { file: 1.4 } : undefined;
 
 		const diversityOption = diversityEnforce ? { minScoreRatio: 0.65 } : undefined;
 
@@ -688,25 +733,29 @@ async function scoreText(
 		requiredTypesFoundQueryOnly = gq.requiredSourceTypes.every((st) => resultSourceTypes.has(st));
 		requiredTypesFound = requiredTypesFoundQueryOnly;
 
-		if (gq.expectedSourceSubstrings) {
+		if (requiredArtifacts.length > 0) {
 			const resultSources = qResult.results.map((r) => r.source);
-			substringFound = gq.expectedSourceSubstrings.some((sub) =>
+			// Substring (legacy) match retained during step-2 transition because
+			// the mechanically-migrated fixture still contains unresolved
+			// substrings as `artifactId`. Step-3 query regeneration emits exact
+			// catalog `documentId`s and the grader will switch to exact match
+			// against `Chunk.documentId` at that point.
+			substringFound = requiredArtifacts.some((sub) =>
 				resultSources.some((src) => src.toLowerCase().includes(sub.toLowerCase())),
 			);
 		}
 
-		// #311 Phase 0d — recall@K against gold supporting sources.
-		// Computed against query-stage top-K only (no trace rescue) so the
-		// metric measures retrieval quality independently of the graph.
-		if (gq.goldSupportingSources && gq.goldSupportingSources.length > 0) {
+		// #311 Phase 0d — recall@K computed over the full evidence set
+		// (required ∪ supporting). Same caveat as above on substring vs exact.
+		if (allArtifacts.length > 0) {
 			const k = TOPK;
 			const topKSources = qResult.results.slice(0, k).map((r) => r.source.toLowerCase());
 			let matched = 0;
-			for (const goldSub of gq.goldSupportingSources) {
+			for (const goldSub of allArtifacts) {
 				const subLower = goldSub.toLowerCase();
 				if (topKSources.some((src) => src.includes(subLower))) matched++;
 			}
-			recallAtK = matched / gq.goldSupportingSources.length;
+			recallAtK = matched / allArtifacts.length;
 			recallK = k;
 		}
 
@@ -768,29 +817,22 @@ async function scoreText(
 
 	const hardNegativeNoStrongHits = topScore === null || topScore < HARD_NEGATIVE_SCORE_CEILING;
 
-	const passed =
-		gq.category === "hard-negative"
-			? resultCount < HARD_NEGATIVE_RESULT_CEILING && hardNegativeNoStrongHits
-			: resultCount >= gq.minResults &&
-				requiredTypesFound &&
-				substringFound &&
-				edgeHopFound &&
-				crossSourceFound;
+	const passed = gq.isHardNegative
+		? resultCount < HARD_NEGATIVE_RESULT_CEILING && hardNegativeNoStrongHits
+		: resultCount >= gq.minResults &&
+			requiredTypesFound &&
+			substringFound &&
+			edgeHopFound &&
+			crossSourceFound;
 
 	// Query-only pass: same criteria EXCEPT use the pre-trace requiredTypes check
 	// and ignore edge-hop/cross-source requirements (those are inherently trace-assisted).
-	const passedQueryOnly =
-		gq.category === "hard-negative"
-			? resultCount < HARD_NEGATIVE_RESULT_CEILING && hardNegativeNoStrongHits
-			: resultCount >= gq.minResults && requiredTypesFoundQueryOnly && substringFound;
+	const passedQueryOnly = gq.isHardNegative
+		? resultCount < HARD_NEGATIVE_RESULT_CEILING && hardNegativeNoStrongHits
+		: resultCount >= gq.minResults && requiredTypesFoundQueryOnly && substringFound;
 
 	let goldProximity: InnerScore["goldProximity"];
-	if (
-		recordGoldProximity &&
-		!passed &&
-		gq.goldSupportingSources &&
-		gq.goldSupportingSources.length > 0
-	) {
+	if (recordGoldProximity && !passed && allArtifacts.length > 0) {
 		try {
 			const widerK = 50;
 			const wider = await query(queryText, embedder, vectorIndex, {
@@ -798,7 +840,7 @@ async function scoreText(
 				signal,
 				reranker,
 				sourceTypeBoosts: autoRoute ? classifyQueryPersona(queryText).sourceTypeBoosts : undefined,
-				chunkLevelBoosts: gq.category === "file-level" ? { file: 1.4 } : undefined,
+				chunkLevelBoosts: isFileLevel(gq) ? { file: 1.4 } : undefined,
 				...(diversityEnforce ? { diversityEnforce: { minScoreRatio: 0.65 } } : {}),
 			});
 			let goldRank: number | null = null;
@@ -807,7 +849,7 @@ async function scoreText(
 				const r = wider.results[i];
 				if (!r) continue;
 				const src = r.source.toLowerCase();
-				const matches = gq.goldSupportingSources.some((sub) => src.includes(sub.toLowerCase()));
+				const matches = allArtifacts.some((sub) => src.includes(sub.toLowerCase()));
 				if (matches) {
 					goldRank = i + 1;
 					goldScore = typeof r.score === "number" ? r.score : null;
@@ -850,7 +892,7 @@ async function scoreText(
 }
 
 async function scoreQuery(
-	gq: GoldStandardQuery,
+	gq: GoldQuery,
 	embedder: Embedder,
 	vectorIndex: VectorIndex,
 	segments: Segment[],
@@ -864,7 +906,7 @@ async function scoreQuery(
 	recordGoldProximity = false,
 ): Promise<QueryScore> {
 	const inner = await scoreText(
-		gq.queryText,
+		gq.query,
 		gq,
 		embedder,
 		vectorIndex,
@@ -903,8 +945,8 @@ async function scoreQuery(
 
 	return {
 		id: gq.id,
-		category: gq.category,
-		queryText: gq.queryText,
+		category: displayCategoryOf(gq),
+		queryText: gq.query,
 		...inner,
 		...(paraphraseScores ? { paraphraseScores } : {}),
 		...(paraphraseInvariant !== undefined ? { paraphraseInvariant } : {}),

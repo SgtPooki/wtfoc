@@ -22,8 +22,7 @@ import {
 	evaluateQualityQueries,
 	evaluateSearch,
 	evaluateThemes,
-	// #344 step-1 transition: grader consumes legacy view of new fixture.
-	GOLD_STANDARD_QUERIES_LEGACY_VIEW as GOLD_STANDARD_QUERIES,
+	GOLD_STANDARD_QUERIES,
 	GOLD_STANDARD_QUERIES_VERSION,
 	InMemoryVectorIndex,
 	LlmReranker,
@@ -547,10 +546,8 @@ async function main() {
 						};
 						const synthQueries = GOLD_STANDARD_QUERIES.filter(
 							(q) =>
-								q.category === "synthesis" &&
-								(!q.collectionScopePattern ||
-									new RegExp(q.collectionScopePattern).test(values.collection!)),
-						).map((q) => ({ id: q.id, queryText: q.queryText }));
+								q.queryType === "howto" && q.applicableCorpora.includes(values.collection!),
+						).map((q) => ({ id: q.id, queryText: q.query }));
 						console.error(
 							`[dogfood] grounding: ${synthQueries.length} synthesis-tier queries (grader=${graderConfig.model})`,
 						);

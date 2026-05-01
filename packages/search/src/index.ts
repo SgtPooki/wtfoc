@@ -28,19 +28,11 @@ export {
 	type Difficulty,
 	type ExpectedEvidence,
 	GOLD_STANDARD_QUERIES,
-	GOLD_STANDARD_QUERIES_LEGACY_VIEW,
 	GOLD_STANDARD_QUERIES_VERSION,
 	type GoldQuery,
 	type LayerHint,
-	type LegacyGoldQueryView,
 	type QueryType,
-	toLegacyView,
 } from "./eval/gold-standard-queries.js";
-export {
-	LEGACY_GOLD_STANDARD_QUERIES,
-	LEGACY_GOLD_STANDARD_QUERIES_VERSION,
-	type LegacyGoldStandardQuery,
-} from "./eval/gold-standard-queries.legacy.js";
 export type { AggregateLineageMetrics, LineageMetrics } from "./eval/lineage-metrics.js";
 export { aggregateLineageMetrics, computeLineageMetrics } from "./eval/lineage-metrics.js";
 export { evaluateQualityQueries } from "./eval/quality-queries-evaluator.js";
