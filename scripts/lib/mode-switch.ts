@@ -87,6 +87,33 @@ async function fetchMode(
 	return (await res.json()) as ModeStateEnvelope;
 }
 
+/**
+ * Wrapper around `fetchMode` that swallows transient network failures
+ * during the poll loop. AEON chat-model cold load can take many minutes
+ * over Tailscale; one dropped TCP connection mid-poll should not abort
+ * an otherwise-correct mode-switch. Returns null on transient failure
+ * so the caller treats it as "not yet terminal" and retries.
+ *
+ * Distinguishes transient (e.g. fetch failed, timeout, ECONNRESET) from
+ * persistent (e.g. 404 admin gone, malformed JSON) by ONLY catching
+ * exceptions thrown by `fetchFn` itself. HTTP-level failures still
+ * propagate.
+ */
+async function fetchModeTolerant(
+	base: string,
+	fetchFn: typeof fetch,
+): Promise<ModeStateEnvelope | null> {
+	try {
+		return await fetchMode(base, fetchFn);
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		// Network-level failure during a multi-minute poll — log and let
+		// the caller try again at the next interval.
+		console.error(`[mode-switch] transient poll error (will retry): ${msg}`);
+		return null;
+	}
+}
+
 async function postSwitch(
 	base: string,
 	target: GpuMode,
@@ -155,7 +182,14 @@ export async function ensureMode(
 	await postSwitch(base, target, reason, fetchFn, timeoutMs);
 
 	while (Date.now() < deadline) {
-		const env = await fetchMode(base, fetchFn);
+		const env = await fetchModeTolerant(base, fetchFn);
+		if (env === null) {
+			// Transient network blip — wait and retry without burning the
+			// terminal-failure budget on what is almost always a Tailscale
+			// hiccup mid-cold-load.
+			await sleep(pollMs);
+			continue;
+		}
 		const phase = env.state.modePhase;
 		if (TERMINAL_OK.has(phase)) {
 			if (env.state.activeMode !== target) {

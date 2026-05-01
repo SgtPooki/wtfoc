@@ -110,6 +110,37 @@ describe("ensureMode", () => {
 		).rejects.toThrow(/manual recovery/);
 	});
 
+	it("retries through transient fetch errors during poll", async () => {
+		let call = 0;
+		const fetchFn = vi.fn(async (input: string | URL | Request) => {
+			call += 1;
+			const url = typeof input === "string" ? input : input.toString();
+			if (call === 1) {
+				// Initial state read.
+				return jsonResponse(buildState("chat", "ChatActive"));
+			}
+			if (url.endsWith("/admin/mode-switch")) {
+				return jsonResponse({ operationId: "x" });
+			}
+			// Polls: fail, fail, then succeed.
+			if (call === 3 || call === 4) {
+				throw new Error("fetch failed");
+			}
+			return jsonResponse(buildState("rerank-gpu", "RerankGpuActive"));
+		});
+		const r = await ensureMode("rerank-gpu", {
+			adminUrl: "http://admin",
+			fetchFn: fetchFn as unknown as typeof fetch,
+			enabled: true,
+			pollIntervalMs: 1,
+			timeoutMs: 5000,
+		});
+		expect(r.skipped).toBe(false);
+		expect(r.finalPhase).toBe("RerankGpuActive");
+		// 1 initial GET + 1 POST + 2 failed polls + 1 successful poll
+		expect(fetchFn).toHaveBeenCalledTimes(5);
+	});
+
 	it("times out when phase stays transient", async () => {
 		const fetchFn = vi.fn(async (input: string | URL | Request) => {
 			const url = typeof input === "string" ? input : input.toString();
