@@ -50,6 +50,26 @@ export type { AggregateLineageMetrics, LineageMetrics } from "./eval/lineage-met
 export { aggregateLineageMetrics, computeLineageMetrics } from "./eval/lineage-metrics.js";
 export { evaluateQualityQueries } from "./eval/quality-queries-evaluator.js";
 export { evaluateSearch } from "./eval/search-evaluator.js";
+export type {
+	AdversarialFilterOptions,
+	AdversarialFilterResult,
+	CandidateQuery,
+	CatalogArtifact,
+	LengthBucket,
+	QueryTemplate,
+	RecipeSample,
+	RetrieveTopK,
+	SamplingOptions,
+	Stratum,
+} from "./eval/stratified-template-recipe.js";
+export {
+	applyAdversarialFilter,
+	groupByStratum,
+	lengthBucketOf,
+	sampleStratified,
+	stratifyArtifacts,
+	stratumKey,
+} from "./eval/stratified-template-recipe.js";
 export { evaluateThemes } from "./eval/themes-evaluator.js";
 export type { VectorBackend, VectorIndexConfig } from "./index/factory.js";
 export { createVectorIndex } from "./index/factory.js";
