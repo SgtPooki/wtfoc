@@ -10,6 +10,13 @@ import type {
 import { classifyQueryPersona } from "../persona/classify-query.js";
 import { query } from "../query.js";
 import { trace } from "../trace/trace.js";
+import type { PreflightStatus } from "./catalog-applicability-preflight.js";
+import {
+	aggregateDiagnoses,
+	type DiagnosisAggregate,
+	diagnoseFailure,
+	type FailureDiagnosis,
+} from "./failure-diagnosis.js";
 import {
 	GOLD_STANDARD_QUERIES,
 	GOLD_STANDARD_QUERIES_VERSION,
@@ -270,6 +277,14 @@ export interface QualityQueriesContext {
 	 * — widen K"). Default: respects WTFOC_GOLD_PROXIMITY=1 env.
 	 */
 	recordGoldProximity?: boolean;
+	/**
+	 * #344 step 3 — per-query catalog-applicability preflight status, keyed
+	 * by query id. When provided, the failure diagnosis classifier short-
+	 * circuits to `fixture-invalid` for any (query, corpus) pair the
+	 * preflight already flagged as invalid. Caller is responsible for
+	 * running the preflight against the same corpus the eval consumes.
+	 */
+	preflightStatusByQueryId?: ReadonlyMap<string, PreflightStatus>;
 }
 
 export async function evaluateQualityQueries(
@@ -324,6 +339,23 @@ export async function evaluateQualityQueries(
 		if (score.passed) passCount++;
 		if (score.passedQueryOnly) queryOnlyPassCount++;
 	}
+
+	// #344 step 3 — emit per-failure diagnosis records for the patch-capsule
+	// selector. The classifier is rules-based so this adds negligible cost.
+	const diagnoses: FailureDiagnosis[] = [];
+	for (let i = 0; i < scores.length; i++) {
+		const s = scores[i];
+		const gq = activeQueries[i];
+		if (!s || !gq) continue;
+		const d = diagnoseFailure({
+			score: s,
+			query: gq,
+			corpusId: context.collectionId,
+			preflightStatus: context.preflightStatusByQueryId?.get(gq.id),
+		});
+		if (d) diagnoses.push(d);
+	}
+	const diagnosisAggregate: DiagnosisAggregate = aggregateDiagnoses(diagnoses);
 
 	const applicableTotal = activeQueries.length - skippedCount;
 	const passRate = applicableTotal > 0 ? passCount / applicableTotal : 0;
@@ -499,6 +531,11 @@ export async function evaluateQualityQueries(
 			// measures the memorization-not-retrieval risk peer-review
 			// flagged at #311.
 			paraphraseInvariance: aggregateParaphraseInvariance(scores),
+			// #344 step 3 — failure diagnoses + aggregate. The patch-capsule
+			// selector consumes `diagnosisAggregate.dominantLayer` to scope
+			// the LLM proposer's allowlist for the next cycle.
+			diagnoses,
+			diagnosisAggregate,
 		},
 		checks,
 	};

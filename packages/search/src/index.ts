@@ -24,6 +24,19 @@ export {
 	runPreflight,
 } from "./eval/catalog-applicability-preflight.js";
 export { evaluateEdgeResolution } from "./eval/edge-resolution-evaluator.js";
+export type {
+	DiagnoseFailureInput,
+	DiagnosisAggregate,
+	DiagnosisEvidence,
+	DiagnosisScoreInput,
+	FailureClass,
+	FailureDiagnosis,
+	FailureLayer,
+} from "./eval/failure-diagnosis.js";
+export {
+	aggregateDiagnoses,
+	diagnoseFailure,
+} from "./eval/failure-diagnosis.js";
 export {
 	type Difficulty,
 	type ExpectedEvidence,
