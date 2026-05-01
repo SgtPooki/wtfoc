@@ -51,6 +51,7 @@ interface CliArgs {
 	dryRun: boolean;
 	skipLlm: boolean;
 	skipPr: boolean;
+	forcePatch: boolean;
 }
 
 interface LoopOutcome {
@@ -79,6 +80,7 @@ function parseArgs(argv: string[]): CliArgs {
 	let dryRun = false;
 	let skipLlm = false;
 	let skipPr = false;
+	let forcePatch = false;
 	for (let i = 0; i < args.length; i++) {
 		const a = args[i] ?? "";
 		const eat = (): string => {
@@ -93,12 +95,13 @@ function parseArgs(argv: string[]): CliArgs {
 		else if (a === "--dry-run") dryRun = true;
 		else if (a === "--skip-llm") skipLlm = true;
 		else if (a === "--skip-pr") skipPr = true;
+		else if (a === "--force-patch") forcePatch = true;
 		else throw new Error(`unknown flag: ${a}`);
 	}
 	if (!findingsPath || !matrixName) {
 		throw new Error("usage: --findings <path> --matrix <name>");
 	}
-	return { findingsPath, matrixName, dryRun, skipLlm, skipPr };
+	return { findingsPath, matrixName, dryRun, skipLlm, skipPr, forcePatch };
 }
 
 async function loadMatrix(matrixName: string): Promise<Matrix> {
@@ -218,8 +221,9 @@ async function runPatchPath(input: {
 	}
 
 	if (cli.dryRun) {
+		const filesTouched = new Set(llm.proposal.edits.map((e) => e.file));
 		notes.push(
-			`DRY-RUN patch proposal: baseSha=${llm.proposal.baseSha}, +${llm.proposal.unifiedDiff.split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++")).length}/-${llm.proposal.unifiedDiff.split("\n").filter((l) => l.startsWith("-") && !l.startsWith("---")).length} lines`,
+			`DRY-RUN patch proposal: baseSha=${llm.proposal.baseSha}, ${llm.proposal.edits.length} edit(s) across ${filesTouched.size} file(s): ${[...filesTouched].slice(0, 3).join(", ")}`,
 		);
 		return { status: "accepted-no-pr", notes };
 	}
@@ -314,6 +318,24 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 	}
 
 	const sweepMode = resolveModeFromMatrix(matrix);
+
+	// --force-patch: skip the variant path entirely and go straight to the
+	// code-patch path. Used for validating patch mechanics end-to-end
+	// without waiting for the planner queue to exhaust.
+	if (cli.forcePatch) {
+		notes.push("--force-patch: bypassing variant path, going straight to patch path");
+		if (!(await swapMode("chat", "force-patch-llm", notes))) {
+			return { status: "patch-llm-unavailable", notes };
+		}
+		return await runPatchPath({
+			cli,
+			matrix,
+			finding,
+			explainMd,
+			triedRows,
+			notes,
+		});
+	}
 
 	if (!(await swapMode("chat", "loop-llm-analyze", notes))) {
 		return { status: "llm-unavailable", notes };

@@ -1,13 +1,12 @@
-import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
 	analyzeAndProposePatch,
 	buildPatchUserPrompt,
-	parsePatchBlock,
+	parseEditsBlock,
 } from "./analyze-and-propose-patch.js";
-import type { TriedLogRow } from "./tried-log.js";
 
 function tmpRepo(): string {
 	const dir = mkdtempSync(join(tmpdir(), "wtfoc-patch-"));
@@ -18,6 +17,12 @@ function tmpRepo(): string {
 	);
 	mkdirSync(join(dir, ".git"));
 	return dir;
+}
+
+function seedHead(repo: string, sha = "1234567890abcdef"): void {
+	writeFileSync(join(repo, ".git", "HEAD"), "ref: refs/heads/main\n");
+	mkdirSync(join(repo, ".git", "refs", "heads"), { recursive: true });
+	writeFileSync(join(repo, ".git", "refs", "heads", "main"), `${sha}\n`);
 }
 
 describe("buildPatchUserPrompt", () => {
@@ -50,26 +55,34 @@ describe("buildPatchUserPrompt", () => {
 	});
 });
 
-describe("parsePatchBlock", () => {
-	it("extracts a fenced diff block", () => {
-		const content = `## Analysis\nlooks like diversity is too tight.\n\n## Patch\n\n\`\`\`diff\ndiff --git a/foo b/foo\n--- a/foo\n+++ b/foo\n@@ -1,1 +1,1 @@\n-old\n+new\n\`\`\``;
-		const d = parsePatchBlock(content);
-		expect(d).not.toBeNull();
-		expect(d).toContain("diff --git");
-		expect(d).toContain("+new");
+describe("parseEditsBlock", () => {
+	it("extracts a fenced JSON edits block", () => {
+		const content = `## Analysis\nlooks like diversity is too tight.\n\n## Edits\n\n\`\`\`json\n[\n  {"file":"packages/search/src/query.ts","old":"return 0;","new":"return 1;"}\n]\n\`\`\``;
+		const edits = parseEditsBlock(content);
+		expect(edits).not.toBeNull();
+		expect(edits).toHaveLength(1);
+		expect(edits?.[0]?.file).toBe("packages/search/src/query.ts");
+		expect(edits?.[0]?.new).toBe("return 1;");
 	});
 
-	it("returns null on NO_PATCH literal", () => {
-		const content = "## Analysis\nnothing to do.\n\n## Patch\n\nNO_PATCH\n";
-		expect(parsePatchBlock(content)).toBeNull();
+	it("returns empty array on intentional no-proposal", () => {
+		const content = "## Analysis\nuncertain.\n\n## Edits\n\n```json\n[]\n```";
+		const edits = parseEditsBlock(content);
+		expect(edits).toEqual([]);
 	});
 
-	it("returns null when no Patch section", () => {
-		expect(parsePatchBlock("## Analysis only")).toBeNull();
+	it("returns null when no Edits section", () => {
+		expect(parseEditsBlock("## Analysis only")).toBeNull();
 	});
 
-	it("returns null when Patch section is empty", () => {
-		expect(parsePatchBlock("## Patch\n\n```diff\n```")).toBeNull();
+	it("returns null on malformed JSON", () => {
+		expect(parseEditsBlock("## Edits\n```json\n{not json\n```")).toBeNull();
+	});
+
+	it("filters out malformed edit objects", () => {
+		const content = `## Edits\n\`\`\`json\n[{"file":"a","old":"o","new":"n"},{"file":"b"}]\n\`\`\``;
+		const edits = parseEditsBlock(content);
+		expect(edits).toHaveLength(1);
 	});
 });
 
@@ -83,22 +96,14 @@ describe("analyzeAndProposePatch", () => {
 		) as unknown as typeof fetch;
 	}
 
-	it("returns a valid proposal on a successful LLM response", async () => {
+	it("returns a valid proposal on a successful LLM response (json_schema)", async () => {
 		const repo = tmpRepo();
-		// Write a fake HEAD ref so git rev-parse can resolve.
-		writeFileSync(join(repo, ".git", "HEAD"), "ref: refs/heads/main\n");
-		mkdirSync(join(repo, ".git", "refs", "heads"), { recursive: true });
-		writeFileSync(join(repo, ".git", "refs", "heads", "main"), "1234567890abcdef\n");
-
-		const validDiff = `diff --git a/packages/search/src/query.ts b/packages/search/src/query.ts
---- a/packages/search/src/query.ts
-+++ b/packages/search/src/query.ts
-@@ -1,1 +1,1 @@
--export function query() { return 0; }
-+export function query() { return 1; }
-`;
+		seedHead(repo);
 		const llm = mockLlm(
-			`## Analysis\ndiversity threshold is too tight.\n\n## Patch\n\n\`\`\`diff\n${validDiff}\`\`\``,
+			JSON.stringify({
+				analysis: "tweaking return value.",
+				edits: [{ file: "packages/search/src/query.ts", old: "return 0;", new: "return 1;" }],
+			}),
 		);
 		const res = await analyzeAndProposePatch({
 			matrixName: "retrieval-baseline",
@@ -113,23 +118,19 @@ describe("analyzeAndProposePatch", () => {
 		expect(res.ok).toBe(true);
 		expect(res.proposal).not.toBeNull();
 		expect(res.proposal?.kind).toBe("patch");
-		expect(res.proposal?.unifiedDiff).toContain("diff --git");
+		expect(res.proposal?.edits).toHaveLength(1);
+		expect(res.proposal?.edits[0]?.new).toBe("return 1;");
 	});
 
-	it("rejects an LLM patch outside the allowlist", async () => {
+	it("rejects an LLM proposal outside the allowlist", async () => {
 		const repo = tmpRepo();
-		writeFileSync(join(repo, ".git", "HEAD"), "ref: refs/heads/main\n");
-		mkdirSync(join(repo, ".git", "refs", "heads"), { recursive: true });
-		writeFileSync(join(repo, ".git", "refs", "heads", "main"), "1234567890abcdef\n");
-
-		const badDiff = `diff --git a/scripts/dogfood.ts b/scripts/dogfood.ts
---- a/scripts/dogfood.ts
-+++ b/scripts/dogfood.ts
-@@ -1,1 +1,1 @@
--old
-+new
-`;
-		const llm = mockLlm(`## Analysis\nx\n\n## Patch\n\`\`\`diff\n${badDiff}\`\`\``);
+		seedHead(repo);
+		const llm = mockLlm(
+			JSON.stringify({
+				analysis: "x",
+				edits: [{ file: "scripts/dogfood.ts", old: "a", new: "b" }],
+			}),
+		);
 		const res = await analyzeAndProposePatch({
 			matrixName: "retrieval-baseline",
 			explainMarkdown: "stub",
@@ -144,13 +145,10 @@ describe("analyzeAndProposePatch", () => {
 		expect(res.error).toMatch(/outside allowlist/);
 	});
 
-	it("returns null proposal on NO_PATCH (no error)", async () => {
+	it("returns null proposal on empty edits array (no error)", async () => {
 		const repo = tmpRepo();
-		writeFileSync(join(repo, ".git", "HEAD"), "ref: refs/heads/main\n");
-		mkdirSync(join(repo, ".git", "refs", "heads"), { recursive: true });
-		writeFileSync(join(repo, ".git", "refs", "heads", "main"), "1234567890abcdef\n");
-
-		const llm = mockLlm("## Analysis\nuncertain.\n\n## Patch\nNO_PATCH\n");
+		seedHead(repo);
+		const llm = mockLlm(JSON.stringify({ analysis: "uncertain.", edits: [] }));
 		const res = await analyzeAndProposePatch({
 			matrixName: "retrieval-baseline",
 			explainMarkdown: "stub",
@@ -168,10 +166,7 @@ describe("analyzeAndProposePatch", () => {
 
 	it("fails soft when no curated files exist", async () => {
 		const repo = tmpRepo();
-		writeFileSync(join(repo, ".git", "HEAD"), "ref: refs/heads/main\n");
-		mkdirSync(join(repo, ".git", "refs", "heads"), { recursive: true });
-		writeFileSync(join(repo, ".git", "refs", "heads", "main"), "1234567890abcdef\n");
-
+		seedHead(repo);
 		const llm = mockLlm("...");
 		const res = await analyzeAndProposePatch({
 			matrixName: "retrieval-baseline",
@@ -189,10 +184,7 @@ describe("analyzeAndProposePatch", () => {
 
 	it("fails soft on LLM HTTP error", async () => {
 		const repo = tmpRepo();
-		writeFileSync(join(repo, ".git", "HEAD"), "ref: refs/heads/main\n");
-		mkdirSync(join(repo, ".git", "refs", "heads"), { recursive: true });
-		writeFileSync(join(repo, ".git", "refs", "heads", "main"), "1234567890abcdef\n");
-
+		seedHead(repo);
 		const llm = vi.fn(async () => new Response("nope", { status: 500 })) as unknown as typeof fetch;
 		const res = await analyzeAndProposePatch({
 			matrixName: "retrieval-baseline",

@@ -8,30 +8,46 @@
  * decide()'d against the baseline window, and (on accept) opened as a
  * draft PR.
  *
- * Hard rules:
- *   1. Patch path allowlist. The diff MUST only touch files matching
- *      the allowlist (default: `packages/search/src/**`). The materializer
- *      refuses to apply a patch that touches anything outside.
- *   2. Diff size cap. Default 200 lines added + removed. Larger
- *      patches require maintainer pre-approval (via env override).
- *   3. baseSha. The patch is applied at a specific commit so two
- *      concurrent proposals don't conflict. Default = HEAD at planner
- *      invocation time.
- *   4. No silent merge. Always draft PR. Maintainer reviews + clicks
- *      merge.
+ * Patch format: SEARCH/REPLACE — each edit is `{ file, old, new }`
+ * where `old` must appear EXACTLY ONCE in `file`. The harness applies
+ * each edit by exact-string replacement, then commits the result.
  *
- * The actual git worktree dance lives in materialize-variant.ts —
- * this module supplies the proposal type, allowlist guard, and unified
- * diff parsing.
+ * Why not unified diff: local LLMs (AEON-class Qwen3.6, qwen3-coder)
+ * reliably hallucinate `@@` line numbers, drop trailing context lines,
+ * and emit malformed hunk headers. Even with the same model, search/
+ * replace was 100% applicable on the first try in side-by-side
+ * validation against unified-diff (0/3 applicable). Search/replace
+ * also matches what aider, Cursor, and other production code-editing
+ * AI tools use.
+ *
+ * Hard rules:
+ *   1. Patch path allowlist. Edits MUST only touch files matching the
+ *      allowlist (default: `packages/search/src/**`).
+ *   2. Patch size cap. Default 200 (added + removed) lines, counted by
+ *      diffing each edit's `old` and `new`.
+ *   3. baseSha. The patch is applied at a specific commit so two
+ *      concurrent proposals don't conflict.
+ *   4. No silent merge. Always draft PR.
  */
 
 export const DEFAULT_ALLOWED_PATHS: readonly string[] = ["packages/search/src/"];
 export const DEFAULT_MAX_DIFF_LINES = 200;
 
+/**
+ * One search/replace edit. The harness applies these by reading
+ * `file`, asserting `old` appears exactly once, and replacing with
+ * `new`.
+ */
+export interface Edit {
+	file: string;
+	old: string;
+	new: string;
+}
+
 export interface PatchProposal {
 	kind: "patch";
 	baseSha: string;
-	unifiedDiff: string;
+	edits: readonly Edit[];
 	rationale: string;
 	/**
 	 * Optional summary the LLM provides describing what the patch
@@ -49,48 +65,15 @@ export interface PatchValidationResult {
 }
 
 /**
- * Parse a unified diff and return:
- *   - the file paths it touches
- *   - the line counts it adds + removes
- *   - any structural errors that would prevent `git apply` from
- *     succeeding
- *
- * Best-effort parser, NOT a full unidiff implementation. We accept
- * standard `diff --git`, `--- a/foo`, `+++ b/foo`, `@@ … @@` headers.
+ * Count line deltas across all edits without doing a full diff. We
+ * approximate by counting newlines: removed = newlines in `old` + 1,
+ * added = newlines in `new` + 1. This overcounts when a one-line
+ * `old` becomes a one-line `new` (1+1=2 instead of 0/0), but the
+ * cap is a sanity guard, not a fairness metric.
  */
-export function parseUnifiedDiff(diff: string): {
-	touchedPaths: string[];
-	addedLines: number;
-	removedLines: number;
-} {
-	const touched = new Set<string>();
-	let added = 0;
-	let removed = 0;
-	const lines = diff.split("\n");
-	for (let i = 0; i < lines.length; i++) {
-		const line = lines[i] ?? "";
-		if (line.startsWith("+++ b/")) {
-			touched.add(line.slice("+++ b/".length).trim());
-			continue;
-		}
-		if (line.startsWith("--- a/")) {
-			touched.add(line.slice("--- a/".length).trim());
-			continue;
-		}
-		if (line.startsWith("diff --git ")) continue;
-		if (line.startsWith("@@")) continue;
-		if (line.startsWith("index ")) continue;
-		if (line.startsWith("new file mode")) continue;
-		if (line.startsWith("deleted file mode")) continue;
-		// Hunk body
-		if (line.startsWith("+") && !line.startsWith("+++")) added++;
-		else if (line.startsWith("-") && !line.startsWith("---")) removed++;
-	}
-	return {
-		touchedPaths: [...touched].filter((p) => p && p !== "/dev/null"),
-		addedLines: added,
-		removedLines: removed,
-	};
+function countLines(s: string): number {
+	if (s.length === 0) return 0;
+	return (s.match(/\n/g) ?? []).length + 1;
 }
 
 export function validatePatch(
@@ -101,39 +84,59 @@ export function validatePatch(
 	const maxLines = opts.maxDiffLines ?? DEFAULT_MAX_DIFF_LINES;
 	const errors: string[] = [];
 
-	if (!proposal.unifiedDiff || proposal.unifiedDiff.trim().length === 0) {
-		errors.push("empty unifiedDiff");
+	if (!proposal.edits || proposal.edits.length === 0) {
+		errors.push("empty edits");
 		return { ok: false, touchedPaths: [], addedLines: 0, removedLines: 0, errors };
 	}
 	if (!proposal.baseSha || proposal.baseSha.length < 7) {
 		errors.push("missing or short baseSha (need >= 7 chars)");
 	}
 
-	const { touchedPaths, addedLines, removedLines } = parseUnifiedDiff(proposal.unifiedDiff);
+	const touched = new Set<string>();
+	let added = 0;
+	let removed = 0;
 
-	if (touchedPaths.length === 0) {
-		errors.push("diff touches no files (or paths not parseable)");
+	for (const [i, e] of proposal.edits.entries()) {
+		if (!e.file || typeof e.file !== "string") {
+			errors.push(`edit[${i}] missing file`);
+			continue;
+		}
+		if (typeof e.old !== "string" || typeof e.new !== "string") {
+			errors.push(`edit[${i}] missing old/new strings`);
+			continue;
+		}
+		if (e.old.length === 0) {
+			errors.push(`edit[${i}] old string is empty (use a non-empty anchor)`);
+			continue;
+		}
+		if (e.old === e.new) {
+			errors.push(`edit[${i}] old === new (no-op)`);
+			continue;
+		}
+		touched.add(e.file);
+		removed += countLines(e.old);
+		added += countLines(e.new);
 	}
 
-	for (const p of touchedPaths) {
+	for (const p of touched) {
 		const allowedHit = allowed.some((prefix) => p.startsWith(prefix));
 		if (!allowedHit) {
 			errors.push(`path "${p}" outside allowlist [${allowed.join(", ")}]`);
 		}
 	}
 
-	const totalLines = addedLines + removedLines;
+	const totalLines = added + removed;
 	if (totalLines > maxLines) {
 		errors.push(
-			`diff size ${totalLines} lines (added ${addedLines}, removed ${removedLines}) exceeds maxDiffLines=${maxLines}`,
+			`patch size ${totalLines} lines (added ${added}, removed ${removed}) exceeds maxDiffLines=${maxLines}`,
 		);
 	}
 
 	return {
 		ok: errors.length === 0,
-		touchedPaths,
-		addedLines,
-		removedLines,
+		touchedPaths: [...touched],
+		addedLines: added,
+		removedLines: removed,
 		errors,
 	};
 }

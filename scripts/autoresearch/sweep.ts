@@ -30,7 +30,7 @@
  * defaults. That gate stays manual until methodology is hardened.
  */
 
-import { execFileSync } from "node:child_process";
+import { safeExecFileSync as execFileSync } from "../lib/safe-exec.js";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -206,8 +206,14 @@ function runVariantOnCorpus(
 		"--output",
 		outFile,
 	];
+	// Pass the embedder API key via env, not argv. argv leaks into
+	// command-line strings inside Node's execFileSync error messages
+	// when the child process exits non-zero — observed live during
+	// patch-materialize sweeps where a missing dep crashed dogfood and
+	// the key showed up in stderr.
+	const childEnv: NodeJS.ProcessEnv = { ...process.env };
 	if (matrix.baseConfig.embedderKey) {
-		args.push("--embedder-key", matrix.baseConfig.embedderKey);
+		childEnv.WTFOC_EMBEDDER_KEY = matrix.baseConfig.embedderKey;
 	}
 	if (matrix.baseConfig.embedderCacheDir) {
 		args.push("--embedder-cache-dir", matrix.baseConfig.embedderCacheDir);
@@ -242,7 +248,7 @@ function runVariantOnCorpus(
 
 	logErr(`[sweep] running variant ${variant.variantId} on ${collection}`);
 	const t0 = performance.now();
-	execFileSync("pnpm", args, { stdio: ["ignore", "pipe", "inherit"] });
+	execFileSync("pnpm", args, { stdio: ["ignore", "pipe", "inherit"], env: childEnv });
 	const durationMs = performance.now() - t0;
 
 	const reportText = readFileSync(outFile, "utf-8");

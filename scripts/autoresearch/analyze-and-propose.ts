@@ -164,11 +164,14 @@ export async function analyzeAndPropose(
 			body: JSON.stringify({
 				model,
 				temperature: 0.2,
-				max_tokens: 1500,
+				max_tokens: Number.parseInt(process.env.WTFOC_LLM_MAX_TOKENS ?? "", 10) || 4000,
 				messages: [
 					{ role: "system", content: SYSTEM_PROMPT },
 					{ role: "user", content: userPrompt },
 				],
+				...(process.env.WTFOC_LLM_DISABLE_THINKING === "1"
+					? { chat_template_kwargs: { enable_thinking: false } }
+					: {}),
 			}),
 			signal: ac.signal,
 		});

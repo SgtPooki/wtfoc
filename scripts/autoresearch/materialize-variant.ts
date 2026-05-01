@@ -22,7 +22,7 @@
  *     for this MVP — they need their own safety story.
  */
 
-import { execFileSync } from "node:child_process";
+import { safeExecFileSync as execFileSync } from "../lib/safe-exec.js";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { decide, type DecisionVerdict } from "./decision.js";

@@ -28,7 +28,7 @@
  *     that point cleanly.
  */
 
-import { execFileSync } from "node:child_process";
+import { safeExecFileSync as execFileSync } from "../lib/safe-exec.js";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,6 +36,7 @@ import { fetchOpenIssues, openIssuesToPromptLines, type OpenIssueSummary } from 
 import {
 	DEFAULT_ALLOWED_PATHS,
 	DEFAULT_MAX_DIFF_LINES,
+	type Edit,
 	type PatchProposal,
 	validatePatch,
 } from "./patch-proposal.js";
@@ -54,11 +55,17 @@ export const DEFAULT_PATCH_LLM_MODEL = "haiku";
 export const DEFAULT_CURATED_FILES: readonly string[] = [
 	"packages/search/src/query.ts",
 	"packages/search/src/trace/trace.ts",
-	"packages/search/src/diversity.ts",
 ];
 
-const MAX_FILE_CHARS = 8_000;
-const MAX_TOTAL_PROMPT_CHARS = 60_000;
+// Curated files inlined into the prompt. AEON has 64K context; with 2
+// curated files at ~16K chars each plus system + finding + tried-log,
+// total is well under the model's window. 8K (the prior cap) silently
+// truncated relevant code. Override via WTFOC_PATCH_MAX_FILE_CHARS.
+const MAX_FILE_CHARS = Number.parseInt(
+	process.env.WTFOC_PATCH_MAX_FILE_CHARS ?? "",
+	10,
+) || 24_000;
+const MAX_TOTAL_PROMPT_CHARS = 120_000;
 
 export interface AnalyzeProposePatchInputs {
 	matrixName: string;
@@ -98,43 +105,54 @@ You will receive:
 - A regression finding with flipped queries, retrieved chunks, and gold-source proximity diagnostics.
 - A summary of past attempts on this matrix (so you don't repeat yourself).
 - A curated set of source files inlined verbatim. Their paths are fixed; you can only modify files in this set.
-- A baseSha (current HEAD) — your patch will be applied at that commit.
+- A baseSha (current HEAD) — your edits will be applied at that commit.
 
-Your job: emit ONE unified diff that you believe will fix the regression OR explain that no proposal is appropriate.
+Your job: emit ONE focused code edit (or short multi-edit) that you believe will fix the regression OR explain that no proposal is appropriate.
 
-Output rules:
-1. Two sections, in order:
-   - "## Analysis" — root-cause hypothesis (under 300 words)
-   - "## Patch" — a single fenced block tagged \`diff\` containing a unified diff, OR the literal string "NO_PATCH" when you have no high-confidence proposal.
-2. The diff MUST:
-   - Touch only files from the curated set (paths exactly as listed).
-   - Use \`diff --git a/<path> b/<path>\` headers and \`@@ ... @@\` hunk headers.
-   - Be minimal — one focused change. Multi-file refactors are out of scope.
-   - Stay under 200 added+removed lines.
-3. Do NOT include the baseSha in the diff — the harness applies it at that commit automatically.
-4. Do NOT propose changes that already appear in the tried-log (same axis-equivalent change). The maintainer would rather see "I don't know" than a duplicate.
-5. If the regression is a hard-gate breach, your patch must target the breached metric specifically.
+OUTPUT FORMAT (strict):
 
-Worked example of an acceptable patch:
+## Analysis
+<root-cause hypothesis, under 300 words>
 
-\`\`\`diff
-diff --git a/packages/search/src/diversity.ts b/packages/search/src/diversity.ts
---- a/packages/search/src/diversity.ts
-+++ b/packages/search/src/diversity.ts
-@@ -42,7 +42,7 @@ export function applyDiversity(results, opts) {
-   for (const r of results) {
--    if (seen.has(r.sourceType)) continue;
-+    if (seen.has(r.sourceType) && r.score < topScore * 0.7) continue;
-     out.push(r);
-     seen.add(r.sourceType);
-   }
+## Edits
+\`\`\`json
+[
+  {
+    "file": "<path from curated set, exactly as shown>",
+    "old": "<exact substring to find — must appear EXACTLY ONCE in the file>",
+    "new": "<replacement string>"
+  }
+]
 \`\`\`
 
-If you cannot propose a confident, focused patch, emit:
+If you have no confident proposal, emit:
 
-## Patch
+## Edits
+\`\`\`json
+[]
+\`\`\`
 
-NO_PATCH`;
+RULES:
+1. \`old\` MUST appear exactly once in the named file. To guarantee this, include AT LEAST 3 lines of context (the line you're changing plus surrounding lines). Single-token \`old\` strings will be rejected as ambiguous.
+2. \`old\` and \`new\` must be byte-exact. Preserve indentation (tabs, not spaces) and trailing whitespace from the source. The harness applies edits by exact-string match; whitespace mismatch causes rejection.
+3. \`new\` is the COMPLETE replacement for \`old\` (not a delta). Every line you want to keep must appear in \`new\`. If you only want to add a line, include the surrounding lines in both \`old\` and \`new\`.
+4. Touch only files in the curated set. Paths must match exactly.
+5. Each edit ≤ 30 lines. Keep changes minimal and focused.
+6. Stay under 200 total added+removed lines across all edits.
+7. Do NOT include line numbers or unified-diff hunk headers — this is search/replace, not diff.
+8. Do NOT propose changes that already appear in the tried-log.
+
+EXAMPLE of a valid edit (note 4 lines of context, full replacement, preserved tabs):
+
+\`\`\`json
+[
+  {
+    "file": "packages/search/src/trace/trace.ts",
+    "old": "\\tconst maxPerSource = options?.maxPerSource ?? 3;\\n\\tconst maxTotal = options?.maxTotal ?? 15;\\n\\tconst maxHops = options?.maxHops ?? 3;\\n\\tconst minScore = options?.minScore ?? 0.3;",
+    "new": "\\tconst maxPerSource = options?.maxPerSource ?? 5;\\n\\tconst maxTotal = options?.maxTotal ?? 25;\\n\\tconst maxHops = options?.maxHops ?? 4;\\n\\tconst minScore = options?.minScore ?? 0.25;"
+  }
+]
+\`\`\``;
 
 export function buildPatchUserPrompt(input: {
 	matrixName: string;
@@ -230,21 +248,72 @@ interface OpenAIChatCompletionResponse {
 }
 
 /**
- * Pull the unified diff out of the LLM's "## Patch" section. Tolerant
- * of formatting drift (extra prose around the fenced block, leading
- * whitespace, alternative fence labels). Returns null when no diff
- * found OR when the LLM emitted "NO_PATCH" intentionally.
+ * Parse a JSON-schema-constrained response (whole content is JSON).
+ * Used when WTFOC_LLM_NO_JSON_SCHEMA is unset (the default). Returns
+ * empty array when the LLM emits `edits: []`, null on parse failure.
  */
-export function parsePatchBlock(content: string): string | null {
-	const idx = content.indexOf("## Patch");
+export function parseSchemaResponse(content: string): readonly Edit[] | null {
+	try {
+		const parsed = JSON.parse(content) as { edits?: unknown };
+		if (!Array.isArray(parsed.edits)) return null;
+		const out: Edit[] = [];
+		for (const item of parsed.edits) {
+			if (
+				item &&
+				typeof item === "object" &&
+				typeof (item as { file?: unknown }).file === "string" &&
+				typeof (item as { old?: unknown }).old === "string" &&
+				typeof (item as { new?: unknown }).new === "string"
+			) {
+				const e = item as Edit;
+				out.push({ file: e.file, old: e.old, new: e.new });
+			}
+		}
+		return out;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Pull the search/replace edits out of the LLM's "## Edits" JSON
+ * block. Tolerant of formatting drift (extra prose around the fence,
+ * leading whitespace, optional language tag, alternative fence
+ * labels). Returns null when no parseable block found, empty array
+ * when the LLM intentionally emitted `[]`.
+ *
+ * Used as a fallback when WTFOC_LLM_NO_JSON_SCHEMA=1 (e.g. for an
+ * endpoint that doesn't support json_schema response_format).
+ */
+export function parseEditsBlock(content: string): readonly Edit[] | null {
+	const idx = content.indexOf("## Edits");
 	if (idx < 0) return null;
 	const after = content.slice(idx);
-	if (/NO_PATCH/i.test(after)) return null;
-	const fence = after.match(/```(?:diff|patch)?\s*\n([\s\S]*?)```/);
+	const fence = after.match(/```(?:json)?\s*\n([\s\S]*?)```/);
 	if (!fence || !fence[1]) return null;
 	const raw = fence[1].trim();
 	if (raw.length === 0) return null;
-	return raw;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		return null;
+	}
+	if (!Array.isArray(parsed)) return null;
+	const out: Edit[] = [];
+	for (const item of parsed) {
+		if (
+			item &&
+			typeof item === "object" &&
+			typeof (item as { file?: unknown }).file === "string" &&
+			typeof (item as { old?: unknown }).old === "string" &&
+			typeof (item as { new?: unknown }).new === "string"
+		) {
+			const e = item as Edit;
+			out.push({ file: e.file, old: e.old, new: e.new });
+		}
+	}
+	return out;
 }
 
 export async function analyzeAndProposePatch(
@@ -306,17 +375,56 @@ export async function analyzeAndProposePatch(
 	try {
 		const headers: Record<string, string> = { "Content-Type": "application/json" };
 		if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+		// Schema-constrained output. Forces valid JSON with byte-exact
+		// tabs/whitespace and prevents mid-string truncation (truncated
+		// JSON would be invalid; vllm's xgrammar/Outlines guards this).
+		// AEON-class Qwen3.6 reliably honors json_schema. Disable via
+		// WTFOC_LLM_NO_JSON_SCHEMA=1 if your endpoint rejects it.
+		const useJsonSchema = process.env.WTFOC_LLM_NO_JSON_SCHEMA !== "1";
+		const responseFormat = useJsonSchema
+			? {
+					response_format: {
+						type: "json_schema",
+						json_schema: {
+							name: "patch_proposal",
+							schema: {
+								type: "object",
+								required: ["analysis", "edits"],
+								properties: {
+									analysis: { type: "string" },
+									edits: {
+										type: "array",
+										items: {
+											type: "object",
+											required: ["file", "old", "new"],
+											properties: {
+												file: { type: "string" },
+												old: { type: "string" },
+												new: { type: "string" },
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+			: {};
 		const res = await fetchFn(`${url.replace(/\/+$/, "")}/chat/completions`, {
 			method: "POST",
 			headers,
 			body: JSON.stringify({
 				model,
 				temperature: 0.2,
-				max_tokens: 3000,
+				max_tokens: Number.parseInt(process.env.WTFOC_LLM_PATCH_MAX_TOKENS ?? "", 10) || 8000,
 				messages: [
 					{ role: "system", content: SYSTEM_PROMPT },
 					{ role: "user", content: userPrompt },
 				],
+				...(process.env.WTFOC_LLM_DISABLE_THINKING === "1"
+					? { chat_template_kwargs: { enable_thinking: false } }
+					: {}),
+				...responseFormat,
 			}),
 			signal: ac.signal,
 		});
@@ -331,8 +439,8 @@ export async function analyzeAndProposePatch(
 		}
 		const body = (await res.json()) as OpenAIChatCompletionResponse;
 		const content = body.choices?.[0]?.message?.content ?? "";
-		const diff = parsePatchBlock(content);
-		if (!diff) {
+		const edits = useJsonSchema ? parseSchemaResponse(content) : parseEditsBlock(content);
+		if (!edits || edits.length === 0) {
 			return {
 				ok: true,
 				analysisMarkdown: content,
@@ -344,7 +452,7 @@ export async function analyzeAndProposePatch(
 		const candidate: PatchProposal = {
 			kind: "patch",
 			baseSha,
-			unifiedDiff: diff,
+			edits,
 			rationale: extractAnalysis(content),
 		};
 		const validation = validatePatch(candidate, {
@@ -385,7 +493,7 @@ function extractAnalysis(content: string): string {
 	const idx = content.indexOf("## Analysis");
 	if (idx < 0) return content.slice(0, 400);
 	const start = idx + "## Analysis".length;
-	const patchIdx = content.indexOf("## Patch", start);
-	const end = patchIdx > 0 ? patchIdx : content.length;
+	const editsIdx = content.indexOf("## Edits", start);
+	const end = editsIdx > 0 ? editsIdx : content.length;
 	return content.slice(start, end).trim().slice(0, 600);
 }

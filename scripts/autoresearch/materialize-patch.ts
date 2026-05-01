@@ -16,13 +16,13 @@
  *     the worktree's branch.
  */
 
-import { execFileSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { safeExecFileSync as execFileSync } from "../lib/safe-exec.js";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { decide, type DecisionVerdict } from "./decision.js";
 import type { Matrix } from "./matrix.js";
-import { type PatchProposal, validatePatch } from "./patch-proposal.js";
+import { type Edit, type PatchProposal, validatePatch } from "./patch-proposal.js";
 import { readRunLog, runLogPaths } from "../lib/run-log.js";
 import type { ExtendedDogfoodReport } from "../lib/run-config.js";
 
@@ -76,6 +76,80 @@ function deriveProposalId(proposal: PatchProposal): string {
 	return `patch_${sha}_${Date.now()}`;
 }
 
+/**
+ * Apply a single search/replace edit to `before`. Tries exact match
+ * first; on miss, falls back to indent-tolerant match: strip leading
+ * whitespace from each line of `old` AND of consecutive line windows
+ * in `before`, then re-indent `new` by the original window's indent
+ * before substitution. Local LLMs (AEON-class Qwen3.6) frequently
+ * emit `old` without the file's leading whitespace, so this is the
+ * difference between "patch path works" and "patch path always
+ * rejects".
+ *
+ * Throws when the edit is ambiguous (multiple matches) or absent.
+ */
+export function applyEdit(
+	before: string,
+	oldStr: string,
+	newStr: string,
+	index: number,
+	file: string,
+): string {
+	// Exact match — preferred.
+	const exact = before.split(oldStr).length - 1;
+	if (exact === 1) return before.replace(oldStr, newStr);
+	if (exact > 1) {
+		throw new Error(`edit[${index}] file=${file}: old string appears ${exact} times (not unique)`);
+	}
+
+	// Indent-tolerant match. Strip per-line leading whitespace from both
+	// `old` and the file, then locate `old` as a contiguous block.
+	const oldLines = oldStr.split("\n").map((l) => l.replace(/^\s+/, ""));
+	const fileLines = before.split("\n");
+	const stripped = fileLines.map((l) => l.replace(/^\s+/, ""));
+	const matches: number[] = [];
+	for (let i = 0; i + oldLines.length <= stripped.length; i++) {
+		let ok = true;
+		for (let j = 0; j < oldLines.length; j++) {
+			if (stripped[i + j] !== oldLines[j]) {
+				ok = false;
+				break;
+			}
+		}
+		if (ok) matches.push(i);
+	}
+	if (matches.length === 0) {
+		throw new Error(`edit[${index}] file=${file}: old string not found (even ignoring indentation)`);
+	}
+	if (matches.length > 1) {
+		throw new Error(
+			`edit[${index}] file=${file}: old string appears ${matches.length} times after indent-strip (not unique)`,
+		);
+	}
+	const start = matches[0]!;
+	// Capture the original indentation of the first matched line so we
+	// can re-apply it to every line of `new`.
+	const firstMatched = fileLines[start] ?? "";
+	const indent = firstMatched.match(/^\s*/)?.[0] ?? "";
+	const newLines = newStr.split("\n").map((l, idx) => {
+		// LLM-emitted `new` may also have stripped leading whitespace.
+		// Re-indent every non-empty line to match the original window.
+		// Lines that already start with whitespace are kept as-is to
+		// preserve the LLM's intentional relative indentation.
+		if (l.length === 0) return l;
+		if (idx === 0) {
+			return l.startsWith(indent) ? l : indent + l.replace(/^\s+/, "");
+		}
+		return l.startsWith(indent) ? l : indent + l.replace(/^\s+/, "");
+	});
+	const stitched = [
+		...fileLines.slice(0, start),
+		...newLines,
+		...fileLines.slice(start + oldLines.length),
+	];
+	return stitched.join("\n");
+}
+
 export async function materializePatchProposal(
 	input: MaterializePatchInputs,
 ): Promise<MaterializePatchResult> {
@@ -111,8 +185,8 @@ export async function materializePatchProposal(
 
 	const branch = `autoresearch/${proposalId}`;
 	const worktreePath = join(proposalDir, "worktree");
-	const diffPath = join(proposalDir, "patch.diff");
-	writeFileSync(diffPath, input.proposal.unifiedDiff);
+	const editsPath = join(proposalDir, "edits.json");
+	writeFileSync(editsPath, JSON.stringify(input.proposal.edits, null, 2));
 
 	const notes: string[] = [];
 	notes.push(
@@ -126,6 +200,12 @@ export async function materializePatchProposal(
 			["worktree", "add", "--detach", worktreePath, input.proposal.baseSha],
 			{ cwd: repoRoot },
 		);
+		// Install workspace deps in the worktree. Git worktrees share .git
+		// but NOT node_modules, and pnpm scatters per-workspace node_modules
+		// (e.g. packages/ingest/node_modules) so a top-level symlink isn't
+		// sufficient. `--prefer-offline` keeps this fast when the pnpm
+		// store is warm — typically <5s on a hot run.
+		spawnFn("pnpm", ["install", "--frozen-lockfile", "--prefer-offline"], { cwd: worktreePath });
 	} catch (err) {
 		return {
 			proposalId,
@@ -140,9 +220,15 @@ export async function materializePatchProposal(
 	}
 
 	try {
-		// Dry-run check first.
-		spawnFn("git", ["apply", "--check", diffPath], { cwd: worktreePath });
-		spawnFn("git", ["apply", diffPath], { cwd: worktreePath });
+		// Apply each edit. Try exact-match first; fall back to indent-
+		// tolerant match because local LLMs often drop or rewrite
+		// leading whitespace when emitting `old` strings.
+		for (const [i, e] of input.proposal.edits.entries()) {
+			const filePath = join(worktreePath, e.file);
+			const before = readFileSync(filePath, "utf-8");
+			const after = applyEdit(before, e.old, e.new, i, e.file);
+			writeFileSync(filePath, after);
+		}
 		spawnFn("git", ["checkout", "-b", branch], { cwd: worktreePath });
 		spawnFn("git", ["add", "-A"], { cwd: worktreePath });
 		spawnFn(
@@ -173,7 +259,7 @@ export async function materializePatchProposal(
 			decisions: [],
 			aggregateAccept: false,
 			notes,
-			skippedReason: `git apply / commit failed: ${err instanceof Error ? err.message : String(err)}`,
+			skippedReason: `edit apply / commit failed: ${err instanceof Error ? err.message : String(err)}`,
 		};
 	}
 
