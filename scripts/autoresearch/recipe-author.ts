@@ -405,12 +405,12 @@ async function main(): Promise<void> {
 	};
 
 	if (args.dryRun) {
-		console.log(`[recipe-author] --dry-run; would write ${candidates.length} candidates`);
+		console.log(`[recipe-author] --dry-run; would write ${kept.length} candidates`);
 		return;
 	}
 	await writeFile(args.output, JSON.stringify(out, null, 2), "utf-8");
 	console.log(
-		`[recipe-author] wrote ${candidates.length} ${args.live ? "live-authored" : "stub"} candidates to ${args.output} across ${out.stratumDistribution.length} strata`,
+		`[recipe-author] wrote ${kept.length} ${args.live ? "live-authored" : "stub"} candidates to ${args.output} across ${out.stratumDistribution.length} strata`,
 	);
 	if (!args.live) {
 		console.log(
