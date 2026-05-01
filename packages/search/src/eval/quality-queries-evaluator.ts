@@ -11,9 +11,9 @@ import { classifyQueryPersona } from "../persona/classify-query.js";
 import { query } from "../query.js";
 import { trace } from "../trace/trace.js";
 import {
-	GOLD_STANDARD_QUERIES,
+	GOLD_STANDARD_QUERIES_LEGACY_VIEW as GOLD_STANDARD_QUERIES,
 	GOLD_STANDARD_QUERIES_VERSION,
-	type GoldStandardQuery,
+	type LegacyGoldQueryView as GoldStandardQuery,
 } from "./gold-standard-queries.js";
 import {
 	aggregateLineageMetrics,
