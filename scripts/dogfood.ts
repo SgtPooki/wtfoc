@@ -22,7 +22,8 @@ import {
 	evaluateQualityQueries,
 	evaluateSearch,
 	evaluateThemes,
-	GOLD_STANDARD_QUERIES,
+	// #344 step-1 transition: grader consumes legacy view of new fixture.
+	GOLD_STANDARD_QUERIES_LEGACY_VIEW as GOLD_STANDARD_QUERIES,
 	GOLD_STANDARD_QUERIES_VERSION,
 	InMemoryVectorIndex,
 	LlmReranker,

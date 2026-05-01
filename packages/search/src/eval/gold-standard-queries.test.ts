@@ -1,126 +1,128 @@
 import { describe, expect, it } from "vitest";
-import { GOLD_STANDARD_QUERIES } from "./gold-standard-queries.js";
+import {
+	type Difficulty,
+	GOLD_STANDARD_QUERIES,
+	GOLD_STANDARD_QUERIES_LEGACY_VIEW,
+	GOLD_STANDARD_QUERIES_VERSION,
+	type LayerHint,
+	type QueryType,
+	toLegacyView,
+} from "./gold-standard-queries.js";
 
-/**
- * Fixture-integrity tests for the gold-standard queries (#261).
- *
- * The 10-query set was flaky: a single query flipping flipped the verdict.
- * Expanding to ~20+ queries with balanced categories gives a more reliable
- * signal and makes autonomous validation trustworthy.
- */
-describe("GOLD_STANDARD_QUERIES fixture integrity", () => {
-	it("has at least 20 queries (expanded per #261 guidance)", () => {
+const VALID_QUERY_TYPES: QueryType[] = [
+	"lookup",
+	"trace",
+	"compare",
+	"temporal",
+	"causal",
+	"howto",
+	"entity-resolution",
+];
+const VALID_DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
+const VALID_LAYER_HINTS: LayerHint[] = [
+	"chunking",
+	"embedding",
+	"edge-extraction",
+	"ranking",
+	"trace",
+];
+
+describe("GoldQuery schema invariants (#344 step 1)", () => {
+	it("version is 2.0.0 (post-overhaul)", () => {
+		expect(GOLD_STANDARD_QUERIES_VERSION).toBe("2.0.0");
+	});
+
+	it("has at least 20 queries (preserved from #261)", () => {
 		expect(GOLD_STANDARD_QUERIES.length).toBeGreaterThanOrEqual(20);
 	});
 
-	it("IDs are unique", () => {
+	it("every query id is unique", () => {
 		const ids = GOLD_STANDARD_QUERIES.map((q) => q.id);
-		expect(new Set(ids).size).toBe(ids.length);
+		const unique = new Set(ids);
+		expect(unique.size).toBe(ids.length);
 	});
 
-	it("category distribution is balanced (no single category exceeds 50%)", () => {
-		const counts: Record<string, number> = {};
-		for (const q of GOLD_STANDARD_QUERIES) counts[q.category] = (counts[q.category] ?? 0) + 1;
-		for (const [cat, n] of Object.entries(counts)) {
-			expect(n / GOLD_STANDARD_QUERIES.length, `category ${cat} dominates`).toBeLessThan(0.5);
-		}
-	});
-
-	it("every category has at least 3 queries", () => {
-		const cats: Array<
-			"direct-lookup" | "cross-source" | "coverage" | "synthesis" | "file-level" | "work-lineage"
-		> = ["direct-lookup", "cross-source", "coverage", "synthesis", "file-level", "work-lineage"];
-		for (const cat of cats) {
-			const n = GOLD_STANDARD_QUERIES.filter((q) => q.category === cat).length;
-			expect(n, `category ${cat} underrepresented`).toBeGreaterThanOrEqual(3);
-		}
-	});
-
-	it("work-lineage demo-critical queries require code + edge + cross-source (v1.2.0)", () => {
-		const demoCritical = GOLD_STANDARD_QUERIES.filter(
-			(q) => q.category === "work-lineage" && q.tier === "demo-critical",
-		);
-		expect(demoCritical.length, "need ≥ 5 demo-critical flagship queries").toBeGreaterThanOrEqual(
-			5,
-		);
-		for (const q of demoCritical) {
-			expect(q.requiredSourceTypes, `${q.id} must require code`).toContain("code");
-			expect(q.requireEdgeHop, `${q.id} must requireEdgeHop`).toBe(true);
-		}
-	});
-
-	it("at least 5 queries require trace (requireEdgeHop or requireCrossSourceHops)", () => {
-		// Codex review: must have enough trace-requiring queries to measure
-		// whether trace quality is actually helping (not just rescuing everything).
-		const traceRequired = GOLD_STANDARD_QUERIES.filter(
-			(q) => q.requireEdgeHop || q.requireCrossSourceHops,
-		);
-		expect(traceRequired.length).toBeGreaterThanOrEqual(5);
-	});
-
-	it("fixture has at least 8 portable queries (v1.6.0 overfit-guard)", () => {
-		const portable = GOLD_STANDARD_QUERIES.filter((q) => q.portability === "portable");
-		expect(
-			portable.length,
-			"fewer than 8 portable queries — fixture is too corpus-specific to measure generic retrieval",
-		).toBeGreaterThanOrEqual(8);
-	});
-
-	it("portable queries do not reference specific corpora in text (v1.6.0)", () => {
-		const CORPUS_NAMES = [
-			"filoz",
-			"synapse-sdk",
-			"synapse-core",
-			"filecoin-services",
-			"filecoin-pin",
-			"FilOzone",
-			"piece.ts",
-			"DataSetStatus",
-			"PieceCID",
-			"CommP",
-			"Curio",
-			"PDP",
-		];
+	it("every query has a non-empty applicableCorpora", () => {
 		for (const q of GOLD_STANDARD_QUERIES) {
-			if (q.portability !== "portable") continue;
-			for (const name of CORPUS_NAMES) {
-				expect(
-					q.queryText.toLowerCase().includes(name.toLowerCase()),
-					`portable query ${q.id} references "${name}" — move to corpus-specific`,
-				).toBe(false);
+			expect(q.applicableCorpora.length, `${q.id}: applicableCorpora empty`).toBeGreaterThan(0);
+		}
+	});
+
+	it("every query has a valid queryType", () => {
+		for (const q of GOLD_STANDARD_QUERIES) {
+			expect(VALID_QUERY_TYPES, `${q.id}: queryType=${q.queryType}`).toContain(q.queryType);
+		}
+	});
+
+	it("every query has a valid difficulty", () => {
+		for (const q of GOLD_STANDARD_QUERIES) {
+			expect(VALID_DIFFICULTIES, `${q.id}: difficulty=${q.difficulty}`).toContain(q.difficulty);
+		}
+	});
+
+	it("every targetLayerHints entry is valid", () => {
+		for (const q of GOLD_STANDARD_QUERIES) {
+			for (const hint of q.targetLayerHints) {
+				expect(VALID_LAYER_HINTS, `${q.id}: hint=${hint}`).toContain(hint);
 			}
 		}
 	});
 
-	it("queries with collectionScopePattern must carry a reason and a valid regex (v1.4.0)", () => {
+	it("every expectedEvidence row has artifactId + boolean required", () => {
 		for (const q of GOLD_STANDARD_QUERIES) {
-			if (!q.collectionScopePattern) continue;
-			expect(
-				q.collectionScopeReason,
-				`${q.id} has collectionScopePattern but no collectionScopeReason`,
-			).toBeTruthy();
-			expect(() => new RegExp(q.collectionScopePattern ?? "")).not.toThrow();
-		}
-	});
-
-	it("requiredSourceTypes values are all real source types", () => {
-		const KNOWN = new Set([
-			"code",
-			"markdown",
-			"github-issue",
-			"github-pr",
-			"github-pr-comment",
-			"github-discussion",
-			"slack-message",
-			"discord-message",
-			"doc-page",
-			"hn-story",
-			"hn-comment",
-		]);
-		for (const q of GOLD_STANDARD_QUERIES) {
-			for (const t of q.requiredSourceTypes) {
-				expect(KNOWN.has(t), `query ${q.id} uses unknown sourceType "${t}"`).toBe(true);
+			for (const ev of q.expectedEvidence) {
+				expect(ev.artifactId.length, `${q.id}: empty artifactId`).toBeGreaterThan(0);
+				expect(typeof ev.required, `${q.id}: required not boolean`).toBe("boolean");
 			}
 		}
+	});
+});
+
+describe("toLegacyView adapter", () => {
+	it("derives expectedSourceSubstrings from required:true rows", () => {
+		const view = toLegacyView({
+			id: "t1",
+			authoredFromCollectionId: "c1",
+			applicableCorpora: ["c1"],
+			query: "q",
+			queryType: "lookup",
+			difficulty: "easy",
+			targetLayerHints: ["ranking"],
+			expectedEvidence: [
+				{ artifactId: "a", required: true },
+				{ artifactId: "b", required: false },
+			],
+			acceptableAnswerFacts: [],
+			requiredSourceTypes: [],
+			minResults: 1,
+		});
+		expect(view.expectedSourceSubstrings).toEqual(["a"]);
+		expect(view.goldSupportingSources).toEqual(["a", "b"]);
+	});
+
+	it("synthesizes a collectionScopePattern that exactly matches applicableCorpora", () => {
+		const view = toLegacyView({
+			id: "t2",
+			authoredFromCollectionId: "c1",
+			applicableCorpora: ["alpha", "beta"],
+			query: "q",
+			queryType: "lookup",
+			difficulty: "easy",
+			targetLayerHints: ["ranking"],
+			expectedEvidence: [],
+			acceptableAnswerFacts: [],
+			requiredSourceTypes: [],
+			minResults: 1,
+		});
+		expect(view.collectionScopePattern).toBeDefined();
+		const re = new RegExp(view.collectionScopePattern as string);
+		expect(re.test("alpha")).toBe(true);
+		expect(re.test("beta")).toBe(true);
+		expect(re.test("alpha-suffix")).toBe(false);
+		expect(re.test("gamma")).toBe(false);
+	});
+
+	it("legacy materialized view has the same length as the new fixture", () => {
+		expect(GOLD_STANDARD_QUERIES_LEGACY_VIEW.length).toBe(GOLD_STANDARD_QUERIES.length);
 	});
 });

@@ -1,202 +1,298 @@
 /**
- * Gold standard queries for dogfood evaluation.
- * Spans: direct lookup, cross-source tracing, coverage analysis, and synthesis.
+ * Gold-standard queries for dogfood evaluation.
  *
- * Primary target: `filoz-ecosystem-*` collections (FilOzone + filecoin-project
- * repos + docs.filecoin.io). Several queries are ecosystem-specific (PDP,
- * PieceCID/CommP, Filecoin Pay, Curio ↔ Synapse). These pass on wtfoc-self
- * collections only incidentally via generic substrings.
+ * Schema overhaul tracked in #344 step 1: every query is grounded against the
+ * corpora it is evaluated on (`applicableCorpora`) and carries explicit
+ * `expectedEvidence` artifact IDs that the catalog-applicability preflight
+ * verifies against the corpus catalog before any retrieval happens.
  *
- * Per-collection fixture splitting is tracked in the dogfood reliability epic
- * (#247).
+ * Authoring rules:
+ * - **`applicableCorpora`** is required and explicit. There is no "all" default.
+ *   The catalog-applicability preflight skips queries on corpora not listed
+ *   here and excludes them from aggregate scoring (per #344).
+ * - **`expectedEvidence[].artifactId`** is the exact stable `documentId` from
+ *   the corpus catalog (e.g. `"FilOzone/synapse-sdk/src/foo.ts"`). Suffix /
+ *   substring matching is a **migration-only** concern — the runtime grader
+ *   compares exact IDs against retrieved `Chunk.documentId` values.
  *
- * @see https://github.com/SgtPooki/wtfoc/issues/232
- * @see https://github.com/SgtPooki/wtfoc/issues/261
+ *   **Step-1 transitional caveat:** the mechanically-migrated fixture still
+ *   contains unresolved or too-ambiguous legacy substrings (e.g. `"/src/"`,
+ *   `"ingest"`) emitted verbatim as `artifactId`. The preflight surfaces
+ *   these as missing-required diagnostics; they are exactly what the
+ *   stratified-template recipe in step 3 regenerates. New queries authored
+ *   manually before step 3 should still ground to exact catalog IDs.
+ * - **`required: true` rows** are the canonical evidence set. The legacy
+ *   binary pass/fail used OR semantics across `expectedSourceSubstrings`, and
+ *   that is preserved here: a query passes if **at least one** `required:true`
+ *   artifact appears in the retrieved results.
+ * - **`required: false` rows** are supporting evidence used for recall@K only;
+ *   they do not gate pass/fail.
+ *
+ * @see https://github.com/SgtPooki/wtfoc/issues/344
+ * @see https://github.com/SgtPooki/wtfoc/issues/343
  */
 
 /**
- * Version of the gold-standard query fixture set (#261).
+ * Version of the gold-query fixture set.
+ *
+ * **2.0.0** — #344 step-1 schema overhaul. Mechanical migration from the
+ * legacy 1.9.0 fixture: `category` → `queryType`, `queryText` → `query`,
+ * `expectedSourceSubstrings` + `goldSupportingSources` → `expectedEvidence[]`,
+ * `collectionScopePattern` → `applicableCorpora`. Grader-rubric fields
+ * (`requiredSourceTypes`, `minResults`, `requireEdgeHop`,
+ * `requireCrossSourceHops`, `tier`, `paraphrases`, `portability`) are
+ * preserved unchanged. Step-3 will regenerate the corpus via stratified-
+ * template recipe and supersede mechanically-migrated entries.
  *
  * Bump policy:
- * - **major**: shape change to `GoldStandardQuery` interface
+ * - **major**: shape change to `GoldQuery` interface
  * - **minor**: add, remove, or re-categorize a query
- * - **patch**: copy edits to existing `queryText` / `expectedSourceSubstrings`
- *   that preserve intent (typo fixes, rewording without changing what's asked)
- *
- * Surfaced in the quality-queries stage metrics as `goldQueriesVersion` so
- * dogfood reports record which fixture revision scored what. Do not let two
- * separate changes coincide on the same version — a new change always gets
- * a fresh bump.
+ * - **patch**: copy edits to `query` text or paraphrases that preserve intent
  */
-export const GOLD_STANDARD_QUERIES_VERSION = "1.9.0";
+export const GOLD_STANDARD_QUERIES_VERSION = "2.0.0";
 
-export interface GoldStandardQuery {
-	/** Unique identifier for this query */
-	id: string;
-	/** The query text to search/trace */
-	queryText: string;
+/**
+ * One piece of evidence the query expects to see in retrieved results.
+ *
+ * `artifactId` is the exact `Chunk.documentId` from the corpus catalog. The
+ * migrator resolves legacy substrings against the catalog at codegen time and
+ * emits exact IDs here. The runtime grader does NOT do substring matching.
+ */
+export interface ExpectedEvidence {
+	/** Exact `Chunk.documentId` from the corpus catalog. */
+	artifactId: string;
+	/** Optional intra-document anchor (line span, heading slug, etc.). */
+	locator?: string;
 	/**
-	 * Query category:
-	 * - `direct-lookup` — ask about a specific thing; result should contain it
-	 * - `cross-source` — trace must span multiple source types
-	 * - `coverage` — positive-presence checks across the collection
-	 * - `synthesis` — open-ended; result quality matters more than exact match
-	 * - `file-level` — file-scoped questions that should surface file-summary
-	 *   chunks emitted by `HierarchicalCodeChunker` (#252). Uses the same
-	 *   pass/fail rubric as other categories — the separation exists so the
-	 *   dogfood report can measure file-summary retrieval independently.
-	 * - `work-lineage` — flagship cross-org demo category (US-015, added in
-	 *   v1.2.0). Asks questions where a good answer surfaces BOTH the
-	 *   implementation (code) AND the discussion/design trail (issues,
-	 *   PRs, PR comments, docs) linked via `closes` / `references` /
-	 *   `contains` / `imports` edges. The dogfood report tracks this
-	 *   category separately so flagship demo readiness is measurable
-	 *   without the ecosystem-specific queries drowning the signal.
+	 * `true` — part of the canonical evidence set. Query passes if **any** one
+	 * of the `required:true` rows is present in the retrieved results (OR).
+	 *
+	 * `false` — supporting evidence used for `recall@K` numerator. Does not
+	 * gate pass/fail.
 	 */
-	category:
-		| "direct-lookup"
-		| "cross-source"
-		| "coverage"
-		| "synthesis"
-		| "file-level"
-		| "work-lineage"
-		| "hard-negative";
-	/** Source types that MUST appear in query results OR trace hops for the query to pass */
+	required: boolean;
+}
+
+/**
+ * Allowed query types, replacing the legacy `category` enum.
+ *
+ * Mapping at migration:
+ * - `direct-lookup` → `lookup`
+ * - `cross-source` → `trace`
+ * - `coverage` → `lookup`
+ * - `synthesis` → `howto`
+ * - `file-level` → `lookup`
+ * - `work-lineage` → `trace`
+ * - `hard-negative` → `lookup` (carried by `migrationNotes`)
+ */
+export type QueryType =
+	| "lookup"
+	| "trace"
+	| "compare"
+	| "temporal"
+	| "causal"
+	| "howto"
+	| "entity-resolution";
+
+export type Difficulty = "easy" | "medium" | "hard";
+
+export type LayerHint = "chunking" | "embedding" | "edge-extraction" | "ranking" | "trace";
+
+export interface GoldQuery {
+	/** Unique identifier. */
+	id: string;
+	/**
+	 * Provenance: the collection this query was authored against. Distinct from
+	 * `applicableCorpora`, which lists where the query is **evaluated**. A
+	 * query authored against `wtfoc-self` may still be applicable to other
+	 * corpora that share the same artifacts.
+	 */
+	authoredFromCollectionId: string;
+	/**
+	 * Corpus IDs where this query is valid for evaluation. Required, explicit,
+	 * no "all" default. The catalog-applicability preflight verifies each
+	 * `expectedEvidence[required:true].artifactId` exists in each listed
+	 * corpus's catalog. Queries on corpora not listed here are `skipped` and
+	 * excluded from the aggregate.
+	 */
+	applicableCorpora: string[];
+	/** The query text passed to `query()` / `trace()`. */
+	query: string;
+	queryType: QueryType;
+	difficulty: Difficulty;
+	/** Hints which pipeline layers a failure on this query likely implicates. */
+	targetLayerHints: LayerHint[];
+	/** Evidence the query expects in retrieved results. See `ExpectedEvidence`. */
+	expectedEvidence: ExpectedEvidence[];
+	/**
+	 * Free-form factual claims a correct answer should support. Graded against
+	 * the synthesis output, not the retrieved evidence list.
+	 */
+	acceptableAnswerFacts: string[];
+
+	// Preserved grading-rubric fields (orthogonal to evidence/applicability).
+
+	/** Source types that MUST appear in query results OR trace hops to pass. */
 	requiredSourceTypes: string[];
-	/** Substrings that should appear in at least one result source */
-	expectedSourceSubstrings?: string[];
-	/** Minimum number of results expected */
+	/** Minimum number of results expected from `query()`. */
 	minResults: number;
-	/** If true, trace must find at least one edge hop (not just semantic) */
+	/** If `true`, trace must traverse ≥1 edge hop (not just semantic). */
 	requireEdgeHop?: boolean;
-	/** If true, trace should reach multiple source types */
+	/** If `true`, trace must reach >1 source type. */
 	requireCrossSourceHops?: boolean;
 	/**
-	 * Demo-readiness tier (added in v1.2.0).
-	 * - `demo-critical` — must pass for the June 7 flagship demo to be safe.
-	 *   Dogfood report flags a regression loud when any demo-critical query
-	 *   fails, even if overall pass rate is fine.
-	 * - `diagnostic` — probes a weaker path (lineage-only, edge-heavy,
-	 *   single-repo). Still counted in overall pass rate but a failure is
-	 *   informative rather than demo-blocking.
-	 * Unset defaults to `diagnostic` in the report.
+	 * Demo-readiness tier. `demo-critical` regressions trip per-corpus floors
+	 * loudly even when overall pass rate is fine.
 	 */
 	tier?: "demo-critical" | "diagnostic";
 	/**
-	 * Collection-scope filter. When set, the query only runs against
-	 * collections whose ID matches this regex; on other collections it is
-	 * marked `skipped` with `collectionScopeReason` and excluded from the
-	 * applicable denominator. Use for queries that probe artifacts native
-	 * to one corpus family (wtfoc-self internals, filoz-ecosystem
-	 * specifics) — better than silently failing them on corpora where
-	 * the answer cannot exist.
-	 */
-	collectionScopePattern?: string;
-	/** Required when `collectionScopePattern` is set — shows up in reports. */
-	collectionScopeReason?: string;
-	/**
-	 * Portability tag (added v1.6.0 after peer-review flagged that v12-
-	 * specific rephrases had converted a retrieval eval into a fixture
-	 * memorization test). Orthogonal to `tier` above:
+	 * Phrasing-portability label. Distinct from `applicableCorpora`:
+	 * - `portable` — query phrased abstractly; should work on any serious
+	 *   corpus of this content shape, no repo-specific names/paths/IDs.
+	 * - `corpus-specific` — query names concrete artifacts of one corpus.
 	 *
-	 * - `"portable"` — query is phrased abstractly and must work on ANY
-	 *   serious software corpus (code + docs + issues/PRs). No repo
-	 *   names, file paths, or issue IDs in the query text. Used to
-	 *   measure generic retrieval quality. Reported as `portablePassRate`.
-	 * - `"corpus-specific"` — query names concrete artifacts of one
-	 *   corpus family. Scored separately as `corpusSpecificPassRate` so a
-	 *   100% there cannot masquerade as general retrieval quality.
-	 * - Unset defaults to `"corpus-specific"` in the report — safer
-	 *   default than claiming portability the query hasn't earned.
+	 * Drives the `portablePassRate` vs `corpusSpecificPassRate` metric split.
+	 * Provisional through step 1; step 3 may redefine or drop.
 	 */
 	portability?: "portable" | "corpus-specific";
-	/**
-	 * Recall-proxy gold set (added v1.7.0). Substrings that any top-K
-	 * retrieval result MUST contain in its `source` for a query to be
-	 * considered fully recall-covered. The autoresearch loop computes
-	 * `recallAtK = matched / |goldSupportingSources|` per query — a
-	 * fractional score that lets us rank retrieval variants on cross-
-	 * source coverage independently of the binary pass/fail rubric.
-	 *
-	 * Phase 0d populates this only for the demo-critical tier. Wider
-	 * coverage is fixture-expansion work tracked under Phase 1 of #311.
-	 *
-	 * Unset → `recallAtK` is null for that query (fixture has no recall
-	 * baseline yet).
-	 */
-	goldSupportingSources?: string[];
-	/**
-	 * Paraphrase variants for invariance testing (Phase 1 of #311 — added
-	 * v1.8.0). Each entry is a rewording of `queryText` that preserves
-	 * intent + difficulty (not synonym-swapped trivia). When the
-	 * autoresearch loop's `WTFOC_CHECK_PARAPHRASES=1` flag is set, the
-	 * evaluator scores every paraphrase and reports per-query
-	 * `paraphraseInvariant` (canonical AND all paraphrases pass).
-	 *
-	 * A query is "brittle" if the canonical passes but any paraphrase
-	 * fails — exactly the memorization-not-retrieval failure mode
-	 * peer-review flagged at #311.
-	 *
-	 * Aim for ≥3 paraphrases per gold query.
-	 */
+	/** Paraphrase variants for invariance testing (#311). */
 	paraphrases?: string[];
+	/**
+	 * `true` when the query is a hard-negative: it should retrieve little or
+	 * nothing, testing that the retriever doesn't hallucinate evidence for an
+	 * out-of-scope question. Legacy `category: "hard-negative"` round-trips
+	 * through this flag because the new `queryType` enum doesn't carry the
+	 * hard-negative concept (it is orthogonal to query intent).
+	 */
+	isHardNegative?: boolean;
+
+	/**
+	 * Provisional. Free-form notes from the mechanical #344 step-1 migration —
+	 * lossy mappings, ambiguous catalog resolution, etc. Removed when step-3
+	 * regenerates the fixture via stratified-template recipe.
+	 */
+	migrationNotes?: string;
 }
 
-export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
-	// ── Direct lookup ─────────────────────────────────────────
+// === BEGIN MIGRATOR-MANAGED ARRAY ===
+
+// This block is regenerated by `scripts/autoresearch/migrate-gold-queries.ts`.
+// Do not hand-edit; rerun the migrator instead. The migrator preserves
+// everything outside these markers.
+export const GOLD_STANDARD_QUERIES: GoldQuery[] = [
 	{
 		id: "dl-1",
-		queryText: "How does the ingest pipeline process source files?",
-		category: "direct-lookup",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "How does the ingest pipeline process source files?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "/src/",
+				required: true,
+			},
+			{
+				artifactId: "ingest",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["ingest", "/src/"],
-		goldSupportingSources: ["ingest", "/src/"],
 		minResults: 2,
 		paraphrases: [
 			"What steps does the ingestion pipeline follow when handling input files?",
 			"Walk me through how source documents move through ingest processing.",
 			"How are source files read, transformed, and passed along during ingestion?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; too-ambiguous-required: "ingest" -> 76 matches (cap 20); kept verbatim, will fail preflight; too-ambiguous-required: "/src/" -> 484 matches (cap 20); kept verbatim, will fail preflight',
 	},
 	{
 		id: "dl-2",
-		queryText: "What is the manifest schema for collections?",
-		category: "direct-lookup",
+		authoredFromCollectionId: "wtfoc-dogfood-2026-04-v3",
+		applicableCorpora: ["wtfoc-dogfood-2026-04-v3"],
+		query: "What is the manifest schema for collections?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "./.release-please-manifest.json",
+				required: true,
+			},
+			{
+				artifactId: "./packages/common/src/interfaces/manifest-store.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/common/src/schemas/manifest.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/store/src/manifest/local.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/store/src/schema/manifest.ts",
+				required: true,
+			},
+			{
+				artifactId: ".ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["manifest", ".ts"],
-		goldSupportingSources: ["manifest", ".ts"],
 		minResults: 1,
 		paraphrases: [
 			"What structure does a collection manifest use?",
 			"Describe the schema that defines collection manifests.",
 			"Which fields and layout make up the collection manifest format?",
 		],
+		migrationNotes:
+			'ambiguous-required: "manifest" -> 5 matches; too-ambiguous-required: ".ts" -> 485 matches (cap 20); kept verbatim, will fail preflight',
 	},
 	{
 		id: "dl-3",
-		queryText: "How does edge extraction work?",
-		category: "direct-lookup",
+		authoredFromCollectionId: "wtfoc-dogfood-2026-04-v3",
+		applicableCorpora: ["wtfoc-dogfood-2026-04-v3"],
+		query: "How does edge extraction work?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "/src/",
+				required: true,
+			},
+			{
+				artifactId: "edge",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
-		expectedSourceSubstrings: ["edge", "/src/"],
-		goldSupportingSources: ["edge", "/src/"],
 		minResults: 1,
-		// Probes wtfoc's own edge-extractor source tree. Not applicable on
-		// third-party corpora (filoz-ecosystem, etc.) where the concept
-		// simply doesn't exist.
-		collectionScopePattern: "^(wtfoc-|default$)",
-		collectionScopeReason: "probes wtfoc-self edge-extractor internals",
 		paraphrases: [
 			"Within this codebase, how are edges derived from ingested content?",
 			"What is the local edge-extraction process used by the system?",
 			"How does this project extract semantic links from source material?",
 		],
+		migrationNotes:
+			'scope-reason: probes wtfoc-self edge-extractor internals; unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; too-ambiguous-required: "edge" -> 34 matches (cap 20); kept verbatim, will fail preflight; too-ambiguous-required: "/src/" -> 194 matches (cap 20); kept verbatim, will fail preflight',
 	},
-
-	// ── Cross-source tracing ──────────────────────────────────
 	{
 		id: "cs-1",
-		queryText: "What issues discuss edge resolution and how is it implemented?",
-		category: "cross-source",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "What issues discuss edge resolution and how is it implemented?",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["github-issue"],
 		minResults: 2,
 		requireEdgeHop: true,
@@ -206,11 +302,19 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Find the issue threads about resolving edges and the code that landed for them.",
 			"What issue discussions cover edge resolution, and what implementation files correspond to them?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "cs-2",
-		queryText: "What PRs changed the search or trace functionality and what code did they touch?",
-		category: "cross-source",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "What PRs changed the search or trace functionality and what code did they touch?",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["github-pr"],
 		minResults: 2,
 		requireEdgeHop: true,
@@ -220,17 +324,20 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Find PRs that touched search or tracing and list the source files they updated.",
 			"What code was affected by pull requests that changed search or trace features?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "cs-3",
-		// Rephrased to name the concrete artifact shape ("TypeScript source
-		// files" + "synapse-sdk documentation"). The abstract "documentation
-		// + code" wording anchored entirely in markdown; this variant puts
-		// code files into the top-K alongside docs, which is what the
-		// cross-source requirement needs.
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Which TypeScript source files implement storage operations described in synapse-sdk documentation?",
-		category: "cross-source",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["markdown"],
 		minResults: 2,
 		requireCrossSourceHops: true,
@@ -239,13 +346,19 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Map the storage operations in synapse-sdk documentation to the implementing TypeScript source files.",
 			"What TS source files implement the storage behaviors documented in synapse-sdk?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
-
-	// ── Coverage (positive presence queries, not absence) ─────
 	{
 		id: "cov-1",
-		queryText: "What source types are represented in this collection?",
-		category: "coverage",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "What source types are represented in this collection?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
 		minResults: 3,
 		portability: "portable",
@@ -254,19 +367,20 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Which source categories show up across the collected material?",
 			"What source types does this corpus contain?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "cov-2",
-		// Coverage for github-issue chunks on v12. Generic "which issues
-		// discuss X" wording never surfaces issue chunks because CHANGELOG
-		// markdown and slack dominate the embedding for that phrasing.
-		// Using a concrete issue-resident topic (dataSetDeleted event
-		// emission) + the repo name pulls the actual issue chunks into
-		// top-K — still tests retrievability of the github-issue source
-		// type without teaching the harness to pass.
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"FilOzone filecoin-services issue: emit event from dataSetDeleted method and signed user auth",
-		category: "coverage",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["github-issue"],
 		minResults: 1,
 		requireEdgeHop: true,
@@ -275,29 +389,86 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Which issue in filecoin-services covers a dataSetDeleted event plus signed user authentication?",
 			"Locate the Filecoin services issue discussing dataSetDeleted event emission together with signed auth for users.",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
-
 	{
 		id: "dl-4",
-		queryText: "How are chunks stored and indexed for vector search?",
-		category: "direct-lookup",
+		authoredFromCollectionId: "wtfoc-dogfood-2026-04-v3",
+		applicableCorpora: ["wtfoc-dogfood-2026-04-v3"],
+		query: "How are chunks stored and indexed for vector search?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "./packages/common/src/interfaces/chunk-scorer.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/common/src/interfaces/chunker.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/common/src/schemas/chunk.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/ingest/src/adapters/repo/chunking.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/ingest/src/chunker.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/ingest/src/chunkers/ast-heuristic-chunker.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/ingest/src/chunkers/code-chunker.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/ingest/src/chunkers/index.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/ingest/src/chunkers/markdown-chunker.ts",
+				required: true,
+			},
+			{
+				artifactId: "index",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["chunk", "index"],
-		goldSupportingSources: ["chunk", "index"],
 		minResults: 1,
 		paraphrases: [
 			"How are chunks persisted and made searchable in the vector index?",
 			"What is the storage and indexing flow for chunks used in vector search?",
 			"How does the system save chunks and register them for embedding-based retrieval?",
 		],
+		migrationNotes:
+			'ambiguous-required: "chunk" -> 9 matches; too-ambiguous-required: "index" -> 56 matches (cap 20); kept verbatim, will fail preflight',
 	},
 	{
 		id: "dl-5",
-		queryText: "What are the configuration options for the project?",
-		category: "direct-lookup",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "What are the configuration options for the project?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "config",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["markdown", "code"],
-		expectedSourceSubstrings: ["config"],
-		goldSupportingSources: ["config"],
 		minResults: 1,
 		portability: "portable",
 		paraphrases: [
@@ -305,13 +476,19 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Which options can be configured in this system?",
 			"What are the available project-level configuration knobs?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; too-ambiguous-required: "config" -> 39 matches (cap 20); kept verbatim, will fail preflight',
 	},
-
-	// ── Cross-source tracing ──────────────────────────────────
 	{
 		id: "cs-4",
-		queryText: "What PRs fix bugs in the chunking code and which files did they touch?",
-		category: "cross-source",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "What PRs fix bugs in the chunking code and which files did they touch?",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["github-pr"],
 		minResults: 2,
 		requireEdgeHop: true,
@@ -321,16 +498,19 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Find pull requests for chunking-related bug fixes and the files they touched.",
 			"What bug-fix PRs addressed chunking problems, and where in the code were the changes made?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "cs-5",
-		// In the FilOzone / filecoin-project repos dependency updates land
-		// through PRs and PR comments, not standalone GitHub issues. Query
-		// top-K consistently surfaces PR + pr-comment + CHANGELOG markdown
-		// and never issue — because that's how these repos actually work.
-		// Required types narrowed to the structurally-supported set.
-		queryText: "Which PR discussions cover dependency updates and their resolution?",
-		category: "cross-source",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "Which PR discussions cover dependency updates and their resolution?",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["github-pr", "github-pr-comment"],
 		minResults: 1,
 		requireEdgeHop: true,
@@ -340,13 +520,19 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Find pull request discussions covering dependency bumps and their final resolution.",
 			"What PR threads discuss dependency updates, and what outcome did they reach?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
-
-	// ── Coverage ──────────────────────────────────────────────
 	{
 		id: "cov-3",
-		queryText: "Where is test coverage documented or configured?",
-		category: "coverage",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "Where is test coverage documented or configured?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["markdown", "code"],
 		minResults: 1,
 		portability: "portable",
@@ -355,11 +541,19 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Which files or docs describe how test coverage is configured?",
 			"Where can I find coverage configuration or coverage documentation?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "cov-4",
-		queryText: "What licenses apply to the code in this collection?",
-		category: "coverage",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "What licenses apply to the code in this collection?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["markdown"],
 		minResults: 1,
 		portability: "portable",
@@ -368,31 +562,40 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Which licenses apply across the repository contents?",
 			"What licensing terms are attached to the code gathered here?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
-
-	// ── Synthesis ─────────────────────────────────────────────
 	{
 		id: "syn-1",
-		queryText: "How does data flow from ingestion through embedding to search results?",
-		category: "synthesis",
+		authoredFromCollectionId: "wtfoc-dogfood-2026-04-v3",
+		applicableCorpora: ["wtfoc-dogfood-2026-04-v3"],
+		query: "How does data flow from ingestion through embedding to search results?",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
 		minResults: 3,
 		requireCrossSourceHops: true,
-		// Phrasing is wtfoc-self ("ingestion → embedding → search" is our
-		// own pipeline). Skip on third-party corpora where the concepts
-		// don't map.
-		collectionScopePattern: "^(wtfoc-|default$)",
-		collectionScopeReason: "probes wtfoc-self ingest→embed→search pipeline",
 		paraphrases: [
 			"In this system, how does content move from ingest through embeddings into search output?",
 			"Explain the end-to-end pipeline here from ingestion to embedding generation to returned search results.",
 			"What is the local flow from source ingestion, through indexing, to final search responses?",
 		],
+		migrationNotes:
+			"scope-reason: probes wtfoc-self ingest→embed→search pipeline; unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "syn-2",
-		queryText: "What is the overall architecture of this system?",
-		category: "synthesis",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "What is the overall architecture of this system?",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["markdown"],
 		minResults: 3,
 		portability: "portable",
@@ -401,11 +604,19 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Describe the overall design of the platform.",
 			"How is the system organized at an architectural level?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "syn-3",
-		queryText: "How do edges connect content across different sources?",
-		category: "synthesis",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "How do edges connect content across different sources?",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
 		minResults: 2,
 		requireEdgeHop: true,
@@ -415,11 +626,19 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Explain how content from different sources gets connected through edges.",
 			"In what way do edges bridge documents or artifacts from separate sources?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "syn-4",
-		queryText: "What is the release process and how are versions tagged?",
-		category: "synthesis",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "What is the release process and how are versions tagged?",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["markdown", "github-pr"],
 		minResults: 2,
 		portability: "portable",
@@ -428,11 +647,19 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"What workflow is used for publishing releases and applying version tags?",
 			"Describe the release procedure, including how versions are tagged.",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "syn-5",
-		queryText: "How does the system handle errors and failures?",
-		category: "synthesis",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "How does the system handle errors and failures?",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
 		minResults: 2,
 		portability: "portable",
@@ -441,13 +668,19 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"What mechanisms are used to handle failures in the system?",
 			"How are errors surfaced and managed across the system?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
-
-	// ── Coverage extras ───────────────────────────────────────
 	{
 		id: "cov-5",
-		queryText: "What CI or GitHub Actions workflows exist?",
-		category: "coverage",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "What CI or GitHub Actions workflows exist?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
 		minResults: 1,
 		portability: "portable",
@@ -456,16 +689,25 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Which automation workflows run in CI for this repository?",
 			"What GitHub Actions or other CI workflows exist in the project?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
-
-	// ── Direct lookup extras ──────────────────────────────────
 	{
 		id: "dl-6",
-		queryText: "What does the README describe?",
-		category: "direct-lookup",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "What does the README describe?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "README",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["markdown"],
-		expectedSourceSubstrings: ["README"],
-		goldSupportingSources: ["README"],
 		minResults: 1,
 		portability: "portable",
 		paraphrases: [
@@ -473,57 +715,132 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Summarize the topics explained in the main README.",
 			"What does the README say about the project and its usage?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; too-ambiguous-required: "README" -> 25 matches (cap 20); kept verbatim, will fail preflight',
 	},
 	{
 		id: "dl-7",
-		queryText: "What are the main dependencies used?",
-		category: "direct-lookup",
+		authoredFromCollectionId: "wtfoc-dogfood-2026-04-v3",
+		applicableCorpora: ["wtfoc-dogfood-2026-04-v3"],
+		query: "What are the main dependencies used?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "./apps/web/package.json",
+				required: true,
+			},
+			{
+				artifactId: "./docker/sharp-stub/package.json",
+				required: true,
+			},
+			{
+				artifactId: "./docker/tree-sitter-parser/package.json",
+				required: true,
+			},
+			{
+				artifactId: "./package.json",
+				required: true,
+			},
+			{
+				artifactId: "./packages/cli/package.json",
+				required: true,
+			},
+			{
+				artifactId: "./packages/common/package.json",
+				required: true,
+			},
+			{
+				artifactId: "./packages/config/package.json",
+				required: true,
+			},
+			{
+				artifactId: "./packages/ingest/package.json",
+				required: true,
+			},
+			{
+				artifactId: "./packages/mcp-server/package.json",
+				required: true,
+			},
+			{
+				artifactId: "./packages/search/package.json",
+				required: true,
+			},
+			{
+				artifactId: "./packages/store/package.json",
+				required: true,
+			},
+			{
+				artifactId: "./packages/wtfoc/package.json",
+				required: true,
+			},
+			{
+				artifactId: "dependencies",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
-		expectedSourceSubstrings: ["package.json", "dependencies"],
-		goldSupportingSources: ["package.json", "dependencies"],
 		minResults: 1,
-		// package.json manifest files are commonly ignored by ingest (they
-		// don't carry semantic content that helps retrieval). On corpora
-		// without manifest files the substring gate cannot hit. Scope this
-		// to collections that explicitly ingest package manifests — none
-		// today. Revisit if we start including manifest-level files.
-		collectionScopePattern: "^(wtfoc-|default$)",
-		collectionScopeReason: "requires ingested package.json manifest files",
 		paraphrases: [
 			"In the FilOz/Synapse materials, what are the primary dependencies in use?",
 			"What main libraries and packages does the FilOz-scoped codebase rely on?",
 			"Which core dependencies appear across the FilOz-related repository content?",
 		],
+		migrationNotes:
+			'scope-reason: requires ingested package.json manifest files; ambiguous-required: "package.json" -> 12 matches; unresolved-required: "dependencies"',
 	},
-
-	// ── Ecosystem-specific queries (filoz-ecosystem primary target) ──
-	// These exercise cross-repo tracing, decision/rationale retrieval from
-	// PR comments, temporal/recency intent, synonym coverage, and docs/code
-	// consistency — gaps the original 22-query set didn't cover.
-
 	{
 		id: "dl-8",
-		queryText: "What recent pull requests changed PDP, proof set, or proof verification behavior?",
-		category: "direct-lookup",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "What recent pull requests changed PDP, proof set, or proof verification behavior?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "PDP",
+				required: true,
+			},
+			{
+				artifactId: "proof",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["github-pr"],
-		expectedSourceSubstrings: ["PDP", "proof"],
-		goldSupportingSources: ["PDP", "proof"],
 		minResults: 2,
 		paraphrases: [
 			"What recent PRs changed PDP, proof sets, or proof verification logic?",
 			"Find the latest pull requests that altered PDP or proof verification behavior.",
 			"Which recent PRs touched proof-set handling or PDP-related verification?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; too-ambiguous-required: "PDP" -> 25 matches (cap 20); kept verbatim, will fail preflight; unresolved-required: "proof"',
 	},
-
 	{
 		id: "cs-6",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"How does synapse-sdk integrate with filecoin-pin or delegated storage services when publishing data?",
-		category: "cross-source",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "filecoin-pin",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["github-pr", "github-pr-comment"],
-		expectedSourceSubstrings: ["synapse-sdk", "filecoin-pin"],
-		goldSupportingSources: ["synapse-sdk", "filecoin-pin"],
 		minResults: 2,
 		requireCrossSourceHops: true,
 		paraphrases: [
@@ -531,15 +848,26 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"What is the integration path between synapse-sdk and filecoin-pin or delegated storage when publishing content?",
 			"Explain how publishing data from synapse-sdk hooks into filecoin-pin or delegated storage providers.",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; too-ambiguous-required: "synapse-sdk" -> 366 matches (cap 20); kept verbatim, will fail preflight; unresolved-required: "filecoin-pin"',
 	},
 	{
 		id: "cs-7",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"How is a storage provider or proof service configured in Synapse docs compared with the TypeScript implementation?",
-		category: "cross-source",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["markdown", "code"],
-		expectedSourceSubstrings: ["synapse-sdk"],
-		goldSupportingSources: ["synapse-sdk"],
 		minResults: 2,
 		requireCrossSourceHops: true,
 		paraphrases: [
@@ -547,19 +875,77 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Compare the provider or proof-service setup in Synapse documentation with the TypeScript implementation.",
 			"Where do the Synapse docs and TS implementation differ or align on configuring storage or proof services?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; too-ambiguous-required: "synapse-sdk" -> 366 matches (cap 20); kept verbatim, will fail preflight',
 	},
-
 	{
 		id: "cov-6",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"What problems or bugs were reported around payment flows in the Filecoin services ecosystem repos?",
-		category: "coverage",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "filecoin-services",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/apps/synapse-playground/src/components/payments-account.tsx",
+				required: true,
+			},
+			{
+				artifactId:
+					"synapse-sdk/apps/synapse-playground/src/components/payments/deposit-and-approve.tsx",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/docs/src/content/docs/cookbooks/payments-and-storage.mdx",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/docs/src/content/docs/developer-guides/payments/_meta.yml",
+				required: true,
+			},
+			{
+				artifactId:
+					"synapse-sdk/docs/src/content/docs/developer-guides/payments/payment-operations.mdx",
+				required: true,
+			},
+			{
+				artifactId:
+					"synapse-sdk/docs/src/content/docs/developer-guides/payments/rails-settlement.mdx",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/mocks/jsonrpc/payments.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/pay/payments.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-react/src/payments/index.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-react/src/payments/use-deposit-and-approve.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/payments/index.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/payments/service.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["github-issue", "github-pr-comment"],
-		// Corpus uses "filecoin-services" for the payment contracts project
-		// and "synapse-sdk" / "synapse-core" for client-side payments code.
-		// The original "filecoin-pay" substring never resolved on v12.
-		expectedSourceSubstrings: ["filecoin-services", "payments"],
-		goldSupportingSources: ["filecoin-services", "payments"],
 		minResults: 2,
 		requireCrossSourceHops: true,
 		paraphrases: [
@@ -567,18 +953,34 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Find reported problems around payments across the Filecoin services repos.",
 			"Which issues describe broken or problematic payment flows in the Filecoin services ecosystem?",
 		],
+		migrationNotes:
+			'unresolved-required: "filecoin-services"; ambiguous-required: "payments" -> 12 matches',
 	},
 	{
 		id: "cov-7",
-		// Rephrased to name the file + function-level concern explicitly.
-		// Prior phrasing anchored in glossary markdown alone; the new
-		// wording pulls piece.ts into top-K where trace can cross to it.
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"How does piece.ts implement PieceCID and CommP validation across synapse-core and filecoin-pin?",
-		category: "coverage",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "CommP",
+				required: true,
+			},
+			{
+				artifactId: "piece",
+				required: true,
+			},
+			{
+				artifactId: "PieceCID",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
-		expectedSourceSubstrings: ["PieceCID", "CommP", "piece"],
-		goldSupportingSources: ["PieceCID", "CommP", "piece"],
 		minResults: 2,
 		requireCrossSourceHops: true,
 		paraphrases: [
@@ -586,21 +988,30 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Explain the PieceCID and CommP checks implemented in piece.ts across synapse-core and filecoin-pin.",
 			"What validation logic for PieceCID and CommP appears in piece.ts, and how does it relate to synapse-core and filecoin-pin?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "PieceCID"; unresolved-required: "CommP"; too-ambiguous-required: "piece" -> 31 matches (cap 20); kept verbatim, will fail preflight',
 	},
-
 	{
 		id: "syn-6",
-		// "Discussed/argued in PRs" wording triggers the discussion persona
-		// (boosts pr-comment + issue). Prior phrasing anchored entirely in
-		// docs / AGENTS.md and never surfaced PR-side debate. The PDP
-		// contract design argument is genuinely in pr-comments; the query
-		// just needs to land there.
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"What PR discussions and comments argued about the proof set or PDP service contract design in filecoin-services?",
-		category: "synthesis",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "filecoin-services",
+				required: true,
+			},
+			{
+				artifactId: "PDP",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["github-pr-comment", "github-pr"],
-		expectedSourceSubstrings: ["filecoin-services", "PDP"],
-		goldSupportingSources: ["filecoin-services", "PDP"],
 		minResults: 2,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -609,15 +1020,30 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Find discussion threads in PRs that argued about proof-set or PDP contract design for filecoin-services.",
 			"Which pull request discussions challenged or defended the proof set or PDP service contract design?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "filecoin-services"; too-ambiguous-required: "PDP" -> 25 matches (cap 20); kept verbatim, will fail preflight',
 	},
 	{
 		id: "syn-7",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"How do Curio sector or deal-storage concepts connect to the Synapse client storage workflow?",
-		category: "synthesis",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "curio",
+				required: true,
+			},
+			{
+				artifactId: "synapse",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["github-pr", "github-pr-comment", "code"],
-		expectedSourceSubstrings: ["curio", "synapse"],
-		goldSupportingSources: ["curio", "synapse"],
 		minResults: 2,
 		requireCrossSourceHops: true,
 		paraphrases: [
@@ -625,618 +1051,1024 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Connect Curio sector or deal-storage concepts to how the Synapse client handles storage.",
 			"What is the relationship between Curio storage concepts and the Synapse client’s storage flow?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "curio"; too-ambiguous-required: "synapse" -> 366 matches (cap 20); kept verbatim, will fail preflight',
 	},
-
 	{
 		id: "cov-8",
-		queryText: "What official Filecoin documentation pages describe storage providers?",
-		category: "coverage",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "What official Filecoin documentation pages describe storage providers?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "docs.filecoin.io",
+				required: true,
+			},
+			{
+				artifactId: "storage",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["doc-page"],
-		expectedSourceSubstrings: ["docs.filecoin.io", "storage"],
-		goldSupportingSources: ["docs.filecoin.io", "storage"],
 		minResults: 1,
 		paraphrases: [
 			"Which official Filecoin docs pages explain storage providers?",
 			"Find the canonical Filecoin documentation about storage providers.",
 			"What official Filecoin documentation covers storage-provider concepts?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "docs.filecoin.io"; too-ambiguous-required: "storage" -> 60 matches (cap 20); kept verbatim, will fail preflight',
 	},
-
-	// ── File-level (#252 / #286) ──────────────────────────────
-	// These intentionally ask file-scoped questions so the file-level
-	// summary chunks emitted by HierarchicalCodeChunker have a reason to
-	// rank. Package-level wording ("what does X do") is avoided — docs/
-	// README usually answer those better. See #252 for rationale.
-
 	{
 		id: "fl-1",
-		queryText: "Which file defines the Synapse class or createSynapse factory?",
-		category: "file-level",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query: "Which file defines the Synapse class or createSynapse factory?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/synapse.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["synapse.ts", "synapse-sdk"],
-		goldSupportingSources: ["synapse.ts", "synapse-sdk"],
 		minResults: 1,
 		paraphrases: [
 			"Where is the Synapse class or the createSynapse factory defined?",
 			"Which file contains the Synapse constructor or factory implementation?",
 			"What source file declares Synapse or createSynapse?",
 		],
+		migrationNotes:
+			'too-ambiguous-required: "synapse-sdk" -> 366 matches (cap 20); kept verbatim, will fail preflight',
 	},
 	{
 		id: "fl-2",
-		queryText: "Which file defines PieceCID and the piece identity logic?",
-		category: "file-level",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "Which file defines PieceCID and the piece identity logic?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "piece",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["piece"],
-		goldSupportingSources: ["piece"],
 		minResults: 1,
 		paraphrases: [
 			"Which file contains PieceCID and the logic for piece identity?",
 			"Where is PieceCID defined along with the piece identity implementation?",
 			"What source file owns PieceCID and related piece-identification logic?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; too-ambiguous-required: "piece" -> 31 matches (cap 20); kept verbatim, will fail preflight',
 	},
 	{
 		id: "fl-3",
-		queryText: "Which files import PieceCID in the synapse client?",
-		category: "file-level",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "Which files import PieceCID in the synapse client?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "piece",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["piece"],
-		goldSupportingSources: ["piece"],
 		minResults: 2,
 		paraphrases: [
 			"Which source files in the Synapse client import PieceCID?",
 			"Find all Synapse client files that reference PieceCID via import.",
 			"Where is PieceCID imported throughout the client code?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; too-ambiguous-required: "piece" -> 31 matches (cap 20); kept verbatim, will fail preflight',
 	},
 	{
 		id: "fl-4",
-		queryText: "Which file defines StorageContext in the synapse-sdk?",
-		category: "file-level",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query: "Which file defines StorageContext in the synapse-sdk?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "storage",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/storage/context.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["context.ts", "storage"],
-		goldSupportingSources: ["context.ts", "storage"],
 		minResults: 1,
 		paraphrases: [
 			"What file defines StorageContext in synapse-sdk?",
 			"Where is the StorageContext type or interface declared in synapse-sdk?",
 			"Which source file contains the StorageContext definition?",
 		],
+		migrationNotes:
+			'too-ambiguous-required: "storage" -> 60 matches (cap 20); kept verbatim, will fail preflight',
 	},
-
-	// ── Work-lineage (flagship, #264 / US-015, added v1.2.0) ──
-	// These queries are hand-picked from verified artifacts in
-	// `filoz-ecosystem-2026-04-v11`. Each demo-critical query surfaces BOTH
-	// the implementation code and the discussion trail (issue/PR/PR comment)
-	// linked via edges, proving trace reconstructs cross-org work across
-	// FilOzone + filecoin-project repos. Diagnostic queries probe
-	// lineage-only paths (edge-heavy but code doesn't surface semantically)
-	// so we can tell the difference between "retrieval is weak" and "this is
-	// fundamentally a coordination question without a single code answer".
-
 	{
 		id: "wl-1",
-		queryText: "Where does PieceCID validation happen and what concerns were raised about it?",
-		category: "work-lineage",
-		tier: "demo-critical",
-		requiredSourceTypes: ["code", "github-pr-comment", "markdown"],
-		expectedSourceSubstrings: ["piece.ts", "pieceCid"],
-		// Hand-curated v1.8.1 (#311 peer-review item (c)): replace
-		// the substring-mirror with the actual canonical sources where
-		// PieceCID validation lives. Phase 0d's mirror was a calibrated
-		// proxy; this is the real ground truth, sourced via direct
-		// inspection of the v12 corpus chunks (ranked by content-term
-		// frequency on PieceCID/validate). recall@K now measures whether
-		// retrieval surfaces the canonical implementation, not whether
-		// it surfaces a chunk that happens to mention "piece.ts".
-		goldSupportingSources: [
-			"synapse-sdk/packages/synapse-core/src/piece/piece.ts",
-			"synapse-sdk/packages/synapse-sdk/src/storage/context.ts",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query: "Where does PieceCID validation happen and what concerns were raised about it?",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "pieceCid",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/errors/piece.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/piece/piece.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/sp/find-piece.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-react/src/warm-storage/use-delete-piece.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/storage/context.ts",
+				required: false,
+			},
 		],
+		acceptableAnswerFacts: [],
+		requiredSourceTypes: ["code", "github-pr-comment", "markdown"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
+		tier: "demo-critical",
 		paraphrases: [
 			"In the FilOz scope, where is PieceCID validated, and what concerns were discussed about that validation?",
 			"What code performs PieceCID validation, and what objections or risks were raised about it in FilOz materials?",
 			"Locate PieceCID validation and the related concerns discussed around it within the FilOz corpus.",
 		],
+		migrationNotes: 'ambiguous-required: "piece.ts" -> 4 matches; unresolved-required: "pieceCid"',
 	},
 	{
 		id: "wl-2",
-		queryText: "DataSetStatus enum values and transitions in filecoin services code",
-		category: "work-lineage",
-		tier: "demo-critical",
-		// v12 corpus has github-pr-comment + github-issue chunks for
-		// filecoin-services but the DataSetStatus anchor does not traverse to
-		// either via the current edge graph at default trace depth (max-hops=3,
-		// max-total=15). The actual reach with default params is markdown +
-		// code + github-pr — still a strong three-source cross-org evidence
-		// story (code ↔ PR ↔ docs). Requiring all 5 (or 4) types made this
-		// query depend on incidental graph topology + non-default trace flags.
-		// Peer-review (codex) signed off on relaxing to the structurally-
-		// supported set.
-		requiredSourceTypes: ["code", "github-pr", "markdown"],
-		expectedSourceSubstrings: ["DataSetStatus", "filecoin-services"],
-		// Hand-curated v1.8.1 (#311 peer-review item (c)): the literal
-		// "DataSetStatus" symbol exists in only two ABI files in the v12
-		// corpus, both inside filecoin-services service_contracts.
-		// Pinning gold to those exact files breaks the substring-mirror
-		// circularity (where "filecoin-services" matched 1200+ chunks).
-		goldSupportingSources: [
-			"filecoin-services/service_contracts/abi/FilecoinWarmStorageServiceStateLibrary.abi.json",
-			"filecoin-services/service_contracts/abi/FilecoinWarmStorageServiceStateView.abi.json",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "DataSetStatus enum values and transitions in filecoin services code",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "DataSetStatus",
+				required: true,
+			},
+			{
+				artifactId: "filecoin-services",
+				required: true,
+			},
+			{
+				artifactId:
+					"filecoin-services/service_contracts/abi/FilecoinWarmStorageServiceStateLibrary.abi.json",
+				required: false,
+			},
+			{
+				artifactId:
+					"filecoin-services/service_contracts/abi/FilecoinWarmStorageServiceStateView.abi.json",
+				required: false,
+			},
 		],
+		acceptableAnswerFacts: [],
+		requiredSourceTypes: ["code", "github-pr", "markdown"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
+		tier: "demo-critical",
 		paraphrases: [
 			"What are the DataSetStatus enum values in filecoin-services, and how do status changes happen?",
 			"List the DataSetStatus enum members and the transitions between them in filecoin-services.",
 			"How is DataSetStatus modeled in filecoin-services, including its possible values and state progression?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "DataSetStatus"; unresolved-required: "filecoin-services"; unresolved-supporting: "filecoin-services/service_contracts/abi/FilecoinWarmStorageServiceStateLibrary.abi.json"; unresolved-supporting: "filecoin-services/service_contracts/abi/FilecoinWarmStorageServiceStateView.abi.json"',
 	},
 	{
 		id: "wl-3",
-		queryText: "synapse-sdk payments deposit implementation typescript",
-		category: "work-lineage",
-		tier: "demo-critical",
-		// v12 trace from the original "synapse-core payments deposit function
-		// and its documentation" wording anchored entirely in markdown and
-		// stayed there — no code hops. The corpus genuinely has deposit code
-		// (synapse-sdk/packages/synapse-core/src/pay/deposit.ts) but docs and
-		// code live in different semantic clusters with no cross-cluster edge
-		// on this topic. Rather than relying on magic phrasing that bridges
-		// today and rots tomorrow (codex peer-review called this out),
-		// narrow to the code side and drop requireCrossSourceHops. The demo
-		// story still holds: this query proves we find the implementation
-		// plus its lineage via edges within the code graph.
-		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["payments", "synapse-core"],
-		// Hand-curated v1.8.1 (#311 peer-review item (c)): the actual
-		// deposit implementation lives in synapse-core/src/pay/deposit.ts
-		// (the canonical entry point) and the broader payments service
-		// lives in synapse-sdk/src/payments/service.ts. Mirrored gold
-		// would have matched any chunk containing "payments" — far too
-		// loose for ranking variants on retrieval quality.
-		goldSupportingSources: [
-			"synapse-sdk/packages/synapse-core/src/pay/deposit.ts",
-			"synapse-sdk/packages/synapse-sdk/src/payments/service.ts",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query: "synapse-sdk payments deposit implementation typescript",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-core",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/apps/synapse-playground/src/components/payments-account.tsx",
+				required: true,
+			},
+			{
+				artifactId:
+					"synapse-sdk/apps/synapse-playground/src/components/payments/deposit-and-approve.tsx",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/docs/src/content/docs/cookbooks/payments-and-storage.mdx",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/docs/src/content/docs/developer-guides/payments/_meta.yml",
+				required: true,
+			},
+			{
+				artifactId:
+					"synapse-sdk/docs/src/content/docs/developer-guides/payments/payment-operations.mdx",
+				required: true,
+			},
+			{
+				artifactId:
+					"synapse-sdk/docs/src/content/docs/developer-guides/payments/rails-settlement.mdx",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/mocks/jsonrpc/payments.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/pay/deposit.ts",
+				required: false,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/pay/payments.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-react/src/payments/index.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-react/src/payments/use-deposit-and-approve.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/payments/index.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/payments/service.ts",
+				required: true,
+			},
 		],
+		acceptableAnswerFacts: [],
+		requiredSourceTypes: ["code"],
 		minResults: 3,
 		requireEdgeHop: true,
+		tier: "demo-critical",
 		paraphrases: [
 			"Where is the deposit implementation for payments in synapse-sdk written in TypeScript?",
 			"Find the TypeScript code that implements deposits in the synapse-sdk payments flow.",
 			"Which synapse-sdk source handles payment deposits?",
 		],
+		migrationNotes:
+			'ambiguous-required: "payments" -> 12 matches; too-ambiguous-required: "synapse-core" -> 164 matches (cap 20); kept verbatim, will fail preflight',
 	},
 	{
 		id: "wl-4",
-		queryText: "piece.ts validation logic across synapse-core and filecoin-pin, with PR discussion",
-		category: "work-lineage",
-		tier: "demo-critical",
-		requiredSourceTypes: ["code", "github-pr", "github-pr-comment"],
-		// Query top-N surfaces filecoin-pin source files + CHANGELOG and
-		// synapse-sdk#... PR URLs. Pin on repo names that appear there.
-		expectedSourceSubstrings: ["filecoin-pin", "synapse-sdk"],
-		// Hand-curated v1.8.1 (#311 peer-review item (c)): cross-repo
-		// validation lives in synapse-core's piece.ts (canonical) AND
-		// filecoin-pin's IPNI advertisement validator. Mirrored gold
-		// would have matched any chunk under filecoin-pin/* OR
-		// synapse-sdk/* — almost the whole corpus.
-		goldSupportingSources: [
-			"synapse-sdk/packages/synapse-core/src/piece/piece.ts",
-			"filecoin-pin/src/core/utils/validate-ipni-advertisement.ts",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query: "piece.ts validation logic across synapse-core and filecoin-pin, with PR discussion",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "filecoin-pin",
+				required: true,
+			},
+			{
+				artifactId: "filecoin-pin/src/core/utils/validate-ipni-advertisement.ts",
+				required: false,
+			},
+			{
+				artifactId: "synapse-sdk",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/piece/piece.ts",
+				required: false,
+			},
 		],
+		acceptableAnswerFacts: [],
+		requiredSourceTypes: ["code", "github-pr", "github-pr-comment"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
+		tier: "demo-critical",
 		paraphrases: [
 			"Within the FilOz materials, show the piece.ts validation logic across synapse-core and filecoin-pin, along with the PR discussion about it.",
 			"How does piece.ts validation work across synapse-core and filecoin-pin, and what did the related PR discussion say?",
 			"Find both the cross-repo piece.ts validation code and the PR conversation surrounding it in the FilOz scope.",
 		],
+		migrationNotes:
+			'unresolved-required: "filecoin-pin"; too-ambiguous-required: "synapse-sdk" -> 366 matches (cap 20); kept verbatim, will fail preflight; unresolved-supporting: "filecoin-pin/src/core/utils/validate-ipni-advertisement.ts"',
 	},
 	{
 		id: "wl-5",
-		queryText: "Payments module deposit function implementation in filecoin-pin with docs context",
-		category: "work-lineage",
-		tier: "demo-critical",
-		requiredSourceTypes: ["code", "markdown"],
-		expectedSourceSubstrings: ["payments", "deposit"],
-		// Hand-curated v1.8.1 (#311 peer-review item (c)): payments
-		// implementation in filecoin-pin lives across these two files
-		// (top content-frequency rank for `deposit` + `payment` +
-		// `filecoin-pin`). Mirrored gold "payments" + "deposit" would
-		// have matched any chunk anywhere mentioning either word.
-		goldSupportingSources: [
-			"filecoin-pin/src/core/payments/index.ts",
-			"filecoin-pin/src/core/payments/funding.ts",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query: "Payments module deposit function implementation in filecoin-pin with docs context",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "filecoin-pin/src/core/payments/funding.ts",
+				required: false,
+			},
+			{
+				artifactId: "filecoin-pin/src/core/payments/index.ts",
+				required: false,
+			},
+			{
+				artifactId: "synapse-sdk/apps/synapse-playground/src/components/payments-account.tsx",
+				required: true,
+			},
+			{
+				artifactId:
+					"synapse-sdk/apps/synapse-playground/src/components/payments/deposit-and-approve.tsx",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/docs/src/content/docs/cookbooks/payments-and-storage.mdx",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/docs/src/content/docs/developer-guides/payments/_meta.yml",
+				required: true,
+			},
+			{
+				artifactId:
+					"synapse-sdk/docs/src/content/docs/developer-guides/payments/payment-operations.mdx",
+				required: true,
+			},
+			{
+				artifactId:
+					"synapse-sdk/docs/src/content/docs/developer-guides/payments/rails-settlement.mdx",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/examples/cli/src/commands/deposit.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/mocks/jsonrpc/payments.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/pay/deposit-with-permit.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/pay/deposit.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/pay/payments.ts",
+				required: true,
+			},
+			{
+				artifactId:
+					"synapse-sdk/packages/synapse-core/src/warm-storage/calculate-deposit-needed.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-react/src/payments/index.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-react/src/payments/use-deposit-and-approve.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/payments/index.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/payments/service.ts",
+				required: true,
+			},
 		],
+		acceptableAnswerFacts: [],
+		requiredSourceTypes: ["code", "markdown"],
 		minResults: 3,
 		requireEdgeHop: true,
+		tier: "demo-critical",
 		paraphrases: [
 			"Where is the Payments module deposit function implemented in filecoin-pin, and what docs explain it?",
 			"Find the filecoin-pin deposit function in the Payments module together with any documentation context.",
 			"Show the filecoin-pin Payments deposit implementation and the docs that describe that behavior.",
 		],
+		migrationNotes:
+			'ambiguous-required: "payments" -> 12 matches; ambiguous-required: "deposit" -> 6 matches; unresolved-supporting: "filecoin-pin/src/core/payments/index.ts"; unresolved-supporting: "filecoin-pin/src/core/payments/funding.ts"',
 	},
-
-	// Diagnostic — lineage-only, no expectation of code surfacing
 	{
 		id: "wl-6",
-		queryText: "How did curio integrate with synapse-sdk PDP layer via issues and PRs?",
-		category: "work-lineage",
-		tier: "diagnostic",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "How did curio integrate with synapse-sdk PDP layer via issues and PRs?",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["github-issue", "github-pr"],
-		// Top-N surfaces synapse-sdk URLs (PR #344 etc). "curio" does not
-		// appear in those URL paths; use the repo name that does.
-		expectedSourceSubstrings: ["synapse-sdk"],
-		goldSupportingSources: ["synapse-sdk"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
+		tier: "diagnostic",
 		paraphrases: [
 			"How was Curio connected to the synapse-sdk PDP layer through issues and pull requests?",
 			"Trace Curio’s integration with the synapse-sdk PDP layer using the relevant issues and PRs.",
 			"Which issues and PRs document Curio integration into the Synapse PDP layer?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; too-ambiguous-required: "synapse-sdk" -> 366 matches (cap 20); kept verbatim, will fail preflight',
 	},
 	{
 		id: "wl-7",
-		queryText: "Piece CID v1 to v2 migration discussion across curio and filecoin services PRs",
-		category: "work-lineage",
-		tier: "diagnostic",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "Piece CID v1 to v2 migration discussion across curio and filecoin services PRs",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "curio",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["github-pr", "github-pr-comment"],
-		// Top-N is curio-dominated (curio#656, #1048, …). Match the repo
-		// name that actually shows up.
-		expectedSourceSubstrings: ["curio"],
-		goldSupportingSources: ["curio"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
+		tier: "diagnostic",
 		paraphrases: [
 			"What discussions covered migrating Piece CID from v1 to v2 across Curio and filecoin-services PRs?",
 			"Find PR conversations about the Piece CID v1-to-v2 migration in Curio and filecoin-services.",
 			"How was the Piece CID v1 versus v2 migration debated across Curio and filecoin-services?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "curio"',
 	},
 	{
 		id: "wl-8",
-		queryText:
-			"Storage costs and billing concepts documented across synapse-sdk and filecoin-services",
-		category: "work-lineage",
-		tier: "diagnostic",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "Storage costs and billing concepts documented across synapse-sdk and filecoin-services",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "filecoin-pin",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["markdown"],
-		// Top-N is README/CHANGELOG/docs paths from both repos. Match repo
-		// names rather than the semantic words "storage" / "cost".
-		expectedSourceSubstrings: ["synapse-sdk", "filecoin-pin"],
-		goldSupportingSources: ["synapse-sdk", "filecoin-pin"],
 		minResults: 2,
+		tier: "diagnostic",
 		paraphrases: [
 			"What storage cost and billing concepts are documented across synapse-sdk and filecoin-services?",
 			"Find documentation about pricing, billing, or storage costs in synapse-sdk and filecoin-services.",
 			"Which concepts related to storage charges and billing appear across the FilOz Synapse and filecoin-services docs?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; too-ambiguous-required: "synapse-sdk" -> 366 matches (cap 20); kept verbatim, will fail preflight; unresolved-required: "filecoin-pin"',
 	},
-
-	// ── Portable cross-source queries (v1.6.0) ────────────────
-	// Added after peer-review (gemini + codex) flagged that prior
-	// work-lineage / cross-source queries had become v12-artifact-specific
-	// and stopped measuring generic retrieval quality. These are phrased
-	// abstractly: no repo names, no file paths, no issue IDs. They must
-	// work on any serious software corpus (code + docs + issues/PRs).
-	// Scored separately as `portablePassRate`.
-
 	{
 		id: "port-1",
-		// Core wtfoc claim, abstractly: can trace find bug → fix evidence
-		// across issue + PR + code in any corpus? No corpus-specific
-		// substrings; substring gate matches on common artifact shapes.
-		queryText: "Find a bug report, the pull request that closed it, and the code that changed.",
-		category: "work-lineage",
-		portability: "portable",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "Find a bug report, the pull request that closed it, and the code that changed.",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["github-issue", "github-pr", "code"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
+		portability: "portable",
 		paraphrases: [
 			"Locate an issue for a bug, the PR that fixed it, and the exact code changes involved.",
 			"Find a bug report, then trace it to the closing pull request and modified source files.",
 			"Can you connect a reported bug to the fixing PR and the implementation diff?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "port-2",
-		// Cross-source discussion → code. Abstracted from wl-4 which names
-		// piece.ts + filecoin-pin. Here the question is the capability,
-		// not a specific artifact.
-		queryText: "Trace a recent pull request discussion to the source files it modified.",
-		category: "cross-source",
-		portability: "portable",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "Trace a recent pull request discussion to the source files it modified.",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["github-pr", "github-pr-comment", "code"],
 		minResults: 2,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
+		portability: "portable",
 		paraphrases: [
 			"Follow a recent pull request discussion through to the files it changed.",
 			"Take a recent PR thread and map the conversation to the source files modified by that PR.",
 			"Trace one of the latest PR discussions back to the code it actually touched.",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "port-3",
-		// Docs ↔ code alignment check. Portable version of cs-3.
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Find documentation sections that describe behavior and the source code that implements them.",
-		category: "cross-source",
-		portability: "portable",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["markdown", "code"],
 		minResults: 2,
 		requireCrossSourceHops: true,
+		portability: "portable",
 		paraphrases: [
 			"Find docs that describe a behavior and then identify the source code that implements that behavior.",
 			"Map documentation statements about behavior to the implementation files behind them.",
 			"Which documentation sections explain behavior that can be matched directly to code?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
-
-	// ── Synthesis (#311 Phase 1d expansion) ───────────────────
 	{
-		// Should produce claims about specific retry algorithms, backoff constants, and discrepancies between code behavior and README/architecture specs.
 		id: "syn-8",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Explain the system's global retry and backoff strategy for external service dependencies, and identify any documented architectural requirements that the current implementation fails to meet.",
-		category: "synthesis",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
 		minResults: 3,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
-		// Should produce claims regarding the chosen auth protocol (JWT, mTLS, etc.) and specific security vulnerabilities discussed by reviewers.
 		id: "syn-9",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"How is cross-service authentication handled, and what were the primary security concerns or alternative protocols debated in PR reviews during the initial implementation?",
-		category: "synthesis",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr-comment"],
 		minResults: 3,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
-		// Should identify the logging library/wrapper used and link specific exclusion patterns to historical data leak issues.
 		id: "syn-10",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Describe the standard for structured logging and PII scrubbing across the codebase, and summarize the historical incidents mentioned in issues that led to these specific logging rules.",
-		category: "synthesis",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-issue"],
 		minResults: 4,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
-		// Should produce claims about the validation logic sequence and specific UX pain points or feature requests sourced from Slack.
 		id: "syn-11",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"What is the end-to-end PieceCID and CommP validation flow, and what improvements to the error reporting UX were suggested in Slack messages to help node operators?",
-		category: "synthesis",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "slack-message"],
 		minResults: 3,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
-		// Should produce claims about valid state transitions and specific race conditions or logic errors flagged by PR reviewers.
 		id: "syn-12",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Analyze the DataSetStatus state machine: what are the terminal states, and what edge cases were identified in PR reviews that could cause a dataset to become 'stuck'?",
-		category: "synthesis",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr"],
 		minResults: 3,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
-		// Should produce claims about database setup/teardown logic and specific environmental factors causing test non-determinism.
 		id: "syn-13",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"How does the project maintain data isolation and consistency during integration tests, and what challenges with flaky test environments have been reported in recent issues?",
-		category: "synthesis",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-issue"],
 		minResults: 3,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
-		// Should produce claims about confirmation depth thresholds and operational workarounds proposed for network instability.
 		id: "syn-14",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Explain the Filecoin Pay deposit lifecycle and how the implementation addresses chain re-orgs or high-latency periods as discussed in community Slack threads.",
-		category: "synthesis",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "slack-message"],
 		minResults: 3,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
-		// Should produce claims about current secret storage (e.g. Vault, K8s secrets) and the specific limitations of the old system documented in PRs.
 		id: "syn-15",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"What is the strategy for secret management and environment configuration, and what was the technical rationale for migrating away from the previous configuration approach?",
-		category: "synthesis",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr-comment", "markdown"],
 		minResults: 4,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
-		// Should produce claims about the PDP protocol steps and specific resource contention issues (CPU/IO) noted during testing.
 		id: "syn-16",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"How do Curio and the Synapse PDP integration coordinate for proof generation, and what performance bottlenecks were identified during the initial bench-marking discussed in issues?",
-		category: "synthesis",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-issue", "github-pr-comment"],
 		minResults: 4,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
-		// Should produce claims about locking primitives used (Redis/Etcd vs. sync.Mutex) and link them to specific historical bug reports.
 		id: "syn-17",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Examine the concurrency and locking models used across the repository; where are distributed locks employed versus local mutexes, and what deadlock scenarios have been historically reported?",
-		category: "synthesis",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-issue"],
 		minResults: 3,
 		requireCrossSourceHops: true,
 		portability: "portable",
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
-
-	// ── Hard negatives (#311 Phase 1c) ───────────────────────
-	// These queries should NOT have a clean answer in the corpus.
-	// A retrieval variant that surfaces strong-looking false positives
-	// for these is worse, not better. minResults: 0 = vacuous pass on
-	// the existing rubric — Phase 1+ tightens this with negative-
-	// scoring (top-K score floor + cross-source dispersion check).
 	{
-		// Implies a GraphQL tenant API and DataLoader-style batching that this corpus does not describe, tempting lexical hits on unrelated API or fetch code.
 		id: "hn-1",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Where is the GraphQL schema for the public tenant API defined, and how are N+1 queries batched in the resolver layer?",
-		category: "hard-negative",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: [],
 		minResults: 0,
 		portability: "portable",
+		isHardNegative: true,
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
-		// Uses realistic SSO language with no matching auth stack, probing whether retrieval fabricates security-adjacent snippets from issues or comments.
 		id: "hn-2",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"How does the auth middleware refresh OAuth2 bearer tokens when the upstream IdP session expires?",
-		category: "hard-negative",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: [],
 		minResults: 0,
 		portability: "portable",
+		isHardNegative: true,
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
-		// Observability plus ML-shaped wording should not map to storage or payment code, catching spurious matches on metrics or latency mentions.
 		id: "hn-3",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"What Grafana dashboard JSON shows p95 embedding latency for the retrieval reranker service?",
-		category: "hard-negative",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: [],
 		minResults: 0,
 		portability: "portable",
+		isHardNegative: true,
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
-		// Mobile and signing jargon is absent from the flagship corpus, testing resistance to generic CI or container chatter.
 		id: "hn-4",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Which Dockerfile stage cross-compiles the iOS client frameworks to arm64 and signs them with the enterprise distribution certificate?",
-		category: "hard-negative",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: [],
 		minResults: 0,
 		portability: "portable",
+		isHardNegative: true,
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
-		// ML training and object-storage layout are out of scope, so hits on S3-like storage APIs should stay off-topic or empty.
 		id: "hn-5",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Where do we shard the fine-tuned LoRA adapter checkpoints across S3 prefixes for A/B evaluation?",
-		category: "hard-negative",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: [],
 		minResults: 0,
 		portability: "portable",
+		isHardNegative: true,
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
-		// Kubernetes operator and HPA semantics are unrelated to Filecoin storage flows, guarding against vague infra keyword overlap.
 		id: "hn-6",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"How does the Kubernetes operator reconcile HPA custom metrics from the Prometheus adapter when the metrics API is throttled?",
-		category: "hard-negative",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: [],
 		minResults: 0,
 		portability: "portable",
+		isHardNegative: true,
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
-		// Near-real DevOps-on-Slack phrasing may co-occur with Slack dumps but should not yield a coherent rollback-and-Argo story.
 		id: "hn-7",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"In the Slack incident bot, which slash command rolls back a canary deployment and posts the Argo CD diff to the war room channel?",
-		category: "hard-negative",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: [],
 		minResults: 1,
 		portability: "portable",
+		isHardNegative: true,
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
-		// Mingles Filecoin Pay with Stripe and ACH, a plausible billing question whose premise is false for this corpus.
 		id: "hn-8",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"How does Filecoin Pay route failed ACH debits through Stripe Radar risk scores before retrying the on-chain deposit?",
-		category: "hard-negative",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: [],
 		minResults: 2,
 		portability: "corpus-specific",
+		isHardNegative: true,
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
-		// Stacks real ecosystem nouns into a validation story that does not hold, baiting conflation of PieceCID, CommD, Curio, and PDP.
 		id: "hn-9",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Where does Curio reject PieceCID values that fail CommD alignment checks during PDP proof aggregation?",
-		category: "hard-negative",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: [],
 		minResults: 0,
 		portability: "corpus-specific",
+		isHardNegative: true,
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
-		// Invents a browser WebSocket feed for DataSetStatus, a tempting blend of SDK and state-machine terms with no such surface.
 		id: "hn-10",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Which synapse-sdk WebSocket channel pushes live DataSetStatus transitions to browser clients without polling?",
-		category: "hard-negative",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: [],
 		minResults: 0,
 		portability: "corpus-specific",
+		isHardNegative: true,
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
-		// Pins OIDC and RBAC onto filecoin-pin despite no such auth model, risking retrieval of unrelated key or config strings.
 		id: "hn-11",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"How does filecoin-pin enforce per-tenant OIDC group claims when minting scoped API keys for pin jobs?",
-		category: "hard-negative",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: [],
 		minResults: 0,
 		portability: "corpus-specific",
+		isHardNegative: true,
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
-		// Near-duplicate of real PieceCID discussions but swaps in libp2p peer-id routing, a cross-domain confusion that must not stitch a fake helper.
 		id: "hn-12",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Show the helper that converts a PieceCID to a CIDv1 libp2p peer id for gossipsub routing in the storage node.",
-		category: "hard-negative",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: [],
 		minResults: 0,
 		portability: "corpus-specific",
+		isHardNegative: true,
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
-
-	// ── #311 Phase 1+ expansion (peer-review item (a)) ──────
-	// 90 additional base queries authored via parallel subagent
-	// passes (codex/cursor/gemini) over the v12 corpus. Brings
-	// total from 67 → 157 base queries — above the ≥150 floor
-	// the spec calls for in independent prompt count.
-	//
-	// codex pass — direct-lookup + cross-source on synapse-sdk +
-	// filecoin-services repos:
 	{
 		id: "dl-9",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"Which file implements the multi-provider upload facade that orchestrates store, pull, and commit?",
-		category: "direct-lookup",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/storage/manager.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["storage/manager.ts"],
 		minResults: 1,
 		portability: "portable",
 		paraphrases: [
@@ -1244,13 +2076,30 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where is the multi-provider upload facade implemented that sequences storing, pulling, and committing?",
 			"Which source file is responsible for orchestrating store/pull/commit through a unified multi-provider upload layer?",
 		],
+		migrationNotes:
+			'portability-mismatch: portability="portable" but applicableCorpora=[filoz-ecosystem-2026-04-v12] (single corpus)',
 	},
 	{
 		id: "dl-10",
-		queryText: "Which helper computes runway, buffer, and total deposit required before an upload?",
-		category: "direct-lookup",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query: "Which helper computes runway, buffer, and total deposit required before an upload?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId:
+					"synapse-sdk/packages/synapse-core/src/warm-storage/calculate-deposit-needed.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/warm-storage/get-upload-costs.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["calculate-deposit-needed.ts", "get-upload-costs.ts"],
 		minResults: 2,
 		portability: "portable",
 		paraphrases: [
@@ -1258,14 +2107,25 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Which utility figures out required upload funding, including runway, buffer, and total deposit?",
 			"Where is the pre-upload deposit calculator that derives runway, buffer, and overall required funds?",
 		],
+		migrationNotes:
+			'portability-mismatch: portability="portable" but applicableCorpora=[filoz-ecosystem-2026-04-v12] (single corpus)',
 	},
 	{
 		id: "dl-11",
-		queryText:
-			"Which file validates a downloaded blob against an expected PieceCID while streaming?",
-		category: "direct-lookup",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query: "Which file validates a downloaded blob against an expected PieceCID while streaming?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/piece/download.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["piece/download.ts"],
 		minResults: 1,
 		portability: "corpus-specific",
 		paraphrases: [
@@ -1276,14 +2136,29 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 	},
 	{
 		id: "dl-12",
-		queryText: "Which typed-data modules sign create-data-set and add-pieces payloads?",
-		category: "direct-lookup",
-		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: [
-			"sign-create-dataset.ts",
-			"sign-create-dataset-add-pieces.ts",
-			"sign-add-pieces.ts",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query: "Which typed-data modules sign create-data-set and add-pieces payloads?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/typed-data/sign-add-pieces.ts",
+				required: true,
+			},
+			{
+				artifactId:
+					"synapse-sdk/packages/synapse-core/src/typed-data/sign-create-dataset-add-pieces.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/typed-data/sign-create-dataset.ts",
+				required: true,
+			},
 		],
+		acceptableAnswerFacts: [],
+		requiredSourceTypes: ["code"],
 		minResults: 2,
 		portability: "portable",
 		paraphrases: [
@@ -1291,13 +2166,25 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where are the EIP-712-style modules for signing create-data-set and add-pieces payloads defined?",
 			"What typed-data modules cover signatures for both dataset creation and piece addition requests?",
 		],
+		migrationNotes:
+			'portability-mismatch: portability="portable" but applicableCorpora=[filoz-ecosystem-2026-04-v12] (single corpus)',
 	},
 	{
 		id: "dl-13",
-		queryText: "Which React hook returns the current service price through react-query?",
-		category: "direct-lookup",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query: "Which React hook returns the current service price through react-query?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk/packages/synapse-react/src/warm-storage/use-service-price.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["use-service-price.ts"],
 		minResults: 1,
 		portability: "portable",
 		paraphrases: [
@@ -1305,14 +2192,26 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where is the hook that fetches and returns the current service price using react-query?",
 			"What React hook provides service pricing through a react-query-backed call?",
 		],
+		migrationNotes:
+			'portability-mismatch: portability="portable" but applicableCorpora=[filoz-ecosystem-2026-04-v12] (single corpus)',
 	},
 	{
 		id: "dl-14",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"Which React hook creates a data set, waits on a status URL, and then invalidates cached data-set queries?",
-		category: "direct-lookup",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk/packages/synapse-react/src/warm-storage/use-create-data-set.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["use-create-data-set.ts"],
 		minResults: 1,
 		portability: "portable",
 		paraphrases: [
@@ -1320,14 +2219,31 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where is the React hook that submits dataset creation, waits on the returned status endpoint, and refreshes dataset cache entries?",
 			"What hook handles create-data-set, follows the status URL, and finally invalidates react-query dataset caches?",
 		],
+		migrationNotes:
+			'portability-mismatch: portability="portable" but applicableCorpora=[filoz-ecosystem-2026-04-v12] (single corpus)',
 	},
 	{
 		id: "dl-15",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"Which provider-selection logic prefers metadata-matching datasets and explicitly skips health checks?",
-		category: "direct-lookup",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId:
+					"synapse-sdk/packages/synapse-core/src/warm-storage/fetch-provider-selection-input.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/warm-storage/select-providers.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["select-providers.ts", "fetch-provider-selection-input.ts"],
 		minResults: 2,
 		portability: "portable",
 		paraphrases: [
@@ -1335,17 +2251,30 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where is the selection flow that prioritizes metadata-aligned datasets while explicitly skipping provider health probes?",
 			"What code chooses providers by preferring metadata matches and not running health checks?",
 		],
+		migrationNotes:
+			'portability-mismatch: portability="portable" but applicableCorpora=[filoz-ecosystem-2026-04-v12] (single corpus)',
 	},
 	{
 		id: "dl-16",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Which generated Solidity view contract wraps state reads for eth_call, and which script produces it?",
-		category: "direct-lookup",
-		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: [
-			"FilecoinWarmStorageServiceStateView.sol",
-			"generate_view_contract.sh",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "FilecoinWarmStorageServiceStateView.sol",
+				required: true,
+			},
+			{
+				artifactId: "generate_view_contract.sh",
+				required: true,
+			},
 		],
+		acceptableAnswerFacts: [],
+		requiredSourceTypes: ["code"],
 		minResults: 2,
 		portability: "portable",
 		paraphrases: [
@@ -1353,14 +2282,26 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where is the auto-generated Solidity view wrapper for eth_call reads, and which script builds it?",
 			"What generated contract wraps on-chain state reads for eth_call, and what generation script produces that artifact?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "FilecoinWarmStorageServiceStateView.sol"; unresolved-required: "generate_view_contract.sh"',
 	},
 	{
 		id: "dl-17",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"Which file defines the Synapse class that wires together payments, providers, warm storage, FilBeam, and StorageManager?",
-		category: "direct-lookup",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/synapse.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["synapse.ts"],
 		minResults: 1,
 		portability: "corpus-specific",
 		paraphrases: [
@@ -1371,10 +2312,20 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 	},
 	{
 		id: "dl-18",
-		queryText: "Where does synapse-core implement getSizeFromPieceCID for PieceCIDv2 inputs?",
-		category: "direct-lookup",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query: "Where does synapse-core implement getSizeFromPieceCID for PieceCIDv2 inputs?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/piece/piece.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["piece/piece.ts"],
 		minResults: 1,
 		portability: "corpus-specific",
 		paraphrases: [
@@ -1385,10 +2336,20 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 	},
 	{
 		id: "dl-19",
-		queryText: "Which file defines the useFilsnap hook that uses wagmi account effects?",
-		category: "direct-lookup",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query: "Which file defines the useFilsnap hook that uses wagmi account effects?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk/packages/synapse-react/src/filsnap.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["filsnap.ts"],
 		minResults: 1,
 		portability: "corpus-specific",
 		paraphrases: [
@@ -1399,11 +2360,21 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 	},
 	{
 		id: "dl-20",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Where is EIP-712 metadata hashing and signature recovery implemented for FilecoinWarmStorageService?",
-		category: "direct-lookup",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "SignatureVerificationLib.sol",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["SignatureVerificationLib.sol"],
 		minResults: 1,
 		portability: "corpus-specific",
 		paraphrases: [
@@ -1411,14 +2382,26 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Which file contains the metadata hash and signature recovery logic used by FilecoinWarmStorageService?",
 			"What contract-side implementation handles typed-data metadata hashing and signer recovery for FilecoinWarmStorageService?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "SignatureVerificationLib.sol"',
 	},
 	{
 		id: "dl-21",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Which contract owns provider registration plus addProduct, updateProduct, and removeProduct operations?",
-		category: "direct-lookup",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "ServiceProviderRegistry.sol",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["ServiceProviderRegistry.sol"],
 		minResults: 1,
 		portability: "corpus-specific",
 		paraphrases: [
@@ -1426,17 +2409,30 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where are provider enrollment and product add/update/remove operations owned on-chain?",
 			"What contract manages service provider registration along with addProduct, updateProduct, and removeProduct?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "ServiceProviderRegistry.sol"',
 	},
 	{
 		id: "dl-22",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Where do filecoin-services contracts compute dataset Active versus Inactive status for off-chain readers?",
-		category: "direct-lookup",
-		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: [
-			"FilecoinWarmStorageServiceStateLibrary.sol",
-			"FilecoinWarmStorageServiceStateView.sol",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "FilecoinWarmStorageServiceStateLibrary.sol",
+				required: true,
+			},
+			{
+				artifactId: "FilecoinWarmStorageServiceStateView.sol",
+				required: true,
+			},
 		],
+		acceptableAnswerFacts: [],
+		requiredSourceTypes: ["code"],
 		minResults: 2,
 		portability: "corpus-specific",
 		paraphrases: [
@@ -1444,14 +2440,30 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Which contract code computes whether a dataset is Active or Inactive for off-chain state readers?",
 			"What part of filecoin-services determines dataset Active/Inactive status in state exposed to off-chain readers?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "FilecoinWarmStorageServiceStateLibrary.sol"; unresolved-required: "FilecoinWarmStorageServiceStateView.sol"',
 	},
 	{
 		id: "dl-23",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"Which session-key files define the login transaction helper and the default FWSS permission hashes?",
-		category: "direct-lookup",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/session-key/login.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/session-key/permissions.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["session-key/login.ts", "session-key/permissions.ts"],
 		minResults: 2,
 		portability: "corpus-specific",
 		paraphrases: [
@@ -1462,15 +2474,29 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 	},
 	{
 		id: "cs-8",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"What release note describes provider selection moving into a core package, and which source files implement the multi-copy selection flow?",
-		category: "cross-source",
-		requiredSourceTypes: ["markdown", "code"],
-		expectedSourceSubstrings: [
-			"synapse-core/CHANGELOG.md",
-			"select-providers.ts",
-			"storage/manager.ts",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/CHANGELOG.md",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/warm-storage/select-providers.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/storage/manager.ts",
+				required: true,
+			},
 		],
+		acceptableAnswerFacts: [],
+		requiredSourceTypes: ["markdown", "code"],
 		minResults: 3,
 		requireCrossSourceHops: true,
 		portability: "portable",
@@ -1479,14 +2505,38 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where is the release documentation for provider selection shifting into core, and which source files realize the multi-copy selection path?",
 			"What changelog entry covers moving provider choice into the core package, and where is the multi-copy selection flow implemented?",
 		],
+		migrationNotes:
+			'portability-mismatch: portability="portable" but applicableCorpora=[filoz-ecosystem-2026-04-v12] (single corpus)',
 	},
 	{
 		id: "cs-9",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"How do the README concepts for data sets, pieces, and payment rails map to the storage context implementation?",
-		category: "cross-source",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/README.md",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/storage/context.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/storage/manager.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/README.md",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["markdown", "code"],
-		expectedSourceSubstrings: ["synapse-sdk/README.md", "storage/context.ts", "storage/manager.ts"],
 		minResults: 3,
 		requireCrossSourceHops: true,
 		portability: "portable",
@@ -1495,18 +2545,34 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Map the README concepts around data sets, pieces, and payment rails onto the actual storage context implementation.",
 			"Where do the README-level ideas for datasets, pieces, and payment rails show up in storage context code?",
 		],
+		migrationNotes:
+			'portability-mismatch: portability="portable" but applicableCorpora=[filoz-ecosystem-2026-04-v12] (single corpus); ambiguous-required: "synapse-sdk/README.md" -> 2 matches',
 	},
 	{
 		id: "cs-10",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"How is off-chain contract state reading documented and then implemented through a generated view wrapper and extsload-based libraries?",
-		category: "cross-source",
-		requiredSourceTypes: ["markdown", "code"],
-		expectedSourceSubstrings: [
-			"service_contracts/README.md",
-			"FilecoinWarmStorageServiceStateView.sol",
-			"FilecoinWarmStorageServiceStateLibrary.sol",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "FilecoinWarmStorageServiceStateLibrary.sol",
+				required: true,
+			},
+			{
+				artifactId: "FilecoinWarmStorageServiceStateView.sol",
+				required: true,
+			},
+			{
+				artifactId: "service_contracts/README.md",
+				required: true,
+			},
 		],
+		acceptableAnswerFacts: [],
+		requiredSourceTypes: ["markdown", "code"],
 		minResults: 3,
 		requireCrossSourceHops: true,
 		portability: "portable",
@@ -1515,18 +2581,34 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"What documentation explains off-chain contract reads, and how do the generated view contract and extsload-based libraries implement that design?",
 			"Trace the path from docs about off-chain state reading to the generated wrapper and extsload libraries that implement it.",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "service_contracts/README.md"; unresolved-required: "FilecoinWarmStorageServiceStateView.sol"; unresolved-required: "FilecoinWarmStorageServiceStateLibrary.sol"',
 	},
 	{
 		id: "cs-11",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"What issue added session keys with viem, and which source files implement the login and permission pieces?",
-		category: "cross-source",
-		requiredSourceTypes: ["github-issue", "code"],
-		expectedSourceSubstrings: [
-			"synapse-sdk/issues/618",
-			"session-key/login.ts",
-			"session-key/permissions.ts",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk/issues/618",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/session-key/login.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/session-key/permissions.ts",
+				required: true,
+			},
 		],
+		acceptableAnswerFacts: [],
+		requiredSourceTypes: ["github-issue", "code"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -1536,18 +2618,34 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"What GitHub issue added session-key support with viem, and where are the login and permission components in source?",
 			"Which issue tracks viem session keys, and which files contain the resulting login helper and permission logic?",
 		],
+		migrationNotes:
+			'portability-mismatch: portability="portable" but applicableCorpora=[filoz-ecosystem-2026-04-v12] (single corpus); unresolved-required: "synapse-sdk/issues/618"',
 	},
 	{
 		id: "cs-12",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"Which issue introduced a storage facade with context objects, and where was it implemented?",
-		category: "cross-source",
-		requiredSourceTypes: ["github-issue", "code"],
-		expectedSourceSubstrings: [
-			"synapse-sdk/issues/153",
-			"storage/context.ts",
-			"storage/manager.ts",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk/issues/153",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/storage/context.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/storage/manager.ts",
+				required: true,
+			},
 		],
+		acceptableAnswerFacts: [],
+		requiredSourceTypes: ["github-issue", "code"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -1557,14 +2655,29 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"What issue introduced a context-based storage facade, and which source files landed the implementation?",
 			"Trace the issue that brought in the storage facade with context objects and identify where it was coded.",
 		],
+		migrationNotes:
+			'portability-mismatch: portability="portable" but applicableCorpora=[filoz-ecosystem-2026-04-v12] (single corpus); unresolved-required: "synapse-sdk/issues/153"',
 	},
 	{
 		id: "cs-13",
-		queryText:
-			"Which issue changed PieceCIDv2 size extraction, and where is that helper implemented?",
-		category: "cross-source",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query: "Which issue changed PieceCIDv2 size extraction, and where is that helper implemented?",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk/issues/283",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/piece/piece.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["github-issue", "code"],
-		expectedSourceSubstrings: ["synapse-sdk/issues/283", "piece/piece.ts"],
 		minResults: 2,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -1574,14 +2687,29 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"What issue covers the PieceCIDv2 size-extraction change, and which file contains the helper now?",
 			"Trace the issue that modified PieceCIDv2 size parsing and point to the helper implementation.",
 		],
+		migrationNotes: 'unresolved-required: "synapse-sdk/issues/283"',
 	},
 	{
 		id: "cs-14",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"How is signature verification for typed dataset and add-pieces operations described in docs and implemented in the contract library?",
-		category: "cross-source",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "service_contracts/README.md",
+				required: true,
+			},
+			{
+				artifactId: "SignatureVerificationLib.sol",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["markdown", "code"],
-		expectedSourceSubstrings: ["service_contracts/README.md", "SignatureVerificationLib.sol"],
 		minResults: 2,
 		requireCrossSourceHops: true,
 		portability: "portable",
@@ -1590,18 +2718,34 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where is signature verification for dataset creation and piece addition documented, and which contract library actually performs it?",
 			"Trace the documented story for typed dataset/add-pieces signature checking into the contract library implementation.",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "service_contracts/README.md"; unresolved-required: "SignatureVerificationLib.sol"',
 	},
 	{
 		id: "cs-15",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"How did synapse-sdk issue #618 land across synapse-core, synapse-sdk, and synapse-react?",
-		category: "cross-source",
-		requiredSourceTypes: ["github-issue", "code"],
-		expectedSourceSubstrings: [
-			"synapse-sdk/issues/618",
-			"session-key/login.ts",
-			"synapse-react/CHANGELOG.md",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk/issues/618",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/session-key/login.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-react/CHANGELOG.md",
+				required: true,
+			},
 		],
+		acceptableAnswerFacts: [],
+		requiredSourceTypes: ["github-issue", "code"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -1611,18 +2755,33 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"What changed for synapse-sdk issue #618 across the core package, the SDK, and the React layer?",
 			"Trace how issue #618 in synapse-sdk landed across synapse-core, synapse-sdk, and synapse-react.",
 		],
+		migrationNotes: 'unresolved-required: "synapse-sdk/issues/618"',
 	},
 	{
 		id: "cs-16",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"How did synapse-sdk issue #209 add session key support, and which exported session-key modules carry that feature now?",
-		category: "cross-source",
-		requiredSourceTypes: ["github-issue", "code"],
-		expectedSourceSubstrings: [
-			"synapse-sdk/issues/209",
-			"session-key/index.ts",
-			"synapse-sdk/CHANGELOG.md",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk/issues/209",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/session-key/index.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/CHANGELOG.md",
+				required: true,
+			},
 		],
+		acceptableAnswerFacts: [],
+		requiredSourceTypes: ["github-issue", "code"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -1632,17 +2791,32 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Trace issue #209 from session-key support design to the currently exported session-key modules.",
 			"What was the implementation path for synapse-sdk issue #209, and which session-key exports represent that feature today?",
 		],
+		migrationNotes: 'unresolved-required: "synapse-sdk/issues/209"',
 	},
 	{
 		id: "cs-17",
-		queryText: "How did synapse-sdk issue #489 change StorageContext clientDataSetId caching?",
-		category: "cross-source",
-		requiredSourceTypes: ["github-issue", "code"],
-		expectedSourceSubstrings: [
-			"synapse-sdk/issues/489",
-			"storage/context.ts",
-			"synapse-sdk/CHANGELOG.md",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query: "How did synapse-sdk issue #489 change StorageContext clientDataSetId caching?",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk/issues/489",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/CHANGELOG.md",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/storage/context.ts",
+				required: true,
+			},
 		],
+		acceptableAnswerFacts: [],
+		requiredSourceTypes: ["github-issue", "code"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -1652,18 +2826,33 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"What changed in StorageContext clientDataSetId caching as part of synapse-sdk issue #489?",
 			"Trace the effect of issue #489 on how StorageContext caches clientDataSetId values.",
 		],
+		migrationNotes: 'unresolved-required: "synapse-sdk/issues/489"',
 	},
 	{
 		id: "cs-18",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"How did synapse-sdk issue #438 remove getClientDataSetsWithDetails from createStorageContext?",
-		category: "cross-source",
-		requiredSourceTypes: ["github-issue", "code"],
-		expectedSourceSubstrings: [
-			"synapse-sdk/issues/438",
-			"storage/context.ts",
-			"synapse-sdk/CHANGELOG.md",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk/issues/438",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/CHANGELOG.md",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/storage/context.ts",
+				required: true,
+			},
 		],
+		acceptableAnswerFacts: [],
+		requiredSourceTypes: ["github-issue", "code"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -1673,18 +2862,33 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"What changes from issue #438 caused createStorageContext to stop exposing getClientDataSetsWithDetails?",
 			"Trace issue #438 and explain how getClientDataSetsWithDetails was removed from createStorageContext.",
 		],
+		migrationNotes: 'unresolved-required: "synapse-sdk/issues/438"',
 	},
 	{
 		id: "cs-19",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"How do filecoin-services deployment docs and scripts handle linking SignatureVerificationLib into FilecoinWarmStorageService?",
-		category: "cross-source",
-		requiredSourceTypes: ["markdown", "code"],
-		expectedSourceSubstrings: [
-			"service_contracts/README.md",
-			"warm-storage-deploy-all.sh",
-			"SignatureVerificationLib.sol",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "service_contracts/README.md",
+				required: true,
+			},
+			{
+				artifactId: "SignatureVerificationLib.sol",
+				required: true,
+			},
+			{
+				artifactId: "warm-storage-deploy-all.sh",
+				required: true,
+			},
 		],
+		acceptableAnswerFacts: [],
+		requiredSourceTypes: ["markdown", "code"],
 		minResults: 3,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
@@ -1693,18 +2897,34 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where do the deployment instructions and scripts show SignatureVerificationLib being linked into FilecoinWarmStorageService?",
 			"Trace how documentation and deployment scripts handle library linking for SignatureVerificationLib and FilecoinWarmStorageService.",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "service_contracts/README.md"; unresolved-required: "warm-storage-deploy-all.sh"; unresolved-required: "SignatureVerificationLib.sol"',
 	},
 	{
 		id: "cs-20",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"How do filecoin-services upgrade docs and scripts line up with announcePlannedUpgrade and nextUpgrade support in the contracts?",
-		category: "cross-source",
-		requiredSourceTypes: ["markdown", "code"],
-		expectedSourceSubstrings: [
-			"UPGRADE-PROCESS.md",
-			"warm-storage-announce-upgrade.sh",
-			"ServiceProviderRegistry.sol",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "ServiceProviderRegistry.sol",
+				required: true,
+			},
+			{
+				artifactId: "UPGRADE-PROCESS.md",
+				required: true,
+			},
+			{
+				artifactId: "warm-storage-announce-upgrade.sh",
+				required: true,
+			},
 		],
+		acceptableAnswerFacts: [],
+		requiredSourceTypes: ["markdown", "code"],
 		minResults: 3,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
@@ -1713,19 +2933,50 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"What documentation and scripting around upgrades lines up with the contract support for announcePlannedUpgrade and nextUpgrade?",
 			"Trace the relationship between upgrade docs/scripts and the Solidity implementation of announcePlannedUpgrade plus nextUpgrade.",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "UPGRADE-PROCESS.md"; unresolved-required: "warm-storage-announce-upgrade.sh"; unresolved-required: "ServiceProviderRegistry.sol"',
 	},
 	{
 		id: "cs-21",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"How do the Synapse SDK breaking-change notes about Warm Storage, Data Sets, Pieces, and Service Providers map to the actual code layout?",
-		category: "cross-source",
-		requiredSourceTypes: ["markdown", "code"],
-		expectedSourceSubstrings: [
-			"synapse-sdk/README.md",
-			"storage/context.ts",
-			"warm-storage/index.ts",
-			"piece/piece.ts",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/piece/piece.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/warm-storage/index.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-react/src/warm-storage/index.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/README.md",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/storage/context.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/warm-storage/index.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/README.md",
+				required: true,
+			},
 		],
+		acceptableAnswerFacts: [],
+		requiredSourceTypes: ["markdown", "code"],
 		minResults: 3,
 		requireCrossSourceHops: true,
 		portability: "corpus-specific",
@@ -1734,18 +2985,34 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where do the breaking-change notes about warm storage, datasets, pieces, and service providers show up in actual package structure?",
 			"Map the Synapse SDK breaking-change documentation for Warm Storage/Data Sets/Pieces/Service Providers to the real code organization.",
 		],
+		migrationNotes:
+			'ambiguous-required: "synapse-sdk/README.md" -> 2 matches; ambiguous-required: "warm-storage/index.ts" -> 3 matches',
 	},
 	{
 		id: "cs-22",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"How did synapse-sdk issue #156 show up in the Curio CommPv2 compatibility and PieceCID terminology changes?",
-		category: "cross-source",
-		requiredSourceTypes: ["github-issue", "code"],
-		expectedSourceSubstrings: [
-			"synapse-sdk/issues/156",
-			"synapse-sdk/CHANGELOG.md",
-			"piece/piece.ts",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "synapse-sdk/issues/156",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/piece/piece.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/CHANGELOG.md",
+				required: true,
+			},
 		],
+		acceptableAnswerFacts: [],
+		requiredSourceTypes: ["github-issue", "code"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -1755,17 +3022,33 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Trace issue #156 through the CommPv2 compatibility work in Curio and the related PieceCID naming changes.",
 			"What code and docs reflect synapse-sdk issue #156 in terms of Curio CommPv2 support and updated PieceCID terminology?",
 		],
+		migrationNotes: 'unresolved-required: "synapse-sdk/issues/156"',
 	},
-
-	// cursor pass — coverage + work-lineage on filecoin-pin +
-	// curio + filecoin-services repos:
 	{
 		id: "cov-9",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"What kinds of IPNI advertisement handling logic exist across this corpus, such as validation, publishing, and error handling?",
-		category: "coverage",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "advertisement",
+				required: true,
+			},
+			{
+				artifactId: "ipni",
+				required: true,
+			},
+			{
+				artifactId: "validate",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
-		expectedSourceSubstrings: ["ipni", "advertisement", "validate"],
 		minResults: 3,
 		portability: "portable",
 		paraphrases: [
@@ -1773,14 +3056,34 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Survey the corpus for IPNI advertisement logic such as validation rules, publication flows, and failure handling.",
 			"Which categories of IPNI advertisement behavior appear across the code and docs, from publish to validation to error management?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "ipni"; unresolved-required: "advertisement"; unresolved-required: "validate"',
 	},
 	{
 		id: "cov-10",
-		queryText:
+		authoredFromCollectionId: "wtfoc-dogfood-2026-04-v3",
+		applicableCorpora: ["wtfoc-dogfood-2026-04-v3"],
+		query:
 			"What categories of CommP-related logic appear in the corpus, including computation, verification, and format checks?",
-		category: "coverage",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "./packages/cli/src/commands/verify.ts",
+				required: true,
+			},
+			{
+				artifactId: "CommP",
+				required: true,
+			},
+			{
+				artifactId: "piece",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
-		expectedSourceSubstrings: ["CommP", "piece", "verify"],
 		minResults: 3,
 		portability: "corpus-specific",
 		paraphrases: [
@@ -1788,14 +3091,35 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Survey the repository for CommP functionality, including generation, checking, and format-related safeguards.",
 			"Which kinds of CommP code paths appear here, from computing values to verifying them and checking representation details?",
 		],
+		migrationNotes:
+			'unresolved-required: "CommP"; too-ambiguous-required: "piece" -> 31 matches (cap 20); kept verbatim, will fail preflight',
 	},
 	{
 		id: "cov-11",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"What kinds of PDP artifacts are present, such as proof generation, proof verification, and challenge flow handling?",
-		category: "coverage",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "pdp",
+				required: true,
+			},
+			{
+				artifactId: "proof",
+				required: true,
+			},
+			{
+				artifactId:
+					"synapse-sdk/packages/synapse-core/src/pdp-verifier/get-next-challenge-epoch.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
-		expectedSourceSubstrings: ["pdp", "proof", "challenge"],
 		minResults: 3,
 		portability: "corpus-specific",
 		paraphrases: [
@@ -1803,14 +3127,82 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Inventory the PDP-related material in the corpus, including proof creation, proof checking, and challenge-flow logic.",
 			"Which PDP components show up across the codebase, covering challenges, proof generation, and verifier-side behavior?",
 		],
+		migrationNotes:
+			'too-ambiguous-required: "pdp" -> 25 matches (cap 20); kept verbatim, will fail preflight; unresolved-required: "proof"',
 	},
 	{
 		id: "cov-12",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"What categories of Filecoin service contract artifacts are represented, including Solidity contracts, ABIs, and state/view interfaces?",
-		category: "coverage",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "./packages/cli/src/commands/unresolved-edges.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/config/src/resolver.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/search/src/edge-resolution.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/search/src/eval/edge-resolution-evaluator.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/search/src/trace/resolution.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/store/src/cid-resolver.ts",
+				required: true,
+			},
+			{
+				artifactId: "service_contracts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/abis/erc20.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/abis/index.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/pay/resolve-account-state.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/piece/resolve-piece-url.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/utils/capabilities.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/utils/pdp-capabilities.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/scripts/benchmark-provider-resolve.js",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/scripts/compare-provider-resolve-calls.js",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["service_contracts", "abi", "sol"],
 		minResults: 3,
 		portability: "corpus-specific",
 		paraphrases: [
@@ -1818,14 +3210,103 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Survey the corpus for filecoin-services contract artifacts like Solidity contracts, ABI outputs, and state-reading interfaces.",
 			"Which kinds of service-contract deliverables are present, from Solidity implementations to ABI files and view-layer interfaces?",
 		],
+		migrationNotes:
+			'unresolved-required: "service_contracts"; ambiguous-required: "abi" -> 4 matches; ambiguous-required: "sol" -> 10 matches',
 	},
 	{
 		id: "cov-13",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"What kinds of dataset lifecycle states and transitions are documented or implemented in this corpus?",
-		category: "coverage",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "./apps/web/src/components/EmptyState.tsx",
+				required: true,
+			},
+			{
+				artifactId: "./apps/web/src/state.ts",
+				required: true,
+			},
+			{
+				artifactId: "DataSetStatus",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/examples/cli/src/commands/datasets-create.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/examples/cli/src/commands/datasets-terminate.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/examples/cli/src/commands/datasets.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/examples/cli/src/commands/upload-dataset.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/pay/resolve-account-state.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/pdp-verifier/get-dataset-size.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/sp/create-dataset-add-pieces.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/sp/create-dataset.ts",
+				required: true,
+			},
+			{
+				artifactId:
+					"synapse-sdk/packages/synapse-core/src/typed-data/sign-create-dataset-add-pieces.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/typed-data/sign-create-dataset.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/utils/create-dataset.js",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/utils/delete-empty-datasets.js",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/utils/diagnose-dataset-deletion.js",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/utils/list-datasets.js",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/utils/manual-dataset-deletion.js",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/utils/settle-dataset-rails.js",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/utils/terminate-rails-then-dataset.js",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
-		expectedSourceSubstrings: ["DataSetStatus", "dataset", "state"],
 		minResults: 2,
 		portability: "corpus-specific",
 		paraphrases: [
@@ -1833,14 +3314,56 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Survey the repository for dataset lifecycle stages and the transitions between them, whether described or coded.",
 			"Which dataset lifecycle statuses and movement rules appear across docs and implementation?",
 		],
+		migrationNotes:
+			'unresolved-required: "DataSetStatus"; ambiguous-required: "dataset" -> 16 matches; ambiguous-required: "state" -> 3 matches',
 	},
 	{
 		id: "cov-14",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"What categories of billing rail behavior exist, such as deposits, funding, charging, and settlement-related operations?",
-		category: "coverage",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "billing",
+				required: true,
+			},
+			{
+				artifactId: "funding",
+				required: true,
+			},
+			{
+				artifactId:
+					"synapse-sdk/apps/synapse-playground/src/components/payments/deposit-and-approve.tsx",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/examples/cli/src/commands/deposit.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/pay/deposit-with-permit.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/pay/deposit.ts",
+				required: true,
+			},
+			{
+				artifactId:
+					"synapse-sdk/packages/synapse-core/src/warm-storage/calculate-deposit-needed.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-react/src/payments/use-deposit-and-approve.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-issue"],
-		expectedSourceSubstrings: ["billing", "deposit", "funding"],
 		minResults: 3,
 		portability: "portable",
 		paraphrases: [
@@ -1848,14 +3371,34 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Survey the codebase for payment-rail mechanics such as funding, deposits, charge application, and settlement-related steps.",
 			"Which categories of billing-rail logic are represented here, from prefunding through charging and settlement?",
 		],
+		migrationNotes:
+			'portability-mismatch: portability="portable" but applicableCorpora=[filoz-ecosystem-2026-04-v12] (single corpus); unresolved-required: "billing"; ambiguous-required: "deposit" -> 6 matches; unresolved-required: "funding"',
 	},
 	{
 		id: "cov-15",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"What kinds of retry and resilience patterns appear in the codebase, such as retries, backoff, and circuit-breaker-like guards?",
-		category: "coverage",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "backoff",
+				required: true,
+			},
+			{
+				artifactId: "circuit",
+				required: true,
+			},
+			{
+				artifactId: "retry",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr-comment"],
-		expectedSourceSubstrings: ["retry", "backoff", "circuit"],
 		minResults: 3,
 		portability: "portable",
 		paraphrases: [
@@ -1863,14 +3406,34 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Survey the repository for transient-failure handling patterns such as retry loops, backoff strategies, and guardrails around repeated failures.",
 			"Which kinds of resilience logic are implemented across the code, including retry semantics, delay policies, and breaker-like checks?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "retry"; unresolved-required: "backoff"; unresolved-required: "circuit"',
 	},
 	{
 		id: "cov-16",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"What categories of indexer integration behavior are represented, including advertisement ingestion, lookup, and synchronization?",
-		category: "coverage",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "indexer",
+				required: true,
+			},
+			{
+				artifactId: "ipni",
+				required: true,
+			},
+			{
+				artifactId: "sync",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
-		expectedSourceSubstrings: ["indexer", "ipni", "sync"],
 		minResults: 3,
 		portability: "portable",
 		paraphrases: [
@@ -1878,14 +3441,46 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Survey the corpus for indexer-related logic such as advertisement ingestion, query/lookup behavior, and sync processes.",
 			"Which kinds of indexer integration appear across the repo, from advertisement intake to lookup and synchronization handling?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "indexer"; unresolved-required: "ipni"; unresolved-required: "sync"',
 	},
 	{
 		id: "cov-17",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"What kinds of cross-language boundaries exist between TypeScript and Solidity artifacts in this corpus?",
-		category: "coverage",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "service_contracts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-core",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/abis/erc20.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/abis/index.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/utils/capabilities.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/utils/pdp-capabilities.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
-		expectedSourceSubstrings: ["synapse-core", "service_contracts", "abi"],
 		minResults: 2,
 		portability: "corpus-specific",
 		paraphrases: [
@@ -1893,14 +3488,34 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Survey where TypeScript code interfaces with Solidity outputs or contracts across the repository.",
 			"Which parts of the corpus sit at the TS/Solidity boundary, such as generated artifacts, ABI use, or contract wrappers?",
 		],
+		migrationNotes:
+			'too-ambiguous-required: "synapse-core" -> 164 matches (cap 20); kept verbatim, will fail preflight; unresolved-required: "service_contracts"; ambiguous-required: "abi" -> 4 matches',
 	},
 	{
 		id: "cov-18",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"What categories of sector and deal validation logic are present, including checks around sectors, deals, and proof preconditions?",
-		category: "coverage",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "deal",
+				required: true,
+			},
+			{
+				artifactId: "sector",
+				required: true,
+			},
+			{
+				artifactId: "validate",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr"],
-		expectedSourceSubstrings: ["sector", "deal", "validate"],
 		minResults: 3,
 		portability: "portable",
 		paraphrases: [
@@ -1908,14 +3523,38 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Survey the repository for validation around sectors and deals, including preconditions needed before proofs can proceed.",
 			"Which categories of sector/deal checking appear here, from acceptance validation to proof-related prerequisite checks?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "sector"; unresolved-required: "deal"; unresolved-required: "validate"',
 	},
 	{
 		id: "cov-19",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"What kinds of contract upgrade mechanisms or upgrade discussions exist across the service contracts and related implementation code?",
-		category: "coverage",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "service_contracts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/docs/src/content/docs/resources/contracts.mdx",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/utils/contract-errors.ts",
+				required: true,
+			},
+			{
+				artifactId: "upgrade",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr", "github-pr-comment"],
-		expectedSourceSubstrings: ["upgrade", "contract", "service_contracts"],
 		minResults: 2,
 		portability: "corpus-specific",
 		paraphrases: [
@@ -1923,14 +3562,38 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Survey the corpus for upgrade patterns in contracts and any related implementation or documentation about upgrades.",
 			"Which kinds of contract-upgrade support and upgrade discussion are represented across service contracts and their tooling?",
 		],
+		migrationNotes:
+			'unresolved-required: "upgrade"; ambiguous-required: "contract" -> 2 matches; unresolved-required: "service_contracts"',
 	},
 	{
 		id: "cov-20",
-		queryText:
+		authoredFromCollectionId: "wtfoc-dogfood-2026-04-v3",
+		applicableCorpora: ["wtfoc-dogfood-2026-04-v3"],
+		query:
 			"What categories of staking or slot-leasing mechanics are represented in contracts and surrounding implementation artifacts?",
-		category: "coverage",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "./.release-please-manifest.json",
+				required: true,
+			},
+			{
+				artifactId: "./release-please-config.json",
+				required: true,
+			},
+			{
+				artifactId: "slot",
+				required: true,
+			},
+			{
+				artifactId: "stake",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-issue"],
-		expectedSourceSubstrings: ["stake", "slot", "lease"],
 		minResults: 2,
 		portability: "portable",
 		paraphrases: [
@@ -1938,14 +3601,34 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Survey the code and docs for staking behavior or slot-leasing rules and their supporting implementation.",
 			"Which categories of staking and leasing mechanics appear across the repository, both on-chain and in surrounding code?",
 		],
+		migrationNotes:
+			'portability-mismatch: portability="portable" but applicableCorpora=[wtfoc-dogfood-2026-04-v3] (single corpus); unresolved-required: "stake"; unresolved-required: "slot"; ambiguous-required: "lease" -> 2 matches',
 	},
 	{
 		id: "wl-9",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Where is IPNI advertisement validation implemented, and which PR or issue discussions explain why those validation checks were added?",
-		category: "work-lineage",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "advertisement",
+				required: true,
+			},
+			{
+				artifactId: "ipni",
+				required: true,
+			},
+			{
+				artifactId: "validate-ipni-advertisement",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr", "github-issue"],
-		expectedSourceSubstrings: ["validate-ipni-advertisement", "ipni", "advertisement"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -1956,14 +3639,34 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Trace IPNI advertisement validation from implementation files back to the PR or issue discussions that justified it.",
 			"What source implements IPNI ad validation, and what issue or PR commentary explains the reasoning for those validations?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "validate-ipni-advertisement"; unresolved-required: "ipni"; unresolved-required: "advertisement"',
 	},
 	{
 		id: "wl-10",
-		queryText:
+		authoredFromCollectionId: "wtfoc-dogfood-2026-04-v3",
+		applicableCorpora: ["wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Trace the implementation lineage for CommP verification in code and the PR comment trail that debated correctness or edge cases.",
-		category: "work-lineage",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "./packages/cli/src/commands/verify.ts",
+				required: true,
+			},
+			{
+				artifactId: "CommP",
+				required: true,
+			},
+			{
+				artifactId: "piece",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr", "github-pr-comment"],
-		expectedSourceSubstrings: ["CommP", "verify", "piece"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -1974,14 +3677,34 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where is CommP verification implemented, and what PR discussion debated whether it handled corner cases correctly?",
 			"Follow the lineage of CommP verification in code and identify the review threads that argued about correctness details.",
 		],
+		migrationNotes:
+			'unresolved-required: "CommP"; too-ambiguous-required: "piece" -> 31 matches (cap 20); kept verbatim, will fail preflight',
 	},
 	{
 		id: "wl-11",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"How does the dataset lifecycle state machine get implemented in filecoin-services code, and what issue or PR threads document transition rationale?",
-		category: "work-lineage",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "DataSetStatus",
+				required: true,
+			},
+			{
+				artifactId: "service_contracts",
+				required: true,
+			},
+			{
+				artifactId: "transition",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr", "github-issue"],
-		expectedSourceSubstrings: ["DataSetStatus", "service_contracts", "transition"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -1992,14 +3715,34 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Trace dataset lifecycle state handling in filecoin-services code back to issue or review threads that justify the state transitions.",
 			"Where does filecoin-services implement dataset state transitions, and which PRs or issues document the rationale behind them?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "DataSetStatus"; unresolved-required: "service_contracts"; unresolved-required: "transition"',
 	},
 	{
 		id: "wl-12",
-		queryText:
+		authoredFromCollectionId: "wtfoc-dogfood-2026-04-v3",
+		applicableCorpora: ["wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Show the cross-org lineage from curio PDP proof verification code to the PRs that discuss verifier behavior and failure handling.",
-		category: "work-lineage",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "./packages/cli/src/commands/verify.ts",
+				required: true,
+			},
+			{
+				artifactId: "curio",
+				required: true,
+			},
+			{
+				artifactId: "pdp",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr", "github-pr-comment"],
-		expectedSourceSubstrings: ["curio", "pdp", "verify"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -2010,14 +3753,46 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Trace curio's PDP verifier implementation to the PR threads that talk about failure modes and verifier semantics.",
 			"Which curio proof-verification files map to PR discussions about PDP verifier behavior and handling verification failures?",
 		],
+		migrationNotes:
+			'unresolved-required: "curio"; too-ambiguous-required: "pdp" -> 25 matches (cap 20); kept verbatim, will fail preflight',
 	},
 	{
 		id: "wl-13",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"Which TypeScript components in synapse-core consume contract ABI or service contract interfaces, and what PR/issue history explains those boundaries?",
-		category: "work-lineage",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "service_contracts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-core",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/abis/erc20.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/abis/index.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/utils/capabilities.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/utils/pdp-capabilities.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr", "github-issue"],
-		expectedSourceSubstrings: ["synapse-core", "abi", "service_contracts"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -2027,14 +3802,34 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Trace the TypeScript modules in synapse-core that depend on contract ABIs or service interfaces, along with the issue/PR rationale for those boundaries.",
 			"What TS components in synapse-core sit on contract-interface boundaries, and which PRs or issues explain why they are structured that way?",
 		],
+		migrationNotes:
+			'too-ambiguous-required: "synapse-core" -> 164 matches (cap 20); kept verbatim, will fail preflight; ambiguous-required: "abi" -> 4 matches; unresolved-required: "service_contracts"',
 	},
 	{
 		id: "wl-14",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Trace indexer integration work from implementation files to the PR discussions that mention IPNI/indexer synchronization behavior.",
-		category: "work-lineage",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "indexer",
+				required: true,
+			},
+			{
+				artifactId: "ipni",
+				required: true,
+			},
+			{
+				artifactId: "sync",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr", "github-pr-comment"],
-		expectedSourceSubstrings: ["indexer", "ipni", "sync"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -2044,14 +3839,98 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where is indexer synchronization implemented, and which PR or issue threads talk about IPNI sync expectations?",
 			"Follow the code path for indexer integration into the review history that discusses synchronization with IPNI or indexers.",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "indexer"; unresolved-required: "ipni"; unresolved-required: "sync"',
 	},
 	{
 		id: "wl-15",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Where are retry or backoff behaviors implemented for external calls, and what issue or PR comment history explains those resilience choices?",
-		category: "work-lineage",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "./apps/web/src/components/ErrorBanner.tsx",
+				required: true,
+			},
+			{
+				artifactId: "./packages/common/src/errors.ts",
+				required: true,
+			},
+			{
+				artifactId: "backoff",
+				required: true,
+			},
+			{
+				artifactId: "retry",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/errors/base.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/errors/chains.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/errors/erc20.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/errors/index.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/errors/pay.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/errors/pdp-verifier.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/errors/pdp.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/errors/piece.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/errors/pull.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/errors/warm-storage.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/utils/contract-errors.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/utils/decode-pdp-errors.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/errors/index.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/errors/storage.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/src/utils/errors.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr", "github-pr-comment"],
-		expectedSourceSubstrings: ["retry", "backoff", "error"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -2061,14 +3940,82 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Trace network-call retry and backoff code to the discussions that justify the chosen resilience behavior.",
 			"Which files implement retries around external interactions, and what issue or PR commentary explains the backoff strategy?",
 		],
+		migrationNotes:
+			'unresolved-required: "retry"; unresolved-required: "backoff"; ambiguous-required: "error" -> 17 matches',
 	},
 	{
 		id: "wl-16",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"How did contract upgrade changes move from Solidity/ABI implementation to PR review discussion, and what concerns were raised about migration safety?",
-		category: "work-lineage",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "./packages/cli/src/commands/unresolved-edges.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/config/src/resolver.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/search/src/edge-resolution.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/search/src/eval/edge-resolution-evaluator.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/search/src/trace/resolution.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/store/src/cid-resolver.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/abis/erc20.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/abis/index.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/pay/resolve-account-state.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/piece/resolve-piece-url.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/utils/capabilities.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/utils/pdp-capabilities.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/scripts/benchmark-provider-resolve.js",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/scripts/compare-provider-resolve-calls.js",
+				required: true,
+			},
+			{
+				artifactId: "upgrade",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr", "github-pr-comment"],
-		expectedSourceSubstrings: ["upgrade", "abi", "sol"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -2078,14 +4025,34 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Trace contract upgrade support from implementation artifacts to review discussions that raised migration or upgrade safety risks.",
 			"Where do the contract upgrade changes land in code, and what PR comments discuss safe migration concerns?",
 		],
+		migrationNotes:
+			'unresolved-required: "upgrade"; ambiguous-required: "abi" -> 4 matches; ambiguous-required: "sol" -> 10 matches',
 	},
 	{
 		id: "wl-17",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Trace deal lifecycle validation from curio-side code paths to related issue/PR threads that discuss invalid deal or sector edge cases.",
-		category: "work-lineage",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "curio",
+				required: true,
+			},
+			{
+				artifactId: "deal",
+				required: true,
+			},
+			{
+				artifactId: "sector",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr", "github-issue"],
-		expectedSourceSubstrings: ["curio", "deal", "sector"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -2095,14 +4062,56 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where is deal validation implemented on the curio side, and which review threads discuss rejected deals or sector-related corner cases?",
 			"Follow curio's deal-validation paths into the issue/PR history that covers invalid-deal and sector edge-case handling.",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "curio"; unresolved-required: "deal"; unresolved-required: "sector"',
 	},
 	{
 		id: "wl-18",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"Where is billing rail logic implemented for funding/deposit flows, and what PR/issue discussions explain charging or settlement behavior changes?",
-		category: "work-lineage",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "billing",
+				required: true,
+			},
+			{
+				artifactId: "funding",
+				required: true,
+			},
+			{
+				artifactId:
+					"synapse-sdk/apps/synapse-playground/src/components/payments/deposit-and-approve.tsx",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/examples/cli/src/commands/deposit.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/pay/deposit-with-permit.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/pay/deposit.ts",
+				required: true,
+			},
+			{
+				artifactId:
+					"synapse-sdk/packages/synapse-core/src/warm-storage/calculate-deposit-needed.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-react/src/payments/use-deposit-and-approve.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr", "github-issue"],
-		expectedSourceSubstrings: ["billing", "funding", "deposit"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -2112,14 +4121,35 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Trace deposit/funding code for the billing rail back to issue or PR commentary about charging and settlement behavior.",
 			"Which implementation files handle billing funding flows, and what review history explains shifts in charge or settlement semantics?",
 		],
+		migrationNotes:
+			'unresolved-required: "billing"; unresolved-required: "funding"; ambiguous-required: "deposit" -> 6 matches',
 	},
 	{
 		id: "wl-19",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"Which PDP challenge-generation or challenge-validation code changes can be linked to PR comments discussing proof reliability and operator impact?",
-		category: "work-lineage",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "pdp",
+				required: true,
+			},
+			{
+				artifactId: "proof",
+				required: true,
+			},
+			{
+				artifactId:
+					"synapse-sdk/packages/synapse-core/src/pdp-verifier/get-next-challenge-epoch.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr", "github-pr-comment"],
-		expectedSourceSubstrings: ["pdp", "challenge", "proof"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -2129,14 +4159,58 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Trace PDP challenge creation or checking changes to review discussions focused on proof robustness and operational consequences.",
 			"What code changes around PDP challenge generation/validation line up with PR commentary about verifier reliability or operator burden?",
 		],
+		migrationNotes:
+			'too-ambiguous-required: "pdp" -> 25 matches (cap 20); kept verbatim, will fail preflight; unresolved-required: "proof"',
 	},
 	{
 		id: "wl-20",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Trace how service contract state/view interfaces are used in implementation code and connected to issues/PRs that clarified contract semantics.",
-		category: "work-lineage",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "./apps/web/src/components/EmptyState.tsx",
+				required: true,
+			},
+			{
+				artifactId: "./apps/web/src/components/SearchView.tsx",
+				required: true,
+			},
+			{
+				artifactId: "./apps/web/src/components/TraceView.tsx",
+				required: true,
+			},
+			{
+				artifactId: "./apps/web/src/state.ts",
+				required: true,
+			},
+			{
+				artifactId: "service_contracts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/docs/src/content/docs/core-concepts/filecoin-pay-overview.mdx",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/docs/src/content/docs/core-concepts/fwss-overview.mdx",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/docs/src/content/docs/core-concepts/pdp-overview.mdx",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/pay/resolve-account-state.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr", "github-issue"],
-		expectedSourceSubstrings: ["service_contracts", "State", "View"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -2146,14 +4220,38 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where are state/view interfaces from the service contracts used, and which issue or review threads explain what those interfaces mean?",
 			"Follow the use of service-contract read interfaces in code back to PRs or issues that clarified their semantics.",
 		],
+		migrationNotes:
+			'unresolved-required: "service_contracts"; ambiguous-required: "State" -> 3 matches; ambiguous-required: "View" -> 5 matches',
 	},
 	{
 		id: "wl-21",
-		queryText:
+		authoredFromCollectionId: "wtfoc-dogfood-2026-04-v3",
+		applicableCorpora: ["wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Where are slot leasing mechanics implemented, and what PR or issue history explains leasing rules, limits, or arbitration behavior?",
-		category: "work-lineage",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "./.release-please-manifest.json",
+				required: true,
+			},
+			{
+				artifactId: "./release-please-config.json",
+				required: true,
+			},
+			{
+				artifactId: "service_contracts",
+				required: true,
+			},
+			{
+				artifactId: "slot",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr", "github-issue"],
-		expectedSourceSubstrings: ["slot", "lease", "service_contracts"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -2163,14 +4261,38 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Trace slot-leasing code to the issue or PR discussions that define limits, rule enforcement, or dispute handling.",
 			"Which files implement slot leasing, and what review history explains how leasing constraints or arbitration are supposed to work?",
 		],
+		migrationNotes:
+			'unresolved-required: "slot"; ambiguous-required: "lease" -> 2 matches; unresolved-required: "service_contracts"',
 	},
 	{
 		id: "wl-22",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12"],
+		query:
 			"Trace staking mechanics from contract code to issue/PR commentary that discusses stake requirements, slashing risk, or incentive alignment.",
-		category: "work-lineage",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "service_contracts",
+				required: true,
+			},
+			{
+				artifactId: "stake",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/docs/src/content/docs/resources/contracts.mdx",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/utils/contract-errors.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr", "github-pr-comment"],
-		expectedSourceSubstrings: ["stake", "contract", "service_contracts"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -2180,14 +4302,34 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where is staking behavior coded, and which PR or issue discussions cover required stake levels, slashing risk, or incentive design?",
 			"Follow staking-related contracts and code into the review history that discusses stake sizing, slashing, and incentive alignment.",
 		],
+		migrationNotes:
+			'unresolved-required: "stake"; ambiguous-required: "contract" -> 2 matches; unresolved-required: "service_contracts"',
 	},
 	{
 		id: "wl-23",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"How did indexer advertisement ingestion evolve from code changes to issue/PR discussions about malformed advertisement handling?",
-		category: "work-lineage",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "advertisement",
+				required: true,
+			},
+			{
+				artifactId: "indexer",
+				required: true,
+			},
+			{
+				artifactId: "malformed",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr", "github-issue"],
-		expectedSourceSubstrings: ["indexer", "advertisement", "malformed"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -2197,14 +4339,34 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Trace the implementation history of advertisement ingestion into review threads focused on malformed IPNI ads.",
 			"Where are indexer ad-ingestion changes implemented, and what PR or issue commentary discusses bad or malformed advertisement handling?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "indexer"; unresolved-required: "advertisement"; unresolved-required: "malformed"',
 	},
 	{
 		id: "wl-24",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Which curio PDP implementation files map to cross-org PRs that reference filecoin-services contract assumptions, and what was resolved in review comments?",
-		category: "work-lineage",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "curio",
+				required: true,
+			},
+			{
+				artifactId: "filecoin-services",
+				required: true,
+			},
+			{
+				artifactId: "pdp",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr", "github-pr-comment"],
-		expectedSourceSubstrings: ["curio", "pdp", "filecoin-services"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -2214,14 +4376,82 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Trace curio PDP files to external or cross-org PR discussions that depended on filecoin-services contract assumptions, and summarize what review settled.",
 			"What curio PDP source changes map to PRs mentioning filecoin-services contract assumptions, and what conclusions came out of review comments?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "curio"; too-ambiguous-required: "pdp" -> 25 matches (cap 20); kept verbatim, will fail preflight; unresolved-required: "filecoin-services"',
 	},
 	{
 		id: "wl-25",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Trace TypeScript-to-Solidity boundary work where SDK code paths were updated alongside contract artifacts, including the issue/PR lineage for those changes.",
-		category: "work-lineage",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "./packages/cli/src/commands/unresolved-edges.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/config/src/resolver.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/search/src/edge-resolution.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/search/src/eval/edge-resolution-evaluator.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/search/src/trace/resolution.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/store/src/cid-resolver.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-core",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/abis/erc20.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/abis/index.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/pay/resolve-account-state.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/piece/resolve-piece-url.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/utils/capabilities.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/utils/pdp-capabilities.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/scripts/benchmark-provider-resolve.js",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-sdk/scripts/compare-provider-resolve-calls.js",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr", "github-issue"],
-		expectedSourceSubstrings: ["synapse-core", "abi", "sol"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -2231,14 +4461,34 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where did TS SDK code and Solidity artifacts change together, and what issue/PR trail documents that boundary work?",
 			"Follow updates that touched both SDK TypeScript paths and contract artifacts, along with the linked issue and PR history.",
 		],
+		migrationNotes:
+			'too-ambiguous-required: "synapse-core" -> 164 matches (cap 20); kept verbatim, will fail preflight; ambiguous-required: "abi" -> 4 matches; ambiguous-required: "sol" -> 10 matches',
 	},
 	{
 		id: "wl-26",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Where do sector validation checks in curio connect to issue and PR discussion trails about deal acceptance criteria and proof preconditions?",
-		category: "work-lineage",
+		queryType: "trace",
+		difficulty: "hard",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [
+			{
+				artifactId: "curio",
+				required: true,
+			},
+			{
+				artifactId: "deal",
+				required: true,
+			},
+			{
+				artifactId: "sector",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "github-pr", "github-issue"],
-		expectedSourceSubstrings: ["curio", "sector", "deal"],
 		minResults: 3,
 		requireEdgeHop: true,
 		requireCrossSourceHops: true,
@@ -2248,13 +4498,19 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Trace curio's sector validation logic to the issue or review history covering deal-admission rules and proof preconditions.",
 			"Which curio sector-checking files line up with PR or issue discussions about acceptance criteria for deals and required proof conditions?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "curio"; unresolved-required: "sector"; unresolved-required: "deal"',
 	},
-
-	// gemini pass — portable + file-level + synthesis tier:
 	{
 		id: "port-4",
-		queryText: "How is the command line interface structured and where are subcommands defined?",
-		category: "synthesis",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "How is the command line interface structured and where are subcommands defined?",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
 		minResults: 3,
 		requireEdgeHop: true,
@@ -2265,12 +4521,19 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"What is the structure of the command-line interface, and in which files are command definitions registered?",
 			"Where can I see how the CLI is assembled and where each subcommand gets defined?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "port-5",
-		queryText:
-			"What are the common error patterns used across the codebase and how are they handled?",
-		category: "synthesis",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "What are the common error patterns used across the codebase and how are they handled?",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
 		minResults: 2,
 		requireCrossSourceHops: true,
@@ -2280,11 +4543,19 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Survey the common error styles in the project and explain how failures are handled.",
 			"How does this codebase typically model and respond to errors across modules?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "port-6",
-		queryText: "Describe the project's dependency injection or service registration pattern.",
-		category: "synthesis",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "Describe the project's dependency injection or service registration pattern.",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
 		minResults: 2,
 		requireEdgeHop: true,
@@ -2294,11 +4565,19 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"How are services wired together in this system; is there a DI or registration mechanism?",
 			"Describe how components are instantiated and registered if the codebase uses dependency injection or a service container.",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "port-7",
-		queryText: "How are secrets and sensitive environment variables managed and validated?",
-		category: "synthesis",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "How are secrets and sensitive environment variables managed and validated?",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
 		minResults: 2,
 		requireCrossSourceHops: true,
@@ -2308,11 +4587,19 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"What is the pattern for handling confidential configuration values and checking that required environment variables are present?",
 			"Where does the system define and validate secrets or sensitive environment-based settings?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "port-8",
-		queryText: "What is the strategy for handling asynchronous tasks or background jobs?",
-		category: "synthesis",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "What is the strategy for handling asynchronous tasks or background jobs?",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
 		minResults: 2,
 		requireEdgeHop: true,
@@ -2323,11 +4610,19 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"How are asynchronous tasks and background jobs modeled and executed in the system?",
 			"Describe the strategy for running deferred or background work across the codebase.",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "port-9",
-		queryText: "Which documentation files provide the best overview of the system's architecture?",
-		category: "cross-source",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "Which documentation files provide the best overview of the system's architecture?",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["markdown"],
 		minResults: 2,
 		portability: "portable",
@@ -2336,12 +4631,20 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"What documentation files give the clearest high-level system overview?",
 			"If I want the architectural big picture, which docs should I read first?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "port-10",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Are there any mentions of performance bottlenecks or optimization goals in the documentation or issues?",
-		category: "cross-source",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["markdown"],
 		minResults: 2,
 		requireCrossSourceHops: true,
@@ -2351,11 +4654,19 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where are performance concerns or optimization goals called out in documentation or issue history?",
 			"Are there documented hotspots, scaling concerns, or stated optimization priorities anywhere in the repo?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "port-11",
-		queryText: "How does the code interact with external APIs or third-party services?",
-		category: "cross-source",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "How does the code interact with external APIs or third-party services?",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
 		minResults: 3,
 		requireEdgeHop: true,
@@ -2366,11 +4677,19 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"What are the main patterns for calling outside services and third-party APIs?",
 			"Where and how does the system talk to external platforms or vendor APIs?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "port-12",
-		queryText: "What logging levels are supported and where is the logger initialized?",
-		category: "cross-source",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "What logging levels are supported and where is the logger initialized?",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
 		minResults: 2,
 		requireCrossSourceHops: true,
@@ -2380,11 +4699,19 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Which logging severities are supported by the project, and where does logger initialization happen?",
 			"How is logging set up, including the available levels and the code that boots the logger?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "port-13",
-		queryText: "How is data persistence handled and what database or storage engine is used?",
-		category: "cross-source",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "How is data persistence handled and what database or storage engine is used?",
+		queryType: "trace",
+		difficulty: "medium",
+		targetLayerHints: ["edge-extraction", "trace"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
 		minResults: 2,
 		requireEdgeHop: true,
@@ -2395,12 +4722,20 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"What storage engine or database underlies the application, and how does the code manage persistence?",
 			"Describe the project's data persistence layer and the backing database or storage mechanism it relies on.",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "port-14",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"What is the test coverage strategy for new features according to the development guidelines?",
-		category: "coverage",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["markdown"],
 		minResults: 1,
 		portability: "portable",
@@ -2409,14 +4744,25 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"How are contributors expected to test new functionality according to the project's guidelines?",
 			"What is the stated testing expectation for newly added features?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "port-15",
-		queryText:
-			"Are there any unimplemented features or TODOs mentioned in the source code or issues?",
-		category: "coverage",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "Are there any unimplemented features or TODOs mentioned in the source code or issues?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "TODO",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["TODO"],
 		minResults: 3,
 		requireCrossSourceHops: true,
 		portability: "portable",
@@ -2425,12 +4771,20 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where does the repo call out unfinished work, whether as TODO comments or open issue notes?",
 			"What unimplemented features or pending tasks are explicitly mentioned in source or issue history?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "TODO"',
 	},
 	{
 		id: "port-16",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"What are the core types or data structures that represent the primary entities in this system?",
-		category: "coverage",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
 		minResults: 3,
 		requireEdgeHop: true,
@@ -2440,11 +4794,19 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Which types or structs model the primary concepts this project revolves around?",
 			"Describe the foundational data structures that represent the system's key entities.",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "port-17",
-		queryText: "How is the CI/CD pipeline configured and what are the main build stages?",
-		category: "coverage",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "How is the CI/CD pipeline configured and what are the main build stages?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["markdown"],
 		minResults: 2,
 		requireCrossSourceHops: true,
@@ -2454,13 +4816,29 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"What does the pipeline configuration look like, including the main steps for build, test, and delivery?",
 			"Where is the CI/CD workflow defined, and what are its principal stages?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "port-18",
-		queryText: "Are there any deprecated functions or modules that should no longer be used?",
-		category: "coverage",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "Are there any deprecated functions or modules that should no longer be used?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["ranking", "chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "@deprecated",
+				required: true,
+			},
+			{
+				artifactId: "deprecated",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
-		expectedSourceSubstrings: ["@deprecated", "deprecated"],
 		minResults: 1,
 		requireCrossSourceHops: true,
 		portability: "portable",
@@ -2469,13 +4847,25 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"What parts of the codebase are considered deprecated and should be avoided?",
 			"Does the repository identify any APIs or modules as obsolete?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "@deprecated"; unresolved-required: "deprecated"',
 	},
 	{
 		id: "fl-5",
-		queryText: "Which file defines the HierarchicalCodeChunker class?",
-		category: "file-level",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "Which file defines the HierarchicalCodeChunker class?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "HierarchicalCodeChunker",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["HierarchicalCodeChunker"],
 		minResults: 1,
 		portability: "corpus-specific",
 		paraphrases: [
@@ -2483,13 +4873,33 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where is HierarchicalCodeChunker implemented?",
 			"What source file declares the HierarchicalCodeChunker class?",
 		],
+		migrationNotes:
+			'unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates; unresolved-required: "HierarchicalCodeChunker"',
 	},
 	{
 		id: "fl-6",
-		queryText: "Where is the implementation of the main entry point for the CLI?",
-		category: "file-level",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "Where is the implementation of the main entry point for the CLI?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "./apps/web/src/main.tsx",
+				required: true,
+			},
+			{
+				artifactId: "cli",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/apps/synapse-playground/src/main.tsx",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["cli", "main"],
 		minResults: 1,
 		portability: "corpus-specific",
 		paraphrases: [
@@ -2497,13 +4907,65 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Which file contains the primary startup code for the command-line interface?",
 			"What source file serves as the main entry point for the CLI?",
 		],
+		migrationNotes:
+			'too-ambiguous-required: "cli" -> 62 matches (cap 20); kept verbatim, will fail preflight',
 	},
 	{
 		id: "fl-7",
-		queryText: "Which file contains the configuration schema or interface definitions?",
-		category: "file-level",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "Which file contains the configuration schema or interface definitions?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "./packages/common/src/schemas/chunk.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/common/src/schemas/edge.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/common/src/schemas/eval.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/common/src/schemas/manifest.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/store/src/schema.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/store/src/schema/manifest.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/store/src/schema/segment.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/store/src/schema/shared.ts",
+				required: true,
+			},
+			{
+				artifactId: "config",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/devnet/schema.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/utils/schemas.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["config", "schema"],
 		minResults: 1,
 		portability: "corpus-specific",
 		paraphrases: [
@@ -2511,13 +4973,70 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where are the project's config types or schema definitions located?",
 			"What source file contains the configuration interface or validation schema?",
 		],
+		migrationNotes:
+			'too-ambiguous-required: "config" -> 39 matches (cap 20); kept verbatim, will fail preflight; ambiguous-required: "schema" -> 10 matches',
 	},
 	{
 		id: "fl-8",
-		queryText: "Where is the code that handles GitHub API integration and event processing?",
-		category: "file-level",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "Where is the code that handles GitHub API integration and event processing?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "./packages/ingest/src/adapters/github/adapter.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/ingest/src/adapters/github/auth.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/ingest/src/adapters/github/http-transport.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/ingest/src/adapters/github/index.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/ingest/src/adapters/github/jwt.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/ingest/src/adapters/github/transport.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/ingest/src/edges/llm-client.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/ingest/src/edges/tree-sitter-client.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/examples/cli/src/client.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/warm-storage/get-client-data-set-ids.ts",
+				required: true,
+			},
+			{
+				artifactId:
+					"synapse-sdk/packages/synapse-core/src/warm-storage/get-client-data-sets-length.ts",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/packages/synapse-core/src/warm-storage/get-client-data-sets.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["github", "client"],
 		minResults: 1,
 		portability: "corpus-specific",
 		paraphrases: [
@@ -2525,13 +5044,61 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Which file manages GitHub API calls along with event-processing logic?",
 			"What source file contains the code for GitHub integration and incoming event handling?",
 		],
+		migrationNotes:
+			'ambiguous-required: "github" -> 6 matches; ambiguous-required: "client" -> 6 matches',
 	},
 	{
 		id: "fl-9",
-		queryText: "Which file defines the storage interface for the Fact Oriented Codebase?",
-		category: "file-level",
+		authoredFromCollectionId: "wtfoc-dogfood-2026-04-v3",
+		applicableCorpora: ["wtfoc-dogfood-2026-04-v3"],
+		query: "Which file defines the storage interface for the Fact Oriented Codebase?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "./packages/common/src/interfaces/chunk-scorer.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/common/src/interfaces/chunker.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/common/src/interfaces/clusterer.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/common/src/interfaces/edge-extractor.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/common/src/interfaces/embedder.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/common/src/interfaces/manifest-store.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/common/src/interfaces/source-adapter.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/common/src/interfaces/storage-backend.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/common/src/interfaces/vector-index.ts",
+				required: true,
+			},
+			{
+				artifactId: "store",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["store", "interface"],
 		minResults: 1,
 		portability: "corpus-specific",
 		paraphrases: [
@@ -2539,13 +5106,41 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where is the core storage contract for the Fact Oriented Codebase declared?",
 			"What file contains the storage interface used by the Fact Oriented Codebase?",
 		],
+		migrationNotes:
+			'too-ambiguous-required: "store" -> 27 matches (cap 20); kept verbatim, will fail preflight; ambiguous-required: "interface" -> 9 matches',
 	},
 	{
 		id: "fl-10",
-		queryText: "Where is the implementation of the RAG pipeline's embedding logic?",
-		category: "file-level",
+		authoredFromCollectionId: "wtfoc-dogfood-2026-04-v3",
+		applicableCorpora: ["wtfoc-dogfood-2026-04-v3"],
+		query: "Where is the implementation of the RAG pipeline's embedding logic?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "./apps/web/server/collections/embedder-helper.ts",
+				required: true,
+			},
+			{
+				artifactId: "./docs/embedding-audit-trail.md",
+				required: true,
+			},
+			{
+				artifactId: "./packages/common/src/interfaces/embedder.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/search/src/embedders/openai.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/search/src/embedders/transformers.ts",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["embed", "embedding"],
 		minResults: 1,
 		portability: "corpus-specific",
 		paraphrases: [
@@ -2553,13 +5148,32 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Which file contains the code that generates embeddings in the RAG flow?",
 			"What source file handles embedding generation for the retrieval pipeline?",
 		],
+		migrationNotes: 'ambiguous-required: "embed" -> 5 matches',
 	},
 	{
 		id: "fl-11",
-		queryText: "Which file manages the ingestion of Slack or chat messages?",
-		category: "file-level",
+		authoredFromCollectionId: "wtfoc-dogfood-2026-04-v3",
+		applicableCorpora: ["wtfoc-dogfood-2026-04-v3"],
+		query: "Which file manages the ingestion of Slack or chat messages?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "./packages/ingest/src/adapters/chat-utils.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/ingest/src/adapters/slack.ts",
+				required: true,
+			},
+			{
+				artifactId: "ingest",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["slack", "chat", "ingest"],
 		minResults: 1,
 		portability: "corpus-specific",
 		paraphrases: [
@@ -2567,13 +5181,57 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Where is the code that processes Slack or other chat-message ingestion?",
 			"What source file manages chat-message ingestion, including Slack data?",
 		],
+		migrationNotes:
+			'too-ambiguous-required: "ingest" -> 76 matches (cap 20); kept verbatim, will fail preflight',
 	},
 	{
 		id: "fl-12",
-		queryText: "Where are the constants and utility functions for edge extraction defined?",
-		category: "file-level",
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query: "Where are the constants and utility functions for edge extraction defined?",
+		queryType: "lookup",
+		difficulty: "medium",
+		targetLayerHints: ["chunking"],
+		expectedEvidence: [
+			{
+				artifactId: "./docs/demos/edge-extraction/README.md",
+				required: true,
+			},
+			{
+				artifactId: "./packages/cli/src/commands/extract-edges.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/cli/src/extractor-config.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/common/src/interfaces/edge-extractor.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/ingest/src/edges/extraction-status.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/ingest/src/edges/extractor.ts",
+				required: true,
+			},
+			{
+				artifactId: "./packages/ingest/src/eval/edge-extraction-evaluator.ts",
+				required: true,
+			},
+			{
+				artifactId: "edge",
+				required: true,
+			},
+			{
+				artifactId: "synapse-sdk/utils/example-leaf-count-extraction.js",
+				required: true,
+			},
+		],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code"],
-		expectedSourceSubstrings: ["edge", "extract"],
 		minResults: 1,
 		portability: "corpus-specific",
 		paraphrases: [
@@ -2581,12 +5239,20 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Which file contains shared constants and utility functions used for edge extraction?",
 			"What source file defines the reusable helpers and constants for extracting edges?",
 		],
+		migrationNotes:
+			'too-ambiguous-required: "edge" -> 35 matches (cap 20); kept verbatim, will fail preflight; ambiguous-required: "extract" -> 8 matches',
 	},
 	{
 		id: "syn-18",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"What is the observability strategy, including logging patterns and any telemetry or tracing instrumentation?",
-		category: "synthesis",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
 		minResults: 3,
 		requireEdgeHop: true,
@@ -2597,12 +5263,20 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Describe how observability is handled here, covering logs, metrics, traces, or instrumentation if present.",
 			"How does the project approach observability across logging patterns and any telemetry or tracing support?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "syn-19",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"How are error retry semantics and transient failure handling implemented across network-bound components?",
-		category: "synthesis",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
 		minResults: 2,
 		requireEdgeHop: true,
@@ -2613,12 +5287,20 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Describe the way network-bound modules deal with temporary failures, including retries and related semantics.",
 			"What are the retry and transient-error strategies used by components that depend on remote services?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "syn-20",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Analyze the security threat model: how does the system handle untrusted input during ingestion and how are cross-tenant boundaries enforced?",
-		category: "synthesis",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
 		minResults: 4,
 		requireEdgeHop: true,
@@ -2629,12 +5311,20 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"What security model governs untrusted ingested data and isolation between tenants?",
 			"How does the system defend against malicious input during ingestion while preserving cross-tenant separation?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "syn-21",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"What is the data migration story? Describe how schema changes are handled and how historical facts are re-indexed.",
-		category: "synthesis",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
 		minResults: 3,
 		requireEdgeHop: true,
@@ -2645,12 +5335,20 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"Describe how the project handles schema changes over time and reprocessing of historical indexed data.",
 			"How do data migrations work here, including schema updates and re-indexing past facts?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "syn-22",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Describe the testing strategy, distinguishing between unit, integration, and e2e tests, and how they are verified in CI.",
-		category: "synthesis",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
 		minResults: 4,
 		requireEdgeHop: true,
@@ -2661,12 +5359,20 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"How does the project split testing between unit, integration, and e2e coverage, and what does CI run to enforce it?",
 			"What is the overall test approach, distinguishing unit/integration/e2e work and the way those tests are checked in CI?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "syn-23",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"How is the dependency injection or plugin architecture structured to allow for extensible ingestion sources?",
-		category: "synthesis",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
 		minResults: 3,
 		requireEdgeHop: true,
@@ -2677,12 +5383,20 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"What architecture lets the system add new ingestion-source plugins or injected services?",
 			"Describe how the codebase is organized so ingestion sources can be extended through plugins or dependency wiring.",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 	{
 		id: "syn-24",
-		queryText:
+		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
+		applicableCorpora: ["filoz-ecosystem-2026-04-v12", "wtfoc-dogfood-2026-04-v3"],
+		query:
 			"Are there specific performance benchmarks or scalability triggers documented, and how does the code address these limits?",
-		category: "synthesis",
+		queryType: "howto",
+		difficulty: "hard",
+		targetLayerHints: ["ranking"],
+		expectedEvidence: [],
+		acceptableAnswerFacts: [],
 		requiredSourceTypes: ["code", "markdown"],
 		minResults: 3,
 		requireEdgeHop: true,
@@ -2693,5 +5407,106 @@ export const GOLD_STANDARD_QUERIES: GoldStandardQuery[] = [
 			"What documented benchmarks, scale triggers, or capacity thresholds exist, and what code addresses them?",
 			"Does the project spell out performance or scalability tripwires, and how are those concerns handled in implementation?",
 		],
+		migrationNotes:
+			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 ];
+// === END MIGRATOR-MANAGED ARRAY ===
+
+/**
+ * Legacy-shape view of a `GoldQuery`, kept for the existing
+ * `quality-queries-evaluator` grader during the #344 step-1 transition. The
+ * grader still reads `queryText` / `category` / `expectedSourceSubstrings` /
+ * `goldSupportingSources` / `collectionScopePattern`. Replacing every read in
+ * the evaluator is step-2 work (per #344 ordering); for now this adapter
+ * keeps the grader behavior bit-for-bit identical to legacy semantics while
+ * the new schema is the source of truth for preflight + future tooling.
+ *
+ * @deprecated Retire when the evaluator is rewired to consume `GoldQuery`
+ * directly. Tracked under #344.
+ */
+export interface LegacyGoldQueryView {
+	id: string;
+	queryText: string;
+	category:
+		| "direct-lookup"
+		| "cross-source"
+		| "coverage"
+		| "synthesis"
+		| "file-level"
+		| "work-lineage"
+		| "hard-negative";
+	requiredSourceTypes: string[];
+	expectedSourceSubstrings?: string[];
+	minResults: number;
+	requireEdgeHop?: boolean;
+	requireCrossSourceHops?: boolean;
+	tier?: "demo-critical" | "diagnostic";
+	collectionScopePattern?: string;
+	collectionScopeReason?: string;
+	portability?: "portable" | "corpus-specific";
+	goldSupportingSources?: string[];
+	paraphrases?: string[];
+}
+
+const QUERY_TYPE_TO_LEGACY_CATEGORY: Record<QueryType, LegacyGoldQueryView["category"]> = {
+	lookup: "direct-lookup",
+	trace: "cross-source",
+	compare: "cross-source",
+	temporal: "cross-source",
+	causal: "cross-source",
+	howto: "synthesis",
+	"entity-resolution": "coverage",
+};
+
+function escapeRegex(s: string): string {
+	return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Project a `GoldQuery` to legacy field names for the existing grader.
+ * Substring fields are derived from `expectedEvidence`:
+ *   - `expectedSourceSubstrings` ← rows with `required: true`
+ *   - `goldSupportingSources` ← all rows
+ *
+ * The grader's `collectionScopePattern` regex is synthesized from
+ * `applicableCorpora` as an exact-id alternation, preserving the old skip
+ * semantics for corpora outside the applicable set.
+ */
+export function toLegacyView(gq: GoldQuery): LegacyGoldQueryView {
+	const required = gq.expectedEvidence.filter((e) => e.required).map((e) => e.artifactId);
+	const supporting = gq.expectedEvidence.map((e) => e.artifactId);
+	const scopePattern =
+		gq.applicableCorpora.length > 0
+			? `^(${gq.applicableCorpora.map(escapeRegex).join("|")})$`
+			: undefined;
+	const category: LegacyGoldQueryView["category"] = gq.isHardNegative
+		? "hard-negative"
+		: QUERY_TYPE_TO_LEGACY_CATEGORY[gq.queryType];
+	return {
+		id: gq.id,
+		queryText: gq.query,
+		category,
+		requiredSourceTypes: gq.requiredSourceTypes,
+		minResults: gq.minResults,
+		...(required.length > 0 ? { expectedSourceSubstrings: required } : {}),
+		...(supporting.length > 0 ? { goldSupportingSources: supporting } : {}),
+		...(gq.requireEdgeHop !== undefined ? { requireEdgeHop: gq.requireEdgeHop } : {}),
+		...(gq.requireCrossSourceHops !== undefined
+			? { requireCrossSourceHops: gq.requireCrossSourceHops }
+			: {}),
+		...(gq.tier !== undefined ? { tier: gq.tier } : {}),
+		...(scopePattern !== undefined ? { collectionScopePattern: scopePattern } : {}),
+		...(gq.portability !== undefined ? { portability: gq.portability } : {}),
+		...(gq.paraphrases !== undefined ? { paraphrases: gq.paraphrases } : {}),
+	};
+}
+
+/**
+ * Legacy-view materialized list of all gold queries. Consumed by the existing
+ * grader via a one-line import alias until step-2 rewires the grader.
+ *
+ * @deprecated See `LegacyGoldQueryView`. Tracked under #344.
+ */
+export const GOLD_STANDARD_QUERIES_LEGACY_VIEW: LegacyGoldQueryView[] =
+	GOLD_STANDARD_QUERIES.map(toLegacyView);
