@@ -2,11 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
 	type Difficulty,
 	GOLD_STANDARD_QUERIES,
-	GOLD_STANDARD_QUERIES_LEGACY_VIEW,
 	GOLD_STANDARD_QUERIES_VERSION,
 	type LayerHint,
 	type QueryType,
-	toLegacyView,
 } from "./gold-standard-queries.js";
 
 const VALID_QUERY_TYPES: QueryType[] = [
@@ -75,54 +73,5 @@ describe("GoldQuery schema invariants (#344 step 1)", () => {
 				expect(typeof ev.required, `${q.id}: required not boolean`).toBe("boolean");
 			}
 		}
-	});
-});
-
-describe("toLegacyView adapter", () => {
-	it("derives expectedSourceSubstrings from required:true rows", () => {
-		const view = toLegacyView({
-			id: "t1",
-			authoredFromCollectionId: "c1",
-			applicableCorpora: ["c1"],
-			query: "q",
-			queryType: "lookup",
-			difficulty: "easy",
-			targetLayerHints: ["ranking"],
-			expectedEvidence: [
-				{ artifactId: "a", required: true },
-				{ artifactId: "b", required: false },
-			],
-			acceptableAnswerFacts: [],
-			requiredSourceTypes: [],
-			minResults: 1,
-		});
-		expect(view.expectedSourceSubstrings).toEqual(["a"]);
-		expect(view.goldSupportingSources).toEqual(["a", "b"]);
-	});
-
-	it("synthesizes a collectionScopePattern that exactly matches applicableCorpora", () => {
-		const view = toLegacyView({
-			id: "t2",
-			authoredFromCollectionId: "c1",
-			applicableCorpora: ["alpha", "beta"],
-			query: "q",
-			queryType: "lookup",
-			difficulty: "easy",
-			targetLayerHints: ["ranking"],
-			expectedEvidence: [],
-			acceptableAnswerFacts: [],
-			requiredSourceTypes: [],
-			minResults: 1,
-		});
-		expect(view.collectionScopePattern).toBeDefined();
-		const re = new RegExp(view.collectionScopePattern as string);
-		expect(re.test("alpha")).toBe(true);
-		expect(re.test("beta")).toBe(true);
-		expect(re.test("alpha-suffix")).toBe(false);
-		expect(re.test("gamma")).toBe(false);
-	});
-
-	it("legacy materialized view has the same length as the new fixture", () => {
-		expect(GOLD_STANDARD_QUERIES_LEGACY_VIEW.length).toBe(GOLD_STANDARD_QUERIES.length);
 	});
 });

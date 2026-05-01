@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { QueryResult } from "../query.js";
 import type { TraceResult } from "../trace/trace.js";
-// #344 step-1 transition: grader still consumes the legacy view of the new
-// fixture. See `LegacyGoldQueryView` + `GOLD_STANDARD_QUERIES_LEGACY_VIEW`.
 import { GOLD_STANDARD_QUERIES_VERSION } from "./gold-standard-queries.js";
 
 const mockQuery = vi.hoisted(() => vi.fn<() => Promise<QueryResult>>());
@@ -12,9 +10,7 @@ vi.mock("../query.js", () => ({ query: mockQuery }));
 vi.mock("../trace/trace.js", () => ({ trace: mockTrace }));
 
 const { evaluateQualityQueries, getActiveQueries } = await import("./quality-queries-evaluator.js");
-const { GOLD_STANDARD_QUERIES_LEGACY_VIEW: GOLD_STANDARD_QUERIES } = await import(
-	"./gold-standard-queries.js"
-);
+const { GOLD_STANDARD_QUERIES } = await import("./gold-standard-queries.js");
 
 function makeQueryResult(
 	results: Array<{ sourceType: string; source: string; score: number }>,
