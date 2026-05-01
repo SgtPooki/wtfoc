@@ -28,7 +28,7 @@
  *     that point cleanly.
  */
 
-import { execFileSync } from "node:child_process";
+import { safeExecFileSync as execFileSync } from "../lib/safe-exec.js";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

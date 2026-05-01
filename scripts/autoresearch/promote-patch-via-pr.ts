@@ -16,7 +16,7 @@
  *     check result, link to materializer notes.
  */
 
-import { execFileSync } from "node:child_process";
+import { safeExecFileSync as execFileSync } from "../lib/safe-exec.js";
 import type { MaterializePatchResult } from "./materialize-patch.js";
 import type { PatchProposal } from "./patch-proposal.js";
 

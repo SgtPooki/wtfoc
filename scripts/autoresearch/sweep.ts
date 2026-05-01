@@ -30,7 +30,7 @@
  * defaults. That gate stays manual until methodology is hardened.
  */
 
-import { execFileSync } from "node:child_process";
+import { safeExecFileSync as execFileSync } from "../lib/safe-exec.js";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";

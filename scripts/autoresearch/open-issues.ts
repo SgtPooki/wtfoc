@@ -18,7 +18,7 @@
  *     return [] and let the proposer continue without issue context.
  */
 
-import { execFileSync } from "node:child_process";
+import { safeExecFileSync as execFileSync } from "../lib/safe-exec.js";
 
 export interface OpenIssueSummary {
 	number: number;

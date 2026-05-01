@@ -16,8 +16,8 @@
  *     the worktree's branch.
  */
 
-import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { safeExecFileSync as execFileSync } from "../lib/safe-exec.js";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { decide, type DecisionVerdict } from "./decision.js";
