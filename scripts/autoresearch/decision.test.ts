@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ExtendedDogfoodReport, RunConfig } from "../lib/run-config.js";
-import { decide, DEFAULT_GATES } from "./decision.js";
+import { decide, decideMulti, DEFAULT_GATES, trimmedMean } from "./decision.js";
 
 interface ScoreOpts {
 	id: string;
@@ -252,5 +252,173 @@ describe("decide", () => {
 		// With identical baseline+candidate, no lift → reject.
 		expect(verdict.accept).toBe(false);
 		expect(DEFAULT_GATES.demoCriticalMin).toBe(1);
+	});
+});
+
+describe("trimmedMean", () => {
+	it("returns 0 on empty input", () => {
+		expect(trimmedMean([], 0.1)).toBe(0);
+	});
+	it("returns the single value when length=1", () => {
+		expect(trimmedMean([0.5], 0.1)).toBe(0.5);
+	});
+	it("returns the arithmetic mean when fraction=0", () => {
+		expect(trimmedMean([0.1, 0.2, 0.3], 0)).toBeCloseTo(0.2);
+	});
+	it("drops the highest and lowest tails", () => {
+		// 10 values; trim 10% drops 1 from each end → mean of middle 8.
+		const vals = [1, 2, 3, 4, 5, 6, 7, 8, 9, 100];
+		const mean = trimmedMean(vals, 0.1);
+		// middle 8 = 2..9 → mean 5.5
+		expect(mean).toBeCloseTo(5.5);
+	});
+	it("clamps absurd fractions instead of throwing", () => {
+		expect(trimmedMean([1, 2, 3], 0.99)).not.toBeNaN();
+	});
+});
+
+function makeMultiReport(passRate: number, scoreCount = 30): ExtendedDogfoodReport {
+	const scores = Array.from({ length: scoreCount }, (_, i) =>
+		score({ id: `q${i}`, passed: i / scoreCount < passRate }),
+	);
+	return makeReport({ scores, passRate });
+}
+
+describe("decideMulti", () => {
+	it("ACCEPTS when every must-pass corpus delta clears the floor and trimmed-mean clears minLift", () => {
+		const baseline = new Map([
+			["alpha", makeMultiReport(0.5)],
+			["beta", makeMultiReport(0.5)],
+		]);
+		const candidate = new Map([
+			["alpha", makeMultiReport(0.6)],
+			["beta", makeMultiReport(0.6)],
+		]);
+		const v = decideMulti({ baseline, candidate, cumulativeLocChange: 5 });
+		expect(v.accept).toBe(true);
+		expect(v.trimmedMeanDelta).toBeCloseTo(0.1, 1);
+		expect(v.perCorpus).toHaveLength(2);
+	});
+
+	it("REJECTS on per-corpus floor breach", () => {
+		const baseline = new Map([
+			["alpha", makeMultiReport(0.6)],
+			["beta", makeMultiReport(0.6)],
+		]);
+		// alpha gains 30pp, beta drops 10pp -> trimmed-mean still positive but
+		// must-pass floor on beta is -3pp by default.
+		const candidate = new Map([
+			["alpha", makeMultiReport(0.9)],
+			["beta", makeMultiReport(0.5)],
+		]);
+		const v = decideMulti({ baseline, candidate, cumulativeLocChange: 5 });
+		expect(v.accept).toBe(false);
+		expect(v.reasons.some((r) => r.includes('"beta"') && r.includes("below floor"))).toBe(true);
+	});
+
+	it("REJECTS on catastrophic loss veto regardless of mean", () => {
+		const baseline = new Map([
+			["alpha", makeMultiReport(0.6)],
+			["beta", makeMultiReport(0.6)],
+		]);
+		// beta drops 35pp — catastrophic floor is 30pp.
+		const candidate = new Map([
+			["alpha", makeMultiReport(0.95)],
+			["beta", makeMultiReport(0.25)],
+		]);
+		const v = decideMulti({ baseline, candidate, cumulativeLocChange: 5 });
+		expect(v.accept).toBe(false);
+		expect(v.reasons.some((r) => r.includes("catastrophic"))).toBe(true);
+	});
+
+	it("REJECTS on minMeaningfulLoC veto when patch is no-op", () => {
+		const baseline = new Map([["alpha", makeMultiReport(0.5)]]);
+		const candidate = new Map([["alpha", makeMultiReport(0.6)]]);
+		const v = decideMulti({ baseline, candidate, cumulativeLocChange: 0 });
+		expect(v.accept).toBe(false);
+		expect(v.reasons.some((r) => r.includes("LOC change"))).toBe(true);
+	});
+
+	it("REJECTS when trimmed-mean delta is below minLift even with no per-corpus breach", () => {
+		const baseline = new Map([
+			["alpha", makeMultiReport(0.6)],
+			["beta", makeMultiReport(0.6)],
+		]);
+		// Both gain 1pp.
+		const candidate = new Map([
+			["alpha", makeMultiReport(0.61)],
+			["beta", makeMultiReport(0.61)],
+		]);
+		const v = decideMulti({ baseline, candidate, cumulativeLocChange: 5 });
+		expect(v.accept).toBe(false);
+		expect(v.reasons.some((r) => r.includes("minLift"))).toBe(true);
+	});
+
+	it("REJECTS when query-type aggregate regresses past typeFloor", () => {
+		const baseScores = Array.from({ length: 30 }, (_, i) =>
+			score({ id: `q${i}`, passed: i < 18, category: "work-lineage" }),
+		);
+		const candScores = Array.from({ length: 30 }, (_, i) =>
+			score({ id: `q${i}`, passed: i < 24, category: "work-lineage" }),
+		);
+		const baseline = new Map([
+			[
+				"alpha",
+				makeReport({
+					scores: baseScores,
+					passRate: 0.6,
+					workLineage: 0.9,
+				}),
+			],
+		]);
+		const candidate = new Map([
+			[
+				"alpha",
+				makeReport({
+					scores: candScores,
+					passRate: 0.7,
+					// work-lineage drops to 0.8, delta -10pp, breaches typeFloor 5pp
+					workLineage: 0.8,
+				}),
+			],
+		]);
+		const v = decideMulti({ baseline, candidate, cumulativeLocChange: 5 });
+		const wlReason = v.reasons.find((r) => r.includes("work-lineage"));
+		expect(wlReason).toBeDefined();
+	});
+
+	it("treats single-corpus calls as a special case and accepts cleanly", () => {
+		const baseline = new Map([["alpha", makeMultiReport(0.5)]]);
+		const candidate = new Map([["alpha", makeMultiReport(0.7)]]);
+		const v = decideMulti({ baseline, candidate, cumulativeLocChange: 10 });
+		expect(v.accept).toBe(true);
+		expect(v.perCorpus).toHaveLength(1);
+	});
+
+	it("flags missing must-pass corpora", () => {
+		const baseline = new Map([["alpha", makeMultiReport(0.5)]]);
+		const candidate = new Map([["alpha", makeMultiReport(0.7)]]);
+		const v = decideMulti({
+			baseline,
+			candidate,
+			mustPassCorpora: ["alpha", "missing"],
+			cumulativeLocChange: 5,
+		});
+		expect(v.accept).toBe(false);
+		expect(v.reasons.some((r) => r.includes("missing"))).toBe(true);
+	});
+
+	it("emits perCorpus deltas in the verdict", () => {
+		const baseline = new Map([
+			["alpha", makeMultiReport(0.5)],
+			["beta", makeMultiReport(0.6)],
+		]);
+		const candidate = new Map([
+			["alpha", makeMultiReport(0.7)],
+			["beta", makeMultiReport(0.7)],
+		]);
+		const v = decideMulti({ baseline, candidate, cumulativeLocChange: 5 });
+		expect(v.perCorpus.find((p) => p.corpusId === "alpha")?.delta).toBeCloseTo(0.2, 1);
+		expect(v.perCorpus.find((p) => p.corpusId === "beta")?.delta).toBeCloseTo(0.1, 1);
 	});
 });
