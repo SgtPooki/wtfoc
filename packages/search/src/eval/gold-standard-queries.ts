@@ -175,10 +175,12 @@ export interface GoldQuery {
 }
 
 // The fixture below was emitted by the one-shot migrator from the legacy
-// gold-standard-queries fixture in #345 (step-1 of #344). Step-3 regenerates
-// this from a stratified-template recipe. Until then, edit individual queries
-// in place — the migrator is gone.
-export const GOLD_STANDARD_QUERIES: GoldQuery[] = [
+// gold-standard-queries fixture in #345 (step-1 of #344). Step-2 of #344
+// replaces these incrementally with stratified-template authored queries
+// in `AUTHORED_QUERIES` (see `gold-authored-queries.ts`); the runtime
+// `GOLD_STANDARD_QUERIES` export at the bottom of this file is the
+// concatenation of the two sources.
+const MIGRATED_QUERIES: GoldQuery[] = [
 	{
 		id: "dl-1",
 		authoredFromCollectionId: "filoz-ecosystem-2026-04-v12",
@@ -5410,3 +5412,12 @@ export const GOLD_STANDARD_QUERIES: GoldQuery[] = [
 			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 ];
+
+import { AUTHORED_QUERIES } from "./gold-authored-queries.js";
+
+/**
+ * Runtime gold fixture. Authored queries (step 2) come first so step-2
+ * coverage of a stratum naturally shadows the lower-quality migrated
+ * entry on id collisions; downstream uniqueness checks still apply.
+ */
+export const GOLD_STANDARD_QUERIES: GoldQuery[] = [...AUTHORED_QUERIES, ...MIGRATED_QUERIES];
