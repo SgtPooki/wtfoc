@@ -1,18 +1,25 @@
 /**
  * Recipe-author CLI driver for #344 step 2 (gold-query regeneration).
  *
- * Pipeline:
+ * Pipeline (target end-state — most stages are stubbed in step 2b):
  *
- *   load corpus catalog + segments
- *     -> derive CatalogArtifact[]
- *     -> sampleStratified (deterministic with --seed)
- *     -> for each (sample, template) pair: ask LLM to draft a CandidateQuery
- *     -> applyAdversarialFilter (discard easy queries vector search solves)
- *     -> emit JSON for human approve/edit/reject
+ *   load corpus catalog            [WIRED — step 2b]
+ *     -> derive CatalogArtifact[]  [WIRED — step 2b]
+ *     -> sampleStratified          [WIRED — step 2b, deterministic with --seed]
+ *     -> author (sample, template) [STUB — step 2c replaces with live LLM]
+ *     -> applyAdversarialFilter    [DEFERRED — step 2c wires live retriever]
+ *     -> emit JSON for human review[WIRED — step 2b]
  *
- * The actual LLM call is **stubbed** in this PR (step 2b ships the driver
- * shell). Live authoring lands in step 2c+ per-collection runs once the
- * prompt + LLM helper integration is reviewed end-to-end.
+ * Step 2b ships the driver shell + 12 templates so the pipeline shape is
+ * reviewable end-to-end. Step 2c+ replaces the stub author with a live
+ * LLM call against the homelab patch-llm endpoint, wires the adversarial
+ * filter against the live `query()` retriever, and runs the first
+ * authoring round per collection (wtfoc-self, filoz, GitHub PR threads,
+ * podcast transcripts).
+ *
+ * Segment content (the LLM prompt context) is intentionally NOT loaded in
+ * this PR — the stub has no use for it. Step 2c adds segment loading
+ * alongside the live LLM call.
  *
  * Usage:
  *   pnpm exec tsx --tsconfig scripts/tsconfig.json \
@@ -27,9 +34,11 @@
  * @see https://github.com/SgtPooki/wtfoc/issues/344
  */
 
+import { createHash } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
 	type CandidateQuery,
 	type CatalogArtifact,
@@ -51,7 +60,25 @@ interface ParsedArgs {
 	dryRun: boolean;
 }
 
-function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
+function parsePositiveInt(name: string, raw: string | undefined): number {
+	if (!raw) throw new Error(`${name} requires a value`);
+	const n = Number.parseInt(raw, 10);
+	if (!Number.isFinite(n) || n < 1) {
+		throw new Error(`${name} must be a positive integer (got "${raw}")`);
+	}
+	return n;
+}
+
+function parseInteger(name: string, raw: string | undefined): number {
+	if (!raw) throw new Error(`${name} requires a value`);
+	const n = Number.parseInt(raw, 10);
+	if (!Number.isFinite(n)) {
+		throw new Error(`${name} must be an integer (got "${raw}")`);
+	}
+	return n;
+}
+
+export function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
 	let collection = "";
 	let output = "/tmp/recipe-candidates.json";
 	let samplesPerStratum = 2;
@@ -67,17 +94,19 @@ function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
 		} else if (a === "--output" && next) {
 			output = next;
 			i++;
-		} else if (a === "--samples-per-stratum" && next) {
-			samplesPerStratum = Number.parseInt(next, 10);
+		} else if (a === "--samples-per-stratum") {
+			samplesPerStratum = parsePositiveInt(a, next);
 			i++;
-		} else if (a === "--seed" && next) {
-			seed = Number.parseInt(next, 10);
+		} else if (a === "--seed") {
+			seed = parseInteger(a, next);
 			i++;
-		} else if (a === "--max-candidates" && next) {
-			maxCandidates = Number.parseInt(next, 10);
+		} else if (a === "--max-candidates") {
+			maxCandidates = parsePositiveInt(a, next);
 			i++;
 		} else if (a === "--dry-run") {
 			dryRun = true;
+		} else if (a !== undefined) {
+			throw new Error(`unknown flag: "${a}"`);
 		}
 	}
 	if (!collection) {
@@ -151,13 +180,24 @@ export function planAuthoring(
  * keyed by `(template.id, artifactId)` so the JSON output is reviewable
  * end-to-end. Live LLM authoring replaces this body in step 2c.
  */
+/**
+ * Build a stable id keyed by the full `(template.id, artifactId)` pair.
+ * Hashing keeps the id filesystem/JSON safe even when artifactIds carry
+ * slashes or unusual characters; the full artifactId is preserved in
+ * `expectedEvidence[0].artifactId` for human review.
+ */
+function makeCandidateId(templateId: string, artifactId: string): string {
+	const fp = createHash("sha1").update(`${templateId}::${artifactId}`).digest("hex").slice(0, 12);
+	return `${templateId}__${fp}`;
+}
+
 export function stubAuthor(
 	sample: RecipeSample,
 	template: QueryTemplate,
 	collection: string,
 ): CandidateQuery {
 	const draft: Omit<GoldQuery, "id"> & { id?: string } = {
-		id: `${template.id}__${sample.artifact.artifactId.slice(0, 24)}`,
+		id: makeCandidateId(template.id, sample.artifact.artifactId),
 		authoredFromCollectionId: collection,
 		applicableCorpora: [collection],
 		query: `[STUB ${template.id}] ${template.exampleSurface}`,
@@ -246,7 +286,10 @@ async function main(): Promise<void> {
 }
 
 // Allow this module to be imported by tests without auto-running main.
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Use `fileURLToPath` instead of string-comparing `file://` prefixes so
+// path encoding / Windows paths / symlinks all resolve consistently.
+const entryPath = process.argv[1] ?? "";
+if (entryPath && fileURLToPath(import.meta.url) === entryPath) {
 	main().catch((err) => {
 		console.error("[recipe-author] FATAL:", err);
 		process.exit(1);

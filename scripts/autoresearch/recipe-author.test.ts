@@ -2,6 +2,7 @@ import type { CatalogArtifact, RecipeSample } from "@wtfoc/search";
 import { describe, expect, it } from "vitest";
 import {
 	catalogToArtifacts,
+	parseArgs,
 	planAuthoring,
 	seededRng,
 	stubAuthor,
@@ -120,10 +121,13 @@ describe("planAuthoring", () => {
 		expect(plan.length).toBeLessThan(samples.length);
 	});
 
-	it("skips samples whose stratum has no applicable templates", () => {
-		// Construct an artifact whose stratum no template targets — but
-		// because we have always-applies templates (`trace-cross-source`,
-		// `howto-task`, etc.) every stratum has at least those.
+	it("always-applies templates ensure every stratum gets at least one template", () => {
+		// Every stratum is covered by the always-applies templates
+		// (`trace-cross-source`, `howto-task`, etc.), so planAuthoring
+		// never silently drops a sample. If a future template change
+		// removes always-applies and exposes a real "no templates"
+		// edge case, this test should be replaced with one that
+		// constructs that stratum explicitly.
 		const samples = [makeSample({ artifactId: "a.ts" })];
 		const plan = planAuthoring(samples, 100);
 		expect(plan.length).toBeGreaterThan(0);
@@ -131,14 +135,14 @@ describe("planAuthoring", () => {
 });
 
 describe("stubAuthor", () => {
-	it("emits a candidate keyed by (template.id, artifactId)", () => {
-		const c = stubAuthor(
-			makeSample({ artifactId: "src/foo.ts" }),
-			RECIPE_TEMPLATES[0],
-			"alpha",
-		);
-		expect(c.draft.id).toContain("src/foo.ts");
-		expect(c.draft.id).toContain(RECIPE_TEMPLATES[0]?.id);
+	it("emits a candidate id that includes the template id (artifactId is hashed)", () => {
+		const tpl = RECIPE_TEMPLATES[0];
+		if (!tpl) throw new Error("no templates");
+		const c = stubAuthor(makeSample({ artifactId: "src/foo.ts" }), tpl, "alpha");
+		expect(c.draft.id).toContain(tpl.id);
+		// The artifactId is preserved on the evidence row, not the id, so
+		// reviewers can map an id back via the evidence array.
+		expect(c.draft.expectedEvidence[0]?.artifactId).toBe("src/foo.ts");
 	});
 
 	it("propagates template fields onto the draft", () => {
@@ -164,6 +168,62 @@ describe("stubAuthor", () => {
 	it("flags itself as a stub via migrationNotes", () => {
 		const c = stubAuthor(makeSample({ artifactId: "x" }), RECIPE_TEMPLATES[0], "alpha");
 		expect(c.draft.migrationNotes).toContain("stub-authored");
+	});
+});
+
+describe("parseArgs", () => {
+	it("requires --collection", () => {
+		expect(() => parseArgs([])).toThrow(/usage/);
+	});
+	it("rejects unknown flags", () => {
+		expect(() => parseArgs(["--collection", "x", "--bogus"])).toThrow(/unknown flag/);
+	});
+	it("rejects non-numeric --samples-per-stratum", () => {
+		expect(() => parseArgs(["--collection", "x", "--samples-per-stratum", "abc"])).toThrow(
+			/positive integer/,
+		);
+	});
+	it("rejects zero or negative --max-candidates", () => {
+		expect(() => parseArgs(["--collection", "x", "--max-candidates", "0"])).toThrow(
+			/positive integer/,
+		);
+	});
+	it("accepts --seed=0 (integer, not positive)", () => {
+		const a = parseArgs(["--collection", "x", "--seed", "0"]);
+		expect(a.seed).toBe(0);
+	});
+	it("--dry-run is a boolean flag", () => {
+		const a = parseArgs(["--collection", "x", "--dry-run"]);
+		expect(a.dryRun).toBe(true);
+	});
+});
+
+describe("stub candidate id stability", () => {
+	it("produces collision-free ids for artifacts that share a 24-char prefix", () => {
+		const a = stubAuthor(
+			makeSample({ artifactId: "very/long/path/that/has/a/common/prefix/file-A.ts" }),
+			RECIPE_TEMPLATES[0]!,
+			"alpha",
+		);
+		const b = stubAuthor(
+			makeSample({ artifactId: "very/long/path/that/has/a/common/prefix/file-B.ts" }),
+			RECIPE_TEMPLATES[0]!,
+			"alpha",
+		);
+		expect(a.draft.id).not.toBe(b.draft.id);
+	});
+	it("emits the same id for identical inputs (deterministic)", () => {
+		const a = stubAuthor(
+			makeSample({ artifactId: "foo.ts" }),
+			RECIPE_TEMPLATES[0]!,
+			"alpha",
+		);
+		const b = stubAuthor(
+			makeSample({ artifactId: "foo.ts" }),
+			RECIPE_TEMPLATES[0]!,
+			"alpha",
+		);
+		expect(a.draft.id).toBe(b.draft.id);
 	});
 });
 

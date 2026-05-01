@@ -19,7 +19,7 @@
  * @see https://github.com/SgtPooki/wtfoc/issues/344
  */
 
-import type { QueryTemplate } from "@wtfoc/search";
+import type { QueryTemplate, Stratum } from "@wtfoc/search";
 
 export const RECIPE_TEMPLATES: ReadonlyArray<QueryTemplate> = [
 	// ── Lookup family ────────────────────────────────────────────────
@@ -177,7 +177,7 @@ export const RECIPE_TEMPLATES: ReadonlyArray<QueryTemplate> = [
  * template set per sampled artifact.
  */
 export function templatesForStratum(
-	stratum: { sourceType: string; edgeType: string | null; rarity: "common" | "rare" },
+	stratum: Pick<Stratum, "sourceType" | "edgeType" | "rarity">,
 ): ReadonlyArray<QueryTemplate> {
 	return RECIPE_TEMPLATES.filter((t) => {
 		if (!t.appliesToStrata || t.appliesToStrata.length === 0) return true;
