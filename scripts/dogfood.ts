@@ -27,7 +27,9 @@ import {
 	InMemoryVectorIndex,
 	LlmReranker,
 	OpenAIEmbedder,
+	type PreflightStatus,
 	type Reranker,
+	runPreflight,
 } from "@wtfoc/search";
 import { evaluateStorage, createStore } from "@wtfoc/store";
 import { formatDogfoodReport } from "./dogfood-formatter.js";
@@ -508,6 +510,47 @@ async function main() {
 						if (values["trace-min-score"] !== undefined)
 							retrievalOverrides.traceMinScore = Number.parseFloat(values["trace-min-score"]);
 
+						// #344 step 3 — pre-flight catalog applicability so the
+						// failure-diagnosis layer's rule-1 short-circuit can fire
+						// (gold artifacts absent from this corpus = `fixture-invalid`,
+						// no retrieval-layer triage). Loads the catalog for the
+						// active collection only and runs preflight against the
+						// subset of queries that target this corpus, so
+						// `runPreflight`'s cross-corpus schema check (which would
+						// hard-error on every multi-corpus query) does not fire.
+						const collectionId = values.collection;
+						if (!collectionId) {
+							throw new Error("--collection is required for the quality-queries stage");
+						}
+						const qqCatPath = catalogFilePath(qqManifestDir, collectionId);
+						const qqCatalog = await readCatalog(qqCatPath);
+						const preflightStatusByQueryId = new Map<string, PreflightStatus>();
+						if (qqCatalog) {
+							// Project each query down to "this corpus" before preflight so
+							// `runPreflight`'s matrix-validation pass (which expects a
+							// catalog for every applicableCorpora id it sees) gets a
+							// single-corpus view it can satisfy.
+							const localQueries = GOLD_STANDARD_QUERIES.filter((q) =>
+								q.applicableCorpora.includes(collectionId),
+							).map((q) => ({ ...q, applicableCorpora: [collectionId] }));
+							const preflight = runPreflight({
+								queries: localQueries,
+								catalogs: [{ corpusId: collectionId, catalog: qqCatalog }],
+							});
+							if (preflight.hardErrors.length > 0) {
+								console.warn(
+									`[dogfood] preflight hard-errors (${preflight.hardErrors.length}); skipping fixture-invalid wiring`,
+								);
+								for (const e of preflight.hardErrors) console.warn(`  - ${e}`);
+							} else {
+								for (const r of preflight.results) {
+									if (r.corpusId === collectionId) {
+										preflightStatusByQueryId.set(r.queryId, r.status);
+									}
+								}
+							}
+						}
+
 						result = await evaluateQualityQueries(
 						embedder,
 						vectorIndex,
@@ -521,6 +564,9 @@ async function main() {
 							corpusSourceTypes,
 							perQueryHook: (id, ms) => timer.record("per-query-total", ms),
 							checkParaphrases: process.env.WTFOC_CHECK_PARAPHRASES === "1",
+							...(preflightStatusByQueryId.size > 0
+								? { preflightStatusByQueryId }
+								: {}),
 							...(Object.keys(retrievalOverrides).length > 0
 								? { retrievalOverrides }
 								: {}),
