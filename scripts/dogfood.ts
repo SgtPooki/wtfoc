@@ -27,7 +27,9 @@ import {
 	InMemoryVectorIndex,
 	LlmReranker,
 	OpenAIEmbedder,
+	type PreflightStatus,
 	type Reranker,
+	runPreflight,
 } from "@wtfoc/search";
 import { evaluateStorage, createStore } from "@wtfoc/store";
 import { formatDogfoodReport } from "./dogfood-formatter.js";
@@ -508,6 +510,27 @@ async function main() {
 						if (values["trace-min-score"] !== undefined)
 							retrievalOverrides.traceMinScore = Number.parseFloat(values["trace-min-score"]);
 
+						// #344 step 3 — pre-flight catalog applicability so the
+						// failure-diagnosis layer's rule-1 short-circuit can fire
+						// (gold artifacts absent from this corpus = `fixture-invalid`,
+						// no retrieval-layer triage). Loads the catalog once for
+						// the active collection and keys preflight results by
+						// query id.
+						const qqCatPath = catalogFilePath(qqManifestDir, values.collection!);
+						const qqCatalog = await readCatalog(qqCatPath);
+						const preflightStatusByQueryId = new Map<string, PreflightStatus>();
+						if (qqCatalog) {
+							const preflight = runPreflight({
+								queries: GOLD_STANDARD_QUERIES,
+								catalogs: [{ corpusId: values.collection!, catalog: qqCatalog }],
+							});
+							for (const r of preflight.results) {
+								if (r.corpusId === values.collection) {
+									preflightStatusByQueryId.set(r.queryId, r.status);
+								}
+							}
+						}
+
 						result = await evaluateQualityQueries(
 						embedder,
 						vectorIndex,
@@ -521,6 +544,9 @@ async function main() {
 							corpusSourceTypes,
 							perQueryHook: (id, ms) => timer.record("per-query-total", ms),
 							checkParaphrases: process.env.WTFOC_CHECK_PARAPHRASES === "1",
+							...(preflightStatusByQueryId.size > 0
+								? { preflightStatusByQueryId }
+								: {}),
 							...(Object.keys(retrievalOverrides).length > 0
 								? { retrievalOverrides }
 								: {}),
