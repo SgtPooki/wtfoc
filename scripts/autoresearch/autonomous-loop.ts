@@ -221,8 +221,9 @@ async function runPatchPath(input: {
 	}
 
 	if (cli.dryRun) {
+		const filesTouched = new Set(llm.proposal.edits.map((e) => e.file));
 		notes.push(
-			`DRY-RUN patch proposal: baseSha=${llm.proposal.baseSha}, +${llm.proposal.unifiedDiff.split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++")).length}/-${llm.proposal.unifiedDiff.split("\n").filter((l) => l.startsWith("-") && !l.startsWith("---")).length} lines`,
+			`DRY-RUN patch proposal: baseSha=${llm.proposal.baseSha}, ${llm.proposal.edits.length} edit(s) across ${filesTouched.size} file(s): ${[...filesTouched].slice(0, 3).join(", ")}`,
 		);
 		return { status: "accepted-no-pr", notes };
 	}

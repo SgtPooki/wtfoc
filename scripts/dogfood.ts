@@ -378,7 +378,7 @@ async function main() {
 						};
 					} else {
 						const rawEmbedder = new OpenAIEmbedder({
-							apiKey: values["embedder-key"] || values["extractor-key"] || "no-key",
+							apiKey: values["embedder-key"] || process.env.WTFOC_EMBEDDER_KEY || values["extractor-key"] || "no-key",
 							baseUrl: values["embedder-url"],
 							model: values["embedder-model"],
 						});
@@ -446,7 +446,7 @@ async function main() {
 						};
 					} else {
 						const rawEmbedder = new OpenAIEmbedder({
-							apiKey: values["embedder-key"] || values["extractor-key"] || "no-key",
+							apiKey: values["embedder-key"] || process.env.WTFOC_EMBEDDER_KEY || values["extractor-key"] || "no-key",
 							baseUrl: values["embedder-url"],
 							model: values["embedder-model"],
 							usageSink: embedderUsageSink,
