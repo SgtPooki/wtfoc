@@ -1,25 +1,20 @@
 /**
  * Recipe-author CLI driver for #344 step 2 (gold-query regeneration).
  *
- * Pipeline (target end-state — most stages are stubbed in step 2b):
+ * Pipeline (status as of step 2d):
  *
  *   load corpus catalog            [WIRED — step 2b]
  *     -> derive CatalogArtifact[]  [WIRED — step 2b]
  *     -> sampleStratified          [WIRED — step 2b, deterministic with --seed]
- *     -> author (sample, template) [STUB — step 2c replaces with live LLM]
- *     -> applyAdversarialFilter    [DEFERRED — step 2c wires live retriever]
+ *     -> load segment excerpts     [WIRED — step 2d, --live only]
+ *     -> author (sample, template) [WIRED — step 2c live LLM under --live]
+ *     -> applyAdversarialFilter    [DEFERRED — step 2e wires live retriever]
  *     -> emit JSON for human review[WIRED — step 2b]
  *
- * Step 2b ships the driver shell + 12 templates so the pipeline shape is
- * reviewable end-to-end. Step 2c+ replaces the stub author with a live
- * LLM call against the homelab patch-llm endpoint, wires the adversarial
- * filter against the live `query()` retriever, and runs the first
- * authoring round per collection (wtfoc-self, filoz, GitHub PR threads,
- * podcast transcripts).
- *
- * Segment content (the LLM prompt context) is intentionally NOT loaded in
- * this PR — the stub has no use for it. Step 2c adds segment loading
- * alongside the live LLM call.
+ * Step 2e replaces the deferred adversarial filter with a live `query()`
+ * retriever (mounts the corpus's vector index in-memory) and runs the
+ * first authoring rounds per collection (wtfoc-self, filoz, GitHub PR
+ * threads, podcast transcripts).
  *
  * Usage:
  *   pnpm exec tsx --tsconfig scripts/tsconfig.json \
@@ -48,8 +43,11 @@ import {
 	type Stratum,
 	sampleStratified,
 } from "@wtfoc/search";
+import type { Segment } from "@wtfoc/common";
 import { catalogFilePath, readCatalog } from "@wtfoc/ingest";
+import { createStore } from "@wtfoc/store";
 import { authorCandidate } from "./recipe-llm-author.js";
+import { buildExcerptMap } from "./recipe-segment-loader.js";
 import { RECIPE_TEMPLATES, templatesForStratum } from "./recipe-templates.js";
 
 interface ParsedArgs {
@@ -237,6 +235,21 @@ function summarizeStrata(samples: ReadonlyArray<RecipeSample>): Array<{ stratum:
 	return Array.from(m.values());
 }
 
+async function loadSegments(collectionId: string): Promise<Segment[]> {
+	const store = createStore({ storage: "local" });
+	const head = await store.manifests.getHead(collectionId);
+	if (!head) {
+		throw new Error(`collection "${collectionId}" not found`);
+	}
+	const segments: Segment[] = [];
+	for (const segSummary of head.manifest.segments) {
+		const raw = await store.storage.download(segSummary.id);
+		const text = new TextDecoder().decode(raw);
+		segments.push(JSON.parse(text) as Segment);
+	}
+	return segments;
+}
+
 async function main(): Promise<void> {
 	const args = parseArgs(process.argv.slice(2));
 	const manifestDir = process.env.WTFOC_MANIFEST_DIR ?? join(homedir(), ".wtfoc/projects");
@@ -249,6 +262,18 @@ async function main(): Promise<void> {
 	console.log(
 		`[recipe-author] collection=${args.collection} active artifacts=${artifacts.length}`,
 	);
+
+	// Load segment content only when we'll actually use it. Stub authoring
+	// has no use for excerpts and segment download is several seconds on a
+	// large corpus.
+	let excerpts: ReadonlyMap<string, string> = new Map();
+	if (args.live) {
+		const segments = await loadSegments(args.collection);
+		excerpts = buildExcerptMap(segments);
+		console.log(
+			`[recipe-author] loaded segments: ${segments.length}; excerpts indexed for ${excerpts.size} artifactIds`,
+		);
+	}
 
 	const samples = sampleStratified(artifacts, {
 		samplesPerStratum: args.samplesPerStratum,
@@ -269,7 +294,11 @@ async function main(): Promise<void> {
 	for (const { sample, templates } of plan) {
 		for (const t of templates) {
 			if (args.live) {
-				const r = await authorCandidate(sample, t, { collectionId: args.collection });
+				const excerpt = excerpts.get(sample.artifact.artifactId);
+				const r = await authorCandidate(sample, t, {
+					collectionId: args.collection,
+					...(excerpt ? { excerpt } : {}),
+				});
 				if (r.ok && r.candidate) {
 					candidates.push(r.candidate);
 				} else {
