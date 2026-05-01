@@ -33,6 +33,8 @@ import { fileURLToPath } from "node:url";
 import { ensureMode, type GpuMode, resolveModeFromMatrix } from "../lib/mode-switch.js";
 import { analyzeAndPropose } from "./analyze-and-propose.js";
 import { analyzeAndProposePatch } from "./analyze-and-propose-patch.js";
+import { selectPatchCapsule } from "./patch-capsule.js";
+import type { DiagnosisAggregate, FailureLayer } from "@wtfoc/search";
 import type { DetectionOutcome, Finding } from "./detect-regression.js";
 import { explainFinding } from "./explain-finding.js";
 import { materializePatchProposal } from "./materialize-patch.js";
@@ -188,6 +190,18 @@ function findBaselineForFinding(finding: Finding): ExtendedDogfoodReport | null 
 	return null;
 }
 
+/**
+ * Read `diagnosisAggregate.dominantLayer` from a dogfood report's
+ * quality-queries stage metrics. Returns `null` when the field is absent
+ * (older reports) or when there are no failures to diagnose.
+ */
+function extractDominantLayer(report: ExtendedDogfoodReport | null): FailureLayer | null {
+	if (!report) return null;
+	const stage = report.stages.find((s) => s.stage === "quality-queries");
+	const metrics = stage?.metrics as { diagnosisAggregate?: DiagnosisAggregate } | undefined;
+	return metrics?.diagnosisAggregate?.dominantLayer ?? null;
+}
+
 async function runPatchPath(input: {
 	cli: CliArgs;
 	matrix: Matrix;
@@ -195,10 +209,29 @@ async function runPatchPath(input: {
 	explainMd: string;
 	triedRows: readonly RunLogRow[] | readonly import("./tried-log.js").TriedLogRow[];
 	notes: string[];
+	latestReport?: ExtendedDogfoodReport | null;
 }): Promise<LoopOutcome> {
-	const { cli, matrix, finding, explainMd, notes } = input;
+	const { cli, matrix, finding, explainMd, notes, latestReport } = input;
 	const triedRows = input.triedRows as readonly import("./tried-log.js").TriedLogRow[];
 	const sweepMode = resolveModeFromMatrix(matrix);
+
+	// #344 step 5 — gate the LLM patch surface on the diagnosed dominant
+	// failure layer. Tier 0 (graders / fixtures / scorer / runner) never
+	// appears in any capsule; `fixture` and `ingest` layers return null and
+	// the loop skips this cycle so a human can triage instead.
+	const dominantLayer = extractDominantLayer(latestReport ?? null);
+	const capsule = selectPatchCapsule(dominantLayer);
+	if (capsule === null && dominantLayer !== null) {
+		notes.push(
+			`patch path skipped: dominantLayer="${dominantLayer}" is human-only (no LLM patch surface)`,
+		);
+		return { status: "patch-no-proposal", notes };
+	}
+	if (capsule) {
+		notes.push(
+			`patch capsule: layer="${capsule.dominantLayer}" tiers=[${capsule.tiers.join(",")}] paths=${capsule.allowedPaths.length}`,
+		);
+	}
 
 	if (!(await swapMode("chat", "patch-llm-analyze", notes))) {
 		return { status: "patch-llm-unavailable", notes };
@@ -208,6 +241,12 @@ async function runPatchPath(input: {
 		matrixName: cli.matrixName,
 		explainMarkdown: explainMd,
 		triedRows,
+		...(capsule
+			? {
+					curatedFiles: capsule.curatedFiles,
+					allowedPaths: capsule.allowedPaths,
+				}
+			: {}),
 	});
 	if (!llm.llmCallSucceeded) {
 		notes.push(`patch LLM unavailable: ${llm.error ?? "unknown"}`);
@@ -334,6 +373,7 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 			explainMd,
 			triedRows,
 			notes,
+			latestReport,
 		});
 	}
 
@@ -371,6 +411,7 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 					explainMd,
 					triedRows,
 					notes,
+					latestReport,
 				});
 			}
 			notes.push("WTFOC_ALLOW_PATCHES is unset — config space exhausted, no patch attempted");
