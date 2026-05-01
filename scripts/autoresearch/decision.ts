@@ -73,8 +73,12 @@ export interface DecideMultiInputs {
 	mustPassCorpora?: ReadonlyArray<string>;
 	/** Optional per-corpus floor overrides; values take precedence over defaults. */
 	perCorpusFloorOverrides?: ReadonlyMap<string, number>;
-	/** Cumulative LOC change for the candidate patch. Required for LoC veto. */
-	cumulativeLocChange?: number;
+	/**
+	 * Cumulative LOC change for the candidate patch. Required — passing
+	 * `undefined` is a schema error (caller did not measure the patch). Pass
+	 * `0` explicitly for a no-op patch and the LoC veto will reject it.
+	 */
+	cumulativeLocChange: number;
 	/** Floors + thresholds; falls back to defaults. */
 	floors?: PerCorpusFloors;
 	/** Hard gates applied per-corpus on the candidate report. */
@@ -96,7 +100,7 @@ export interface DecideMultiVerdict {
 	trimmedMeanDelta: number;
 	mustPassCorpora: string[];
 	queryTypeDeltas: Array<{ queryType: string; delta: number }>;
-	cumulativeLocChange: number | null;
+	cumulativeLocChange: number;
 }
 
 /**
@@ -218,7 +222,7 @@ export function decideMulti(input: DecideMultiInputs): DecideMultiVerdict {
 	for (const entry of perCorpus) {
 		if (-entry.delta > catastrophicFloor) {
 			reasons.push(
-				`catastrophic loss on "${entry.corpusId}": delta ${entry.delta.toFixed(3)} > catastrophicFloor ${catastrophicFloor}`,
+				`catastrophic loss on "${entry.corpusId}": drop ${(-entry.delta).toFixed(3)} > catastrophicFloor ${catastrophicFloor}`,
 			);
 		}
 		for (const g of entry.gateResults) {
@@ -239,8 +243,8 @@ export function decideMulti(input: DecideMultiInputs): DecideMultiVerdict {
 		}
 	}
 
-	const cumulativeLocChange = input.cumulativeLocChange ?? null;
-	if (cumulativeLocChange !== null && cumulativeLocChange < minLoc) {
+	const cumulativeLocChange = input.cumulativeLocChange;
+	if (cumulativeLocChange < minLoc) {
 		reasons.push(
 			`cumulative LOC change ${cumulativeLocChange} < minMeaningfulLoC ${minLoc} — likely no-op`,
 		);
@@ -253,7 +257,7 @@ export function decideMulti(input: DecideMultiInputs): DecideMultiVerdict {
 		trimmedMeanDelta: aggregate,
 		mustPassCorpora: [...mustPass],
 		queryTypeDeltas,
-		cumulativeLocChange,
+		cumulativeLocChange: cumulativeLocChange,
 	};
 }
 

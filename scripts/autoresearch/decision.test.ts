@@ -281,7 +281,9 @@ function makeMultiReport(passRate: number, scoreCount = 30): ExtendedDogfoodRepo
 	const scores = Array.from({ length: scoreCount }, (_, i) =>
 		score({ id: `q${i}`, passed: i / scoreCount < passRate }),
 	);
-	return makeReport({ scores, passRate });
+	const actualPassRate =
+		scores.length === 0 ? 0 : scores.filter((entry) => entry.passed).length / scores.length;
+	return makeReport({ scores, passRate: actualPassRate });
 }
 
 describe("decideMulti", () => {
@@ -376,7 +378,7 @@ describe("decideMulti", () => {
 				"alpha",
 				makeReport({
 					scores: candScores,
-					passRate: 0.7,
+					passRate: 0.8,
 					// work-lineage drops to 0.8, delta -10pp, breaches typeFloor 5pp
 					workLineage: 0.8,
 				}),
