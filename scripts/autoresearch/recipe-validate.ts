@@ -56,6 +56,53 @@ export type ValidationLabel =
 	| "human-review"
 	| "auto-reject";
 
+/**
+ * Failure-mode taxonomy for the validation pipeline. Each `RejectReason`
+ * maps to a real corrective action so the loop has something to optimize
+ * against — single-bit kept/rejected loses too much signal.
+ *
+ * Distinguishes (per #360 ChatGPT review):
+ *
+ *   - **`unsupported-data`** — corpus lacks the facts the question needs.
+ *     Fix: ingest more sources. Recipe shouldn't have authored this.
+ *   - **`unsupported-schema`** — graph/edge inventory has no path the
+ *     question can traverse. Fix: extend extractor / edge-type registry.
+ *   - **`ambiguous-target`** — multiple plausible answers; under-specified.
+ *     Fix: human edits the question. Detection requires LLM-grader (B) or
+ *     a top-K-score-spread heuristic; not detected by the deterministic
+ *     probe alone in this PR.
+ *   - **`duplicate-or-near-duplicate`** — semantically equivalent to an
+ *     existing query. Fix: drop. Requires Option D (dedup pass against
+ *     existing fixture). Not detected by this PR.
+ *   - **`retrieval-failure`** — answer exists in corpus AND graph supports
+ *     it, but retrieval misses (rank too low / required types absent).
+ *     This is the "valuable stress test" lane the loop's RANKING tier
+ *     should target. Do NOT auto-reject (peer-review consensus).
+ *   - **`trivial-low-signal`** — vector top-K already returns gold; query
+ *     doesn't exercise the trace engine. Fix: drop or rephrase.
+ *   - **`hallucinated-premise`** — question references a concept not in
+ *     the artifact (LLM-author fabricated). Fix: drop. Detected via
+ *     preflight `fixture-invalid` (artifactId absent from catalog) OR
+ *     LLM-grader closed-book check; the latter not in this PR.
+ *
+ * @see https://github.com/SgtPooki/wtfoc/issues/360
+ */
+export type RejectReason =
+	| "unsupported-data"
+	| "unsupported-schema"
+	| "ambiguous-target"
+	| "duplicate-or-near-duplicate"
+	| "retrieval-failure"
+	| "trivial-low-signal"
+	| "hallucinated-premise";
+
+/** Reason metadata for reviewer triage display + downstream optimization. */
+export interface ReasonRecord {
+	code: RejectReason;
+	/** Free-form per-instance detail for the human reviewer. */
+	detail: string;
+}
+
 export interface ProbeMetadata {
 	/** 1-indexed rank of the required artifact in the wider top-K. null = not in widerK. */
 	goldRank: number | null;
@@ -74,7 +121,8 @@ export interface ProbeMetadata {
 export interface ValidationRecord {
 	candidate: CandidateQuery;
 	label: ValidationLabel;
-	reasons: string[];
+	/** Structured reason codes from the `RejectReason` taxonomy. */
+	reasons: ReasonRecord[];
 	probe: ProbeMetadata;
 }
 
@@ -94,73 +142,99 @@ export interface EnrichedCandidatesFile extends CandidatesFile {
 }
 
 /**
- * Classify a single probe result into a categorical label + reason list.
- * Pure: deterministic given the probe metadata, no I/O. Tests pin the
- * decision table here.
+ * Classify a single probe result into a categorical label + structured
+ * reason list. Pure: deterministic given the probe metadata, no I/O.
  *
- * Reason taxonomy:
- *   - `gold-not-in-widerK`     — gold absent from probe top-K and trace
- *   - `trace-empty-but-needed` — trace template returned 0 hops
- *   - `gold-rank-1-to-3`       — adversarial filter said hard, but vector top-3 hits
- *   - `required-type-missing`  — query depends on type that never surfaces
- *   - `gold-deep-recall`       — gold rank deep but trace surfaced it (valuable stress test)
- *   - `gold-mid-rank`          — gold present but ranked 4..widerK; trace assistance unclear
- *   - `keeper`                 — every signal positive
+ * Reason emissions are scoped to what the deterministic probe can
+ * actually signal. `ambiguous-target`, `duplicate-or-near-duplicate`, and
+ * `hallucinated-premise` (from #360 taxonomy) require optional LLM-grader
+ * (Option B) and dedup (Option D) layers — not in this PR.
+ *
+ * Decision table (label-driving):
+ *   - gold absent from top-K AND not reached by trace      -> auto-reject
+ *   - hard-negative violated (gold reached when shouldn't) -> ranking pass
+ *   - vector top-3 already returns gold                    -> trivial-suspect
+ *   - trace rescued gold not in top-K                      -> human-review
+ *   - trace template + 0 hops, OR required types missing   -> needs-fix
+ *   - gold mid-rank (4..widerK)                            -> human-review
  */
 export function classifyValidation(
 	candidate: CandidateQuery,
 	probe: ProbeMetadata,
-): { label: ValidationLabel; reasons: string[] } {
-	const reasons: string[] = [];
+): { label: ValidationLabel; reasons: ReasonRecord[] } {
+	const reasons: ReasonRecord[] = [];
 	const queryType = candidate.draft.queryType;
 	const traceTemplate = queryType === "trace" || queryType === "causal" || queryType === "compare";
 
-	// 1. AUTO-REJECT: gold not findable at all (probe + trace both miss).
+	// 1. AUTO-REJECT: gold not findable at all. Without preflight context
+	//    here we can't distinguish data-vs-schema cleanly; default to
+	//    `unsupported-data` and let the optional preflight wiring later
+	//    upgrade this to `unsupported-schema` for fixture-invalid cases.
 	if (probe.goldRank === null && !probe.goldReachedByTrace) {
-		reasons.push("gold-not-in-widerK");
+		reasons.push({
+			code: "unsupported-data",
+			detail: `gold absent from top-${probe.widerK} and trace; corpus likely lacks the artifact`,
+		});
 		return { label: "auto-reject", reasons };
 	}
 
-	// 2. NEEDS-FIX: trace template but trace returned zero hops.
+	// 2. NEEDS-FIX: trace template but trace returned zero hops. The graph
+	//    cannot express the question — schema-side gap.
 	if (traceTemplate && probe.traceHopCount === 0) {
-		reasons.push("trace-empty-but-needed");
+		reasons.push({
+			code: "unsupported-schema",
+			detail: `${queryType} template but trace returned 0 edge hops; graph schema may lack a path`,
+		});
 	}
 
-	// 3. NEEDS-FIX: required source types never surfaced.
+	// 3. NEEDS-FIX: required source types never surfaced. Retrieval missed,
+	//    but the data may exist (corpus could still have those types in
+	//    other chunks the embedding doesn't cluster near the query).
 	if (!probe.requiredTypeCoverage) {
-		reasons.push("required-type-missing");
+		reasons.push({
+			code: "retrieval-failure",
+			detail: `required source types absent from top-${probe.widerK} retrieved chunks`,
+		});
 	}
 
-	// 4. TRIVIAL-SUSPECT: vector top-3 already returns gold (adversarial filter
-	//    should have caught this, but disagreement is worth flagging loudly).
+	// 4. TRIVIAL-SUSPECT: vector top-3 already returns gold. Adversarial
+	//    filter should have caught this; flag the disagreement loudly.
 	if (probe.goldRank !== null && probe.goldRank <= 3) {
-		reasons.push("gold-rank-1-to-3");
+		reasons.push({
+			code: "trivial-low-signal",
+			detail: `gold ranked ${probe.goldRank} in vector top-3; query doesn't exercise trace`,
+		});
 		return { label: "trivial-suspect", reasons };
 	}
 
 	// 5. HUMAN-REVIEW: trace rescued a gold not in vector top-K. Valuable
-	//    stress test if the question is well-formed; vague otherwise. Flag.
+	//    stress test if the question is well-formed; vague otherwise.
 	if (probe.goldRank === null && probe.goldReachedByTrace) {
-		reasons.push("gold-deep-recall");
+		reasons.push({
+			code: "retrieval-failure",
+			detail: `gold absent from vector top-${probe.widerK} but reached via trace edge hops; deep-recall stress`,
+		});
 		return { label: "human-review", reasons };
 	}
 
-	// 6. NEEDS-FIX accumulator: any reason flagged so far is a fix-up.
+	// 6. NEEDS-FIX accumulator: any schema/retrieval reason flagged → fix.
 	if (reasons.length > 0) {
 		return { label: "needs-fix", reasons };
 	}
 
-	// 7. HUMAN-REVIEW: gold mid-rank (4..widerK) — borderline. Surface.
+	// 7. HUMAN-REVIEW: gold mid-rank (4..widerK) — borderline. Could be
+	//    valuable trace stress; could be a weak query. Surface to human.
 	if (probe.goldRank !== null && probe.goldRank > 3) {
-		reasons.push("gold-mid-rank");
+		reasons.push({
+			code: "retrieval-failure",
+			detail: `gold mid-rank ${probe.goldRank} of ${probe.widerK}; assistance from trace unclear`,
+		});
 		return { label: "human-review", reasons };
 	}
 
-	// 8. KEEPER: clean signals. (Currently unreachable since rule 7 captures
-	//    any non-null rank > 3. Kept for explicitness — future probe signals
-	//    will widen the keeper criteria.)
-	reasons.push("keeper");
-	return { label: "keeper-candidate", reasons };
+	// 8. KEEPER: every signal positive. Empty reasons by convention —
+	//    keepers don't carry RejectReason codes.
+	return { label: "keeper-candidate", reasons: [] };
 }
 
 /**
@@ -287,7 +361,9 @@ export function renderTriageReport(
 				`**Probe**: goldRank=${r.probe.goldRank ?? "null"} traceHops=${r.probe.traceHopCount} reqTypeCov=${r.probe.requiredTypeCoverage} traceReached=${r.probe.goldReachedByTrace}`,
 			);
 			lines.push("");
-			lines.push(`**Reasons**: ${r.reasons.join(", ")}`);
+			lines.push(
+				`**Reasons**: ${r.reasons.length > 0 ? r.reasons.map((rr) => `\`${rr.code}\` (${rr.detail})`).join("; ") : "_(keeper — no reject reason)_"}`,
+			);
 			lines.push("");
 			if (r.probe.topResults.length > 0) {
 				lines.push("**Top-5 retrieval**:");
@@ -384,7 +460,7 @@ async function main(): Promise<void> {
 			records.push({
 				candidate,
 				label: "human-review",
-				reasons: [`probe-error:${msg.slice(0, 80)}`],
+				reasons: [{ code: "retrieval-failure", detail: `probe-error: ${msg.slice(0, 120)}` }],
 				probe: {
 					goldRank: null,
 					widerK: 100,
