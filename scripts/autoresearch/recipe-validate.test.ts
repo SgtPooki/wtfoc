@@ -59,66 +59,75 @@ function makeProbe(partial: Partial<ProbeMetadata> = {}): ProbeMetadata {
 	};
 }
 
+function reasonCodes(r: { reasons: Array<{ code: string }> }): string[] {
+	return r.reasons.map((rr) => rr.code);
+}
+
 describe("classifyValidation", () => {
-	it("auto-rejects when gold absent from widerK AND not reached by trace", () => {
+	it("auto-rejects with `unsupported-data` when gold absent everywhere", () => {
 		const r = classifyValidation(
 			makeCandidate(),
 			makeProbe({ goldRank: null, goldReachedByTrace: false }),
 		);
 		expect(r.label).toBe("auto-reject");
-		expect(r.reasons).toContain("gold-not-in-widerK");
+		expect(reasonCodes(r)).toContain("unsupported-data");
 	});
 
-	it("trivial-suspect when gold rank in vector top-3 (adversarial filter disagreement)", () => {
+	it("trivial-suspect with `trivial-low-signal` when gold rank in vector top-3", () => {
 		const r = classifyValidation(makeCandidate(), makeProbe({ goldRank: 2 }));
 		expect(r.label).toBe("trivial-suspect");
-		expect(r.reasons).toContain("gold-rank-1-to-3");
+		expect(reasonCodes(r)).toContain("trivial-low-signal");
 	});
 
-	it("human-review when trace rescued gold not in vector top-K (deep-recall stress)", () => {
+	it("human-review with `retrieval-failure` when trace rescued gold not in top-K", () => {
 		const r = classifyValidation(
 			makeCandidate(),
 			makeProbe({ goldRank: null, goldReachedByTrace: true }),
 		);
 		expect(r.label).toBe("human-review");
-		expect(r.reasons).toContain("gold-deep-recall");
+		expect(reasonCodes(r)).toContain("retrieval-failure");
 	});
 
-	it("needs-fix when trace template returned zero hops", () => {
+	it("needs-fix with `unsupported-schema` when trace template returned zero hops", () => {
 		const r = classifyValidation(
 			makeCandidate("trace"),
 			makeProbe({ goldRank: 10, traceHopCount: 0 }),
 		);
 		expect(r.label).toBe("needs-fix");
-		expect(r.reasons).toContain("trace-empty-but-needed");
+		expect(reasonCodes(r)).toContain("unsupported-schema");
 	});
 
-	it("does NOT flag trace-empty-but-needed for lookup template (lookup doesn't need hops)", () => {
+	it("does NOT flag schema-empty-trace for lookup template", () => {
 		const r = classifyValidation(
 			makeCandidate("lookup"),
 			makeProbe({ goldRank: 10, traceHopCount: 0 }),
 		);
-		expect(r.reasons).not.toContain("trace-empty-but-needed");
+		expect(reasonCodes(r)).not.toContain("unsupported-schema");
 	});
 
-	it("needs-fix when required source types never surface", () => {
+	it("needs-fix with `retrieval-failure` when required source types never surface", () => {
 		const r = classifyValidation(
 			makeCandidate("trace", ["doc/x.ts"], ["github-issue"]),
 			makeProbe({ goldRank: 10, requiredTypeCoverage: false }),
 		);
 		expect(r.label).toBe("needs-fix");
-		expect(r.reasons).toContain("required-type-missing");
+		expect(reasonCodes(r)).toContain("retrieval-failure");
 	});
 
-	it("human-review for mid-rank gold (4..widerK) — borderline", () => {
+	it("human-review for gold rank above keeper band — flagged as `retrieval-failure`", () => {
 		const r = classifyValidation(makeCandidate(), makeProbe({ goldRank: 25 }));
 		expect(r.label).toBe("human-review");
-		expect(r.reasons).toContain("gold-mid-rank");
+		expect(reasonCodes(r)).toContain("retrieval-failure");
+	});
+
+	it("respects custom keeperMaxRank for the keeper-band edge", () => {
+		const r = classifyValidation(makeCandidate(), makeProbe({ goldRank: 8 }), {
+			keeperMaxRank: 5,
+		});
+		expect(r.label).toBe("human-review");
 	});
 
 	it("does NOT auto-reject `goldRank > 50` (peer-review consensus: caps engine ceiling)", () => {
-		// goldRank=80 still appears mid-rank, deserving human review; the
-		// classifier MUST NOT silently auto-reject it.
 		const r = classifyValidation(makeCandidate(), makeProbe({ goldRank: 80 }));
 		expect(r.label).not.toBe("auto-reject");
 	});
@@ -133,8 +142,27 @@ describe("classifyValidation", () => {
 			}),
 		);
 		expect(r.label).toBe("needs-fix");
-		expect(r.reasons).toContain("trace-empty-but-needed");
-		expect(r.reasons).toContain("required-type-missing");
+		const codes = reasonCodes(r);
+		expect(codes).toContain("unsupported-schema");
+		expect(codes).toContain("retrieval-failure");
+	});
+
+	it("keeper-candidate emits empty reasons when gold lands in mid-rank band", () => {
+		const r = classifyValidation(
+			makeCandidate(),
+			makeProbe({
+				goldRank: 7,
+				traceHopCount: 2,
+				requiredTypeCoverage: true,
+			}),
+		);
+		expect(r.label).toBe("keeper-candidate");
+		expect(r.reasons).toEqual([]);
+	});
+
+	it("keeper edge: rank exactly at keeperMaxRank is still keeper", () => {
+		const r = classifyValidation(makeCandidate(), makeProbe({ goldRank: 20 }));
+		expect(r.label).toBe("keeper-candidate");
 	});
 });
 
@@ -158,7 +186,7 @@ describe("renderTriageReport", () => {
 			{
 				candidate: makeCandidate("trace"),
 				label: "keeper-candidate",
-				reasons: ["keeper"],
+				reasons: [],
 				probe: makeProbe({
 					goldRank: 7,
 					topResults: [
@@ -169,7 +197,7 @@ describe("renderTriageReport", () => {
 			{
 				candidate: makeCandidate("lookup"),
 				label: "auto-reject",
-				reasons: ["gold-not-in-widerK"],
+				reasons: [{ code: "unsupported-data", detail: "gold absent everywhere" }],
 				probe: makeProbe({ goldRank: null, goldReachedByTrace: false }),
 			},
 		];

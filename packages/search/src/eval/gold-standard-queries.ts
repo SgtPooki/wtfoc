@@ -49,6 +49,8 @@
  * - **minor**: add, remove, or re-categorize a query
  * - **patch**: copy edits to `query` text or paraphrases that preserve intent
  */
+import { AUTHORED_QUERIES } from "./gold-authored-queries.js";
+
 export const GOLD_STANDARD_QUERIES_VERSION = "2.0.0";
 
 /**
@@ -5412,8 +5414,6 @@ const MIGRATED_QUERIES: GoldQuery[] = [
 			"unresolved-all-substrings: no legacy substring matched any candidate catalog; falling back to scope-pattern candidates",
 	},
 ];
-
-import { AUTHORED_QUERIES } from "./gold-authored-queries.js";
 
 /**
  * Runtime gold fixture. Authored queries (step 2) come first so step-2
