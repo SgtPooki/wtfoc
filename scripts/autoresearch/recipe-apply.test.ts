@@ -176,7 +176,8 @@ describe("validateStructural", () => {
 describe("codegenAuthoredQueries", () => {
 	it("emits a tab-indented JSON-style array literal", () => {
 		const ts = codegenAuthoredQueries([makeRecord("keeper-candidate")]);
-		expect(ts.startsWith("\t[")).toBe(true);
+		expect(ts.startsWith("[")).toBe(true);
+		expect(ts).toContain("\t{");
 		expect(ts).toContain("\"id-keeper-candidate\"");
 		expect(ts).toContain("\"queryType\": \"lookup\"");
 	});

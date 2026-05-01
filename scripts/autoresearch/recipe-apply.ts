@@ -16,9 +16,10 @@
  *      queries (peer-review consensus from #359).
  *
  *   2. **Per-entry override beats CLI flag.** A reviewer who edits the
- *      enriched JSON to add `validation: { ..., humanOverride: true }` on
- *      a specific entry signals they have read the probe metadata and
- *      accept it. The flag-based escape hatches are coarser tools.
+ *      enriched JSON to add a top-level `humanOverride: true` field on a
+ *      specific record (sibling to `label` / `reasons` / `probe`) signals
+ *      they have read the probe metadata and accept it. The flag-based
+ *      escape hatches are coarser tools.
  *
  *   3. **Structural invariants are non-negotiable.** Duplicate ids,
  *      missing required fields, empty `applicableCorpora`, etc. — all
@@ -184,6 +185,12 @@ export function validateStructural(
 		if (typeof d.minResults !== "number" || d.minResults < 1) {
 			errors.push({ queryId: id, error: `invalid minResults: ${d.minResults}` });
 		}
+		if (!d.authoredFromCollectionId || d.authoredFromCollectionId.trim().length === 0) {
+			errors.push({ queryId: id, error: "missing authoredFromCollectionId" });
+		}
+		if (!Array.isArray(d.targetLayerHints) || d.targetLayerHints.length === 0) {
+			errors.push({ queryId: id, error: "empty targetLayerHints" });
+		}
 	}
 	return errors;
 }
@@ -191,18 +198,12 @@ export function validateStructural(
 /**
  * Codegen a TS array literal for the kept GoldQuery drafts. Uses
  * JSON.stringify with tab indent (matches the legacy migrator's output
- * convention so diffs are visually consistent).
+ * convention so diffs are visually consistent). `validateStructural`
+ * has already gated id presence and shape, so the cast is safe here.
  */
 export function codegenAuthoredQueries(records: ReadonlyArray<ApplyEnrichedRecord>): string {
-	const drafts: GoldQuery[] = records.map((r) => ({
-		...(r.candidate.draft as GoldQuery),
-		id: r.candidate.draft.id as string,
-	}));
-	const json = JSON.stringify(drafts, null, 2);
-	return json
-		.split("\n")
-		.map((line) => `\t${line}`)
-		.join("\n");
+	const drafts: GoldQuery[] = records.map((r) => r.candidate.draft as GoldQuery);
+	return JSON.stringify(drafts, null, "\t");
 }
 
 const BEGIN = "// === BEGIN AUTHORED-QUERIES MANAGED ARRAY ===";

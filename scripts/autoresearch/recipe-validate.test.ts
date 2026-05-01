@@ -114,10 +114,17 @@ describe("classifyValidation", () => {
 		expect(reasonCodes(r)).toContain("retrieval-failure");
 	});
 
-	it("human-review for mid-rank gold (4..widerK) — flagged as `retrieval-failure`", () => {
+	it("human-review for gold rank above keeper band — flagged as `retrieval-failure`", () => {
 		const r = classifyValidation(makeCandidate(), makeProbe({ goldRank: 25 }));
 		expect(r.label).toBe("human-review");
 		expect(reasonCodes(r)).toContain("retrieval-failure");
+	});
+
+	it("respects custom keeperMaxRank for the keeper-band edge", () => {
+		const r = classifyValidation(makeCandidate(), makeProbe({ goldRank: 8 }), {
+			keeperMaxRank: 5,
+		});
+		expect(r.label).toBe("human-review");
 	});
 
 	it("does NOT auto-reject `goldRank > 50` (peer-review consensus: caps engine ceiling)", () => {
@@ -140,13 +147,22 @@ describe("classifyValidation", () => {
 		expect(codes).toContain("retrieval-failure");
 	});
 
-	it("keeper-candidate emits empty reasons (no RejectReason codes)", () => {
-		// Probe shape that exercises rule 8 directly is unreachable today,
-		// but the contract is "keeper -> reasons: []". Pin it.
-		// (Falls into the rule-7 mid-rank branch; see comment in classifyValidation.)
-		const r = classifyValidation(makeCandidate(), makeProbe({ goldRank: 4 }));
-		expect(r.label).toBe("human-review");
-		expect(r.reasons.length).toBeGreaterThan(0);
+	it("keeper-candidate emits empty reasons when gold lands in mid-rank band", () => {
+		const r = classifyValidation(
+			makeCandidate(),
+			makeProbe({
+				goldRank: 7,
+				traceHopCount: 2,
+				requiredTypeCoverage: true,
+			}),
+		);
+		expect(r.label).toBe("keeper-candidate");
+		expect(r.reasons).toEqual([]);
+	});
+
+	it("keeper edge: rank exactly at keeperMaxRank is still keeper", () => {
+		const r = classifyValidation(makeCandidate(), makeProbe({ goldRank: 20 }));
+		expect(r.label).toBe("keeper-candidate");
 	});
 });
 

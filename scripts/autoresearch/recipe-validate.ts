@@ -141,6 +141,9 @@ export interface EnrichedCandidatesFile extends CandidatesFile {
 	};
 }
 
+/** Default upper bound (1-indexed) of the "good keeper rank band". */
+export const DEFAULT_KEEPER_MAX_RANK = 20;
+
 /**
  * Classify a single probe result into a categorical label + structured
  * reason list. Pure: deterministic given the probe metadata, no I/O.
@@ -152,16 +155,18 @@ export interface EnrichedCandidatesFile extends CandidatesFile {
  *
  * Decision table (label-driving):
  *   - gold absent from top-K AND not reached by trace      -> auto-reject
- *   - hard-negative violated (gold reached when shouldn't) -> ranking pass
  *   - vector top-3 already returns gold                    -> trivial-suspect
  *   - trace rescued gold not in top-K                      -> human-review
  *   - trace template + 0 hops, OR required types missing   -> needs-fix
- *   - gold mid-rank (4..widerK)                            -> human-review
+ *   - gold mid-rank in keeper band [4..keeperMaxRank]      -> keeper-candidate
+ *   - gold rank above keeper band but within widerK        -> human-review
  */
 export function classifyValidation(
 	candidate: CandidateQuery,
 	probe: ProbeMetadata,
+	options: { keeperMaxRank?: number } = {},
 ): { label: ValidationLabel; reasons: ReasonRecord[] } {
+	const keeperMaxRank = options.keeperMaxRank ?? DEFAULT_KEEPER_MAX_RANK;
 	const reasons: ReasonRecord[] = [];
 	const queryType = candidate.draft.queryType;
 	const traceTemplate = queryType === "trace" || queryType === "causal" || queryType === "compare";
@@ -222,19 +227,27 @@ export function classifyValidation(
 		return { label: "needs-fix", reasons };
 	}
 
-	// 7. HUMAN-REVIEW: gold mid-rank (4..widerK) — borderline. Could be
+	// 7. KEEPER: gold present in mid-band [4..keeperMaxRank] with all
+	//    signals positive (no schema/retrieval reasons accumulated; trace
+	//    template clean; required types covered). Default band 4..20 is the
+	//    "trace pulled gold up from buried context" sweet spot — high
+	//    enough to exercise the engine, low enough to be a stable keeper.
+	if (probe.goldRank !== null && probe.goldRank >= 4 && probe.goldRank <= keeperMaxRank) {
+		return { label: "keeper-candidate", reasons: [] };
+	}
+
+	// 8. HUMAN-REVIEW: gold above keeper band but within widerK. Could be
 	//    valuable trace stress; could be a weak query. Surface to human.
-	if (probe.goldRank !== null && probe.goldRank > 3) {
+	if (probe.goldRank !== null && probe.goldRank > keeperMaxRank) {
 		reasons.push({
 			code: "retrieval-failure",
-			detail: `gold mid-rank ${probe.goldRank} of ${probe.widerK}; assistance from trace unclear`,
+			detail: `gold rank ${probe.goldRank} above keeper-band ${keeperMaxRank} (widerK ${probe.widerK}); trace assistance unclear`,
 		});
 		return { label: "human-review", reasons };
 	}
 
-	// 8. KEEPER: every signal positive. Empty reasons by convention —
-	//    keepers don't carry RejectReason codes.
-	return { label: "keeper-candidate", reasons: [] };
+	// Defensive fallthrough: should be unreachable given rules 1-7.
+	return { label: "human-review", reasons };
 }
 
 /**
@@ -248,15 +261,15 @@ export async function probeCandidate(
 	ctx: {
 		embedder: Embedder;
 		vectorIndex: VectorIndex;
-		segments: ReadonlyArray<Segment>;
+		segments: Segment[];
 		storageToDoc: ReadonlyMap<string, string>;
 		widerK?: number;
 	},
 ): Promise<ProbeMetadata> {
 	const widerK = ctx.widerK ?? 100;
-	const requiredArtifactIds = candidate.draft.expectedEvidence
-		.filter((e) => e.required)
-		.map((e) => e.artifactId);
+	const requiredArtifactIds = new Set(
+		candidate.draft.expectedEvidence.filter((e) => e.required).map((e) => e.artifactId),
+	);
 	const requiredSourceTypes = new Set(candidate.draft.requiredSourceTypes);
 
 	const qResult = await query(candidate.draft.query, ctx.embedder, ctx.vectorIndex, {
@@ -264,37 +277,44 @@ export async function probeCandidate(
 	});
 
 	let goldRank: number | null = null;
-	const requiredTypesSeen = new Set<string>();
+	const sourceTypesSeen = new Set<string>();
 	const topResults: ProbeMetadata["topResults"] = [];
 	for (let i = 0; i < qResult.results.length; i++) {
 		const r = qResult.results[i];
 		if (!r) continue;
-		requiredTypesSeen.add(r.sourceType);
-		const docId = ctx.storageToDoc.get(r.storageId);
+		sourceTypesSeen.add(r.sourceType);
+		// `expectedEvidence[].artifactId` lives in the `Chunk.documentId`
+		// namespace; map storageId → documentId, falling back to `r.source`
+		// when the catalog mapping is absent (e.g. legacy segments).
+		const artifactId = ctx.storageToDoc.get(r.storageId) ?? r.source;
 		if (i < 5) {
 			topResults.push({
 				rank: i + 1,
-				artifactId: docId ?? r.source,
+				artifactId,
 				sourceType: r.sourceType,
 				score: r.score,
 			});
 		}
-		if (goldRank === null && docId && requiredArtifactIds.includes(docId)) {
+		if (goldRank === null && requiredArtifactIds.has(artifactId)) {
 			goldRank = i + 1;
 		}
 	}
 
-	const tResult = await trace(candidate.draft.query, ctx.embedder, ctx.vectorIndex, [
-		...ctx.segments,
-	], { mode: "analytical" });
+	const tResult = await trace(candidate.draft.query, ctx.embedder, ctx.vectorIndex, ctx.segments, {
+		mode: "analytical",
+	});
 	const traceHopCount = tResult.stats.edgeHops;
-	const traceSources = new Set<string>();
-	for (const hop of tResult.hops) traceSources.add(hop.source);
-	const goldReachedByTrace = requiredArtifactIds.some((id) => traceSources.has(id));
+	const traceArtifactIds = new Set<string>();
+	for (const hop of tResult.hops) {
+		const id = ctx.storageToDoc.get(hop.storageId) ?? hop.source;
+		traceArtifactIds.add(id);
+		sourceTypesSeen.add(hop.sourceType);
+	}
+	const goldReachedByTrace = [...requiredArtifactIds].some((id) => traceArtifactIds.has(id));
 
 	const requiredTypeCoverage =
 		requiredSourceTypes.size === 0 ||
-		[...requiredSourceTypes].every((t) => requiredTypesSeen.has(t));
+		[...requiredSourceTypes].every((t) => sourceTypesSeen.has(t));
 
 	return {
 		goldRank,
@@ -428,14 +448,9 @@ async function main(): Promise<void> {
 	const head = await store.manifests.getHead(args.collection);
 	if (!head) throw new Error(`collection "${args.collection}" not found`);
 
-	const segments: Segment[] = [];
-	for (const segSummary of head.manifest.segments) {
-		const blob = await store.storage.download(segSummary.id);
-		segments.push(JSON.parse(new TextDecoder().decode(blob)) as Segment);
-	}
-
 	const vectorIndex = new InMemoryVectorIndex();
-	await mountCollection(head.manifest, store.storage, vectorIndex);
+	const mounted = await mountCollection(head.manifest, store.storage, vectorIndex);
+	const segments = mounted.segments;
 	const embedder = new OpenAIEmbedder({
 		apiKey: process.env.WTFOC_EMBEDDER_KEY ?? "",
 		model: args.embedderModel,
