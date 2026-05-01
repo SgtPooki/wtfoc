@@ -193,9 +193,10 @@ function findBaselineForFinding(finding: Finding): ExtendedDogfoodReport | null 
 /**
  * Read `diagnosisAggregate.dominantLayer` from a dogfood report's
  * quality-queries stage metrics. Returns `null` when the field is absent
- * (older reports) or when there are no failures to diagnose.
+ * (older reports) or when there are no failures to diagnose. Exported for
+ * the wiring integration test.
  */
-function extractDominantLayer(report: ExtendedDogfoodReport | null): FailureLayer | null {
+export function extractDominantLayer(report: ExtendedDogfoodReport | null): FailureLayer | null {
 	if (!report) return null;
 	const stage = report.stages.find((s) => s.stage === "quality-queries");
 	const metrics = stage?.metrics as { diagnosisAggregate?: DiagnosisAggregate } | undefined;
