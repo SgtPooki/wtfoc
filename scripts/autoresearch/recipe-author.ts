@@ -259,7 +259,11 @@ async function main(): Promise<void> {
 		`[recipe-author] stratified samples=${samples.length} (samplesPerStratum=${args.samplesPerStratum})`,
 	);
 
-	const plan = planAuthoring(samples, args.maxCandidates);
+	// In --live mode authorCandidate can fail per-pair; plan with 2x
+	// headroom so a typical failure rate doesn't cause us to fall short of
+	// --max-candidates. Stub mode never fails so the cap is exact.
+	const planCap = args.live ? args.maxCandidates * 2 : args.maxCandidates;
+	const plan = planAuthoring(samples, planCap);
 	const candidates: CandidateQuery[] = [];
 	const authorErrors: Array<{ template: string; artifactId: string; error: string }> = [];
 	for (const { sample, templates } of plan) {

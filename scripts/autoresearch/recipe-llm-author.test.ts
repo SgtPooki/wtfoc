@@ -91,6 +91,47 @@ describe("authorCandidate (live LLM)", () => {
 		expect(r.ok).toBe(false);
 	});
 
+	it("rejects whitespace-only queries", async () => {
+		const fetchFn = makeFetchOk(JSON.stringify({ query: "   \n\t  " }));
+		const r = await authorCandidate(SAMPLE, TEMPLATE, { collectionId: "alpha", fetchFn });
+		expect(r.ok).toBe(false);
+	});
+
+	it("trims whitespace around the parsed query", async () => {
+		const fetchFn = makeFetchOk(JSON.stringify({ query: "  abstract Q  " }));
+		const r = await authorCandidate(SAMPLE, TEMPLATE, { collectionId: "alpha", fetchFn });
+		expect(r.candidate?.draft.query).toBe("abstract Q");
+	});
+
+	it("trims acceptableAnswerFacts and drops whitespace-only entries", async () => {
+		const fetchFn = makeFetchOk(
+			JSON.stringify({ query: "q", acceptableAnswerFacts: ["  fact  ", "  ", ""] }),
+		);
+		const r = await authorCandidate(SAMPLE, TEMPLATE, { collectionId: "alpha", fetchFn });
+		expect(r.candidate?.draft.acceptableAnswerFacts).toEqual(["fact"]);
+	});
+
+	it("emits a stable (template.id, artifactId)-derived id (matches stub format)", async () => {
+		const fetchFn = makeFetchOk(JSON.stringify({ query: "q" }));
+		const r1 = await authorCandidate(SAMPLE, TEMPLATE, { collectionId: "alpha", fetchFn });
+		const r2 = await authorCandidate(SAMPLE, TEMPLATE, { collectionId: "alpha", fetchFn });
+		expect(r1.candidate?.draft.id).toBeDefined();
+		expect(r1.candidate?.draft.id).toBe(r2.candidate?.draft.id);
+		expect(r1.candidate?.draft.id).toContain(TEMPLATE.id);
+	});
+
+	it("uses err.message safely when fetch throws a non-Error", async () => {
+		const fetchFn = (async () => {
+			throw "boom-string"; // eslint-disable-line @typescript-eslint/no-throw-literal
+		}) as unknown as typeof fetch;
+		const r = await authorCandidate(SAMPLE, TEMPLATE, {
+			collectionId: "alpha",
+			fetchFn: fetchFn as never,
+		});
+		expect(r.ok).toBe(false);
+		expect(r.error).toContain("boom-string");
+	});
+
 	it("filters out non-string acceptableAnswerFacts", async () => {
 		const fetchFn = makeFetchOk(
 			JSON.stringify({

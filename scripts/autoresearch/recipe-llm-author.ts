@@ -20,10 +20,25 @@
  * @see https://github.com/SgtPooki/wtfoc/issues/344
  */
 
+import { createHash } from "node:crypto";
 import type { CandidateQuery, GoldQuery, QueryTemplate, RecipeSample } from "@wtfoc/search";
 
 export const DEFAULT_AUTHOR_LLM_URL = "http://127.0.0.1:4523/v1";
 export const DEFAULT_AUTHOR_LLM_MODEL = "haiku";
+
+/**
+ * Minimal fetch surface this module relies on. Avoids forcing tests to
+ * cast through `typeof fetch` or fabricate full `Response` objects.
+ */
+export type FetchLike = (
+	url: string,
+	init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal },
+) => Promise<{
+	ok: boolean;
+	status: number;
+	text: () => Promise<string>;
+	json: () => Promise<unknown>;
+}>;
 
 export interface AuthorContext {
 	collectionId: string;
@@ -31,9 +46,14 @@ export interface AuthorContext {
 	llmModel?: string;
 	llmApiKey?: string;
 	timeoutMs?: number;
-	fetchFn?: typeof fetch;
+	fetchFn?: FetchLike;
 	/** Optional content excerpt for the artifact. Step-2d wires this from segments. */
 	excerpt?: string;
+}
+
+function makeCandidateId(templateId: string, artifactId: string): string {
+	const fp = createHash("sha1").update(`${templateId}::${artifactId}`).digest("hex").slice(0, 12);
+	return `${templateId}__${fp}`;
 }
 
 export interface AuthorResult {
@@ -107,7 +127,8 @@ function parseJsonBlock(content: string): LlmDraft | null {
 	if (!raw) return null;
 	try {
 		const parsed = JSON.parse(raw) as LlmDraft;
-		if (typeof parsed.query !== "string" || parsed.query.length === 0) return null;
+		if (typeof parsed.query !== "string" || parsed.query.trim().length === 0) return null;
+		parsed.query = parsed.query.trim();
 		return parsed;
 	} catch {
 		return null;
@@ -160,7 +181,8 @@ export async function authorCandidate(
 		const body = (await res.json()) as OpenAIChatCompletionResponse;
 		rawContent = body.choices?.[0]?.message?.content ?? "";
 	} catch (err) {
-		return { ok: false, error: `LLM call failed: ${(err as Error).message}` };
+		const msg = err instanceof Error ? err.message : String(err);
+		return { ok: false, error: `LLM call failed: ${msg}` };
 	} finally {
 		clearTimeout(timer);
 	}
@@ -174,7 +196,14 @@ export async function authorCandidate(
 		};
 	}
 
+	const acceptableAnswerFacts = Array.isArray(draft.acceptableAnswerFacts)
+		? draft.acceptableAnswerFacts
+				.filter((f): f is string => typeof f === "string")
+				.map((f) => f.trim())
+				.filter((f) => f.length > 0)
+		: [];
 	const goldDraft: Omit<GoldQuery, "id"> & { id?: string } = {
+		id: makeCandidateId(template.id, sample.artifact.artifactId),
 		authoredFromCollectionId: ctx.collectionId,
 		applicableCorpora: [ctx.collectionId],
 		query: draft.query,
@@ -182,12 +211,10 @@ export async function authorCandidate(
 		difficulty: template.difficulty,
 		targetLayerHints: template.targetLayerHints,
 		expectedEvidence: [{ artifactId: sample.artifact.artifactId, required: true }],
-		acceptableAnswerFacts: Array.isArray(draft.acceptableAnswerFacts)
-			? draft.acceptableAnswerFacts.filter((f) => typeof f === "string" && f.length > 0)
-			: [],
+		acceptableAnswerFacts,
 		requiredSourceTypes: [sample.artifact.sourceType],
 		minResults: 1,
-		...(draft.rationale ? { migrationNotes: `live-author rationale: ${draft.rationale}` } : {}),
+		...(draft.rationale ? { migrationNotes: `live-author rationale: ${draft.rationale.trim()}` } : {}),
 	};
 
 	return {
