@@ -14,6 +14,13 @@
  *   the corpus catalog (e.g. `"FilOzone/synapse-sdk/src/foo.ts"`). Suffix /
  *   substring matching is a **migration-only** concern — the runtime grader
  *   compares exact IDs against retrieved `Chunk.documentId` values.
+ *
+ *   **Step-1 transitional caveat:** the mechanically-migrated fixture still
+ *   contains unresolved or too-ambiguous legacy substrings (e.g. `"/src/"`,
+ *   `"ingest"`) emitted verbatim as `artifactId`. The preflight surfaces
+ *   these as missing-required diagnostics; they are exactly what the
+ *   stratified-template recipe in step 3 regenerates. New queries authored
+ *   manually before step 3 should still ground to exact catalog IDs.
  * - **`required: true` rows** are the canonical evidence set. The legacy
  *   binary pass/fail used OR semantics across `expectedSourceSubstrings`, and
  *   that is preserved here: a query passes if **at least one** `required:true`

@@ -20,7 +20,7 @@
 
 import { writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { format as formatPath, join, parse as parsePath } from "node:path";
 import { catalogFilePath, readCatalog } from "@wtfoc/ingest";
 import {
 	GOLD_STANDARD_QUERIES,
@@ -115,7 +115,9 @@ async function main(): Promise<void> {
 	console.log(`[preflight] Wrote markdown report: ${output}`);
 
 	if (json) {
-		const jsonPath = output.replace(/\.md$/, ".json");
+		// Robust extension swap — handles non-.md outputs without overwriting.
+		const parsed = parsePath(output);
+		const jsonPath = formatPath({ ...parsed, base: undefined, ext: ".json" });
 		await writeFile(jsonPath, JSON.stringify(summary, null, 2), "utf-8");
 		console.log(`[preflight] Wrote JSON summary: ${jsonPath}`);
 	}

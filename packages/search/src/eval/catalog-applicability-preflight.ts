@@ -5,16 +5,21 @@ import type { GoldQuery } from "./gold-standard-queries.js";
  * Catalog-applicability preflight (#344 step 1).
  *
  * For each (query, corpus) pair in the matrix, classify the query as
- * `applicable | skipped | invalid`:
+ * `applicable | skipped | invalid`. Applicability semantics mirror the
+ * `required: true` OR-pass rule documented on `ExpectedEvidence`: a query is
+ * graded against a corpus if **at least one** `required: true` artifact is
+ * resolvable; the grader's pass criterion is the same OR over retrieved IDs.
  *
- * - **`applicable`** — corpus is in `applicableCorpora` AND every
- *   `expectedEvidence` row with `required: true` resolves to an active
- *   document in the corpus catalog.
+ * - **`applicable`** — corpus is in `applicableCorpora` AND ≥1 `required: true`
+ *   artifact is an active document in the corpus catalog. Per-artifact
+ *   `missingRequiredArtifacts` is still populated for diagnostics so step-3
+ *   query regeneration can target the unresolved rows specifically.
  * - **`skipped`** — corpus is NOT in `applicableCorpora`. Excluded from
  *   aggregate scoring; not a failure.
- * - **`invalid`** — corpus IS in `applicableCorpora` but ≥1 required
- *   `artifactId` is absent from the catalog. Surfaced as a warning during the
- *   migration window; will hard-fail in a follow-up.
+ * - **`invalid`** — corpus IS in `applicableCorpora` but **none** of the
+ *   `required: true` artifacts resolve. The query has no path to passing on
+ *   this corpus. Surfaced as a warning during the migration window; will
+ *   hard-fail in a follow-up.
  *
  * Hard-failure conditions (always nonzero exit regardless of warn-only):
  * - Duplicate query IDs in the fixture.
@@ -124,16 +129,24 @@ export function runPreflight(opts: RunPreflightOptions): PreflightSummary {
 			}
 			const present = catalog.documents;
 			const missing: string[] = [];
+			let resolvedCount = 0;
 			for (const artifactId of required) {
 				const entry = present[artifactId];
-				if (!entry || entry.state !== "active") {
+				if (entry && entry.state === "active") {
+					resolvedCount++;
+				} else {
 					missing.push(artifactId);
 				}
 			}
+			// OR semantics: query is applicable when ≥1 required artifact
+			// resolves. A query with zero required rows (only supporting
+			// evidence) is applicable by default — the grader will rely on
+			// other rubric fields (minResults, requiredSourceTypes).
+			const noneResolvable = required.length > 0 && resolvedCount === 0;
 			results.push({
 				queryId: q.id,
 				corpusId,
-				status: missing.length === 0 ? "applicable" : "invalid",
+				status: noneResolvable ? "invalid" : "applicable",
 				missingRequiredArtifacts: missing,
 			});
 		}

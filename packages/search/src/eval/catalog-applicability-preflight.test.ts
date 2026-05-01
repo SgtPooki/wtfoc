@@ -99,6 +99,43 @@ describe("runPreflight", () => {
 		expect(result?.missingRequiredArtifacts).toEqual(["doc/missing.ts"]);
 	});
 
+	it("classifies as applicable when at least one required artifact resolves (OR semantics)", () => {
+		const summary = runPreflight({
+			queries: [
+				makeQuery({
+					id: "q1",
+					applicableCorpora: ["alpha"],
+					expectedEvidence: [
+						{ artifactId: "doc/a.ts", required: true },
+						{ artifactId: "doc/missing.ts", required: true },
+					],
+				}),
+			],
+			catalogs: [alpha],
+		});
+		const result = summary.results[0];
+		expect(result?.status).toBe("applicable");
+		// Diagnostic info still surfaces the unresolved row.
+		expect(result?.missingRequiredArtifacts).toEqual(["doc/missing.ts"]);
+	});
+
+	it("classifies as invalid only when ALL required artifacts are unresolved", () => {
+		const summary = runPreflight({
+			queries: [
+				makeQuery({
+					id: "q1",
+					applicableCorpora: ["alpha"],
+					expectedEvidence: [
+						{ artifactId: "doc/missing-a.ts", required: true },
+						{ artifactId: "doc/missing-b.ts", required: true },
+					],
+				}),
+			],
+			catalogs: [alpha],
+		});
+		expect(summary.results[0]?.status).toBe("invalid");
+	});
+
 	it("does not count required:false rows toward applicability", () => {
 		const summary = runPreflight({
 			queries: [
