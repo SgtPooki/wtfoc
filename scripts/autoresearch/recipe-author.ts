@@ -49,6 +49,7 @@ import {
 	sampleStratified,
 } from "@wtfoc/search";
 import { catalogFilePath, readCatalog } from "@wtfoc/ingest";
+import { authorCandidate } from "./recipe-llm-author.js";
 import { RECIPE_TEMPLATES, templatesForStratum } from "./recipe-templates.js";
 
 interface ParsedArgs {
@@ -58,6 +59,7 @@ interface ParsedArgs {
 	seed: number;
 	maxCandidates: number;
 	dryRun: boolean;
+	live: boolean;
 }
 
 function parsePositiveInt(name: string, raw: string | undefined): number {
@@ -85,6 +87,7 @@ export function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
 	let seed = 42;
 	let maxCandidates = 80;
 	let dryRun = false;
+	let live = false;
 	for (let i = 0; i < argv.length; i++) {
 		const a = argv[i];
 		const next = argv[i + 1];
@@ -105,6 +108,8 @@ export function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
 			i++;
 		} else if (a === "--dry-run") {
 			dryRun = true;
+		} else if (a === "--live") {
+			live = true;
 		} else if (a !== undefined) {
 			throw new Error(`unknown flag: "${a}"`);
 		}
@@ -112,7 +117,7 @@ export function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
 	if (!collection) {
 		throw new Error("usage: recipe-author --collection <id> [--output <path>] ...");
 	}
-	return { collection, output, samplesPerStratum, seed, maxCandidates, dryRun };
+	return { collection, output, samplesPerStratum, seed, maxCandidates, dryRun, live };
 }
 
 /**
@@ -256,12 +261,32 @@ async function main(): Promise<void> {
 
 	const plan = planAuthoring(samples, args.maxCandidates);
 	const candidates: CandidateQuery[] = [];
+	const authorErrors: Array<{ template: string; artifactId: string; error: string }> = [];
 	for (const { sample, templates } of plan) {
 		for (const t of templates) {
-			candidates.push(stubAuthor(sample, t, args.collection));
+			if (args.live) {
+				const r = await authorCandidate(sample, t, { collectionId: args.collection });
+				if (r.ok && r.candidate) {
+					candidates.push(r.candidate);
+				} else {
+					authorErrors.push({
+						template: t.id,
+						artifactId: sample.artifact.artifactId,
+						error: r.error ?? "unknown",
+					});
+				}
+			} else {
+				candidates.push(stubAuthor(sample, t, args.collection));
+			}
 			if (candidates.length >= args.maxCandidates) break;
 		}
 		if (candidates.length >= args.maxCandidates) break;
+	}
+	if (authorErrors.length > 0) {
+		console.warn(`[recipe-author] ${authorErrors.length} author error(s):`);
+		for (const e of authorErrors.slice(0, 10)) {
+			console.warn(`  - ${e.template} on ${e.artifactId}: ${e.error}`);
+		}
 	}
 
 	const out: CandidatesFile = {
@@ -278,11 +303,13 @@ async function main(): Promise<void> {
 	}
 	await writeFile(args.output, JSON.stringify(out, null, 2), "utf-8");
 	console.log(
-		`[recipe-author] wrote ${candidates.length} stub candidates to ${args.output} across ${out.stratumDistribution.length} strata`,
+		`[recipe-author] wrote ${candidates.length} ${args.live ? "live-authored" : "stub"} candidates to ${args.output} across ${out.stratumDistribution.length} strata`,
 	);
-	console.log(
-		`[recipe-author] templates available=${RECIPE_TEMPLATES.length}; live LLM authoring lands in step 2c`,
-	);
+	if (!args.live) {
+		console.log(
+			`[recipe-author] templates available=${RECIPE_TEMPLATES.length}; pass --live to call the LLM`,
+		);
+	}
 }
 
 // Allow this module to be imported by tests without auto-running main.
