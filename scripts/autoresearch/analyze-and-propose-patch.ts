@@ -259,7 +259,11 @@ export async function analyzeAndProposePatch(
 	const apiKey =
 		input.llmApiKey ?? process.env.WTFOC_PATCH_LLM_API_KEY ?? process.env.WTFOC_ANALYSIS_LLM_API_KEY ?? "";
 	const fetchFn = input.fetchFn ?? fetch;
-	const timeoutMs = input.timeoutMs ?? 90_000;
+	const envTimeout = process.env.WTFOC_LLM_TIMEOUT_MS
+		? Number.parseInt(process.env.WTFOC_LLM_TIMEOUT_MS, 10)
+		: undefined;
+	const timeoutMs =
+		input.timeoutMs ?? (envTimeout && Number.isFinite(envTimeout) ? envTimeout : 600_000);
 	const repoRoot = input.repoRoot ?? defaultRepoRoot();
 	const curatedPaths =
 		input.curatedFiles ??

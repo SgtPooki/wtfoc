@@ -141,7 +141,11 @@ export async function analyzeAndPropose(
 	const model = input.llmModel ?? process.env.WTFOC_ANALYSIS_LLM_MODEL ?? DEFAULT_LLM_MODEL;
 	const apiKey = input.llmApiKey ?? process.env.WTFOC_ANALYSIS_LLM_API_KEY ?? "";
 	const fetchFn = input.fetchFn ?? fetch;
-	const timeoutMs = input.timeoutMs ?? 60_000;
+	const envTimeout = process.env.WTFOC_LLM_TIMEOUT_MS
+		? Number.parseInt(process.env.WTFOC_LLM_TIMEOUT_MS, 10)
+		: undefined;
+	const timeoutMs =
+		input.timeoutMs ?? (envTimeout && Number.isFinite(envTimeout) ? envTimeout : 300_000);
 
 	const userPrompt = buildUserPrompt({
 		matrixName: input.matrixName,
