@@ -54,7 +54,6 @@ export const DEFAULT_PATCH_LLM_MODEL = "haiku";
 export const DEFAULT_CURATED_FILES: readonly string[] = [
 	"packages/search/src/query.ts",
 	"packages/search/src/trace/trace.ts",
-	"packages/search/src/diversity.ts",
 ];
 
 const MAX_FILE_CHARS = 8_000;
@@ -312,11 +311,14 @@ export async function analyzeAndProposePatch(
 			body: JSON.stringify({
 				model,
 				temperature: 0.2,
-				max_tokens: 3000,
+				max_tokens: Number.parseInt(process.env.WTFOC_LLM_PATCH_MAX_TOKENS ?? "", 10) || 8000,
 				messages: [
 					{ role: "system", content: SYSTEM_PROMPT },
 					{ role: "user", content: userPrompt },
 				],
+				...(process.env.WTFOC_LLM_DISABLE_THINKING === "1"
+					? { chat_template_kwargs: { enable_thinking: false } }
+					: {}),
 			}),
 			signal: ac.signal,
 		});

@@ -285,10 +285,12 @@ fi
 # Step 3: regression detection.
 FINDINGS_FILE="$STATE_DIR/last-findings.json"
 log "detecting regressions"
+DETECT_ARGS=(--matrix "$MATRIX" --stage "$STAGE" --output "$FINDINGS_FILE")
+if [ -n "${WTFOC_MIN_BASELINE:-}" ]; then
+    DETECT_ARGS+=(--min-baseline "$WTFOC_MIN_BASELINE")
+fi
 pnpm exec tsx --tsconfig scripts/tsconfig.json scripts/autoresearch/detect-regression.ts \
-        --matrix "$MATRIX" \
-        --stage "$STAGE" \
-        --output "$FINDINGS_FILE"
+        "${DETECT_ARGS[@]}"
 rc=$?
 if [ "$rc" -ne 0 ]; then
     log "detector crashed rc=$rc"
