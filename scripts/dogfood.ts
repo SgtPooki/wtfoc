@@ -513,20 +513,40 @@ async function main() {
 						// #344 step 3 — pre-flight catalog applicability so the
 						// failure-diagnosis layer's rule-1 short-circuit can fire
 						// (gold artifacts absent from this corpus = `fixture-invalid`,
-						// no retrieval-layer triage). Loads the catalog once for
-						// the active collection and keys preflight results by
-						// query id.
-						const qqCatPath = catalogFilePath(qqManifestDir, values.collection!);
+						// no retrieval-layer triage). Loads the catalog for the
+						// active collection only and runs preflight against the
+						// subset of queries that target this corpus, so
+						// `runPreflight`'s cross-corpus schema check (which would
+						// hard-error on every multi-corpus query) does not fire.
+						const collectionId = values.collection;
+						if (!collectionId) {
+							throw new Error("--collection is required for the quality-queries stage");
+						}
+						const qqCatPath = catalogFilePath(qqManifestDir, collectionId);
 						const qqCatalog = await readCatalog(qqCatPath);
 						const preflightStatusByQueryId = new Map<string, PreflightStatus>();
 						if (qqCatalog) {
+							// Project each query down to "this corpus" before preflight so
+							// `runPreflight`'s matrix-validation pass (which expects a
+							// catalog for every applicableCorpora id it sees) gets a
+							// single-corpus view it can satisfy.
+							const localQueries = GOLD_STANDARD_QUERIES.filter((q) =>
+								q.applicableCorpora.includes(collectionId),
+							).map((q) => ({ ...q, applicableCorpora: [collectionId] }));
 							const preflight = runPreflight({
-								queries: GOLD_STANDARD_QUERIES,
-								catalogs: [{ corpusId: values.collection!, catalog: qqCatalog }],
+								queries: localQueries,
+								catalogs: [{ corpusId: collectionId, catalog: qqCatalog }],
 							});
-							for (const r of preflight.results) {
-								if (r.corpusId === values.collection) {
-									preflightStatusByQueryId.set(r.queryId, r.status);
+							if (preflight.hardErrors.length > 0) {
+								console.warn(
+									`[dogfood] preflight hard-errors (${preflight.hardErrors.length}); skipping fixture-invalid wiring`,
+								);
+								for (const e of preflight.hardErrors) console.warn(`  - ${e}`);
+							} else {
+								for (const r of preflight.results) {
+									if (r.corpusId === collectionId) {
+										preflightStatusByQueryId.set(r.queryId, r.status);
+									}
 								}
 							}
 						}
