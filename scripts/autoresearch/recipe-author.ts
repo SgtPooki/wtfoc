@@ -34,18 +34,24 @@ import { writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Segment } from "@wtfoc/common";
+import { catalogFilePath, readCatalog } from "@wtfoc/ingest";
 import {
+	applyAdversarialFilter,
+	type AdversarialFilterResult,
 	type CandidateQuery,
 	type CatalogArtifact,
 	type GoldQuery,
+	InMemoryVectorIndex,
+	mountCollection,
+	OpenAIEmbedder,
 	type QueryTemplate,
 	type RecipeSample,
 	type Stratum,
 	sampleStratified,
 } from "@wtfoc/search";
-import type { Segment } from "@wtfoc/common";
-import { catalogFilePath, readCatalog } from "@wtfoc/ingest";
 import { createStore } from "@wtfoc/store";
+import { buildLiveRetriever } from "./recipe-adversarial-retriever.js";
 import { authorCandidate } from "./recipe-llm-author.js";
 import { buildExcerptMap } from "./recipe-segment-loader.js";
 import { RECIPE_TEMPLATES, templatesForStratum } from "./recipe-templates.js";
@@ -58,6 +64,9 @@ interface ParsedArgs {
 	maxCandidates: number;
 	dryRun: boolean;
 	live: boolean;
+	adversarialFilter: boolean;
+	embedderUrl?: string;
+	embedderModel?: string;
 }
 
 function parsePositiveInt(name: string, raw: string | undefined): number {
@@ -86,6 +95,9 @@ export function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
 	let maxCandidates = 80;
 	let dryRun = false;
 	let live = false;
+	let adversarialFilter = false;
+	let embedderUrl: string | undefined;
+	let embedderModel: string | undefined;
 	for (let i = 0; i < argv.length; i++) {
 		const a = argv[i];
 		const next = argv[i + 1];
@@ -108,6 +120,14 @@ export function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
 			dryRun = true;
 		} else if (a === "--live") {
 			live = true;
+		} else if (a === "--adversarial-filter") {
+			adversarialFilter = true;
+		} else if (a === "--embedder-url" && next) {
+			embedderUrl = next;
+			i++;
+		} else if (a === "--embedder-model" && next) {
+			embedderModel = next;
+			i++;
 		} else if (a !== undefined) {
 			throw new Error(`unknown flag: "${a}"`);
 		}
@@ -115,7 +135,23 @@ export function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
 	if (!collection) {
 		throw new Error("usage: recipe-author --collection <id> [--output <path>] ...");
 	}
-	return { collection, output, samplesPerStratum, seed, maxCandidates, dryRun, live };
+	if (adversarialFilter && (!embedderUrl || !embedderModel)) {
+		throw new Error(
+			"--adversarial-filter requires --embedder-url and --embedder-model",
+		);
+	}
+	return {
+		collection,
+		output,
+		samplesPerStratum,
+		seed,
+		maxCandidates,
+		dryRun,
+		live,
+		adversarialFilter,
+		...(embedderUrl ? { embedderUrl } : {}),
+		...(embedderModel ? { embedderModel } : {}),
+	};
 }
 
 /**
@@ -222,6 +258,17 @@ interface CandidatesFile {
 	totalCandidates: number;
 	stratumDistribution: Array<{ stratum: Stratum; count: number }>;
 	candidates: ReadonlyArray<CandidateQuery>;
+	/**
+	 * Adversarial-filter audit. Populated only when --adversarial-filter is
+	 * passed. `discarded[]` carries the offending candidate plus the reason
+	 * the filter rejected it (typically: "vector top-3 already returns the
+	 * required artifact" — query is too easy).
+	 */
+	adversarial?: {
+		topK: number;
+		kept: number;
+		discarded: AdversarialFilterResult["discarded"];
+	};
 }
 
 function summarizeStrata(samples: ReadonlyArray<RecipeSample>): Array<{ stratum: Stratum; count: number }> {
@@ -322,12 +369,39 @@ async function main(): Promise<void> {
 		}
 	}
 
+	// Adversarial filter — discard candidates whose required gold is in
+	// vector-search top-3 (too easy; doesn't exercise the trace engine).
+	// Requires a mounted corpus + embedder.
+	let adversarial: CandidatesFile["adversarial"];
+	let kept: CandidateQuery[] = candidates;
+	if (args.adversarialFilter && args.embedderUrl && args.embedderModel) {
+		const segments = await loadSegments(args.collection);
+		const store = createStore({ storage: "local" });
+		const head = await store.manifests.getHead(args.collection);
+		if (!head) throw new Error(`collection "${args.collection}" not found`);
+		const vectorIndex = new InMemoryVectorIndex();
+		await mountCollection(head.manifest, store.storage, vectorIndex);
+		const embedder = new OpenAIEmbedder({
+			apiKey: process.env.WTFOC_EMBEDDER_KEY ?? "",
+			model: args.embedderModel,
+			baseUrl: args.embedderUrl,
+		});
+		const retrieve = buildLiveRetriever({ embedder, vectorIndex, segments });
+		const result = await applyAdversarialFilter(candidates, retrieve, { topK: 3 });
+		kept = result.kept;
+		adversarial = { topK: 3, kept: kept.length, discarded: result.discarded };
+		console.log(
+			`[recipe-author] adversarial filter: kept=${kept.length} discarded=${result.discarded.length}`,
+		);
+	}
+
 	const out: CandidatesFile = {
 		collection: args.collection,
 		seed: args.seed,
-		totalCandidates: candidates.length,
+		totalCandidates: kept.length,
 		stratumDistribution: summarizeStrata(samples),
-		candidates,
+		candidates: kept,
+		...(adversarial ? { adversarial } : {}),
 	};
 
 	if (args.dryRun) {
