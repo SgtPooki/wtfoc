@@ -118,6 +118,52 @@ Every answer traces back to original sources with proof. No black-box summaries,
 - When edges are wrong or stale, the evidence makes it obvious — confidence scores, extractor identity, and timestamps are always visible
 - Historical context is preserved: archived document versions remain resolvable via trace even after supersession — "what did the system know at time T?" is always answerable
 
+## Two autoresearch personas
+
+The autoresearch loop has **two distinct intended users**. They differ in default behavior, knob defaults, and acceptance criteria. Conflating them produces wrong design decisions.
+
+### End-user persona — one-shot bootstrap
+
+A user ingests a new collection and wants a working evaluation suite without authoring queries by hand. They invoke `wtfoc recipe ...` (or the underlying `scripts/autoresearch/recipe-{author,validate,apply}.ts` CLI) **once per collection**:
+
+1. `recipe-author --live --adversarial-filter` → drafts candidate gold queries against the corpus catalog.
+2. `recipe-validate` → probes each candidate, classifies into `keeper-candidate` / `human-review` / `needs-fix` / `auto-reject`.
+3. The user reviews the triage report, edits the JSON, and runs `recipe-apply`.
+
+The output (per #363) lives **with the collection** at `~/.wtfoc/projects/<collection>.gold-queries.json` — collection-local, not in wtfoc's source tree. The user **stops there**. Their improvements ride along when the collection is published to the substrate (eventual wtfoc.xyz publish flow). They do not contribute back to wtfoc itself.
+
+Defaults that fit this persona:
+- Interactive (CLI prompts, exit on completion).
+- One PR equivalent: a single batch of authored queries landing in the collection's local artifact.
+- `--dry-run` is common for previewing.
+- No cron, no scheduled reruns.
+
+### Maintainer-self-loop persona — continuous nightly
+
+The wtfoc maintainer's homelab runs the autonomous loop on a cron against the demo collections (filoz, wtfoc-self, GitHub PR threads, podcast transcripts). The loop **continuously self-improves wtfoc itself** by:
+
+1. Detecting retrieval regressions on existing gold queries (`FailureClass` → `dominantLayer` → patch capsule → LLM patch proposal).
+2. Detecting coverage gaps in the gold fixture (`FixtureHealthSignal` → recipe pipeline → new gold queries).
+3. Both paths run under **independent caps** per cycle — patch and fixture-expand are orthogonal.
+4. Each path opens a **draft GitHub PR** for maintainer review. Never silent auto-merge.
+
+This persona touches BOTH gold queries (via `promote-fixture-via-pr`) AND wtfoc source code (via `promote-via-pr` / `promote-patch-via-pr`).
+
+Defaults that fit this persona:
+- Non-interactive (no prompts, exits cleanly on every non-fatal path).
+- Cron-friendly: `coverage-gap-error` / `coverage-gap-author-unavailable` distinguish transient failures from quiet "no work" cycles.
+- Capped: `WTFOC_RECIPE_MAX_NEW_QUERIES_PER_RUN` (default 5), `WTFOC_RECIPE_ADVERSARIAL_HEADROOM` (default 2).
+- Gated: `WTFOC_ALLOW_PATCHES=1`, `WTFOC_ALLOW_FIXTURE_EXPAND=1`.
+- Every fixture-expand PR carries a **retrieval health check** (latest vs baseline existing-fixture pass rate) so reviewers can detect fixture drift — the loop expanding gold to mask retrieval weakness.
+
+### Don't conflate
+
+- The end-user persona's CLI prompts and stops; the maintainer persona's cron runs nightly and opens PRs.
+- The end-user persona's queries live with the collection; the maintainer persona's queries live in `gold-authored-queries.ts` (transitional — moves to per-collection JSON in #363).
+- The end-user persona expects `pnpm exec tsx scripts/autoresearch/recipe-*.ts` (or the future `wtfoc recipe` graduation); the maintainer persona expects `pnpm autoresearch:autonomous`.
+
+Operational details for the maintainer persona live in [`docs/autoresearch/autonomous-loop-runbook.md`](autoresearch/autonomous-loop-runbook.md) and [`docs/autoresearch/cron-howto.md`](autoresearch/cron-howto.md).
+
 ## Anti-Goals
 
 These are things wtfoc deliberately does NOT try to be:
