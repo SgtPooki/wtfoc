@@ -9,6 +9,9 @@ import {
 	decideLoopAction,
 	extractDominantLayer,
 	extractFixtureHealthSignal,
+	extractPassRate,
+	parseHeadroomEnv,
+	parseMaxNewEnv,
 } from "./autonomous-loop.js";
 import { selectPatchCapsule } from "./patch-capsule.js";
 
@@ -259,5 +262,74 @@ describe("decideLoopAction (#360 routing)", () => {
 	it("rationale flags signal-unavailable when fixtureHealth is null", () => {
 		const d = decideLoopAction({ dominantLayer: "ranking", fixtureHealth: null });
 		expect(d.rationale).toContain("coverage=signal-unavailable");
+	});
+});
+
+describe("extractPassRate (#360 retrieval-health mitigation)", () => {
+	it("returns null when report is null", () => {
+		expect(extractPassRate(null)).toBeNull();
+	});
+
+	it("returns null when quality-queries stage is missing", () => {
+		const report = makeReport("ranking");
+		report.stages = [];
+		expect(extractPassRate(report)).toBeNull();
+	});
+
+	it("returns null when passRate is not a number", () => {
+		const report = makeReport("ranking");
+		const stage = report.stages[0];
+		if (stage) stage.metrics = { passRate: "high" } as Record<string, unknown>;
+		expect(extractPassRate(report)).toBeNull();
+	});
+
+	it("extracts the passRate when present", () => {
+		const report = makeReport("ranking");
+		const stage = report.stages[0];
+		if (stage)
+			stage.metrics = { ...stage.metrics, passRate: 0.72 } as Record<string, unknown>;
+		expect(extractPassRate(report)).toBe(0.72);
+	});
+});
+
+describe("env parsers (#360 cron-knob validation)", () => {
+	function withEnv<T>(key: string, value: string | undefined, fn: () => T): T {
+		const prior = process.env[key];
+		try {
+			if (value === undefined) delete process.env[key];
+			else process.env[key] = value;
+			return fn();
+		} finally {
+			if (prior === undefined) delete process.env[key];
+			else process.env[key] = prior;
+		}
+	}
+
+	it("parseMaxNewEnv: positive integer", () => {
+		expect(
+			withEnv("WTFOC_RECIPE_MAX_NEW_QUERIES_PER_RUN", "7", () => parseMaxNewEnv()),
+		).toBe(7);
+	});
+
+	it("parseMaxNewEnv: rejects NaN / negative / zero / fractional", () => {
+		for (const bad of ["abc", "-3", "0", "2.5", ""]) {
+			expect(
+				withEnv("WTFOC_RECIPE_MAX_NEW_QUERIES_PER_RUN", bad, () => parseMaxNewEnv()),
+			).toBeNull();
+		}
+	});
+
+	it("parseHeadroomEnv: positive integer", () => {
+		expect(
+			withEnv("WTFOC_RECIPE_ADVERSARIAL_HEADROOM", "4", () => parseHeadroomEnv()),
+		).toBe(4);
+	});
+
+	it("parseHeadroomEnv: rejects malformed values", () => {
+		for (const bad of ["NaN", "-1", "0", "1.5", ""]) {
+			expect(
+				withEnv("WTFOC_RECIPE_ADVERSARIAL_HEADROOM", bad, () => parseHeadroomEnv()),
+			).toBeNull();
+		}
 	});
 });

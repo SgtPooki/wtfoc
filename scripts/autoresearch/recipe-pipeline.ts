@@ -40,8 +40,10 @@ import {
 	type QueryType,
 	type RecipeSample,
 	type Stratum,
+	stratifyArtifacts,
 } from "@wtfoc/search";
 import { buildLiveRetriever, buildStorageToDocMap } from "./recipe-adversarial-retriever.js";
+import { catalogToArtifacts } from "./recipe-author.js";
 import { templatesForStratum } from "./recipe-templates.js";
 import {
 	type ApplyEnrichedRecord,
@@ -82,6 +84,15 @@ export interface RunRecipePipelineInput {
 	 * `WTFOC_RECIPE_MAX_NEW_QUERIES_PER_RUN` and threads it here.
 	 */
 	maxNew?: number;
+	/**
+	 * Multiplier for `maxNew` that the planner uses as its upper bound on
+	 * planned `(sample, template)` pairs. Higher values give the
+	 * adversarial filter + author + validate chain more discard headroom
+	 * before the cap bites. Defaults to `ADVERSARIAL_HEADROOM_FACTOR` (2);
+	 * the loop reads `WTFOC_RECIPE_ADVERSARIAL_HEADROOM` and threads it
+	 * here when set.
+	 */
+	headroomFactor?: number;
 	/** Live-author LLM endpoint overrides; falls back to env in `authorCandidate`. */
 	authorOptions?: { llmUrl?: string; llmModel?: string; llmApiKey?: string };
 	/** Pre-built excerpt map; if absent, derived from `segments`. */
@@ -105,24 +116,29 @@ export interface RunRecipePipelineResult {
 	codegen: string | null;
 }
 
-interface ArtifactRow {
-	artifactId: string;
-	sourceType: string;
-	contentLength: number;
+interface RarityRow {
+	artifact: CatalogArtifact;
+	stratum: Stratum;
 }
 
-function indexArtifactsBySourceType(catalog: DocumentCatalog): Map<string, ArtifactRow[]> {
-	const out = new Map<string, ArtifactRow[]>();
-	for (const [artifactId, doc] of Object.entries(catalog.documents)) {
-		if (doc.state !== "active") continue;
-		const row: ArtifactRow = {
-			artifactId,
-			sourceType: doc.sourceType,
-			contentLength: doc.chunkIds.length * 1000,
-		};
-		const arr = out.get(doc.sourceType) ?? [];
-		arr.push(row);
-		out.set(doc.sourceType, arr);
+/**
+ * Group rarity-tagged rows by `sourceType` so the planner can pick a
+ * random artifact per uncovered (sourceType, queryType) cell with the
+ * correct rarity attached. `stratifyArtifacts` emits one row per
+ * (artifact, edgeType) — when an artifact has no edge types it
+ * collapses to a single `edgeType: null` row, which is what the
+ * planner uses today (no edgeType-aware queries on the catalog side).
+ */
+function indexRarityBySourceType(rows: RarityRow[]): Map<string, RarityRow[]> {
+	const out = new Map<string, RarityRow[]>();
+	for (const r of rows) {
+		// Keep the no-edge-context baseline only — matches buildSample's
+		// `edgeType: null` synthesis. Edge-typed rows can be re-added
+		// when the gold schema carries an edgeType axis.
+		if (r.stratum.edgeType !== null) continue;
+		const arr = out.get(r.artifact.sourceType) ?? [];
+		arr.push(r);
+		out.set(r.artifact.sourceType, arr);
 	}
 	return out;
 }
@@ -140,46 +156,36 @@ function indexArtifactsBySourceType(catalog: DocumentCatalog): Map<string, Artif
  * to the LLM. This now mirrors `templatesForStratum`'s applicability
  * filter and adds the queryType constraint on top.
  */
+/**
+ * `templatesForStratum` returns matches in source order; for a `rare`
+ * stratum, the first lookup match is `lookup-by-symbol` (code-only)
+ * before `lookup-rare-edge` (rarity-gated). To honor the rarity axis,
+ * prefer templates whose `appliesToStrata` mentions `rarity` and
+ * matches the stratum's rarity, then fall back to source order.
+ *
+ * Codex peer-review #2 flagged this: the prior implementation matched
+ * by `queryType` alone after `templatesForStratum`, leaving the
+ * rarity-gated templates effectively unreachable.
+ */
 function pickTemplateForStratum(
 	stratum: Pick<Stratum, "sourceType" | "edgeType" | "rarity">,
 	queryType: QueryType,
 ): QueryTemplate | null {
-	// `templatesForStratum` already returns templates whose
-	// `appliesToStrata` matches this stratum OR is empty (universal
-	// fallback). All we need on top is the queryType filter.
-	return templatesForStratum(stratum).find((t) => t.queryType === queryType) ?? null;
+	const applicable = templatesForStratum(stratum).filter((t) => t.queryType === queryType);
+	if (applicable.length === 0) return null;
+	const rarityGated = applicable.find((t) =>
+		t.appliesToStrata?.some((p) => p.rarity === stratum.rarity),
+	);
+	return rarityGated ?? applicable[0] ?? null;
 }
 
-function lengthBucketOf(length: number): Stratum["lengthBucket"] {
-	if (length < 2000) return "short";
-	if (length < 8000) return "medium";
-	return "long";
-}
-
-function buildSample(artifact: ArtifactRow, rng: () => number): RecipeSample {
-	void rng;
-	const stratum: Stratum = {
-		sourceType: artifact.sourceType,
-		// Author/validate paths today don't depend on edgeType for catalog
-		// authoring (templates filter by queryType). Leave null until the
-		// schema carries explicit edgeType per query.
-		edgeType: null,
-		lengthBucket: lengthBucketOf(artifact.contentLength),
-		// TODO(#360 follow-up): rarity is hardcoded "common" here; the
-		// proper computation runs `stratifyArtifacts` over the full
-		// catalog to derive (sourceType, edgeType) frequency. Hardcoding
-		// `common` means rarity-gated templates (e.g. `lookup-rare-edge`)
-		// are unreachable from this path. Acceptable for slice 1e where
-		// no rarity-gated template covers a queryType the planner targets;
-		// fix before broadening template coverage.
-		rarity: "common",
-	};
-	const ca: CatalogArtifact = {
-		artifactId: artifact.artifactId,
-		sourceType: artifact.sourceType,
-		contentLength: artifact.contentLength,
-	};
-	return { stratum, artifact: ca };
+/**
+ * Build a `RecipeSample` from a rarity-tagged row. The stratum already
+ * carries the correct `(sourceType, edgeType, lengthBucket, rarity)`
+ * tuple from `stratifyArtifacts`; no synthesis or hardcoding here.
+ */
+function buildSample(row: RarityRow): RecipeSample {
+	return { stratum: row.stratum, artifact: row.artifact };
 }
 
 /**
@@ -192,32 +198,46 @@ export function planRecipeExpansion(input: {
 	fixtureHealth: FixtureHealthSignal;
 	catalog: DocumentCatalog;
 	maxNew?: number;
+	headroomFactor?: number;
 	seed?: number;
 }): {
 	targetedStrata: TargetedStratum[];
 	plannedPairs: Array<{ sample: RecipeSample; template: QueryTemplate }>;
 } {
 	const maxNew = input.maxNew ?? DEFAULT_MAX_NEW_QUERIES_PER_RUN;
-	const headroom = maxNew * ADVERSARIAL_HEADROOM_FACTOR;
+	// API-level guard: `headroomFactor` flows in from programmatic
+	// callers and from `WTFOC_RECIPE_ADVERSARIAL_HEADROOM`. Defend
+	// against NaN / negative / 0 / non-integer values so the cap below
+	// always trips correctly. (Copilot peer-review on #372.)
+	const rawHeadroom = input.headroomFactor;
+	const headroomFactor =
+		rawHeadroom !== undefined &&
+		Number.isFinite(rawHeadroom) &&
+		Number.isInteger(rawHeadroom) &&
+		rawHeadroom > 0
+			? rawHeadroom
+			: ADVERSARIAL_HEADROOM_FACTOR;
+	const headroom = maxNew * headroomFactor;
 	const rng = seededRng(input.seed ?? 1);
 	const sortedUncovered = [...input.fixtureHealth.coverage.uncoveredStrata].sort(
 		(a, b) => b.artifactsInCorpus - a.artifactsInCorpus,
 	);
-	const artifactsBySource = indexArtifactsBySourceType(input.catalog);
+	// Run stratifyArtifacts once over the full catalog so each artifact
+	// carries the correct (sourceType, edgeType, lengthBucket, rarity)
+	// tuple. Index by sourceType for the planner's per-cell pick.
+	const artifacts = catalogToArtifacts(input.catalog);
+	const stratifiedRows = stratifyArtifacts(artifacts);
+	const rarityBySource = indexRarityBySourceType(stratifiedRows);
 	const targetedStrata: TargetedStratum[] = [];
 	const plannedPairs: Array<{ sample: RecipeSample; template: QueryTemplate }> = [];
 	for (const u of sortedUncovered) {
 		if (plannedPairs.length >= headroom) break;
-		const candidates = artifactsBySource.get(u.key.sourceType);
+		const candidates = rarityBySource.get(u.key.sourceType);
 		if (!candidates || candidates.length === 0) continue;
 		const idx = Math.floor(rng() * candidates.length) % candidates.length;
-		const artifact = candidates[idx];
-		if (!artifact) continue;
-		// Build the stratum FIRST so the template picker can filter on
-		// sourceType applicability. Earlier the picker matched only on
-		// queryType, which produced nonsensical (sample, template) pairs
-		// for sourceTypes that no template targets.
-		const sample = buildSample(artifact, rng);
+		const row = candidates[idx];
+		if (!row) continue;
+		const sample = buildSample(row);
 		const template = pickTemplateForStratum(sample.stratum, u.key.queryType);
 		if (!template) continue;
 		plannedPairs.push({ sample, template });
@@ -256,11 +276,18 @@ export async function runRecipePipeline(
 		"auto-reject": 0,
 	};
 
-	const planInput: { fixtureHealth: FixtureHealthSignal; catalog: DocumentCatalog; maxNew: number; seed?: number } = {
+	const planInput: {
+		fixtureHealth: FixtureHealthSignal;
+		catalog: DocumentCatalog;
+		maxNew: number;
+		headroomFactor?: number;
+		seed?: number;
+	} = {
 		fixtureHealth: input.fixtureHealth,
 		catalog: input.catalog,
 		maxNew,
 	};
+	if (input.headroomFactor !== undefined) planInput.headroomFactor = input.headroomFactor;
 	if (input.seed !== undefined) planInput.seed = input.seed;
 	const { targetedStrata, plannedPairs } = planRecipeExpansion(planInput);
 

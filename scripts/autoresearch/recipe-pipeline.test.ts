@@ -163,4 +163,149 @@ describe("planRecipeExpansion", () => {
 		expect(targetedStrata).toEqual([]);
 		expect(plannedPairs).toEqual([]);
 	});
+
+	it("prefers rarity-gated template for rare strata (regression: #372 Copilot)", () => {
+		// 99 code docs + 1 markdown doc → markdown is rare. With queryType
+		// `lookup`, both `lookup-doc-section` (markdown/html, no rarity)
+		// AND `lookup-rare-edge` (rarity=rare, no sourceType) apply.
+		// Source-order fallback would pick `lookup-doc-section`. The
+		// rarity-aware picker must select `lookup-rare-edge`.
+		const docs = [
+			...Array.from({ length: 99 }, (_, i) => ({
+				id: `src/code-${i}.ts`,
+				sourceType: "code",
+			})),
+			{ id: "docs/rare.md", sourceType: "markdown" },
+		];
+		const catalog = makeCatalog(docs);
+		const fh = makeFixtureHealth([
+			{ sourceType: "markdown", queryType: "lookup", artifactsInCorpus: 1 },
+		]);
+		const { plannedPairs } = planRecipeExpansion({
+			fixtureHealth: fh,
+			catalog,
+			maxNew: 1,
+		});
+		expect(plannedPairs).toHaveLength(1);
+		expect(plannedPairs[0]?.template.id).toBe("lookup-rare-edge");
+	});
+
+	it("propagates real rarity from stratifyArtifacts (peer-review #2 follow-up)", () => {
+		// 99 code docs + 1 markdown doc → markdown is `rare` (1% < 5%
+		// default rarityFraction). The planner's lookup pick for
+		// markdown should carry rarity=rare, not the previously-
+		// hardcoded "common".
+		const docs = [
+			...Array.from({ length: 99 }, (_, i) => ({
+				id: `src/code-${i}.ts`,
+				sourceType: "code",
+			})),
+			{ id: "docs/rare.md", sourceType: "markdown" },
+		];
+		const catalog = makeCatalog(docs);
+		const fh = makeFixtureHealth([
+			{ sourceType: "markdown", queryType: "lookup", artifactsInCorpus: 1 },
+		]);
+		const { plannedPairs } = planRecipeExpansion({
+			fixtureHealth: fh,
+			catalog,
+			maxNew: 1,
+		});
+		expect(plannedPairs).toHaveLength(1);
+		expect(plannedPairs[0]?.sample.stratum.rarity).toBe("rare");
+		expect(plannedPairs[0]?.sample.stratum.sourceType).toBe("markdown");
+	});
+
+	it("dominant sourceType comes back as common rarity", () => {
+		const docs = Array.from({ length: 10 }, (_, i) => ({
+			id: `src/code-${i}.ts`,
+			sourceType: "code",
+		}));
+		const catalog = makeCatalog(docs);
+		const fh = makeFixtureHealth([
+			{ sourceType: "code", queryType: "lookup", artifactsInCorpus: 10 },
+		]);
+		const { plannedPairs } = planRecipeExpansion({
+			fixtureHealth: fh,
+			catalog,
+			maxNew: 1,
+		});
+		expect(plannedPairs).toHaveLength(1);
+		expect(plannedPairs[0]?.sample.stratum.rarity).toBe("common");
+	});
+
+	it("headroomFactor override expands the per-cycle planning budget", () => {
+		const uncovered = Array.from({ length: 20 }, (_, i) => ({
+			sourceType: `type-${i}`,
+			queryType: "lookup" as const,
+			artifactsInCorpus: 100 - i,
+		}));
+		const catalog = makeCatalog(
+			uncovered.map((u) => ({ id: `id-${u.sourceType}`, sourceType: u.sourceType })),
+		);
+		const fh = makeFixtureHealth(uncovered);
+		// Note: lookup-by-symbol/lookup-doc-section/lookup-discussion only
+		// match for `code/markdown/html/github-issue/...` source types, so
+		// the planner naturally skips most synthetic `type-N` strata. Use
+		// `entity-resolution-canonical` (no appliesToStrata, applies to all).
+		const fhEr = makeFixtureHealth(
+			uncovered.map((u) => ({
+				sourceType: u.sourceType,
+				queryType: "entity-resolution" as const,
+				artifactsInCorpus: u.artifactsInCorpus,
+			})),
+		);
+		const tight = planRecipeExpansion({
+			fixtureHealth: fhEr,
+			catalog,
+			maxNew: 3,
+			headroomFactor: 1,
+		});
+		const wide = planRecipeExpansion({
+			fixtureHealth: fhEr,
+			catalog,
+			maxNew: 3,
+			headroomFactor: 4,
+		});
+		expect(tight.plannedPairs.length).toBeLessThanOrEqual(3);
+		expect(wide.plannedPairs.length).toBeGreaterThan(tight.plannedPairs.length);
+		expect(wide.plannedPairs.length).toBeLessThanOrEqual(12);
+		void fh; // unused symbol guard for the prior `uncovered` shape
+	});
+
+	it("falls back to default when headroomFactor is invalid (NaN / 0 / negative)", () => {
+		const uncovered = Array.from({ length: 10 }, (_, i) => ({
+			sourceType: `type-${i}`,
+			queryType: "entity-resolution" as const,
+			artifactsInCorpus: 100 - i,
+		}));
+		const catalog = makeCatalog(
+			uncovered.map((u) => ({ id: `id-${u.sourceType}`, sourceType: u.sourceType })),
+		);
+		const fh = makeFixtureHealth(uncovered);
+		// NaN / 0 / negative should NOT disable the cap; fall back to default 2x.
+		const nan = planRecipeExpansion({
+			fixtureHealth: fh,
+			catalog,
+			maxNew: 3,
+			headroomFactor: Number.NaN,
+		});
+		const zero = planRecipeExpansion({
+			fixtureHealth: fh,
+			catalog,
+			maxNew: 3,
+			headroomFactor: 0,
+		});
+		const negative = planRecipeExpansion({
+			fixtureHealth: fh,
+			catalog,
+			maxNew: 3,
+			headroomFactor: -5,
+		});
+		expect(nan.plannedPairs.length).toBeLessThanOrEqual(6);
+		expect(zero.plannedPairs.length).toBeLessThanOrEqual(6);
+		expect(negative.plannedPairs.length).toBeLessThanOrEqual(6);
+		// All three should match the default behavior (maxNew * 2 = 6 cap).
+		expect(nan.plannedPairs.length).toBeGreaterThan(0);
+	});
 });
