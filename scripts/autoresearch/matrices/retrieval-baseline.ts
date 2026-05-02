@@ -12,11 +12,29 @@
  * identical embedder config) so the fan-out cost is mostly query +
  * trace work, multiplied across both corpora.
  *
- * Reranker LLM points at the local Claude direct proxy (haiku) so
- * per-variant cost is locally-zero. No paid models in this matrix.
+ * Reranker URL is env-driven via `WTFOC_RERANKER_URL` (BGE
+ * cross-encoder protocol — `{query, candidates, top_n}` →
+ * `{results: [{id, score}]}`). When unset, the LLM-as-reranker
+ * variant is dropped from the matrix and only the rrOff variants
+ * run. Set the env to a BGE-protocol endpoint to enable rerank
+ * variants. The earlier iteration of this matrix hardcoded a
+ * `claude-direct-proxy` URL that routed through the Anthropic API
+ * (paid + ~5-10s per call) — removed in favor of the env-driven
+ * BGE path.
  */
 
-import type { Matrix } from "../matrix.js";
+import type { Matrix, RerankerSpec } from "../matrix.js";
+
+const RERANKER_URL = process.env.WTFOC_RERANKER_URL ?? "";
+const EXTRACTOR_URL = process.env.WTFOC_EXTRACTOR_URL ?? "";
+const EXTRACTOR_MODEL = process.env.WTFOC_EXTRACTOR_MODEL ?? "";
+const EMBEDDER_URL = process.env.WTFOC_EMBEDDER_URL ?? "";
+const EMBEDDER_MODEL = process.env.WTFOC_EMBEDDER_MODEL ?? "";
+
+const rerankerVariants: RerankerSpec[] = ["off"];
+if (RERANKER_URL) {
+	rerankerVariants.push({ type: "bge", url: RERANKER_URL });
+}
 
 const matrix: Matrix = {
 	name: "retrieval-baseline",
@@ -28,23 +46,16 @@ const matrix: Matrix = {
 			primary: "filoz-ecosystem-2026-04-v12",
 			secondary: "wtfoc-dogfood-2026-04-v3",
 		},
-		embedderUrl: "https://openrouter.ai/api/v1",
-		embedderModel: "baai/bge-base-en-v1.5",
+		embedderUrl: EMBEDDER_URL,
+		embedderModel: EMBEDDER_MODEL,
 		embedderKey: process.env.OPENROUTER_API_KEY ?? "",
-		extractorUrl: "http://127.0.0.1:4523/v1",
-		extractorModel: "haiku",
+		extractorUrl: EXTRACTOR_URL,
+		extractorModel: EXTRACTOR_MODEL,
 	},
 	axes: {
 		autoRoute: [false, true],
 		diversityEnforce: [false, true],
-		reranker: [
-			"off",
-			{
-				type: "llm",
-				url: "http://127.0.0.1:4523/v1",
-				model: "haiku",
-			},
-		],
+		reranker: rerankerVariants,
 	},
 };
 
