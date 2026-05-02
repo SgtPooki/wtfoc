@@ -654,4 +654,39 @@ describe("evaluateQualityQueries", () => {
 			expect(sig.thresholds.giniFloor).toBe(0.6);
 		});
 	});
+
+	describe("preflight-driven skip (#343 P0 forensics finding)", () => {
+		it("skips queries marked invalid by preflight (were counted as failures pre-fix)", async () => {
+			mockQuery.mockResolvedValue(makeQueryResult([]));
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+			const firstId = GOLD_STANDARD_QUERIES[0]?.id;
+			const secondId = GOLD_STANDARD_QUERIES[1]?.id;
+			if (!firstId || !secondId) throw new Error("fixture too small");
+			const preflightStatusByQueryId = new Map([
+				[firstId, "invalid" as const],
+				[secondId, "skipped" as const],
+			]);
+			const result = await evaluateQualityQueries(
+				mockEmbedder,
+				mockVectorIndex,
+				mockSegments,
+				undefined,
+				[],
+				undefined,
+				false,
+				{ preflightStatusByQueryId },
+			);
+			const scores = result.metrics.scores as Array<{
+				id: string;
+				skipped?: boolean;
+				skipReason?: string;
+			}>;
+			const first = scores.find((s) => s.id === firstId);
+			const second = scores.find((s) => s.id === secondId);
+			expect(first?.skipped).toBe(true);
+			expect(first?.skipReason).toContain("fixture-invalid");
+			expect(second?.skipped).toBe(true);
+			expect(second?.skipReason).toContain("preflight-skipped");
+		});
+	});
 });
