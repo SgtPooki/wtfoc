@@ -1,4 +1,5 @@
 import type {
+	DocumentCatalog,
 	Edge,
 	Embedder,
 	EvalCheck,
@@ -17,6 +18,12 @@ import {
 	diagnoseFailure,
 	type FailureDiagnosis,
 } from "./failure-diagnosis.js";
+import {
+	buildCoverageReport,
+	type CoverageReport,
+	deriveFixtureHealthSignal,
+	type FixtureHealthSignal,
+} from "./fixture-health.js";
 import {
 	GOLD_STANDARD_QUERIES,
 	GOLD_STANDARD_QUERIES_VERSION,
@@ -285,6 +292,25 @@ export interface QualityQueriesContext {
 	 * running the preflight against the same corpus the eval consumes.
 	 */
 	preflightStatusByQueryId?: ReadonlyMap<string, PreflightStatus>;
+	/**
+	 * #360 — corpus document catalog. When provided, the evaluator computes
+	 * a `coverageReport` + `fixtureHealthSignal` per cycle alongside the
+	 * `diagnosisAggregate`. The autonomous loop reads BOTH to decide whether
+	 * to patch ranking, expand the fixture, or both. Caller (sweep / dogfood)
+	 * loads the catalog from `~/.wtfoc/projects/<corpus>.document-catalog.json`.
+	 */
+	documentCatalog?: DocumentCatalog;
+	/**
+	 * #360 — Gini-coefficient floor above which `hasCoverageGap` fires.
+	 * Defaults to `DEFAULT_GINI_FLOOR` (0.6) when unset; the autoresearch
+	 * runner threads `WTFOC_RECIPE_GINI_FLOOR` through here.
+	 */
+	coverageGiniFloor?: number;
+	/**
+	 * #360 — minimum uncovered (sourceType, queryType) cells above which
+	 * `hasCoverageGap` fires. Defaults to `DEFAULT_MIN_UNCOVERED_STRATA` (3).
+	 */
+	coverageMinUncoveredStrata?: number;
 }
 
 export async function evaluateQualityQueries(
@@ -356,6 +382,29 @@ export async function evaluateQualityQueries(
 		if (d) diagnoses.push(d);
 	}
 	const diagnosisAggregate: DiagnosisAggregate = aggregateDiagnoses(diagnoses);
+
+	// #360 — corpus-level fixture-health signal. Orthogonal to per-failure
+	// diagnosis; the autonomous loop reads both per cycle to route between
+	// patch-ranking and fixture-expansion.
+	let coverageReport: CoverageReport | null = null;
+	let fixtureHealthSignal: FixtureHealthSignal | null = null;
+	if (context.documentCatalog) {
+		const corpusId = context.documentCatalog.collectionId;
+		const scopedQueries = activeQueries.filter(
+			(q) => !corpusId || q.applicableCorpora.includes(corpusId),
+		);
+		coverageReport = buildCoverageReport({
+			queries: scopedQueries,
+			catalog: context.documentCatalog,
+			segments,
+		});
+		fixtureHealthSignal = deriveFixtureHealthSignal({
+			collectionId: corpusId,
+			coverage: coverageReport,
+			giniFloor: context.coverageGiniFloor,
+			minUncoveredStrata: context.coverageMinUncoveredStrata,
+		});
+	}
 
 	const applicableTotal = activeQueries.length - skippedCount;
 	const passRate = applicableTotal > 0 ? passCount / applicableTotal : 0;
@@ -536,6 +585,10 @@ export async function evaluateQualityQueries(
 			// the LLM proposer's allowlist for the next cycle.
 			diagnoses,
 			diagnosisAggregate,
+			// #360 — corpus-level fixture-health view; null when no catalog
+			// was passed in `context.documentCatalog` (most callers).
+			coverageReport,
+			fixtureHealthSignal,
 		},
 		checks,
 	};

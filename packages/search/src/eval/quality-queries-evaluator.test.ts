@@ -603,4 +603,55 @@ describe("evaluateQualityQueries", () => {
 			}
 		});
 	});
+
+	describe("coverageReport / fixtureHealthSignal (#360)", () => {
+		it("metrics.coverageReport is null when no documentCatalog passed", async () => {
+			mockQuery.mockResolvedValue(makeQueryResult([]));
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+			const result = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
+			expect(result.metrics.coverageReport).toBeNull();
+			expect(result.metrics.fixtureHealthSignal).toBeNull();
+		});
+
+		it("metrics.coverageReport populates when documentCatalog provided", async () => {
+			mockQuery.mockResolvedValue(makeQueryResult([]));
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+			const documentCatalog = {
+				schemaVersion: 1 as const,
+				collectionId: "alpha",
+				documents: {
+					d1: {
+						documentId: "d1",
+						currentVersionId: "v1",
+						previousVersionIds: [],
+						chunkIds: [],
+						supersededChunkIds: [],
+						contentFingerprints: [],
+						state: "active" as const,
+						mutability: "mutable-state" as const,
+						sourceType: "code",
+						updatedAt: new Date().toISOString(),
+					},
+				},
+			};
+			const result = await evaluateQualityQueries(
+				mockEmbedder,
+				mockVectorIndex,
+				mockSegments,
+				undefined,
+				[],
+				undefined,
+				false,
+				{ documentCatalog },
+			);
+			expect(result.metrics.coverageReport).not.toBeNull();
+			expect(result.metrics.fixtureHealthSignal).not.toBeNull();
+			const sig = result.metrics.fixtureHealthSignal as {
+				collectionId: string;
+				thresholds: { giniFloor: number; minUncoveredStrata: number };
+			};
+			expect(sig.collectionId).toBe("alpha");
+			expect(sig.thresholds.giniFloor).toBe(0.6);
+		});
+	});
 });
