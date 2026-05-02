@@ -598,11 +598,19 @@ export async function evaluateQualityQueries(
  * Decide whether a query is inapplicable to the current corpus.
  * Returns a human-readable reason string when skipped, or null when applicable.
  *
- * Two gates:
+ * Three gates:
  * 1. `collectionScopePattern` — query declares which corpora it targets.
  * 2. corpus source-type coverage — if the query requires a source type not
  *    ingested into the corpus, skip instead of failing (a coverage gap in
  *    the corpus is not a retrieval regression).
+ * 3. catalog-applicability preflight — if `preflightStatusByQueryId` marks
+ *    the (query, corpus) pair as `fixture-invalid` (required artifact not
+ *    in the corpus catalog), skip instead of failing. Per #344 D2 / #345
+ *    spec: "If absent → mark query skipped, NOT failed. Skipped queries
+ *    excluded from aggregate." Prior implementation only annotated the
+ *    failure-diagnosis layer, leaving these queries counted as failures
+ *    and depressing pass rates by ~30% on cross-corpus runs (P0
+ *    forensics finding on #343).
  */
 function resolveSkip(gq: GoldQuery, ctx: QualityQueriesContext): string | null {
 	if (ctx.collectionId && !gq.applicableCorpora.includes(ctx.collectionId)) {
@@ -612,6 +620,15 @@ function resolveSkip(gq: GoldQuery, ctx: QualityQueriesContext): string | null {
 		const missing = gq.requiredSourceTypes.filter((st) => !ctx.corpusSourceTypes?.has(st));
 		if (missing.length > 0) {
 			return `corpus lacks required source type(s): ${missing.join(", ")}`;
+		}
+	}
+	if (ctx.preflightStatusByQueryId) {
+		const status = ctx.preflightStatusByQueryId.get(gq.id);
+		if (status === "invalid") {
+			return "fixture-invalid: required artifact not present in corpus catalog";
+		}
+		if (status === "skipped") {
+			return "preflight-skipped: query not applicable to this corpus";
 		}
 	}
 	return null;
