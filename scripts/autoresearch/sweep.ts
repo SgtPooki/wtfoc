@@ -30,6 +30,7 @@
  * defaults. That gate stays manual until methodology is hardened.
  */
 
+import { ensureMode, type GpuMode, resolveModeFromMatrix } from "../lib/mode-switch.js";
 import { safeExecFileSync as execFileSync } from "../lib/safe-exec.js";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -367,6 +368,33 @@ async function main(): Promise<void> {
 		} sweepId=${sweepId} stage=${stage ?? "(none)"}`,
 	);
 
+	// #360 — auto-switch GPU mode for sweeps targeting a GPU-only
+	// workload (rerank-gpu / embed-gpu). Mirrors the autonomous-loop's
+	// `swapMode` wrapper. Gated by `WTFOC_VLLM_AUTOSWAP=1`; when unset
+	// every call is a noop and the sweep runs in whatever mode is
+	// already active. After the sweep finishes (success OR failure),
+	// the GPU is returned to `chat` so the autonomous-loop's analyze
+	// phase has a chat-ready model.
+	const sweepMode: GpuMode | null = resolveModeFromMatrix(matrix);
+	if (sweepMode) {
+		logErr(`[sweep] resolved gpu mode requirement: ${sweepMode}`);
+		try {
+			const r = await ensureMode(sweepMode, { reason: `sweep ${matrix.name}` });
+			if (r.skipped) {
+				logErr(`[sweep] mode-switch skipped (${sweepMode}): ${r.skippedReason}`);
+			} else {
+				logErr(`[sweep] mode-switch ok: ${r.from ?? "?"}→${r.to ?? sweepMode}`);
+			}
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			logErr(`[sweep] mode-switch FAILED (${sweepMode}): ${msg}`);
+			logErr(
+				`[sweep] aborting — variants targeting a ${sweepMode} workload would 503 against the inactive deployment`,
+			);
+			process.exit(3);
+		}
+	}
+
 	const results: SweepRunResult[] = [];
 	let primaryBaselineReport: ExtendedDogfoodReport | null = null;
 	let secondaryBaselineReport: ExtendedDogfoodReport | null = null;
@@ -460,7 +488,45 @@ async function main(): Promise<void> {
 	logErr(`[sweep] run log appended at ~/.wtfoc/autoresearch/runs.jsonl (${totalRows} rows)`);
 }
 
-main().catch((err) => {
-	logErr("[sweep] fatal:", err instanceof Error ? err.message : String(err));
-	process.exit(1);
-});
+/**
+ * After a GPU sweep, return the cluster to chat so any downstream
+ * `autoresearch:autonomous` invocation has a chat-ready model.
+ * Best-effort: failures here are logged but do not change the exit
+ * code (the sweep itself succeeded).
+ */
+async function revertGpuModeToChat(matrix: Awaited<ReturnType<typeof loadMatrix>>): Promise<void> {
+	const sweepMode = resolveModeFromMatrix(matrix);
+	if (!sweepMode || sweepMode === "chat") return;
+	try {
+		const r = await ensureMode("chat", { reason: "post-sweep revert" });
+		if (r.skipped) logErr(`[sweep] post-sweep revert skipped: ${r.skippedReason}`);
+		else logErr(`[sweep] post-sweep revert ok: ${r.from ?? "?"}→chat`);
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		logErr(`[sweep] post-sweep revert FAILED (chat): ${msg}`);
+	}
+}
+
+main()
+	.then(async () => {
+		// success path — best-effort revert; only meaningful when matrix
+		// targeted a GPU mode AND auto-switch is enabled.
+		try {
+			const cliArgs = parseArgs(process.argv);
+			const matrix = await loadMatrix(cliArgs.matrixName);
+			await revertGpuModeToChat(matrix);
+		} catch {
+			// already-logged in main; nothing to do here
+		}
+	})
+	.catch(async (err) => {
+		logErr("[sweep] fatal:", err instanceof Error ? err.message : String(err));
+		try {
+			const cliArgs = parseArgs(process.argv);
+			const matrix = await loadMatrix(cliArgs.matrixName);
+			await revertGpuModeToChat(matrix);
+		} catch {
+			// already-logged
+		}
+		process.exit(1);
+	});

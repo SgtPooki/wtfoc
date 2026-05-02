@@ -16,7 +16,7 @@ Run the existing `pnpm autoresearch:sweep retrieval-baseline` harness on a night
   - Local LLM endpoints (extractor: `http://127.0.0.1:4523/v1` haiku via Claude direct proxy).
   - OpenRouter for embedder (`baai/bge-base-en-v1.5` is $0).
 - **No paid AI API keys in the recurring path.** Maintainer-only on-demand verification using paid models is acceptable; nightly is not.
-- **No homelab2 runtime artifacts.** No homelab2 image registries, no homelab2 URLs in committed source, no parsing of homelab2 output. All endpoints from env vars. (`feedback_wtfoc_runtime_independence.md`.)
+- **No private-infrastructure runtime artifacts.** No private image registries, no private URLs in committed source, no parsing of private-cluster output. All endpoints from env vars. (`feedback_wtfoc_runtime_independence.md`.)
 - **Don't false-positive on outages.** BGE down / local LLM down / OpenRouter rate-limited must NOT be reported as a quality regression.
 - **Pre-v1.** Breaking changes to `runs.jsonl` shape acceptable.
 

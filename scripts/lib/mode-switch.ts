@@ -1,15 +1,17 @@
 /**
- * Thin client for the homelab vllm-admin mode-switch API. Maintainer-only.
+ * Thin client for a vllm-admin mode-switch API. Maintainer-only.
  *
- * Single-GPU homelab box can serve exactly one of {chat, rerank-gpu,
- * embed-gpu} at a time. The autoresearch nightly cron drives the
- * switch around its phases (sweep → analyze → materialize → reset).
+ * Targets a single-GPU cluster that serves exactly one of {chat,
+ * rerank-gpu, embed-gpu} at a time. The autoresearch nightly cron
+ * drives the switch around its phases (sweep → analyze → materialize
+ * → reset).
  *
  * Hard rules:
  *   - Gated by `WTFOC_VLLM_AUTOSWAP=1`. When unset every call is a noop
- *     so non-homelab maintainers can run the loop unmodified.
- *   - Admin URL comes from `WTFOC_VLLM_ADMIN_URL`. No homelab2 URLs
- *     hardcoded.
+ *     so maintainers without a vllm-admin cluster can run the loop
+ *     unmodified.
+ *   - Admin URL comes from `WTFOC_VLLM_ADMIN_URL`. No URLs hardcoded
+ *     in source — every endpoint is operator-supplied.
  *   - `ensureMode` is idempotent — same target as current activeMode
  *     short-circuits without a network call to switch (still polls
  *     `/admin/mode` once to read state).
@@ -17,8 +19,7 @@
  *     failure phases throw; the caller decides whether to abort the
  *     pipeline.
  *
- * See homelab2/docs/runbooks/vllm-admin-consumer-guide.md for the
- * server-side state machine.
+ * Server-side state machine: see your cluster's vllm-admin runbook.
  */
 
 export type GpuMode = "chat" | "rerank-gpu" | "embed-gpu";
@@ -209,12 +210,13 @@ export async function ensureMode(
 
 /**
  * Resolve the GPU phase a matrix needs for its sweep. Inspects whether
- * any URL in the matrix points at a homelab GPU-only endpoint. Returns
- * null when the matrix is fully always-on / cloud (no swap needed).
+ * any URL in the matrix points at a GPU-only workload. Returns null
+ * when the matrix is fully always-on / cloud (no swap needed).
  *
- * Heuristic: looks for `embedder-gpu`, `reranker-gpu`, or
- * `vllm.bt.sgtpooki` substrings. Override via matrix.gpuPhase when
- * heuristic is wrong.
+ * Heuristic: looks for `embedder-gpu` or `reranker-gpu` substrings in
+ * the configured URLs (a convention shared by typical vllm-admin
+ * deployments). Override via `matrix.gpuPhase` when the heuristic is
+ * wrong for your endpoints.
  */
 export function resolveModeFromMatrix(matrix: {
 	gpuPhase?: GpuMode | null;
