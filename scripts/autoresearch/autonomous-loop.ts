@@ -425,33 +425,43 @@ async function runFixtureExpandPath(input: {
 		return { status: "coverage-gap-skipped", notes };
 	}
 
+	const proposalId = `${fixtureHealth.collectionId}-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+
 	if (cli.dryRun) {
 		notes.push(`fixture-expand: --dry-run; would splice ${result.kept.length} new queries`);
 		return { status: "coverage-gap-detected", notes };
 	}
-
-	// Slice 1e stops short of writing gold-authored-queries.ts + opening
-	// a PR — that's slice 1f. For now persist the codegen preview to an
-	// autoresearch artifact path so the maintainer can review. Wrapped
-	// in try/catch so a permission-denied / disk-full does not crash the
-	// loop (cron's "no fatal exit" policy).
-	try {
-		const { writeFile, mkdir } = await import("node:fs/promises");
-		const { join } = await import("node:path");
-		const artifactDir =
-			process.env.WTFOC_AUTORESEARCH_DIR ?? `${process.env.HOME}/.wtfoc/autoresearch`;
-		const previewDir = join(artifactDir, "fixture-expand-previews");
-		await mkdir(previewDir, { recursive: true });
-		const previewPath = join(
-			previewDir,
-			`${fixtureHealth.collectionId}-${new Date().toISOString().replace(/[:.]/g, "-")}.preview.ts`,
+	if (cli.skipPr) {
+		notes.push(
+			`fixture-expand: --skip-pr; ${result.kept.length} keepers ready but PR creation skipped`,
 		);
-		const banner = `// Recipe-pipeline preview — review before splicing into\n// packages/search/src/eval/gold-authored-queries.ts.\n// Generated: ${new Date().toISOString()} collection=${fixtureHealth.collectionId}\n\nexport const RECIPE_PIPELINE_PREVIEW = ${result.codegen};\n`;
-		await writeFile(previewPath, banner, "utf-8");
-		notes.push(`fixture-expand: codegen preview written to ${previewPath} (slice 1f wires PR)`);
+		return { status: "coverage-gap-detected", notes };
+	}
+
+	// #360 milestone 1f — splice into gold-authored-queries.ts and open a
+	// draft PR via `promoteFixtureViaPr`. Mirrors the patch path's
+	// `promoteViaPr` shape (clean working tree guardrail, branch encodes
+	// proposal id, never silent auto-merge). Wrapped in try/catch so a
+	// transient git/gh failure doesn't crash the cron chain.
+	try {
+		const { promoteFixtureViaPr } = await import("./promote-fixture-via-pr.js");
+		const promote = await promoteFixtureViaPr({
+			proposalId,
+			collectionId: fixtureHealth.collectionId,
+			codegen: result.codegen,
+			keptCount: result.kept.length,
+			targetedStrata: result.targetedStrata,
+		});
+		if (promote.skippedReason) {
+			notes.push(`fixture-expand: PR skipped: ${promote.skippedReason}`);
+			return { status: "coverage-gap-skipped", notes };
+		}
+		notes.push(
+			`fixture-expand: draft PR created${promote.prUrl ? ` at ${promote.prUrl}` : ` on branch ${promote.branch}`}`,
+		);
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
-		notes.push(`fixture-expand: failed to write codegen preview: ${msg.slice(0, 200)}`);
+		notes.push(`fixture-expand: PR creation failed: ${msg.slice(0, 200)}`);
 		return { status: "coverage-gap-error", notes };
 	}
 	return { status: "coverage-gap-detected", notes };
