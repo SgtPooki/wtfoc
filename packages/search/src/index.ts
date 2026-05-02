@@ -37,6 +37,26 @@ export {
 	aggregateDiagnoses,
 	diagnoseFailure,
 } from "./eval/failure-diagnosis.js";
+export type {
+	CoverageReport,
+	FixtureHealthSignal,
+	OperatorFamily,
+	SemanticStratumCount,
+	SemanticStratumKey,
+	StructuralStratumCount,
+	StructuralStratumKey,
+	UncoveredStratum,
+} from "./eval/fixture-health.js";
+export {
+	buildCoverageReport,
+	DEFAULT_GINI_FLOOR,
+	DEFAULT_MIN_UNCOVERED_STRATA,
+	deriveFixtureHealthSignal,
+	estimateHopCount,
+	giniCoefficient,
+	inferOperatorFamily,
+	isCrossSource,
+} from "./eval/fixture-health.js";
 export {
 	type Difficulty,
 	type ExpectedEvidence,
