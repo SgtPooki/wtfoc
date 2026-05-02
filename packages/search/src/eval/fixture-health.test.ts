@@ -80,7 +80,7 @@ describe("estimateHopCount", () => {
 	it("trace with single artifact = 2 (min 2 for trace family)", () => {
 		expect(estimateHopCount(makeQuery({ queryType: "trace" }))).toBe(2);
 	});
-	it("compare with 3 required artifacts = 3", () => {
+	it("compare stays at 2 even with 3 required-evidence rows (OR semantics)", () => {
 		expect(
 			estimateHopCount(
 				makeQuery({
@@ -92,7 +92,11 @@ describe("estimateHopCount", () => {
 					],
 				}),
 			),
-		).toBe(3);
+		).toBe(2);
+	});
+
+	it("minResults raises hopCount above family default", () => {
+		expect(estimateHopCount(makeQuery({ queryType: "lookup", minResults: 5 }))).toBe(5);
 	});
 });
 

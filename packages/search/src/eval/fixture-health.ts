@@ -119,28 +119,30 @@ export function inferOperatorFamily(queryType: QueryType): OperatorFamily {
 }
 
 /**
- * Estimate the minimum edge-hop count a query exercises. `lookup` is 1
- * (single retrieval). `trace`/`causal` are ≥2 (one edge walk minimum).
- * `compare` is ≥2 (must surface ≥2 artifacts). Others default to 1 unless
- * the query carries multiple required artifacts, in which case the min is
- * `requiredArtifacts.length`.
+ * Estimate the minimum edge-hop count a query exercises. `lookup` and
+ * `howto` are 1 (single retrieval / single synthesis pass).
+ * `trace` / `causal` / `compare` / `temporal` are ≥2 because they require
+ * either multiple evidence artifacts or a graph walk to satisfy. The
+ * `expectedEvidence[].required` rows are OR-semantics (any one row can
+ * satisfy the query — the multi-row case is alternate fallback artifacts
+ * from the legacy substring migration), so they are NOT counted as
+ * additional hops here. `minResults` is treated as the per-query
+ * lower bound when greater than the family default.
  */
 export function estimateHopCount(query: GoldQuery): number {
-	const requiredArtifacts = query.expectedEvidence.filter((e) => e.required).length;
-	const baseline = requiredArtifacts >= 2 ? requiredArtifacts : 1;
-	switch (query.queryType) {
-		case "lookup":
-		case "entity-resolution":
-		case "howto":
-			return baseline;
-		case "trace":
-		case "causal":
-		case "compare":
-		case "temporal":
-			return Math.max(2, baseline);
-		default:
-			return baseline;
-	}
+	const familyMin = (() => {
+		switch (query.queryType) {
+			case "trace":
+			case "causal":
+			case "compare":
+			case "temporal":
+				return 2;
+			default:
+				return 1;
+		}
+	})();
+	const minResults = typeof query.minResults === "number" ? query.minResults : 1;
+	return Math.max(familyMin, minResults);
 }
 
 /** Whether a query requires evidence from more than one source type. */
@@ -212,7 +214,10 @@ function structuralStratumForQuery(query: GoldQuery): StructuralStratumKey {
  *     `applicableCorpora` BEFORE calling; this function is corpus-agnostic).
  *   - `catalog` — corpus document catalog. Surfaces source-type cells
  *     present in the corpus that the fixture may not measure.
- *   - `segments` — surfaces edge-type cells via aggregated `Edge.type`.
+ *   - `segments` — segment inventory. Reserved for the structural
+ *     edge-type axis in a future slice; not consumed in this slice (the
+ *     gold schema does not yet carry an explicit `edgeType` field, so
+ *     edges-from-segments would have nothing to cross-reference against).
  *
  * Pure: no I/O, deterministic given the inputs.
  */
@@ -221,7 +226,7 @@ export function buildCoverageReport(input: {
 	catalog: DocumentCatalog;
 	segments: ReadonlyArray<Segment>;
 }): CoverageReport {
-	const { queries, catalog, segments } = input;
+	const { queries, catalog } = input;
 
 	const semantic: SemanticStratumCount[] = [];
 	const structural: StructuralStratumCount[] = [];
@@ -251,11 +256,6 @@ export function buildCoverageReport(input: {
 		);
 	}
 
-	const corpusEdgeTypes = new Set<string>();
-	for (const seg of segments) {
-		for (const edge of seg.edges) corpusEdgeTypes.add(edge.type);
-	}
-
 	// Per #360 acceptance criterion: surface uncovered (sourceType,
 	// queryType) cells where the catalog has artifacts but the fixture has
 	// zero gold queries. Edge dimension stays null in this slice — adding
@@ -279,10 +279,6 @@ export function buildCoverageReport(input: {
 	}
 
 	const gini = giniCoefficient(semantic.map((c) => c.count));
-
-	// `corpusEdgeTypes` is captured for future structural-edge expansion;
-	// surfacing it now keeps the contract stable without a schema change.
-	void corpusEdgeTypes;
 
 	return {
 		totalQueries: queries.length,
