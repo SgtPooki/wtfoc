@@ -299,6 +299,19 @@ function parseMaxNewEnv(): number | null {
 	return n;
 }
 
+/**
+ * Validate `WTFOC_RECIPE_ADVERSARIAL_HEADROOM`. Returns the parsed
+ * positive integer multiplier or null when unset / malformed. Falls
+ * back to the pipeline default (`ADVERSARIAL_HEADROOM_FACTOR`, 2x).
+ */
+function parseHeadroomEnv(): number | null {
+	const raw = process.env.WTFOC_RECIPE_ADVERSARIAL_HEADROOM;
+	if (!raw) return null;
+	const n = Number(raw);
+	if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) return null;
+	return n;
+}
+
 async function runFixtureExpandPath(input: {
 	cli: CliArgs;
 	fixtureHealth: FixtureHealthSignal;
@@ -332,6 +345,12 @@ async function runFixtureExpandPath(input: {
 	if (process.env.WTFOC_RECIPE_MAX_NEW_QUERIES_PER_RUN && maxNewEnv === null) {
 		notes.push(
 			`fixture-expand: WTFOC_RECIPE_MAX_NEW_QUERIES_PER_RUN="${process.env.WTFOC_RECIPE_MAX_NEW_QUERIES_PER_RUN}" not a positive integer; falling back to default`,
+		);
+	}
+	const headroomEnv = parseHeadroomEnv();
+	if (process.env.WTFOC_RECIPE_ADVERSARIAL_HEADROOM && headroomEnv === null) {
+		notes.push(
+			`fixture-expand: WTFOC_RECIPE_ADVERSARIAL_HEADROOM="${process.env.WTFOC_RECIPE_ADVERSARIAL_HEADROOM}" not a positive integer; falling back to default`,
 		);
 	}
 
@@ -393,6 +412,7 @@ async function runFixtureExpandPath(input: {
 			vectorIndex,
 			embedder,
 			maxNew,
+			...(headroomEnv !== null ? { headroomFactor: headroomEnv } : {}),
 		});
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
