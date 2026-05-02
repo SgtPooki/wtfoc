@@ -291,7 +291,7 @@ export function decideLoopAction(input: {
  * Codex peer-review flagged a `Number(env)` path that produced NaN and
  * silently bypassed the headroom cap.
  */
-function parseMaxNewEnv(): number | null {
+export function parseMaxNewEnv(): number | null {
 	const raw = process.env.WTFOC_RECIPE_MAX_NEW_QUERIES_PER_RUN;
 	if (!raw) return null;
 	const n = Number(raw);
@@ -304,7 +304,7 @@ function parseMaxNewEnv(): number | null {
  * positive integer multiplier or null when unset / malformed. Falls
  * back to the pipeline default (`ADVERSARIAL_HEADROOM_FACTOR`, 2x).
  */
-function parseHeadroomEnv(): number | null {
+export function parseHeadroomEnv(): number | null {
 	const raw = process.env.WTFOC_RECIPE_ADVERSARIAL_HEADROOM;
 	if (!raw) return null;
 	const n = Number(raw);
