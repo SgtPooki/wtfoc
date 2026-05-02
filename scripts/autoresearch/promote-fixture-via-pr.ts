@@ -21,7 +21,7 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { safeExecFileSync as execFileSync } from "../lib/safe-exec.js";
 import { spliceAuthoredQueries } from "./recipe-apply.js";
