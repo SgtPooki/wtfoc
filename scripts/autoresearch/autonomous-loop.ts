@@ -256,7 +256,10 @@ export function decideLoopAction(input: {
 			`coverage(uncovered=${input.fixtureHealth.coverage.uncoveredStrata.length}, gini=${input.fixtureHealth.coverage.giniCoefficient.toFixed(2)}, gap=${input.fixtureHealth.hasCoverageGap})`,
 		);
 	} else {
-		parts.push("coverage=null (no documentCatalog)");
+		// Could be: no documentCatalog passed, no quality-queries stage,
+		// missing field on older report, or null report. The extractor
+		// collapses all of those — surface them as one bucket here.
+		parts.push("coverage=signal-unavailable");
 	}
 	parts.push(`tryPatch=${tryPatch} tryFixtureExpand=${tryFixtureExpand}`);
 	return { tryPatch, tryFixtureExpand, rationale: parts.join(" ") };
@@ -454,23 +457,32 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 	notes.push(`route: ${decision.rationale}`);
 
 	// #360 — fixture-expand path is a NON-patch action. Gated separately
-	// from `WTFOC_ALLOW_PATCHES`. When dominant, we hand the cycle off
-	// here (the loop returns); when only-flagged-not-dominant we continue
-	// to the existing patch/variant flow so a single coverage gap doesn't
-	// monopolize cycles. Treat "dominant" as "patch path also wants in"
-	// → tryFixtureExpand only AND not tryPatch.
+	// from `WTFOC_ALLOW_PATCHES`. The early-return below is conditional on
+	// (a) only fixture-expand wants in (no dominantLayer competing) AND
+	// (b) `--dry-run` OR `WTFOC_ALLOW_FIXTURE_EXPAND=1` is set. When the
+	// gate is closed OR a dominantLayer is also present, the loop continues
+	// to the existing variant / patch flow so a single coverage gap can't
+	// monopolize cycles.
+	const fixtureExpandGateOpen =
+		cli.dryRun || process.env.WTFOC_ALLOW_FIXTURE_EXPAND === "1";
 	if (
 		decision.tryFixtureExpand &&
 		!decision.tryPatch &&
-		(cli.dryRun || process.env.WTFOC_ALLOW_FIXTURE_EXPAND === "1") &&
+		fixtureExpandGateOpen &&
 		fixtureHealth
 	) {
 		return runFixtureExpandPath({ cli, fixtureHealth, notes });
 	}
 	if (decision.tryFixtureExpand && fixtureHealth) {
-		notes.push(
-			"fixture-expand opportunity detected; deferring to patch path this cycle (set WTFOC_ALLOW_FIXTURE_EXPAND=1 + no dominantLayer to route here)",
-		);
+		if (decision.tryPatch) {
+			notes.push(
+				"fixture-expand opportunity detected; dominantLayer also present, deferring fixture-expand and continuing to variant/patch flow",
+			);
+		} else if (!fixtureExpandGateOpen) {
+			notes.push(
+				"fixture-expand opportunity detected but gated off; continuing to variant flow (set WTFOC_ALLOW_FIXTURE_EXPAND=1 or --dry-run to route here)",
+			);
+		}
 	}
 
 	const triedRows = readTriedLog();

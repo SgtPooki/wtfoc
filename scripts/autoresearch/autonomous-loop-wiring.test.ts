@@ -197,6 +197,12 @@ describe("extractFixtureHealthSignal", () => {
 		expect(extractFixtureHealthSignal(report)).toBeNull();
 	});
 
+	it("returns null when the report has no quality-queries stage (older / partial report)", () => {
+		const report = makeReport("ranking");
+		report.stages = [];
+		expect(extractFixtureHealthSignal(report)).toBeNull();
+	});
+
 	it("extracts a fixtureHealthSignal when present in metrics", () => {
 		const report = makeReport("ranking");
 		const stage = report.stages[0];
@@ -248,5 +254,10 @@ describe("decideLoopAction (#360 routing)", () => {
 		});
 		expect(d.rationale).toContain("dominantLayer=ranking");
 		expect(d.rationale).toContain("coverage(");
+	});
+
+	it("rationale flags signal-unavailable when fixtureHealth is null", () => {
+		const d = decideLoopAction({ dominantLayer: "ranking", fixtureHealth: null });
+		expect(d.rationale).toContain("coverage=signal-unavailable");
 	});
 });
