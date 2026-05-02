@@ -2,7 +2,10 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { promoteFixtureViaPr } from "./promote-fixture-via-pr.js";
+import {
+	promoteFixtureViaPr,
+	renderRetrievalHealthSection,
+} from "./promote-fixture-via-pr.js";
 
 const FIXTURE_BASELINE = `// gold-authored-queries.ts (test fixture)
 import type { GoldQuery } from "./gold-standard-queries.js";
@@ -96,5 +99,47 @@ describe("promoteFixtureViaPr — dry-run", () => {
 		});
 		expect(result.skippedReason).toBeUndefined();
 		expect(result.branch).toBe("autoresearch/fixture-p4");
+	});
+});
+
+describe("renderRetrievalHealthSection (#360 fixture-drift mitigation)", () => {
+	it("returns null when no health data supplied", () => {
+		expect(renderRetrievalHealthSection(undefined)).toBeNull();
+	});
+
+	it("formats latest + baseline + delta when both rates present", () => {
+		const out = renderRetrievalHealthSection({
+			latestPassRate: 0.72,
+			baselinePassRate: 0.7,
+		});
+		expect(out).toContain("Latest pass rate: 72.0%");
+		expect(out).toContain("Baseline pass rate: 70.0%");
+		expect(out).toContain("+2.0 pp");
+	});
+
+	it("flags retrieval regression when delta is below -1pp", () => {
+		const out = renderRetrievalHealthSection({
+			latestPassRate: 0.65,
+			baselinePassRate: 0.72,
+		});
+		expect(out).toContain(":warning:");
+		expect(out).toContain("regressed");
+	});
+
+	it("does NOT flag for tiny noise within -1pp", () => {
+		const out = renderRetrievalHealthSection({
+			latestPassRate: 0.715,
+			baselinePassRate: 0.72,
+		});
+		expect(out).not.toContain(":warning:");
+	});
+
+	it("renders n/a when one side is missing", () => {
+		const out = renderRetrievalHealthSection({
+			latestPassRate: 0.72,
+			baselinePassRate: null,
+		});
+		expect(out).toContain("Baseline pass rate: n/a");
+		expect(out).not.toContain("Δ pass rate");
 	});
 });

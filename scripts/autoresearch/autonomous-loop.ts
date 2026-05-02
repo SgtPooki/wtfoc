@@ -228,6 +228,20 @@ export function extractFixtureHealthSignal(
 	return metrics?.fixtureHealthSignal ?? null;
 }
 
+/**
+ * Read the existing-fixture pass rate from a dogfood report's
+ * quality-queries stage. Used by the fixture-expand path's PR body
+ * to surface "did existing queries regress in the same window?"
+ * Codex peer-review prescribed this mitigation against fixture-drift
+ * (the loop expanding gold to mask retrieval weakness).
+ */
+export function extractPassRate(report: ExtendedDogfoodReport | null): number | null {
+	if (!report) return null;
+	const stage = report.stages.find((s) => s.stage === "quality-queries");
+	const metrics = stage?.metrics as { passRate?: number } | undefined;
+	return typeof metrics?.passRate === "number" ? metrics.passRate : null;
+}
+
 export interface LoopActionDecision {
 	/** Try the LLM patch path. True when there is a per-query dominant layer. */
 	tryPatch: boolean;
@@ -316,8 +330,11 @@ async function runFixtureExpandPath(input: {
 	cli: CliArgs;
 	fixtureHealth: FixtureHealthSignal;
 	notes: string[];
+	latestReport?: ExtendedDogfoodReport | null;
+	baselineReport?: ExtendedDogfoodReport | null;
+	finding?: Finding;
 }): Promise<LoopOutcome> {
-	const { cli, fixtureHealth, notes } = input;
+	const { cli, fixtureHealth, notes, latestReport, baselineReport, finding } = input;
 	const top = fixtureHealth.coverage.uncoveredStrata.slice(0, 5).map(
 		(u) => `${u.key.sourceType}/${u.key.queryType} (artifacts=${u.artifactsInCorpus})`,
 	);
@@ -465,12 +482,19 @@ async function runFixtureExpandPath(input: {
 	// transient git/gh failure doesn't crash the cron chain.
 	try {
 		const { promoteFixtureViaPr } = await import("./promote-fixture-via-pr.js");
+		const latestPassRate = extractPassRate(latestReport ?? null);
+		const baselinePassRate = extractPassRate(baselineReport ?? null);
 		const promote = await promoteFixtureViaPr({
 			proposalId,
 			collectionId: fixtureHealth.collectionId,
 			codegen: result.codegen,
 			keptCount: result.kept.length,
 			targetedStrata: result.targetedStrata,
+			retrievalHealth: {
+				latestPassRate,
+				baselinePassRate,
+				...(finding?.latestSweepId ? { latestSweepId: finding.latestSweepId } : {}),
+			},
 		});
 		if (promote.skippedReason) {
 			notes.push(`fixture-expand: PR skipped: ${promote.skippedReason}`);
@@ -669,7 +693,14 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 				"fixture-expand opportunity detected but gated off; continuing to variant flow (set WTFOC_ALLOW_FIXTURE_EXPAND=1 or --dry-run to route here)",
 			);
 		} else if (!decision.tryPatch) {
-			return runFixtureExpandPath({ cli, fixtureHealth, notes });
+			return runFixtureExpandPath({
+				cli,
+				fixtureHealth,
+				notes,
+				latestReport,
+				baselineReport,
+				finding,
+			});
 		} else {
 			// Independent caps: run fixture-expand first, capture its
 			// outcome, then fall through to patch/variant flow.
@@ -678,6 +709,9 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 				cli,
 				fixtureHealth,
 				notes: fxNotes,
+				latestReport,
+				baselineReport,
+				finding,
 			});
 			notes.push(`fixture-expand (parallel): status=${fxOutcome.status}`);
 			for (const n of fxNotes) notes.push(`  ${n}`);

@@ -9,6 +9,7 @@ import {
 	decideLoopAction,
 	extractDominantLayer,
 	extractFixtureHealthSignal,
+	extractPassRate,
 	parseHeadroomEnv,
 	parseMaxNewEnv,
 } from "./autonomous-loop.js";
@@ -261,6 +262,33 @@ describe("decideLoopAction (#360 routing)", () => {
 	it("rationale flags signal-unavailable when fixtureHealth is null", () => {
 		const d = decideLoopAction({ dominantLayer: "ranking", fixtureHealth: null });
 		expect(d.rationale).toContain("coverage=signal-unavailable");
+	});
+});
+
+describe("extractPassRate (#360 retrieval-health mitigation)", () => {
+	it("returns null when report is null", () => {
+		expect(extractPassRate(null)).toBeNull();
+	});
+
+	it("returns null when quality-queries stage is missing", () => {
+		const report = makeReport("ranking");
+		report.stages = [];
+		expect(extractPassRate(report)).toBeNull();
+	});
+
+	it("returns null when passRate is not a number", () => {
+		const report = makeReport("ranking");
+		const stage = report.stages[0];
+		if (stage) stage.metrics = { passRate: "high" } as Record<string, unknown>;
+		expect(extractPassRate(report)).toBeNull();
+	});
+
+	it("extracts the passRate when present", () => {
+		const report = makeReport("ranking");
+		const stage = report.stages[0];
+		if (stage)
+			stage.metrics = { ...stage.metrics, passRate: 0.72 } as Record<string, unknown>;
+		expect(extractPassRate(report)).toBe(0.72);
 	});
 });
 
