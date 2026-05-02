@@ -34,7 +34,11 @@ import { ensureMode, type GpuMode, resolveModeFromMatrix } from "../lib/mode-swi
 import { analyzeAndPropose } from "./analyze-and-propose.js";
 import { analyzeAndProposePatch } from "./analyze-and-propose-patch.js";
 import { selectPatchCapsule } from "./patch-capsule.js";
-import type { DiagnosisAggregate, FailureLayer } from "@wtfoc/search";
+import type {
+	DiagnosisAggregate,
+	FailureLayer,
+	FixtureHealthSignal,
+} from "@wtfoc/search";
 import type { DetectionOutcome, Finding } from "./detect-regression.js";
 import { explainFinding } from "./explain-finding.js";
 import { materializePatchProposal } from "./materialize-patch.js";
@@ -70,7 +74,9 @@ interface LoopOutcome {
 		| "patch-accepted-pr-created"
 		| "patch-rejected"
 		| "patch-llm-unavailable"
-		| "patch-no-proposal";
+		| "patch-no-proposal"
+		| "coverage-gap-detected"
+		| "coverage-gap-skipped";
 	notes: string[];
 	prUrl?: string | null;
 }
@@ -201,6 +207,94 @@ export function extractDominantLayer(report: ExtendedDogfoodReport | null): Fail
 	const stage = report.stages.find((s) => s.stage === "quality-queries");
 	const metrics = stage?.metrics as { diagnosisAggregate?: DiagnosisAggregate } | undefined;
 	return metrics?.diagnosisAggregate?.dominantLayer ?? null;
+}
+
+/**
+ * #360 — read `fixtureHealthSignal` from a dogfood report's quality-queries
+ * stage metrics. Orthogonal to `extractDominantLayer`: a coverage gap is
+ * a corpus-level observation about MISSING gold queries, not a per-query
+ * failure. Returns `null` for older reports without the field, or for
+ * runs where no `documentCatalog` was passed to the evaluator.
+ */
+export function extractFixtureHealthSignal(
+	report: ExtendedDogfoodReport | null,
+): FixtureHealthSignal | null {
+	if (!report) return null;
+	const stage = report.stages.find((s) => s.stage === "quality-queries");
+	const metrics = stage?.metrics as { fixtureHealthSignal?: FixtureHealthSignal } | undefined;
+	return metrics?.fixtureHealthSignal ?? null;
+}
+
+export interface LoopActionDecision {
+	/** Try the LLM patch path. True when there is a per-query dominant layer. */
+	tryPatch: boolean;
+	/** Try the recipe-pipeline fixture-expand path. True when the corpus-level
+	 *  fixture-health signal flags a coverage gap. */
+	tryFixtureExpand: boolean;
+	/** Human-readable summary of the routing inputs, for the loop's notes. */
+	rationale: string;
+}
+
+/**
+ * Decide which action paths the loop should attempt this cycle. Per the
+ * settled #360 layering, `dominantLayer` and `fixtureHealthSignal` are
+ * orthogonal — a single cycle may legitimately want BOTH a code patch
+ * (for ranking regressions on existing queries) AND a fixture expansion
+ * (for un-measured strata in the catalog). Independent caps elsewhere
+ * keep either path from starving the other.
+ */
+export function decideLoopAction(input: {
+	dominantLayer: FailureLayer | null;
+	fixtureHealth: FixtureHealthSignal | null;
+}): LoopActionDecision {
+	const tryPatch = input.dominantLayer !== null;
+	const tryFixtureExpand = input.fixtureHealth?.hasCoverageGap === true;
+	const parts: string[] = [];
+	parts.push(`dominantLayer=${input.dominantLayer ?? "none"}`);
+	if (input.fixtureHealth) {
+		parts.push(
+			`coverage(uncovered=${input.fixtureHealth.coverage.uncoveredStrata.length}, gini=${input.fixtureHealth.coverage.giniCoefficient.toFixed(2)}, gap=${input.fixtureHealth.hasCoverageGap})`,
+		);
+	} else {
+		// Could be: no documentCatalog passed, no quality-queries stage,
+		// missing field on older report, or null report. The extractor
+		// collapses all of those — surface them as one bucket here.
+		parts.push("coverage=signal-unavailable");
+	}
+	parts.push(`tryPatch=${tryPatch} tryFixtureExpand=${tryFixtureExpand}`);
+	return { tryPatch, tryFixtureExpand, rationale: parts.join(" ") };
+}
+
+/**
+ * Stub for the recipe-pipeline fixture-expand path. Logs the proposed
+ * action against under-represented strata so a human running with
+ * `--dry-run` can verify the routing. The actual recipe-author →
+ * recipe-validate → recipe-apply call lands in the next slice (1e),
+ * gated on `WTFOC_ALLOW_FIXTURE_EXPAND=1` for production use.
+ */
+async function runFixtureExpandPath(input: {
+	cli: CliArgs;
+	fixtureHealth: FixtureHealthSignal;
+	notes: string[];
+}): Promise<LoopOutcome> {
+	const { cli, fixtureHealth, notes } = input;
+	const top = fixtureHealth.coverage.uncoveredStrata.slice(0, 5).map(
+		(u) => `${u.key.sourceType}/${u.key.queryType} (artifacts=${u.artifactsInCorpus})`,
+	);
+	notes.push(
+		`fixture-expand path: collection=${fixtureHealth.collectionId} uncovered=${fixtureHealth.coverage.uncoveredStrata.length} gini=${fixtureHealth.coverage.giniCoefficient.toFixed(2)}`,
+	);
+	if (top.length > 0) {
+		notes.push(`fixture-expand top strata: ${top.join("; ")}`);
+	}
+	if (cli.dryRun || process.env.WTFOC_ALLOW_FIXTURE_EXPAND !== "1") {
+		notes.push(
+			"fixture-expand: stub (no recipe-pipeline call yet; gate WTFOC_ALLOW_FIXTURE_EXPAND=1 + remove --dry-run to enable in 1e)",
+		);
+		return { status: "coverage-gap-detected", notes };
+	}
+	notes.push("fixture-expand: WTFOC_ALLOW_FIXTURE_EXPAND=1 honored but slice 1e not yet wired");
+	return { status: "coverage-gap-skipped", notes };
 }
 
 async function runPatchPath(input: {
@@ -349,6 +443,47 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 				...(baselineReport ? { baseline: baselineReport } : {}),
 			})
 		: `# Finding\n${finding.reason}\n`;
+
+	// #360 — corpus-level fixture-health signal alongside per-failure
+	// dominantLayer. Both feed `decideLoopAction`, which routes between
+	// patch and fixture-expand under independent caps. When neither path
+	// applies, the loop falls through to the existing variant flow below.
+	const fixtureHealth = extractFixtureHealthSignal(latestReport);
+	const dominantLayerForRouting = extractDominantLayer(latestReport);
+	const decision = decideLoopAction({
+		dominantLayer: dominantLayerForRouting,
+		fixtureHealth,
+	});
+	notes.push(`route: ${decision.rationale}`);
+
+	// #360 — fixture-expand path is a NON-patch action. Gated separately
+	// from `WTFOC_ALLOW_PATCHES`. The early-return below is conditional on
+	// (a) only fixture-expand wants in (no dominantLayer competing) AND
+	// (b) `--dry-run` OR `WTFOC_ALLOW_FIXTURE_EXPAND=1` is set. When the
+	// gate is closed OR a dominantLayer is also present, the loop continues
+	// to the existing variant / patch flow so a single coverage gap can't
+	// monopolize cycles.
+	const fixtureExpandGateOpen =
+		cli.dryRun || process.env.WTFOC_ALLOW_FIXTURE_EXPAND === "1";
+	if (
+		decision.tryFixtureExpand &&
+		!decision.tryPatch &&
+		fixtureExpandGateOpen &&
+		fixtureHealth
+	) {
+		return runFixtureExpandPath({ cli, fixtureHealth, notes });
+	}
+	if (decision.tryFixtureExpand && fixtureHealth) {
+		if (decision.tryPatch) {
+			notes.push(
+				"fixture-expand opportunity detected; dominantLayer also present, deferring fixture-expand and continuing to variant/patch flow",
+			);
+		} else if (!fixtureExpandGateOpen) {
+			notes.push(
+				"fixture-expand opportunity detected but gated off; continuing to variant flow (set WTFOC_ALLOW_FIXTURE_EXPAND=1 or --dry-run to route here)",
+			);
+		}
+	}
 
 	const triedRows = readTriedLog();
 
