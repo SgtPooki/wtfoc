@@ -570,6 +570,21 @@ async function main() {
 							...(Object.keys(retrievalOverrides).length > 0
 								? { retrievalOverrides }
 								: {}),
+							// #360 — feed the per-corpus document catalog so the
+							// evaluator emits coverageReport + fixtureHealthSignal
+							// alongside diagnosisAggregate. Knobs land via env so
+							// the autoresearch sweep can override per-cycle.
+							...(qqCatalog ? { documentCatalog: qqCatalog } : {}),
+							...(process.env.WTFOC_RECIPE_GINI_FLOOR
+								? { coverageGiniFloor: Number(process.env.WTFOC_RECIPE_GINI_FLOOR) }
+								: {}),
+							...(process.env.WTFOC_RECIPE_MIN_UNCOVERED_STRATA
+								? {
+										coverageMinUncoveredStrata: Number(
+											process.env.WTFOC_RECIPE_MIN_UNCOVERED_STRATA,
+										),
+									}
+								: {}),
 						},
 						values["diversity-enforce"] ?? false,
 					);
