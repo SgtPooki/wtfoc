@@ -20,7 +20,7 @@
 # Exit codes: 0 on every non-fatal path. Non-zero only when sweep
 # itself crashes (engine bug), so launchd shows the failure.
 #
-# All endpoint URLs come from env vars — no homelab2 URLs hardcoded.
+# All endpoint URLs come from env vars — none hardcoded in source.
 # Repo path inferred from the script location. WTFOC_AUTORESEARCH_DIR
 # overrides the state directory (default ~/.wtfoc/autoresearch).
 

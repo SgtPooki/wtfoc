@@ -8,16 +8,16 @@
  * or a sweep crash.
  *
  * Probes:
- *   - Embedder URL / models (OPENROUTER_API_KEY required, must respond
- *     to a HEAD or /models request).
- *   - Extractor URL / models (local Claude direct proxy, no auth).
+ *   - Embedder URL / models (`WTFOC_EMBEDDER_*` + key, must respond to
+ *     a HEAD or /models request).
+ *   - Extractor URL / models (`WTFOC_EXTRACTOR_*`).
  *   - Optional: BGE reranker URL (/healthz), only when
- *     WTFOC_REQUIRE_RERANKER=1.
+ *     `WTFOC_REQUIRE_RERANKER=1`.
  *
  * Writes a status JSON to `~/.wtfoc/autoresearch/nightly-status.json`
  * with the result of every probe so the maintainer can tail it.
  *
- * No homelab2 endpoints are hardcoded — every URL comes from env.
+ * No endpoints are hardcoded — every URL comes from env.
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";

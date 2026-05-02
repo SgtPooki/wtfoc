@@ -51,7 +51,7 @@ launchd LaunchAgent (com.wtfoc.autoresearch.nightly) at 03:00 local
 ## Hard constraints (preserve forever)
 
 1. **No paid AI in recurring path.** Local LLM only (`WTFOC_ANALYSIS_LLM_URL`).
-2. **No homelab2 URLs in committed source.** All endpoints from env vars.
+2. **No private-infrastructure URLs in committed source.** All endpoints from env vars.
 3. **No silent merge.** Every accepted variant ships as a `--draft` PR. Maintainer reviews.
 4. **Collection bytes never enter commits.** Reports / runs.jsonl / tried.jsonl / proposal worktrees live under `~/.wtfoc/autoresearch/`.
 5. **Code-patch proposals restricted to allowlist** (`packages/search/src/` default, `DEFAULT_MAX_DIFF_LINES=200`). See `patch-proposal.ts`.
@@ -165,7 +165,7 @@ If you (the agent) are picking this up cold:
 
 1. Read this runbook (you are here).
 2. Read [`project_mission_and_value`](../../) (auto-memory).
-3. Read [`feedback_wtfoc_runtime_independence`](../../) (auto-memory) — collection privacy + no-homelab2 rule.
+3. Read [`feedback_wtfoc_runtime_independence`](../../) (auto-memory) — collection privacy + no-private-URLs rule.
 4. Check current state: `cat ~/.wtfoc/autoresearch/nightly-status.json`, `wc -l ~/.wtfoc/autoresearch/runs.jsonl`, `wc -l ~/.wtfoc/autoresearch/tried.jsonl`.
 5. Check open PRs: `gh pr list --search "head:autoresearch/"`. Each one is a candidate variant awaiting maintainer review.
 6. Check open autoresearch issues: `gh issue list --label autoresearch --state open`.
