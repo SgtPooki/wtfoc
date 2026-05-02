@@ -266,11 +266,19 @@ export function decideLoopAction(input: {
 }
 
 /**
- * Stub for the recipe-pipeline fixture-expand path. Logs the proposed
- * action against under-represented strata so a human running with
- * `--dry-run` can verify the routing. The actual recipe-author →
- * recipe-validate → recipe-apply call lands in the next slice (1e),
- * gated on `WTFOC_ALLOW_FIXTURE_EXPAND=1` for production use.
+ * Recipe-pipeline fixture-expand path. Programmatically calls
+ * recipe-author → adversarial-filter → recipe-validate → recipe-apply
+ * against the top under-represented strata. Splicing into
+ * `gold-authored-queries.ts` and PR creation are deferred to slice 1f;
+ * this slice writes the proposed codegen to a per-cycle artifact and
+ * surfaces it via notes.
+ *
+ * Honors:
+ *   - `--dry-run` → never write anything; just report what would happen.
+ *   - `WTFOC_ALLOW_FIXTURE_EXPAND=1` → required for production runs;
+ *     when unset and not dry-run, this path is unreachable (gated by
+ *     `runLoop` before calling).
+ *   - `WTFOC_RECIPE_MAX_NEW_QUERIES_PER_RUN` (default 5) → cap.
  */
 async function runFixtureExpandPath(input: {
 	cli: CliArgs;
@@ -287,14 +295,98 @@ async function runFixtureExpandPath(input: {
 	if (top.length > 0) {
 		notes.push(`fixture-expand top strata: ${top.join("; ")}`);
 	}
-	if (cli.dryRun || process.env.WTFOC_ALLOW_FIXTURE_EXPAND !== "1") {
+
+	// Pull the heavy deps + helpers lazily so the rest of the loop (and
+	// its unit tests) doesn't pay the import cost on cycles that never
+	// route here. `runRecipePipeline` itself is the orchestrator built in
+	// slice 1e (#360); see `recipe-pipeline.ts`.
+	const [{ runRecipePipeline, DEFAULT_MAX_NEW_QUERIES_PER_RUN }, { createStore }, search] =
+		await Promise.all([
+			import("./recipe-pipeline.js"),
+			import("@wtfoc/store"),
+			import("@wtfoc/search"),
+		]);
+	const { catalogFilePath, readCatalog } = await import("@wtfoc/ingest");
+
+	const store = createStore({ storage: "local" });
+	const head = await store.manifests.getHead(fixtureHealth.collectionId);
+	if (!head) {
+		notes.push(`fixture-expand: collection "${fixtureHealth.collectionId}" not found in store`);
+		return { status: "coverage-gap-skipped", notes };
+	}
+	const manifestDir =
+		(store.manifests as { dir?: string }).dir ?? `${process.env.HOME ?? "."}/.wtfoc/projects`;
+	const catalogPath = catalogFilePath(manifestDir, fixtureHealth.collectionId);
+	const catalog = await readCatalog(catalogPath);
+	if (!catalog) {
+		notes.push(`fixture-expand: catalog missing at ${catalogPath} — skipping`);
+		return { status: "coverage-gap-skipped", notes };
+	}
+
+	const embedderUrl = process.env.WTFOC_EMBEDDER_URL ?? "";
+	const embedderModel = process.env.WTFOC_EMBEDDER_MODEL ?? "";
+	if (!embedderUrl || !embedderModel) {
 		notes.push(
-			"fixture-expand: stub (no recipe-pipeline call yet; gate WTFOC_ALLOW_FIXTURE_EXPAND=1 + remove --dry-run to enable in 1e)",
+			"fixture-expand: WTFOC_EMBEDDER_URL / WTFOC_EMBEDDER_MODEL unset; cannot author candidates",
 		);
+		return { status: "coverage-gap-skipped", notes };
+	}
+	const embedder = new search.OpenAIEmbedder({
+		apiKey: process.env.WTFOC_EMBEDDER_KEY ?? "",
+		model: embedderModel,
+		baseUrl: embedderUrl,
+	});
+	const vectorIndex = new search.InMemoryVectorIndex();
+	const mounted = await search.mountCollection(head.manifest, store.storage, vectorIndex);
+
+	const maxNew = process.env.WTFOC_RECIPE_MAX_NEW_QUERIES_PER_RUN
+		? Number(process.env.WTFOC_RECIPE_MAX_NEW_QUERIES_PER_RUN)
+		: DEFAULT_MAX_NEW_QUERIES_PER_RUN;
+
+	const result = await runRecipePipeline({
+		collectionId: fixtureHealth.collectionId,
+		fixtureHealth,
+		catalog,
+		segments: mounted.segments,
+		vectorIndex,
+		embedder,
+		maxNew,
+	});
+
+	notes.push(
+		`fixture-expand: targeted=${result.targetedStrata.length} authored=${result.authoredCount} adv-kept=${result.adversarialKept} kept=${result.kept.length} structural-errors=${result.structuralErrors.length}`,
+	);
+	if (result.authorErrors.length > 0) {
+		notes.push(`fixture-expand: ${result.authorErrors.length} author error(s)`);
+	}
+
+	if (result.kept.length === 0 || !result.codegen) {
+		notes.push("fixture-expand: no keeper candidates this cycle");
+		return { status: "coverage-gap-skipped", notes };
+	}
+
+	if (cli.dryRun) {
+		notes.push(`fixture-expand: --dry-run; would splice ${result.kept.length} new queries`);
 		return { status: "coverage-gap-detected", notes };
 	}
-	notes.push("fixture-expand: WTFOC_ALLOW_FIXTURE_EXPAND=1 honored but slice 1e not yet wired");
-	return { status: "coverage-gap-skipped", notes };
+
+	// Slice 1e stops short of writing gold-authored-queries.ts + opening
+	// a PR — that's slice 1f. For now persist the codegen preview to an
+	// autoresearch artifact path so the maintainer can review.
+	const { writeFile, mkdir } = await import("node:fs/promises");
+	const { join } = await import("node:path");
+	const artifactDir =
+		process.env.WTFOC_AUTORESEARCH_DIR ?? `${process.env.HOME}/.wtfoc/autoresearch`;
+	const previewDir = join(artifactDir, "fixture-expand-previews");
+	await mkdir(previewDir, { recursive: true });
+	const previewPath = join(
+		previewDir,
+		`${fixtureHealth.collectionId}-${new Date().toISOString().replace(/[:.]/g, "-")}.preview.ts`,
+	);
+	const banner = `// Recipe-pipeline preview — review before splicing into\n// packages/search/src/eval/gold-authored-queries.ts.\n// Generated: ${new Date().toISOString()} collection=${fixtureHealth.collectionId}\n\nexport const RECIPE_PIPELINE_PREVIEW = ${result.codegen};\n`;
+	await writeFile(previewPath, banner, "utf-8");
+	notes.push(`fixture-expand: codegen preview written to ${previewPath} (slice 1f wires PR)`);
+	return { status: "coverage-gap-detected", notes };
 }
 
 async function runPatchPath(input: {
