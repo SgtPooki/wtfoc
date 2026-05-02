@@ -2,6 +2,8 @@
 
 Operational guide for running and monitoring the autoresearch closed-loop. Audience: maintainer + future agents (Claude / Codex / Cursor) starting fresh sessions and needing to pick up where prior work left off.
 
+> **Persona scope**: this runbook is for the **maintainer-self-loop** persona (continuous nightly cron against demo collections, opens draft PRs against this repo). The **end-user** one-shot CLI persona is documented in [`docs/vision.md`](../vision.md#two-autoresearch-personas) and uses `wtfoc recipe ...` (or the underlying `scripts/autoresearch/recipe-{author,validate,apply}.ts`) without cron, scheduled reruns, or PR creation. Don't apply maintainer defaults to end-user runs and vice versa.
+
 ## What the loop is
 
 A nightly closed-loop that detects regressions in wtfoc's retrieval/synthesis quality, has a local LLM propose a fix, A/B tests the fix against production, and (on accept) opens a draft PR for the maintainer to review.
