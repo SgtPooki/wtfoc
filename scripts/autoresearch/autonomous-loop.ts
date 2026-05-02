@@ -76,7 +76,10 @@ interface LoopOutcome {
 		| "patch-llm-unavailable"
 		| "patch-no-proposal"
 		| "coverage-gap-detected"
-		| "coverage-gap-skipped";
+		| "coverage-gap-skipped"
+		| "coverage-gap-deferred"
+		| "coverage-gap-author-unavailable"
+		| "coverage-gap-error";
 	notes: string[];
 	prUrl?: string | null;
 }
@@ -280,6 +283,22 @@ export function decideLoopAction(input: {
  *     `runLoop` before calling).
  *   - `WTFOC_RECIPE_MAX_NEW_QUERIES_PER_RUN` (default 5) → cap.
  */
+/**
+ * Validate `WTFOC_RECIPE_MAX_NEW_QUERIES_PER_RUN`. Returns the parsed
+ * positive integer or null when unset / malformed. Falls back to the
+ * pipeline default when null.
+ *
+ * Codex peer-review flagged a `Number(env)` path that produced NaN and
+ * silently bypassed the headroom cap.
+ */
+function parseMaxNewEnv(): number | null {
+	const raw = process.env.WTFOC_RECIPE_MAX_NEW_QUERIES_PER_RUN;
+	if (!raw) return null;
+	const n = Number(raw);
+	if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) return null;
+	return n;
+}
+
 async function runFixtureExpandPath(input: {
 	cli: CliArgs;
 	fixtureHealth: FixtureHealthSignal;
@@ -296,68 +315,109 @@ async function runFixtureExpandPath(input: {
 		notes.push(`fixture-expand top strata: ${top.join("; ")}`);
 	}
 
-	// Pull the heavy deps + helpers lazily so the rest of the loop (and
-	// its unit tests) doesn't pay the import cost on cycles that never
-	// route here. `runRecipePipeline` itself is the orchestrator built in
-	// slice 1e (#360); see `recipe-pipeline.ts`.
-	const [{ runRecipePipeline, DEFAULT_MAX_NEW_QUERIES_PER_RUN }, { createStore }, search] =
-		await Promise.all([
-			import("./recipe-pipeline.js"),
-			import("@wtfoc/store"),
-			import("@wtfoc/search"),
-		]);
-	const { catalogFilePath, readCatalog } = await import("@wtfoc/ingest");
-
-	const store = createStore({ storage: "local" });
-	const head = await store.manifests.getHead(fixtureHealth.collectionId);
-	if (!head) {
-		notes.push(`fixture-expand: collection "${fixtureHealth.collectionId}" not found in store`);
-		return { status: "coverage-gap-skipped", notes };
-	}
-	const manifestDir =
-		(store.manifests as { dir?: string }).dir ?? `${process.env.HOME ?? "."}/.wtfoc/projects`;
-	const catalogPath = catalogFilePath(manifestDir, fixtureHealth.collectionId);
-	const catalog = await readCatalog(catalogPath);
-	if (!catalog) {
-		notes.push(`fixture-expand: catalog missing at ${catalogPath} — skipping`);
-		return { status: "coverage-gap-skipped", notes };
-	}
-
-	const embedderUrl = process.env.WTFOC_EMBEDDER_URL ?? "";
-	const embedderModel = process.env.WTFOC_EMBEDDER_MODEL ?? "";
-	if (!embedderUrl || !embedderModel) {
+	// Gini-only gaps with no uncovered strata: the planner has nothing to
+	// target. Skip cleanly so cron logs don't fill with empty-cycle noise.
+	// (Peer-review: this case fires when the fixture is balanced-but-skewed.
+	// Slice 1f / later: extend the planner to target underrepresented
+	// covered strata so this branch becomes actionable.)
+	if (fixtureHealth.coverage.uncoveredStrata.length === 0) {
 		notes.push(
-			"fixture-expand: WTFOC_EMBEDDER_URL / WTFOC_EMBEDDER_MODEL unset; cannot author candidates",
+			"fixture-expand: gini-only gap with no uncovered strata; planner has no actionable target",
 		);
 		return { status: "coverage-gap-skipped", notes };
 	}
-	const embedder = new search.OpenAIEmbedder({
-		apiKey: process.env.WTFOC_EMBEDDER_KEY ?? "",
-		model: embedderModel,
-		baseUrl: embedderUrl,
-	});
-	const vectorIndex = new search.InMemoryVectorIndex();
-	const mounted = await search.mountCollection(head.manifest, store.storage, vectorIndex);
 
-	const maxNew = process.env.WTFOC_RECIPE_MAX_NEW_QUERIES_PER_RUN
-		? Number(process.env.WTFOC_RECIPE_MAX_NEW_QUERIES_PER_RUN)
-		: DEFAULT_MAX_NEW_QUERIES_PER_RUN;
+	// Validate env knob BEFORE doing any I/O; fail-soft to default.
+	const maxNewEnv = parseMaxNewEnv();
+	if (process.env.WTFOC_RECIPE_MAX_NEW_QUERIES_PER_RUN && maxNewEnv === null) {
+		notes.push(
+			`fixture-expand: WTFOC_RECIPE_MAX_NEW_QUERIES_PER_RUN="${process.env.WTFOC_RECIPE_MAX_NEW_QUERIES_PER_RUN}" not a positive integer; falling back to default`,
+		);
+	}
 
-	const result = await runRecipePipeline({
-		collectionId: fixtureHealth.collectionId,
-		fixtureHealth,
-		catalog,
-		segments: mounted.segments,
-		vectorIndex,
-		embedder,
-		maxNew,
-	});
+	// Pull the heavy deps + helpers lazily so the rest of the loop (and
+	// its unit tests) doesn't pay the import cost on cycles that never
+	// route here. `runRecipePipeline` itself is the orchestrator built in
+	// slice 1e (#360); see `recipe-pipeline.ts`. Wrapped in try/catch per
+	// the loop's "no fatal exit" policy — peer-review flagged that
+	// mountCollection + readCatalog could otherwise crash the cron chain.
+	let result: Awaited<ReturnType<typeof import("./recipe-pipeline.js").runRecipePipeline>>;
+	try {
+		const [{ runRecipePipeline, DEFAULT_MAX_NEW_QUERIES_PER_RUN }, { createStore }, search] =
+			await Promise.all([
+				import("./recipe-pipeline.js"),
+				import("@wtfoc/store"),
+				import("@wtfoc/search"),
+			]);
+		const { catalogFilePath, readCatalog } = await import("@wtfoc/ingest");
+
+		const store = createStore({ storage: "local" });
+		const head = await store.manifests.getHead(fixtureHealth.collectionId);
+		if (!head) {
+			notes.push(
+				`fixture-expand: collection "${fixtureHealth.collectionId}" not found in store`,
+			);
+			return { status: "coverage-gap-skipped", notes };
+		}
+		const manifestDir =
+			(store.manifests as { dir?: string }).dir ?? `${process.env.HOME ?? "."}/.wtfoc/projects`;
+		const catalogPath = catalogFilePath(manifestDir, fixtureHealth.collectionId);
+		const catalog = await readCatalog(catalogPath);
+		if (!catalog) {
+			notes.push(`fixture-expand: catalog missing at ${catalogPath} — skipping`);
+			return { status: "coverage-gap-skipped", notes };
+		}
+
+		const embedderUrl = process.env.WTFOC_EMBEDDER_URL ?? "";
+		const embedderModel = process.env.WTFOC_EMBEDDER_MODEL ?? "";
+		if (!embedderUrl || !embedderModel) {
+			notes.push(
+				"fixture-expand: WTFOC_EMBEDDER_URL / WTFOC_EMBEDDER_MODEL unset; cannot author candidates",
+			);
+			return { status: "coverage-gap-skipped", notes };
+		}
+		const embedder = new search.OpenAIEmbedder({
+			apiKey: process.env.WTFOC_EMBEDDER_KEY ?? "",
+			model: embedderModel,
+			baseUrl: embedderUrl,
+		});
+		const vectorIndex = new search.InMemoryVectorIndex();
+		const mounted = await search.mountCollection(head.manifest, store.storage, vectorIndex);
+
+		const maxNew = maxNewEnv ?? DEFAULT_MAX_NEW_QUERIES_PER_RUN;
+		result = await runRecipePipeline({
+			collectionId: fixtureHealth.collectionId,
+			fixtureHealth,
+			catalog,
+			segments: mounted.segments,
+			vectorIndex,
+			embedder,
+			maxNew,
+		});
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		notes.push(`fixture-expand: error during pipeline setup or run: ${msg.slice(0, 200)}`);
+		return { status: "coverage-gap-error", notes };
+	}
 
 	notes.push(
 		`fixture-expand: targeted=${result.targetedStrata.length} authored=${result.authoredCount} adv-kept=${result.adversarialKept} kept=${result.kept.length} structural-errors=${result.structuralErrors.length}`,
 	);
 	if (result.authorErrors.length > 0) {
 		notes.push(`fixture-expand: ${result.authorErrors.length} author error(s)`);
+	}
+
+	// Distinguish 100%-author-failed from "no keepers" so cron can alert
+	// on transport / LLM-down separately from quiet quality cycles.
+	if (
+		result.targetedStrata.length > 0 &&
+		result.authoredCount === 0 &&
+		result.authorErrors.length > 0
+	) {
+		notes.push(
+			"fixture-expand: every author attempt failed (LLM unreachable or rejecting all prompts)",
+		);
+		return { status: "coverage-gap-author-unavailable", notes };
 	}
 
 	if (result.kept.length === 0 || !result.codegen) {
@@ -372,20 +432,28 @@ async function runFixtureExpandPath(input: {
 
 	// Slice 1e stops short of writing gold-authored-queries.ts + opening
 	// a PR — that's slice 1f. For now persist the codegen preview to an
-	// autoresearch artifact path so the maintainer can review.
-	const { writeFile, mkdir } = await import("node:fs/promises");
-	const { join } = await import("node:path");
-	const artifactDir =
-		process.env.WTFOC_AUTORESEARCH_DIR ?? `${process.env.HOME}/.wtfoc/autoresearch`;
-	const previewDir = join(artifactDir, "fixture-expand-previews");
-	await mkdir(previewDir, { recursive: true });
-	const previewPath = join(
-		previewDir,
-		`${fixtureHealth.collectionId}-${new Date().toISOString().replace(/[:.]/g, "-")}.preview.ts`,
-	);
-	const banner = `// Recipe-pipeline preview — review before splicing into\n// packages/search/src/eval/gold-authored-queries.ts.\n// Generated: ${new Date().toISOString()} collection=${fixtureHealth.collectionId}\n\nexport const RECIPE_PIPELINE_PREVIEW = ${result.codegen};\n`;
-	await writeFile(previewPath, banner, "utf-8");
-	notes.push(`fixture-expand: codegen preview written to ${previewPath} (slice 1f wires PR)`);
+	// autoresearch artifact path so the maintainer can review. Wrapped
+	// in try/catch so a permission-denied / disk-full does not crash the
+	// loop (cron's "no fatal exit" policy).
+	try {
+		const { writeFile, mkdir } = await import("node:fs/promises");
+		const { join } = await import("node:path");
+		const artifactDir =
+			process.env.WTFOC_AUTORESEARCH_DIR ?? `${process.env.HOME}/.wtfoc/autoresearch`;
+		const previewDir = join(artifactDir, "fixture-expand-previews");
+		await mkdir(previewDir, { recursive: true });
+		const previewPath = join(
+			previewDir,
+			`${fixtureHealth.collectionId}-${new Date().toISOString().replace(/[:.]/g, "-")}.preview.ts`,
+		);
+		const banner = `// Recipe-pipeline preview — review before splicing into\n// packages/search/src/eval/gold-authored-queries.ts.\n// Generated: ${new Date().toISOString()} collection=${fixtureHealth.collectionId}\n\nexport const RECIPE_PIPELINE_PREVIEW = ${result.codegen};\n`;
+		await writeFile(previewPath, banner, "utf-8");
+		notes.push(`fixture-expand: codegen preview written to ${previewPath} (slice 1f wires PR)`);
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		notes.push(`fixture-expand: failed to write codegen preview: ${msg.slice(0, 200)}`);
+		return { status: "coverage-gap-error", notes };
+	}
 	return { status: "coverage-gap-detected", notes };
 }
 
@@ -549,31 +617,40 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 	notes.push(`route: ${decision.rationale}`);
 
 	// #360 — fixture-expand path is a NON-patch action. Gated separately
-	// from `WTFOC_ALLOW_PATCHES`. The early-return below is conditional on
-	// (a) only fixture-expand wants in (no dominantLayer competing) AND
-	// (b) `--dry-run` OR `WTFOC_ALLOW_FIXTURE_EXPAND=1` is set. When the
-	// gate is closed OR a dominantLayer is also present, the loop continues
-	// to the existing variant / patch flow so a single coverage gap can't
-	// monopolize cycles.
+	// from `WTFOC_ALLOW_PATCHES`. Per the settled-spec orthogonality
+	// (independent caps), it runs ALONGSIDE the patch path, not instead
+	// of it. Codex peer-review flagged that "patch wins" deferral could
+	// indefinitely starve fixture-expansion when patch regressions are
+	// persistent.
+	//
+	// Implementation: when the gate is open and a coverage gap exists,
+	// run the fixture-expand path FIRST as a side effect (it writes a
+	// codegen preview to disk; slice 1f wires real PR creation).
+	//   - If only fixture-expand fires (no dominantLayer): return early
+	//     on its outcome — there's no patch work this cycle.
+	//   - If both fire: run fixture-expand for its side effect, append
+	//     its outcome to notes, then continue into the variant/patch
+	//     flow under independent caps.
 	const fixtureExpandGateOpen =
 		cli.dryRun || process.env.WTFOC_ALLOW_FIXTURE_EXPAND === "1";
-	if (
-		decision.tryFixtureExpand &&
-		!decision.tryPatch &&
-		fixtureExpandGateOpen &&
-		fixtureHealth
-	) {
-		return runFixtureExpandPath({ cli, fixtureHealth, notes });
-	}
 	if (decision.tryFixtureExpand && fixtureHealth) {
-		if (decision.tryPatch) {
-			notes.push(
-				"fixture-expand opportunity detected; dominantLayer also present, deferring fixture-expand and continuing to variant/patch flow",
-			);
-		} else if (!fixtureExpandGateOpen) {
+		if (!fixtureExpandGateOpen) {
 			notes.push(
 				"fixture-expand opportunity detected but gated off; continuing to variant flow (set WTFOC_ALLOW_FIXTURE_EXPAND=1 or --dry-run to route here)",
 			);
+		} else if (!decision.tryPatch) {
+			return runFixtureExpandPath({ cli, fixtureHealth, notes });
+		} else {
+			// Independent caps: run fixture-expand first, capture its
+			// outcome, then fall through to patch/variant flow.
+			const fxNotes: string[] = [];
+			const fxOutcome = await runFixtureExpandPath({
+				cli,
+				fixtureHealth,
+				notes: fxNotes,
+			});
+			notes.push(`fixture-expand (parallel): status=${fxOutcome.status}`);
+			for (const n of fxNotes) notes.push(`  ${n}`);
 		}
 	}
 

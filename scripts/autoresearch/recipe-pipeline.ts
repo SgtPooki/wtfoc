@@ -37,10 +37,12 @@ import {
 	type CatalogArtifact,
 	type FixtureHealthSignal,
 	type QueryTemplate,
+	type QueryType,
 	type RecipeSample,
 	type Stratum,
 } from "@wtfoc/search";
 import { buildLiveRetriever, buildStorageToDocMap } from "./recipe-adversarial-retriever.js";
+import { templatesForStratum } from "./recipe-templates.js";
 import {
 	type ApplyEnrichedRecord,
 	codegenAuthoredQueries,
@@ -50,7 +52,6 @@ import {
 } from "./recipe-apply.js";
 import { authorCandidate } from "./recipe-llm-author.js";
 import { buildExcerptMap } from "./recipe-segment-loader.js";
-import { RECIPE_TEMPLATES } from "./recipe-templates.js";
 import {
 	classifyValidation,
 	probeCandidate,
@@ -126,11 +127,27 @@ function indexArtifactsBySourceType(catalog: DocumentCatalog): Map<string, Artif
 	return out;
 }
 
-function pickTemplateForQueryType(
-	queryType: QueryTemplate["queryType"],
+/**
+ * Pick a template that satisfies BOTH the uncovered stratum's `queryType`
+ * AND the synthesized stratum's `sourceType` constraints. Falls back to a
+ * sourceType-agnostic template (no `appliesToStrata`) when no source-typed
+ * template matches; returns null when even that fails so the caller can
+ * skip the stratum cleanly.
+ *
+ * Earlier (pre-peer-review) `pickTemplateForQueryType` matched on
+ * `queryType` alone, which routed `github-issue/lookup` to the
+ * code-only `lookup-by-symbol` template and fed nonsensical artifacts
+ * to the LLM. This now mirrors `templatesForStratum`'s applicability
+ * filter and adds the queryType constraint on top.
+ */
+function pickTemplateForStratum(
+	stratum: Pick<Stratum, "sourceType" | "edgeType" | "rarity">,
+	queryType: QueryType,
 ): QueryTemplate | null {
-	const exact = RECIPE_TEMPLATES.find((t) => t.queryType === queryType);
-	return exact ?? null;
+	// `templatesForStratum` already returns templates whose
+	// `appliesToStrata` matches this stratum OR is empty (universal
+	// fallback). All we need on top is the queryType filter.
+	return templatesForStratum(stratum).find((t) => t.queryType === queryType) ?? null;
 }
 
 function lengthBucketOf(length: number): Stratum["lengthBucket"] {
@@ -139,11 +156,7 @@ function lengthBucketOf(length: number): Stratum["lengthBucket"] {
 	return "long";
 }
 
-function buildSample(
-	artifact: ArtifactRow,
-	template: QueryTemplate,
-	rng: () => number,
-): RecipeSample {
+function buildSample(artifact: ArtifactRow, rng: () => number): RecipeSample {
 	void rng;
 	const stratum: Stratum = {
 		sourceType: artifact.sourceType,
@@ -152,9 +165,15 @@ function buildSample(
 		// schema carries explicit edgeType per query.
 		edgeType: null,
 		lengthBucket: lengthBucketOf(artifact.contentLength),
+		// TODO(#360 follow-up): rarity is hardcoded "common" here; the
+		// proper computation runs `stratifyArtifacts` over the full
+		// catalog to derive (sourceType, edgeType) frequency. Hardcoding
+		// `common` means rarity-gated templates (e.g. `lookup-rare-edge`)
+		// are unreachable from this path. Acceptable for slice 1e where
+		// no rarity-gated template covers a queryType the planner targets;
+		// fix before broadening template coverage.
 		rarity: "common",
 	};
-	void template;
 	const ca: CatalogArtifact = {
 		artifactId: artifact.artifactId,
 		sourceType: artifact.sourceType,
@@ -189,14 +208,19 @@ export function planRecipeExpansion(input: {
 	const plannedPairs: Array<{ sample: RecipeSample; template: QueryTemplate }> = [];
 	for (const u of sortedUncovered) {
 		if (plannedPairs.length >= headroom) break;
-		const template = pickTemplateForQueryType(u.key.queryType);
-		if (!template) continue;
 		const candidates = artifactsBySource.get(u.key.sourceType);
 		if (!candidates || candidates.length === 0) continue;
 		const idx = Math.floor(rng() * candidates.length) % candidates.length;
 		const artifact = candidates[idx];
 		if (!artifact) continue;
-		plannedPairs.push({ sample: buildSample(artifact, template, rng), template });
+		// Build the stratum FIRST so the template picker can filter on
+		// sourceType applicability. Earlier the picker matched only on
+		// queryType, which produced nonsensical (sample, template) pairs
+		// for sourceTypes that no template targets.
+		const sample = buildSample(artifact, rng);
+		const template = pickTemplateForStratum(sample.stratum, u.key.queryType);
+		if (!template) continue;
+		plannedPairs.push({ sample, template });
 		targetedStrata.push({
 			sourceType: u.key.sourceType,
 			queryType: u.key.queryType,

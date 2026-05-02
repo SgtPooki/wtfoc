@@ -130,4 +130,37 @@ describe("planRecipeExpansion", () => {
 		expect(targetedStrata).toEqual([]);
 		expect(plannedPairs).toEqual([]);
 	});
+
+	it("picks a sourceType-applicable template (regression: codex peer-review)", () => {
+		// Pre-fix, github-issue/lookup paired with `lookup-by-symbol` (code-only).
+		// Post-fix, the picker selects `lookup-discussion` (issue/PR/slack).
+		const fh = makeFixtureHealth([
+			{ sourceType: "github-issue", queryType: "lookup", artifactsInCorpus: 10 },
+		]);
+		const catalog = makeCatalog([{ id: "owner/repo#42", sourceType: "github-issue" }]);
+		const { plannedPairs } = planRecipeExpansion({
+			fixtureHealth: fh,
+			catalog,
+			maxNew: 1,
+		});
+		expect(plannedPairs).toHaveLength(1);
+		expect(plannedPairs[0]?.template.id).toBe("lookup-discussion");
+	});
+
+	it("skips strata whose sourceType has no applicable template", () => {
+		// `compare-implementations` applies only to `code`. For a markdown
+		// stratum with queryType=compare, the picker returns null and the
+		// planner skips the stratum cleanly.
+		const fh = makeFixtureHealth([
+			{ sourceType: "markdown", queryType: "compare", artifactsInCorpus: 10 },
+		]);
+		const catalog = makeCatalog([{ id: "docs/x.md", sourceType: "markdown" }]);
+		const { targetedStrata, plannedPairs } = planRecipeExpansion({
+			fixtureHealth: fh,
+			catalog,
+			maxNew: 1,
+		});
+		expect(targetedStrata).toEqual([]);
+		expect(plannedPairs).toEqual([]);
+	});
 });
