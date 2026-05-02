@@ -1,7 +1,15 @@
-import type { DiagnosisAggregate, FailureLayer } from "@wtfoc/search";
+import type {
+	DiagnosisAggregate,
+	FailureLayer,
+	FixtureHealthSignal,
+} from "@wtfoc/search";
 import { describe, expect, it } from "vitest";
 import type { ExtendedDogfoodReport } from "../lib/run-config.js";
-import { extractDominantLayer } from "./autonomous-loop.js";
+import {
+	decideLoopAction,
+	extractDominantLayer,
+	extractFixtureHealthSignal,
+} from "./autonomous-loop.js";
 import { selectPatchCapsule } from "./patch-capsule.js";
 
 /**
@@ -158,5 +166,87 @@ describe("diagnosis -> capsule routing chain", () => {
 		// falls through to analyzeAndProposePatch's built-in defaults rather
 		// than skipping the cycle (backwards compat for pre-#347 reports).
 		expect(selectPatchCapsule(layer)).toBeNull();
+	});
+});
+
+function makeFixtureHealthSignal(
+	overrides: Partial<FixtureHealthSignal> = {},
+): FixtureHealthSignal {
+	return {
+		collectionId: "alpha",
+		coverage: {
+			totalQueries: 1,
+			semantic: [],
+			structural: [],
+			uncoveredStrata: [],
+			giniCoefficient: 0,
+		},
+		hasCoverageGap: false,
+		thresholds: { giniFloor: 0.6, minUncoveredStrata: 3 },
+		...overrides,
+	};
+}
+
+describe("extractFixtureHealthSignal", () => {
+	it("returns null when the report is null", () => {
+		expect(extractFixtureHealthSignal(null)).toBeNull();
+	});
+
+	it("returns null when the stage has no fixtureHealthSignal", () => {
+		const report = makeReport("ranking");
+		expect(extractFixtureHealthSignal(report)).toBeNull();
+	});
+
+	it("extracts a fixtureHealthSignal when present in metrics", () => {
+		const report = makeReport("ranking");
+		const stage = report.stages[0];
+		const signal = makeFixtureHealthSignal({ hasCoverageGap: true });
+		if (stage)
+			stage.metrics = { ...stage.metrics, fixtureHealthSignal: signal } as Record<
+				string,
+				unknown
+			>;
+		expect(extractFixtureHealthSignal(report)?.hasCoverageGap).toBe(true);
+	});
+});
+
+describe("decideLoopAction (#360 routing)", () => {
+	it("tryPatch=true when dominantLayer is set", () => {
+		const d = decideLoopAction({ dominantLayer: "ranking", fixtureHealth: null });
+		expect(d.tryPatch).toBe(true);
+		expect(d.tryFixtureExpand).toBe(false);
+	});
+
+	it("tryFixtureExpand=true when fixtureHealth.hasCoverageGap", () => {
+		const d = decideLoopAction({
+			dominantLayer: null,
+			fixtureHealth: makeFixtureHealthSignal({ hasCoverageGap: true }),
+		});
+		expect(d.tryFixtureExpand).toBe(true);
+		expect(d.tryPatch).toBe(false);
+	});
+
+	it("both true when dominantLayer set AND coverage gap present (orthogonal signals)", () => {
+		const d = decideLoopAction({
+			dominantLayer: "ranking",
+			fixtureHealth: makeFixtureHealthSignal({ hasCoverageGap: true }),
+		});
+		expect(d.tryPatch).toBe(true);
+		expect(d.tryFixtureExpand).toBe(true);
+	});
+
+	it("both false when neither signal present (clean cycle, fall through to variant flow)", () => {
+		const d = decideLoopAction({ dominantLayer: null, fixtureHealth: null });
+		expect(d.tryPatch).toBe(false);
+		expect(d.tryFixtureExpand).toBe(false);
+	});
+
+	it("rationale includes both inputs", () => {
+		const d = decideLoopAction({
+			dominantLayer: "ranking",
+			fixtureHealth: makeFixtureHealthSignal({ hasCoverageGap: false }),
+		});
+		expect(d.rationale).toContain("dominantLayer=ranking");
+		expect(d.rationale).toContain("coverage(");
 	});
 });
