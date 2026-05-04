@@ -45,6 +45,25 @@ export const DEFAULT_MUST_PASS_FLOOR = 0.03;
 export const DEFAULT_TYPE_FLOOR = 0.05;
 export const DEFAULT_CATASTROPHIC_FLOOR = 0.3;
 export const DEFAULT_MIN_MEANINGFUL_LOC = 1;
+/**
+ * Latency floors (#364). Calibrated against 2026-05-04 production-variant
+ * baseline (`noar_div_rrOff` filoz): per-query-total p95 ~3000-4300ms across
+ * cached runs (32% run-to-run variance). Defaults reject patches with p95
+ * regressions large enough to matter on top of that variance.
+ */
+export const DEFAULT_P95_FLOOR_MS = 1500; // candidate p95 may exceed baseline by at most 1500ms
+export const DEFAULT_TOTAL_P95_FLOOR_MS = 10_000; // absolute ceiling regardless of baseline
+export const DEFAULT_CATASTROPHIC_LATENCY_FACTOR = 2.0; // candidate.p95 > 2× baseline.p95 → auto-reject
+
+/**
+ * Phase-B activation flag (#364). When `true`, latency floor breaches add
+ * to `reasons` and reject the candidate. When `false`, breaches surface in
+ * the warn-only `latencyWarnings` field on the verdict so a calibration
+ * cycle can observe behavior without rejecting candidates. Per peer-review
+ * consensus (codex+cursor+gemini, 2026-05-04): flip after one calibration
+ * cycle to avoid sliding into permanent observe-only mode.
+ */
+export const DEFAULT_LATENCY_GATE_HARD = false;
 
 export interface PerCorpusFloors {
 	/** Maximum tolerated delta drop on a must-pass corpus (default 3pp). */
@@ -59,6 +78,23 @@ export interface PerCorpusFloors {
 	minMeaningfulLoC?: number;
 	/** Minimum trimmed-mean delta to accept (default `MIN_LIFT`). */
 	minLift?: number;
+	/**
+	 * Latency floors (#364). Read from `metrics.timing["per-query-total"]`.
+	 * When timing data is missing on either side, latency gating is skipped
+	 * for that corpus (reported as `latencyWarnings` entry). Defaults from
+	 * `DEFAULT_P95_FLOOR_MS`, `DEFAULT_TOTAL_P95_FLOOR_MS`,
+	 * `DEFAULT_CATASTROPHIC_LATENCY_FACTOR`.
+	 */
+	p95FloorMs?: number;
+	totalP95FloorMs?: number;
+	catastrophicLatencyFactor?: number;
+	/**
+	 * When false (default), latency breaches go to `latencyWarnings` only and
+	 * do not reject the candidate. When true, breaches add to `reasons` and
+	 * cause `accept: false`. Phase B / #364 ships warn-only and flips to
+	 * hard-fail after one calibration cycle.
+	 */
+	latencyGateHard?: boolean;
 }
 
 export interface DecideMultiInputs {
@@ -91,11 +127,23 @@ export interface PerCorpusDelta {
 	candidatePassRate: number;
 	delta: number;
 	gateResults: DecisionVerdict["gateResults"];
+	/**
+	 * Latency telemetry (#364). `null` for either field when timing data is
+	 * missing on the corresponding report.
+	 */
+	baselineP95Ms: number | null;
+	candidateP95Ms: number | null;
 }
 
 export interface DecideMultiVerdict {
 	accept: boolean;
 	reasons: string[];
+	/**
+	 * Latency-floor warnings emitted when `latencyGateHard` is false (#364).
+	 * Same content shape as a `reasons` entry; surfaced separately so the
+	 * calibration-cycle harness can observe regressions without rejecting.
+	 */
+	latencyWarnings: string[];
 	perCorpus: PerCorpusDelta[];
 	trimmedMeanDelta: number;
 	mustPassCorpora: string[];
@@ -166,6 +214,11 @@ export function decideMulti(input: DecideMultiInputs): DecideMultiVerdict {
 	const typeFloor = floors.typeFloor ?? DEFAULT_TYPE_FLOOR;
 	const catastrophicFloor = floors.catastrophicFloor ?? DEFAULT_CATASTROPHIC_FLOOR;
 	const minLoc = floors.minMeaningfulLoC ?? DEFAULT_MIN_MEANINGFUL_LOC;
+	const p95FloorMs = floors.p95FloorMs ?? DEFAULT_P95_FLOOR_MS;
+	const totalP95FloorMs = floors.totalP95FloorMs ?? DEFAULT_TOTAL_P95_FLOOR_MS;
+	const catastrophicLatencyFactor =
+		floors.catastrophicLatencyFactor ?? DEFAULT_CATASTROPHIC_LATENCY_FACTOR;
+	const latencyGateHard = floors.latencyGateHard ?? DEFAULT_LATENCY_GATE_HARD;
 	const gates = input.gates ?? DEFAULT_GATES;
 
 	const sharedCorpora = Array.from(input.baseline.keys()).filter((k) =>
@@ -188,10 +241,17 @@ export function decideMulti(input: DecideMultiInputs): DecideMultiVerdict {
 			candidatePassRate,
 			delta: candidatePassRate - baselinePassRate,
 			gateResults: evaluateGates(c, gates),
+			baselineP95Ms: extractPerQueryP95Ms(b),
+			candidateP95Ms: extractPerQueryP95Ms(c),
 		});
 	}
 
 	const reasons: string[] = [];
+	const latencyWarnings: string[] = [];
+	const sink = (msg: string) => {
+		if (latencyGateHard) reasons.push(msg);
+		else latencyWarnings.push(msg);
+	};
 
 	if (perCorpus.length === 0) {
 		reasons.push("no shared corpora between baseline and candidate");
@@ -250,9 +310,36 @@ export function decideMulti(input: DecideMultiInputs): DecideMultiVerdict {
 		);
 	}
 
+	// Latency gates (#364). Per-corpus checks against per-query-total p95.
+	for (const entry of perCorpus) {
+		const { corpusId, baselineP95Ms, candidateP95Ms } = entry;
+		if (baselineP95Ms === null || candidateP95Ms === null) {
+			latencyWarnings.push(
+				`corpus "${corpusId}" missing per-query-total timing — latency gates skipped`,
+			);
+			continue;
+		}
+		// Catastrophic-latency veto: candidate p95 > factor × baseline p95.
+		if (candidateP95Ms > baselineP95Ms * catastrophicLatencyFactor) {
+			sink(
+				`catastrophic latency on "${corpusId}": candidate p95 ${candidateP95Ms}ms > ${catastrophicLatencyFactor}× baseline ${baselineP95Ms}ms`,
+			);
+		} else if (candidateP95Ms - baselineP95Ms > p95FloorMs) {
+			sink(
+				`p95 regression on "${corpusId}": candidate ${candidateP95Ms}ms − baseline ${baselineP95Ms}ms = ${candidateP95Ms - baselineP95Ms}ms > p95FloorMs ${p95FloorMs}`,
+			);
+		}
+		if (candidateP95Ms > totalP95FloorMs) {
+			sink(
+				`absolute p95 ceiling on "${corpusId}": candidate ${candidateP95Ms}ms > totalP95FloorMs ${totalP95FloorMs}`,
+			);
+		}
+	}
+
 	return {
 		accept: reasons.length === 0,
 		reasons,
+		latencyWarnings,
 		perCorpus,
 		trimmedMeanDelta: aggregate,
 		mustPassCorpora: [...mustPass],
@@ -326,10 +413,23 @@ interface QQMetrics {
 	categoryBreakdown?: Record<string, { passRate?: number }>;
 	paraphraseInvariance?: { invariantFraction?: number; checked?: boolean };
 	scores?: Array<{ id: string; passed: boolean; skipped?: boolean }>;
+	timing?: Record<string, { p50Ms?: number; p95Ms?: number }>;
 }
 
 function qq(report: ExtendedDogfoodReport): QQMetrics | undefined {
 	return report.stages.find((s) => s.stage === "quality-queries")?.metrics as QQMetrics | undefined;
+}
+
+/**
+ * Read per-query-total p95 from `metrics.timing` (#364 — SubstageTimer
+ * already records this in every quality-queries stage). Returns null when
+ * timing is absent so latency gates can skip rather than treat missing
+ * data as 0.
+ */
+function extractPerQueryP95Ms(report: ExtendedDogfoodReport): number | null {
+	const m = qq(report);
+	const v = m?.timing?.["per-query-total"]?.p95Ms;
+	return typeof v === "number" ? v : null;
 }
 
 export function evaluateGates(
