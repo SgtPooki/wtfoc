@@ -197,20 +197,30 @@ describe("materializeVariant — matrix synthesis", () => {
 			writeFileSync(p, JSON.stringify(report));
 			return p;
 		};
-		const baselineFp = "fp_baseline_old";
+		// Distinct baseline rows — each gets its own report file so that
+		// every row in the baseline window can be loaded independently
+		// (overlapping report paths would silently collapse the window).
 		const candidateFp = "fp_candidate_drift";
-		const baselineRows = [0, 1, 2].map((i) => ({
-			schemaVersion: 1,
-			loggedAt: new Date(Date.now() - (i + 1) * 86400000).toISOString(),
-			matrixName: "retrieval-baseline",
-			variantId: "noar_div_rrOff",
-			sweepId: `nightly-${i}`,
-			runConfigFingerprint: baselineFp,
-			runConfig: { collectionId: "filoz" },
-			stage: "nightly-cron",
-			reportPath: writeReport("noar_div_rrOff", baselineFp, 0.5),
-			summary: { passRate: 0.5, demoCriticalPassRate: 1, recallAtKMean: 0.5, latencyP95Ms: 1000 },
-		}));
+		const baselineRows = [0, 1, 2].map((i) => {
+			const fp = `fp_baseline_${i}`;
+			return {
+				schemaVersion: 1,
+				loggedAt: new Date(Date.now() - (i + 1) * 86400000).toISOString(),
+				matrixName: "retrieval-baseline",
+				variantId: "noar_div_rrOff",
+				sweepId: `nightly-${i}`,
+				runConfigFingerprint: fp,
+				runConfig: { collectionId: "filoz" },
+				stage: "nightly-cron",
+				reportPath: writeReport("noar_div_rrOff", fp, 0.5 + i * 0.01),
+				summary: {
+					passRate: 0.5 + i * 0.01,
+					demoCriticalPassRate: 1,
+					recallAtKMean: 0.5,
+					latencyP95Ms: 1000,
+				},
+			};
+		});
 		const candidateRow = {
 			schemaVersion: 1,
 			loggedAt: new Date().toISOString(),

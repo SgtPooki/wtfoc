@@ -246,7 +246,7 @@ export async function materializeVariant(
 		// recent N nightly-cron rows regardless of fingerprint — same
 		// policy as materialize-patch.ts since fingerprints drift across
 		// env/code changes and a too-strict rule makes proposals
-		// uniformly un-acceptable in practice. Surfaced in notes for audit.
+		// uniformly unacceptable in practice. Surfaced in notes for audit.
 		const candidateFingerprint = candidateReport.runConfigFingerprint;
 		const baselineVariantId = input.targetVariantId ?? productionVariantId;
 		const strictMatches = [...allRows]
@@ -260,7 +260,6 @@ export async function materializeVariant(
 					r.reportPath,
 			);
 		let baselineRows = strictMatches;
-		let usedRelaxed = false;
 		if (baselineRows.length < minBaseline) {
 			const relaxedMatches = [...allRows]
 				.reverse()
@@ -273,11 +272,11 @@ export async function materializeVariant(
 				);
 			if (relaxedMatches.length >= minBaseline) {
 				baselineRows = relaxedMatches;
-				usedRelaxed = true;
 				notes.push(
-					`corpus=${corpus}: 0 fingerprint-strict baselines — falling back to ` +
-						`${relaxedMatches.length} fingerprint-loose nightly-cron rows ` +
-						`for variant=${baselineVariantId} (caveat: env/code drift may bias decide())`,
+					`corpus=${corpus}: ${strictMatches.length} fingerprint-strict baseline(s) ` +
+						`(< minBaseline=${minBaseline}) — falling back to ${relaxedMatches.length} ` +
+						`fingerprint-loose nightly-cron rows for variant=${baselineVariantId} ` +
+						`(caveat: env/code drift may bias decide())`,
 				);
 			}
 		}
@@ -286,8 +285,7 @@ export async function materializeVariant(
 			decisions.push({
 				corpus,
 				verdict: null,
-				reason: `only ${window.length} comparable production baseline(s); need >= ${minBaseline}` +
-					(usedRelaxed ? " (relaxed fingerprint match also insufficient)" : ""),
+				reason: `only ${window.length} comparable production baseline(s); need >= ${minBaseline} (strict + relaxed both insufficient)`,
 			});
 			notes.push(
 				`corpus=${corpus}: only ${window.length} comparable baseline(s) — accept blocked`,
