@@ -851,6 +851,10 @@ async function scoreText(
 	let requiredTypesFoundQueryOnly = false;
 	let substringFound = true; // default true if no substrings specified
 	let documentIdFound = true; // default true when no required artifacts
+	// Per-artifact OR result. Default true when no required artifacts so
+	// the unified pass logic short-circuits to "evidence is fine" without
+	// needing to special-case empty `requiredArtifacts` downstream.
+	let evidencePassPerArtifact = true;
 	let edgeHopFound = true; // default true if not required
 	let crossSourceFound = true; // default true if not required
 	const sourceTypesReached: string[] = [];
@@ -927,45 +931,77 @@ async function scoreText(
 					.map((r) => r.documentId)
 					.filter((d): d is string => typeof d === "string" && d.length > 0),
 			);
-			// Per-artifact resolution (#344 D1). Codex peer-review on the
-			// initial all-or-nothing `requiredArtifacts.every()` gate caught
-			// that one unresolved legacy artifactId disabled identity gating
-			// for every artifact in the same query.
+			// Per-artifact OR resolution (#344 D1). Each required artifact
+			// resolves independently: canonical artifacts (in catalog) hit
+			// via exact `documentId` match; legacy artifacts hit via path
+			// substring. The query passes when ANY required artifact hit,
+			// regardless of which resolver matched it. Round-2 peer-review
+			// (codex + gemini) caught that an earlier per-artifact draft
+			// only counted canonical hits when canonical was active —
+			// breaking mixed queries where a legacy artifact was found by
+			// substring but no canonical artifact was retrieved.
 			//
-			// Now: each artifact resolves independently. Canonical artifacts
-			// (in catalog) hit when their value matches a retrieved chunk's
-			// `documentId`. Legacy artifacts hit by substring against
-			// retrieved sources. `documentIdFound` is true when ≥1 canonical
-			// artifact is required AND ≥1 such canonical artifact hit by
-			// exact `documentId`. `substringFound` keeps the legacy
-			// any-substring-hit signal — used as the pass driver only when
-			// the query has zero canonical artifacts.
+			// `documentIdFound` and `substringFound` are exposed as
+			// independent diagnostics: which resolver actually carried the
+			// pass, and is the canonical gate participating at all.
+			//   * documentIdFound — any canonical-required hit by exact id
+			//   * substringFound — any required hit by substring (legacy
+			//     or canonical-mode regression check)
+			//   * evidenceGateCanonical — at least one required is canonical
 			let canonicalAnyRequired = false;
 			let canonicalAnyHit = false;
+			let anyRequiredHit = false;
 			for (const aid of requiredArtifacts) {
 				const isCanonical = catalogDocumentIds?.has(aid) ?? false;
 				if (isCanonical) {
 					canonicalAnyRequired = true;
 					if (resultDocIdSet.has(aid)) {
 						canonicalAnyHit = true;
+						anyRequiredHit = true;
+					}
+				} else {
+					const aidLower = aid.toLowerCase();
+					if (resultSources.some((src) => src.toLowerCase().includes(aidLower))) {
+						anyRequiredHit = true;
 					}
 				}
 			}
 			documentIdFound = canonicalAnyRequired && canonicalAnyHit;
+			// Legacy substring gate: any required artifact substring-hit.
+			// Kept as a diagnostic + the pass driver when the canonical
+			// gate is inactive (no canonical required).
 			substringFound = requiredArtifacts.some((sub) =>
 				resultSources.some((src) => src.toLowerCase().includes(sub.toLowerCase())),
 			);
+			// `anyRequiredHit` becomes the actual pass signal — see
+			// `evidencePass` derivation below.
+			evidencePassPerArtifact = anyRequiredHit;
 		}
 
 		// #311 Phase 0d — recall@K computed over the full evidence set
-		// (required ∪ supporting). Same caveat as above on substring vs exact.
+		// (required ∪ supporting). Round-2 gemini peer-review caught that
+		// this was still substring-only, mismatching the canonical gate.
+		// Apply the same documentId-first-then-substring matcher used for
+		// pass/fail so canonical artifacts that hit by exact id but not
+		// path substring count toward recall.
 		if (allArtifacts.length > 0) {
 			const k = TOPK;
-			const topKSources = qResult.results.slice(0, k).map((r) => r.source.toLowerCase());
+			const topK = qResult.results.slice(0, k);
+			const topKDocIds = new Set(
+				topK
+					.map((r) => r.documentId)
+					.filter((d): d is string => typeof d === "string" && d.length > 0),
+			);
+			const topKSources = topK.map((r) => r.source.toLowerCase());
 			let matched = 0;
-			for (const goldSub of allArtifacts) {
-				const subLower = goldSub.toLowerCase();
-				if (topKSources.some((src) => src.includes(subLower))) matched++;
+			for (const aid of allArtifacts) {
+				const isCanonical = catalogDocumentIds?.has(aid) ?? false;
+				if (isCanonical) {
+					if (topKDocIds.has(aid)) matched++;
+				} else {
+					const subLower = aid.toLowerCase();
+					if (topKSources.some((src) => src.includes(subLower))) matched++;
+				}
 			}
 			recallAtK = matched / allArtifacts.length;
 			recallK = k;
@@ -1030,17 +1066,20 @@ async function scoreText(
 	// genuinely-similar false positives, not on K-filling alone.
 	const hardNegativeFewAboveNoise = aboveNoiseCount < HARD_NEGATIVE_RESULT_CEILING;
 
-	// #344 D1 — when ANY required artifact resolves canonically (its value
-	// is a real `documentId` in the corpus catalog), the canonical gate is
-	// the active driver of pass/fail. The per-artifact resolution above
-	// already enforces that EVERY canonical artifact must hit exactly; we
-	// just need to detect "is there a canonical requirement at all?" here.
-	// Pure-legacy queries fall back to the substring signal as before.
+	// #344 D1 — `evidenceGateCanonical` is a TELEMETRY flag indicating that
+	// at least one required artifact has a canonical (documentId-shaped)
+	// resolver. The actual pass driver is `evidencePassPerArtifact`, which
+	// is the OR over all required artifacts of "did this artifact hit by
+	// its own resolver?" (canonical → exact `documentId`; legacy →
+	// substring). Round-2 codex+gemini caught that gating pass/fail on
+	// `documentIdFound` when canonical was active broke mixed queries
+	// where the legacy artifact substring-matched and no canonical artifact
+	// surfaced — those would FAIL despite having required evidence retrieved.
 	const evidenceGateCanonical =
 		requiredArtifacts.length > 0 &&
 		catalogDocumentIds !== undefined &&
 		requiredArtifacts.some((aid) => catalogDocumentIds.has(aid));
-	const evidencePass = evidenceGateCanonical ? documentIdFound : substringFound;
+	const evidencePass = evidencePassPerArtifact;
 
 	const passed = gq.isHardNegative
 		? hardNegativeFewAboveNoise && hardNegativeNoStrongHits
