@@ -54,21 +54,23 @@ Retrieval lift: more candidates per query → more chances rubric thresholds met
 
 `decideMulti` trimmedMeanDelta: 0.0412 (≥0.04). Both corpora directional positive; primary corpus bootstrap clears confidence + lift thresholds; auxiliary corpus underpowered (small applicable subset, +2 query lift can't clear bootstrap 95% threshold but is real signal).
 
-### Bridge gates (relaxed pending Phase B / #364)
+### Hard gates (recalibrated DEFAULT_GATES — #364, 2026-05-04)
+
+`DEFAULT_GATES` were recalibrated against post-hygiene empirical pass rates on the production variant (`noar_div_rrOff`):
 
 ```ts
 {
-  overallMin: 0.40,
-  demoCriticalMin: 0,        // dogfood has no demo-critical queries
-  workLineageMin: 0.30,
-  fileLevelMin: 0.65,
-  applicableRateMin: 0.50,
+  overallMin: 0.40,         // was 0.55 (pre-hygiene)
+  demoCriticalMin: 0,       // was 1.00 (mathematically unreachable; pending per-corpus tier check)
+  workLineageMin: 0.30,     // was 0.60
+  fileLevelMin: 0.65,       // was 0.70
+  applicableRateMin: 0.50,  // was 0.60
   hardNegativeMin: 0,
   paraphraseInvariantMin: 0,
 }
 ```
 
-`DEFAULT_GATES` (`overallMin: 0.55`, `demoCriticalMin: 1.0`, etc.) were calibrated against the pre-hygiene scorer. Post-PRs #376/#377/#379 the scorer is stricter and floors are stale — `demoCriticalMin: 1.0` is mathematically unreachable on current state (3 demo-crit queries, max 1/3 currently passes). Phase B (#364) recalibrates from empirical post-hygiene pass rates and re-runs SP-1 with new defaults.
+Pre-hygiene values were calibrated against the old (lenient) scorer. Post-PRs #376/#377/#379 the scorer requires canonical `documentId` exact-match for evidence; absolute pass rates dropped, and `demoCriticalMin: 1.0` (3 demo-critical queries with 2 currently failing) became unreachable. New floors sit just below current production-variant baseline so an honest lift moves a candidate cleanly above. As retrieval improvements lift the underlying pass rates, Phase B / future cycles will re-tighten.
 
 ### Acceptance criteria (this gate)
 

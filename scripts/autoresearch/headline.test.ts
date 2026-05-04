@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ExtendedDogfoodReport, RunConfig } from "../lib/run-config.js";
+import { DEFAULT_GATES } from "./decision.js";
 import { computeHeadline } from "./headline.js";
 
 const baseConfig: RunConfig = {
@@ -114,8 +115,11 @@ describe("computeHeadline", () => {
 	});
 
 	it("flags failing gates by name", () => {
+		// DEFAULT_GATES.demoCriticalMin is 0 post-recalibration (#364, 2026-05-04);
+		// override to test the gate-flagging path.
 		const headline = computeHeadline({
 			v12: makeReport({ demoCritical: 0.6 }),
+			gates: { ...DEFAULT_GATES, demoCriticalMin: 0.67 },
 		});
 		expect(headline.allGatesPassed).toBe(false);
 		const dc = headline.gates.find((g) => g.name === "demoCritical");

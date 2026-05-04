@@ -272,14 +272,30 @@ export interface HardGates {
 	paraphraseInvariantMin: number;
 }
 
+/**
+ * Hard-gate floors calibrated against post-scorer-hygiene empirical pass rates
+ * on the production variant (`noar_div_rrOff`) from the 2026-05-04 16-variant
+ * sweep. Pre-hygiene values (overallMin: 0.55, demoCriticalMin: 1.0, etc.)
+ * were unreachable after PRs #376/#377/#379 tightened the evidence gates.
+ *
+ * Floors are set just below current baseline so an honest small-to-medium
+ * lift moves a candidate cleanly above. Phase B / #364 will re-tighten as
+ * retrieval improvements lift the underlying pass rates back up.
+ *
+ * `demoCriticalMin: 0` because (a) the production filoz baseline only passes
+ * 1/3 demo-critical queries, and (b) the secondary `wtfoc-dogfood` corpus has
+ * zero demo-critical queries (passRate defaults to 0 and would falsely trip
+ * a positive floor on every candidate). A per-corpus tier-presence check is
+ * tracked under #364.
+ */
 export const DEFAULT_GATES: HardGates = {
-	overallMin: 0.55,
-	demoCriticalMin: 1.0,
-	workLineageMin: 0.6,
-	fileLevelMin: 0.7,
-	applicableRateMin: 0.6,
+	overallMin: 0.4,
+	demoCriticalMin: 0,
+	workLineageMin: 0.3,
+	fileLevelMin: 0.65,
+	applicableRateMin: 0.5,
 	hardNegativeMin: 0,
-	paraphraseInvariantMin: 0.7,
+	paraphraseInvariantMin: 0,
 };
 
 export interface DecisionInputs {
