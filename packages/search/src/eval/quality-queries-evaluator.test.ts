@@ -818,6 +818,54 @@ describe("evaluateQualityQueries", () => {
 			expect(score?.documentIdFound).toBe(true);
 		});
 
+		it("mixed-required: legacy substring hit alone counts as evidence even when canonical missed (round-2)", async () => {
+			// Round-2 codex+gemini caught: an earlier per-artifact draft
+			// FAILED a query when one required artifact was canonical and
+			// retrieval hit only the legacy substring (no canonical
+			// documentId surfaced). Per the OR semantics on `required:true`
+			// artifacts, that scenario should not fail the evidence gate —
+			// any required hit by its own resolver counts. Encode the
+			// invariant directly via the per-artifact substringFound +
+			// documentIdFound diagnostics.
+			if (!candidate || !requiredAid) throw new Error("no canonical candidate query in fixture");
+			mockQuery.mockResolvedValue(
+				makeQueryResult([
+					{
+						sourceType: candidate.requiredSourceTypes[0] ?? "code",
+						source: `wraps-${requiredAid}-substring.ts`,
+						documentId: "unrelated-doc-id",
+						score: 0.9,
+					},
+				]),
+			);
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+			const result = await evaluateQualityQueries(
+				mockEmbedder,
+				mockVectorIndex,
+				mockSegments,
+				undefined,
+				[],
+				undefined,
+				false,
+				{ documentCatalog: makeCatalog([requiredAid]) },
+			);
+			const scores = result.metrics.scores as Array<{
+				id: string;
+				substringFound: boolean;
+				documentIdFound: boolean;
+				evidenceGateCanonical: boolean;
+			}>;
+			const score = scores.find((s) => s.id === candidate.id);
+			// Canonical gate is active (catalog has requiredAid) but the
+			// canonical artifact didn't surface as a documentId. The
+			// substring gate did hit (path contains requiredAid). Pass
+			// driver `evidencePass` is the per-artifact OR — substring hit
+			// is sufficient.
+			expect(score?.evidenceGateCanonical).toBe(true);
+			expect(score?.documentIdFound).toBe(false);
+			expect(score?.substringFound).toBe(true);
+		});
+
 		it("falls back to substring gate when artifactId not in catalog (legacy fixture)", async () => {
 			if (!candidate || !requiredAid) throw new Error("no canonical candidate query in fixture");
 			mockQuery.mockResolvedValue(
