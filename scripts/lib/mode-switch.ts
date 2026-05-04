@@ -200,8 +200,8 @@ export async function ensureMode(
 				// — typically rollback after the target failed (e.g. image
 				// pull error). Surface failureReason so callers don't need to
 				// curl /admin/mode for the actual cause.
-				const reason = env.state.failureReason;
-				const detail = reason ? ` reason=${reason}` : "";
+				const failureReason = env.state.failureReason;
+				const detail = failureReason ? ` reason=${failureReason}` : "";
 				throw new Error(
 					`mode-switch terminal-OK but activeMode=${env.state.activeMode} != target=${target} (phase=${phase})${detail}`,
 				);
