@@ -806,6 +806,59 @@ describe("evaluateQualityQueries", () => {
 		});
 	});
 
+	describe("hard-negative score-aware gate (#343 Phase A)", () => {
+		const hardNeg = GOLD_STANDARD_QUERIES.find((q) => q.isHardNegative === true);
+
+		it("passes when top-K is filled with cosmic-noise scores (all below floor)", async () => {
+			if (!hardNeg) throw new Error("no hard-negative in fixture");
+			// `query()` returns top-K=10 unconditionally; pre-fix this failed
+			// because resultCount=10 >= ceiling=3. Score-aware gate ignores
+			// the noise tail.
+			mockQuery.mockResolvedValue(
+				makeQueryResult(
+					Array.from({ length: 10 }, (_, i) => ({
+						sourceType: "code",
+						source: `noise/${i}.ts`,
+						score: 0.05, // below NOISE_FLOOR=0.1
+					})),
+				),
+			);
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+			const result = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
+			const scores = result.metrics.scores as Array<{ id: string; passed: boolean }>;
+			expect(scores.find((s) => s.id === hardNeg.id)?.passed).toBe(true);
+		});
+
+		it("fails when ≥3 above-noise hits accumulate (genuine pile-on)", async () => {
+			if (!hardNeg) throw new Error("no hard-negative in fixture");
+			mockQuery.mockResolvedValue(
+				makeQueryResult([
+					{ sourceType: "code", source: "a.ts", score: 0.45 },
+					{ sourceType: "code", source: "b.ts", score: 0.4 },
+					{ sourceType: "code", source: "c.ts", score: 0.35 },
+					{ sourceType: "code", source: "d.ts", score: 0.05 },
+				]),
+			);
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+			const result = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
+			const scores = result.metrics.scores as Array<{ id: string; passed: boolean }>;
+			expect(scores.find((s) => s.id === hardNeg.id)?.passed).toBe(false);
+		});
+
+		it("fails when a single high-confidence hit breaches score ceiling", async () => {
+			if (!hardNeg) throw new Error("no hard-negative in fixture");
+			mockQuery.mockResolvedValue(
+				makeQueryResult([
+					{ sourceType: "code", source: "match.ts", score: 0.7 }, // above ceiling 0.6
+				]),
+			);
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+			const result = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
+			const scores = result.metrics.scores as Array<{ id: string; passed: boolean }>;
+			expect(scores.find((s) => s.id === hardNeg.id)?.passed).toBe(false);
+		});
+	});
+
 	describe("preflight-driven skip (#343 P0 forensics finding)", () => {
 		it("skips queries marked invalid by preflight (were counted as failures pre-fix)", async () => {
 			mockQuery.mockResolvedValue(makeQueryResult([]));

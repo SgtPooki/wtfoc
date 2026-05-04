@@ -84,6 +84,25 @@ function isFileLevel(gq: GoldQuery): boolean {
 }
 
 /**
+ * Hard-negative gate thresholds (#343 Phase A). Module-scope so tests + the
+ * autoresearch sweep can read them without re-deriving from comments.
+ *
+ * - `HARD_NEGATIVE_NOISE_FLOOR` — score below this is treated as cosmic
+ *   noise from the unconditional top-K fill. Codex caveat: 0.3 was too
+ *   permissive (let moderately-suspicious through). 0.1 is the tighter
+ *   floor; relax later if data shows positives still suppressed.
+ * - `HARD_NEGATIVE_SCORE_CEILING` — any single result at or above this is
+ *   treated as a genuinely on-topic match; one is enough to fail a hard-
+ *   negative immediately.
+ * - `HARD_NEGATIVE_RESULT_CEILING` — number of above-noise hits at which
+ *   retrieval is judged to have piled on too many plausible false
+ *   positives, even if none individually breached the score ceiling.
+ */
+export const HARD_NEGATIVE_NOISE_FLOOR = 0.1;
+export const HARD_NEGATIVE_SCORE_CEILING = 0.6;
+export const HARD_NEGATIVE_RESULT_CEILING = 3;
+
+/**
  * #320 — fast-iteration smoke support. When `WTFOC_QUERY_FILTER` is set
  * to a comma-separated list of query ids, score only those queries from
  * the gold fixture. Aggregate metrics get noisier (demo-critical
@@ -832,6 +851,7 @@ async function scoreText(
 	let recallAtK: number | null = null;
 	let recallK: number | null = null;
 	let topScore: number | null = null;
+	let aboveNoiseCount = 0;
 
 	const requiredArtifacts = gq.expectedEvidence.filter((e) => e.required).map((e) => e.artifactId);
 	const allArtifacts = gq.expectedEvidence.map((e) => e.artifactId);
@@ -863,6 +883,12 @@ async function scoreText(
 			distinctTypes.add(r.sourceType);
 			if (typeof r.score === "number" && (topScore === null || r.score > topScore)) {
 				topScore = r.score;
+			}
+			// #343 Phase A — count above-noise hits separately so the
+			// hard-negative gate can ignore the cosmic-noise tail that
+			// `query()` always fills top-K with.
+			if (typeof r.score === "number" && r.score >= HARD_NEGATIVE_NOISE_FLOOR) {
+				aboveNoiseCount++;
 			}
 		}
 
@@ -944,22 +970,22 @@ async function scoreText(
 	// Hard-negative scoring is INVERTED. A hard negative passes when
 	// retrieval correctly does NOT pile on strong-looking false positives.
 	// Two checks combined:
-	//   1. resultCount < HARD_NEGATIVE_RESULT_CEILING — fewer false hits
-	//   2. topScore < HARD_NEGATIVE_SCORE_CEILING — even if a couple
-	//      results slip through, none should look high-confidence
+	//   1. count(score >= NOISE_FLOOR) < RESULT_CEILING — fewer real hits,
+	//      ignoring the cosmic-noise tail `query()` always fills K with.
+	//   2. topScore < SCORE_CEILING — no single high-confidence false hit.
 	//
-	// Reviewer (peer-review on Phase 1) flagged that count-only scoring
-	// rewards "fewer but high-confidence false positives" — a strictly
-	// worse failure mode. The score ceiling closes that loophole.
-	//
-	// Score ceiling chosen at 0.6 — empirically the boundary above which
-	// vector cosine similarity on bge-base means the chunk is genuinely
-	// on-topic. Tunable; a future PR can swap to a corpus-relative
-	// percentile threshold if 0.6 turns out to be over- or under-tight.
-	const HARD_NEGATIVE_RESULT_CEILING = 3;
-	const HARD_NEGATIVE_SCORE_CEILING = 0.6;
-
+	// Phase A forensics (#343) showed the prior count-only gate fired on
+	// 100% of "ranking" hard-negative failures because `query()` returns
+	// top-K unconditionally. Floor + ceiling distinguish K-filling from
+	// genuine retrieval pile-on. Codex guidance: "scorer should interpret
+	// scores, not punish retriever for filling K."
 	const hardNegativeNoStrongHits = topScore === null || topScore < HARD_NEGATIVE_SCORE_CEILING;
+	// #343 Phase A — score-aware count gate. `query()` returns top-K
+	// unconditionally; raw `resultCount` always equals the K used. Counting
+	// only results above `HARD_NEGATIVE_NOISE_FLOOR` filters the cosmic-noise
+	// tail so the count gate fires only when retrieval surfaced multiple
+	// genuinely-similar false positives, not on K-filling alone.
+	const hardNegativeFewAboveNoise = aboveNoiseCount < HARD_NEGATIVE_RESULT_CEILING;
 
 	// #344 D1 — pick canonical exact-match identity gate when the catalog
 	// confirms every required artifactId is a real `documentId`. Otherwise
@@ -974,7 +1000,7 @@ async function scoreText(
 	const evidencePass = evidenceGateCanonical ? documentIdFound : substringFound;
 
 	const passed = gq.isHardNegative
-		? resultCount < HARD_NEGATIVE_RESULT_CEILING && hardNegativeNoStrongHits
+		? hardNegativeFewAboveNoise && hardNegativeNoStrongHits
 		: resultCount >= gq.minResults &&
 			requiredTypesFound &&
 			evidencePass &&
@@ -984,7 +1010,7 @@ async function scoreText(
 	// Query-only pass: same criteria EXCEPT use the pre-trace requiredTypes check
 	// and ignore edge-hop/cross-source requirements (those are inherently trace-assisted).
 	const passedQueryOnly = gq.isHardNegative
-		? resultCount < HARD_NEGATIVE_RESULT_CEILING && hardNegativeNoStrongHits
+		? hardNegativeFewAboveNoise && hardNegativeNoStrongHits
 		: resultCount >= gq.minResults && requiredTypesFoundQueryOnly && evidencePass;
 
 	let goldProximity: InnerScore["goldProximity"];
