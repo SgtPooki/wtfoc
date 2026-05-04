@@ -68,7 +68,12 @@ export {
 } from "./eval/gold-standard-queries.js";
 export type { AggregateLineageMetrics, LineageMetrics } from "./eval/lineage-metrics.js";
 export { aggregateLineageMetrics, computeLineageMetrics } from "./eval/lineage-metrics.js";
-export { evaluateQualityQueries } from "./eval/quality-queries-evaluator.js";
+export {
+	evaluateQualityQueries,
+	HARD_NEGATIVE_NOISE_FLOOR,
+	HARD_NEGATIVE_RESULT_CEILING,
+	HARD_NEGATIVE_SCORE_CEILING,
+} from "./eval/quality-queries-evaluator.js";
 export { evaluateSearch } from "./eval/search-evaluator.js";
 export type {
 	AdversarialFilterOptions,
