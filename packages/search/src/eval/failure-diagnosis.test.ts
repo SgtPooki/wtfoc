@@ -75,7 +75,7 @@ describe("diagnoseFailure", () => {
 		expect(result?.layer).toBe("ranking");
 	});
 
-	it("classifies absent-from-widerK as gold-not-indexed + embedding layer", () => {
+	it("classifies absent-from-widerK as retrieval-miss + embedding layer", () => {
 		const result = diagnoseFailure({
 			score: makeScore({
 				id: "q1",
@@ -90,7 +90,7 @@ describe("diagnoseFailure", () => {
 			query: makeQuery({ id: "q1" }),
 			preflightStatus: "applicable",
 		});
-		expect(result?.failureClass).toBe("gold-not-indexed");
+		expect(result?.failureClass).toBe("retrieval-miss");
 		expect(result?.layer).toBe("embedding");
 		expect(result?.evidence.retrievedInWiderK).toBe(false);
 	});

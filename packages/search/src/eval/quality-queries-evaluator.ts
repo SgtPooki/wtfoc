@@ -1064,8 +1064,16 @@ async function scoreText(
 				goldScore,
 				topKLastScore,
 			};
-		} catch {
-			// best-effort diagnostic — never fail the score
+		} catch (err) {
+			// Best-effort diagnostic — never fail the score. Phase A
+			// forensics (#343) noted ~28 filoz queries had `goldProximity`
+			// undefined where it should have been recorded; suspect this
+			// catch was masking the cause. Log to stderr (debug-gated) so
+			// the next sweep surfaces the underlying error class.
+			if (process.env.WTFOC_DEBUG_GOLD_PROXIMITY === "1") {
+				const msg = err instanceof Error ? err.message : String(err);
+				process.stderr.write(`[gold-proximity] ${gq.id}: ${msg}\n`);
+			}
 		}
 	}
 
