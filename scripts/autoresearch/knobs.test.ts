@@ -48,7 +48,7 @@ describe("validateProposal", () => {
 
 	it("rejects integer outside range", () => {
 		expect(validateProposal("topK", 4)).toMatch(/outside/);
-		expect(validateProposal("topK", 26)).toMatch(/outside/);
+		expect(validateProposal("topK", 31)).toMatch(/outside/);
 	});
 
 	it("rejects non-integer for int knob", () => {
@@ -114,7 +114,7 @@ describe("knobsToPromptLines", () => {
 	it("encodes ranges + defaults legibly", () => {
 		const lines = knobsToPromptLines();
 		const topK = lines.find((l) => l.startsWith("- topK"));
-		expect(topK).toContain("[5, 25]");
+		expect(topK).toContain("[5, 30]");
 		expect(topK).toContain("default=10");
 	});
 
