@@ -240,11 +240,16 @@ export async function materializeVariant(
 			continue;
 		}
 		// Build baseline window: latest N nightly-cron rows for the
-		// production variant on this corpus, sharing the SAME
-		// runConfigFingerprint. Comparability rule mirrors detector.
+		// production variant on this corpus. Strict rule: same
+		// runConfigFingerprint (mirrors detect-regression). Relaxed
+		// fallback: when strict matches insufficient, fall back to most-
+		// recent N nightly-cron rows regardless of fingerprint — same
+		// policy as materialize-patch.ts since fingerprints drift across
+		// env/code changes and a too-strict rule makes proposals
+		// uniformly un-acceptable in practice. Surfaced in notes for audit.
 		const candidateFingerprint = candidateReport.runConfigFingerprint;
 		const baselineVariantId = input.targetVariantId ?? productionVariantId;
-		const baselineRows = [...allRows]
+		const strictMatches = [...allRows]
 			.reverse()
 			.filter(
 				(r) =>
@@ -254,12 +259,35 @@ export async function materializeVariant(
 					r.runConfigFingerprint === candidateFingerprint &&
 					r.reportPath,
 			);
+		let baselineRows = strictMatches;
+		let usedRelaxed = false;
+		if (baselineRows.length < minBaseline) {
+			const relaxedMatches = [...allRows]
+				.reverse()
+				.filter(
+					(r) =>
+						r.variantId === baselineVariantId &&
+						r.runConfig.collectionId === corpus &&
+						r.stage === "nightly-cron" &&
+						r.reportPath,
+				);
+			if (relaxedMatches.length >= minBaseline) {
+				baselineRows = relaxedMatches;
+				usedRelaxed = true;
+				notes.push(
+					`corpus=${corpus}: 0 fingerprint-strict baselines — falling back to ` +
+						`${relaxedMatches.length} fingerprint-loose nightly-cron rows ` +
+						`for variant=${baselineVariantId} (caveat: env/code drift may bias decide())`,
+				);
+			}
+		}
 		const window = baselineRows.slice(0, minBaseline);
 		if (window.length < minBaseline) {
 			decisions.push({
 				corpus,
 				verdict: null,
-				reason: `only ${window.length} comparable production baseline(s); need >= ${minBaseline}`,
+				reason: `only ${window.length} comparable production baseline(s); need >= ${minBaseline}` +
+					(usedRelaxed ? " (relaxed fingerprint match also insufficient)" : ""),
 			});
 			notes.push(
 				`corpus=${corpus}: only ${window.length} comparable baseline(s) — accept blocked`,
