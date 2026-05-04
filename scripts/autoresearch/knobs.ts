@@ -118,10 +118,10 @@ export const KNOBS: readonly Knob[] = [
 	{
 		name: "topK",
 		description:
-			"Number of top retrieved candidates returned to the synthesizer. Production default: 10. Wider K may help recall but adds noise.",
+			"Number of top retrieved candidates returned to the synthesizer. Production default: 10. Wider K may help recall but adds noise. Max raised to 30 to include the SP-1 known-good probe value (TOPK=30 → +5.7pp filoz under SP-1).",
 		type: "int",
 		min: 5,
-		max: 25,
+		max: 30,
 		productionDefault: 10,
 		materialized: true,
 		requiresReingest: false,
