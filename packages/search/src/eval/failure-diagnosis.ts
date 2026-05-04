@@ -39,7 +39,16 @@ export type FailureClass =
 	| "retrieved-not-ranked"
 	| "missing-edge"
 	| "answer-synthesis"
-	| "hard-negative-violated";
+	| "hard-negative-violated"
+	/**
+	 * #364 — query passed all rubric criteria but exceeded the slow-query p95
+	 * floor. Treated as a regression because the loop must reject patches that
+	 * raise quality at unacceptable latency cost. Layer pinned to `ranking`
+	 * by default; substage-aware routing (#364 follow-up) will refine to
+	 * `embedding` / `chunking` / `trace` when per-substage per-query data is
+	 * captured.
+	 */
+	| "slow-but-passing";
 
 export interface DiagnosisEvidence {
 	/**
@@ -107,6 +116,8 @@ export interface DiagnosisScoreInput {
 	evidenceGateCanonical?: boolean;
 	edgeHopFound: boolean;
 	crossSourceFound: boolean;
+	/** #364 — wall-clock per-query duration (ms). Used for `slow-but-passing`. */
+	durationMs?: number;
 	goldProximity?: {
 		widerK: number;
 		topKCutoff: number;
@@ -126,16 +137,67 @@ export interface DiagnoseFailureInput {
 	 * — no retrieval change can pass this query.
 	 */
 	preflightStatus?: PreflightStatus;
+	/**
+	 * #364 — wall-clock duration (ms) above which a passing query gets the
+	 * `slow-but-passing` failure class. `undefined` disables the check
+	 * (legacy behavior; passing queries return `null`).
+	 */
+	slowQueryFloorMs?: number;
 }
 
 /**
- * Diagnose a single failed query. Returns `null` when the query passed or was
- * skipped (skipped queries are not failures and don't need a diagnosis).
+ * #364 — default p95 floor for the `slow-but-passing` class. Calibrated
+ * against the production `noar_div_rrOff` baseline (per-query-total p95
+ * ~4250ms): 8000ms catches reranker variants (~14000ms) and the
+ * borderline `noar_nodiv_rrBge` (~7000ms) without firing on the noise
+ * band of non-rerank variants.
+ */
+export const DEFAULT_SLOW_QUERY_FLOOR_MS = 8000;
+
+/**
+ * Diagnose a single query. Returns `null` for skipped queries and for
+ * passing queries whose duration is within `slowQueryFloorMs`. A passing
+ * query whose `durationMs` exceeds the floor is diagnosed as
+ * `slow-but-passing` (#364) so the autoresearch loop can reject patches
+ * that improve quality at unacceptable latency cost.
  */
 export function diagnoseFailure(input: DiagnoseFailureInput): FailureDiagnosis | null {
-	const { score, query, corpusId, preflightStatus } = input;
+	const { score, query, corpusId, preflightStatus, slowQueryFloorMs } = input;
 	if (score.skipped) return null;
-	if (score.passed) return null;
+
+	// #364 — slow-but-passing: a query that satisfies all rubric criteria
+	// but exceeded the per-query latency floor. Pinned to `ranking` layer
+	// for now; substage-aware routing follows when per-query substage data
+	// is captured.
+	if (score.passed) {
+		if (
+			slowQueryFloorMs !== undefined &&
+			typeof score.durationMs === "number" &&
+			score.durationMs > slowQueryFloorMs
+		) {
+			return {
+				queryId: query.id,
+				corpusId: corpusId ?? null,
+				failureClass: "slow-but-passing",
+				layer: "ranking",
+				evidence: {
+					goldInCatalog: preflightStatus !== "invalid",
+					retrievedInWiderK: null,
+					finalRank: null,
+					requiredTypesMet: score.requiredTypesFound,
+					edgeHopsMet: score.edgeHopFound,
+					crossSourceMet: score.crossSourceFound,
+					substringFound: score.substringFound,
+					documentIdFound: score.documentIdFound,
+					evidenceGateCanonical: score.evidenceGateCanonical,
+					goldRank: null,
+					topKCutoff: null,
+					widerK: null,
+				},
+			};
+		}
+		return null;
+	}
 
 	const goldRank = score.goldProximity?.goldRank ?? null;
 	const widerK = score.goldProximity?.widerK ?? null;
@@ -295,6 +357,7 @@ const ALL_FAILURE_CLASSES: FailureClass[] = [
 	"missing-edge",
 	"answer-synthesis",
 	"hard-negative-violated",
+	"slow-but-passing",
 ];
 const ALL_LAYERS: FailureLayer[] = [
 	"fixture",
