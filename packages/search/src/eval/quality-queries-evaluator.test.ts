@@ -519,7 +519,9 @@ describe("evaluateQualityQueries", () => {
 					queryOnlyPassCount: r.metrics.queryOnlyPassCount,
 					totalQueries: r.metrics.totalQueries,
 					categoryBreakdown: r.metrics.categoryBreakdown,
-					scores: r.metrics.scores.map(({ durationMs: _omit, ...rest }) => rest),
+					scores: (r.metrics.scores as Array<Record<string, unknown>>).map(
+						({ durationMs: _omit, ...rest }: Record<string, unknown>) => rest,
+					),
 					lineage: r.metrics.lineage,
 				},
 			});
