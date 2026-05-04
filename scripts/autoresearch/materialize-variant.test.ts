@@ -114,6 +114,44 @@ describe("materializeVariant — matrix synthesis", () => {
 		expect(parsed.axes.traceMinScore).toEqual([0.4]);
 	});
 
+	it("derives base axes from targetVariantId when provided (#394)", async () => {
+		// productionVariantId is noar_div_rrOff but the finding implicates
+		// noar_div_rrBge. Materializer must derive base axes from the
+		// target (BGE reranker), not from production (rerank off).
+		const stateDir = mkdtempSync(join(tmpdir(), "wtfoc-materialize-"));
+		const result = await materializeVariant({
+			productionMatrix: baseMatrix(),
+			productionMatrixName: "retrieval-baseline",
+			proposal: { axis: "topK", value: 30, rationale: "wider K" },
+			targetVariantId: "noar_div_rrBge",
+			spawnFn: () => Buffer.from(""),
+			stateDir,
+		});
+		const body = readFileSync(result.matrixPath, "utf-8");
+		const parsed = JSON.parse(body.split("export default ")[1]?.replace(/;\s*$/, "").trim() ?? "{}");
+		expect(parsed.axes.topK).toEqual([30]);
+		expect(parsed.axes.reranker).toEqual([{ type: "bge", url: "http://127.0.0.1:8386" }]);
+		expect(parsed.axes.diversityEnforce).toEqual([true]);
+		expect(parsed.axes.autoRoute).toEqual([false]);
+		// Audit note surfaced when target diverges from production.
+		expect(result.notes.some((n) => n.includes("noar_div_rrBge") && n.includes("#394"))).toBe(true);
+	});
+
+	it("falls back to productionVariantId when targetVariantId omitted (legacy)", async () => {
+		const stateDir = mkdtempSync(join(tmpdir(), "wtfoc-materialize-"));
+		const result = await materializeVariant({
+			productionMatrix: baseMatrix(),
+			productionMatrixName: "retrieval-baseline",
+			proposal: { axis: "topK", value: 30, rationale: "wider K" },
+			spawnFn: () => Buffer.from(""),
+			stateDir,
+		});
+		const body = readFileSync(result.matrixPath, "utf-8");
+		const parsed = JSON.parse(body.split("export default ")[1]?.replace(/;\s*$/, "").trim() ?? "{}");
+		expect(parsed.axes.reranker).toEqual(["off"]);
+		expect(result.notes.some((n) => n.includes("#394"))).toBe(false);
+	});
+
 	it("encodes reranker enum values into the derived matrix", async () => {
 		const stateDir = mkdtempSync(join(tmpdir(), "wtfoc-materialize-"));
 		const result = await materializeVariant({

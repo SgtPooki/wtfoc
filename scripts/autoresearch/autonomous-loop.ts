@@ -812,6 +812,15 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 	}
 
 	if (cli.dryRun) {
+		const productionVariantId = matrix.productionVariantId ?? "(unset)";
+		if (finding.variantId && finding.variantId !== productionVariantId) {
+			notes.push(
+				`DRY-RUN materialize-target: ${finding.variantId} (from finding) — ` +
+					`production=${productionVariantId}; base axes would be derived from target (#394)`,
+			);
+		} else {
+			notes.push(`DRY-RUN materialize-target: ${finding.variantId ?? productionVariantId}`);
+		}
 		notes.push(
 			`DRY-RUN proposal: ${proposal.axis}=${JSON.stringify(proposal.value)} — ${proposal.rationale}`,
 		);
@@ -828,6 +837,7 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 			productionMatrix: matrix,
 			productionMatrixName: cli.matrixName,
 			proposal: proposal,
+			targetVariantId: finding.variantId,
 		});
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
