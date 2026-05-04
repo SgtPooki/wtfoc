@@ -37,6 +37,7 @@ import type { ExtendedDogfoodReport } from "../lib/run-config.js";
 import {
 	decide,
 	decideMulti,
+	DEFAULT_GATES,
 	type DecideMultiVerdict,
 	type DecisionVerdict,
 	type HardGates,
@@ -54,24 +55,12 @@ export const SP1_CANDIDATE_PATHS: Record<string, string> = {
 
 const BASELINE_VARIANT = "noar_div_rrOff";
 
-// Bridge gates — calibrated against post-scorer-hygiene empirical pass
-// rates from the 2026-05-04 sweep. Floors set just below current
-// noar_div_rrOff baseline so a real lift moves candidate cleanly above.
-// DEFAULT_GATES (pre-hygiene calibration) are stale; demoCriticalMin=1.0
-// is mathematically unreachable on current scorer state. Phase B (#364)
-// recalibrates DEFAULT_GATES from empirical reality.
-export const BRIDGE_GATES: HardGates = {
-	overallMin: 0.4,
-	// dogfood corpus has no demo-critical queries; evaluateGates emits
-	// passRate=0 in that case which would falsely trip a positive floor.
-	// Phase B will replace this with a per-corpus tier presence check.
-	demoCriticalMin: 0,
-	workLineageMin: 0.3,
-	fileLevelMin: 0.65,
-	applicableRateMin: 0.5,
-	hardNegativeMin: 0,
-	paraphraseInvariantMin: 0,
-};
+// SP-1 runs against `DEFAULT_GATES` directly. The recalibrated DEFAULT_GATES
+// (#364, 2026-05-04) are now equivalent to what SP-1's original bridge gates
+// were — peer-review consensus that floors should match post-hygiene
+// empirical rates. Re-exported as `BRIDGE_GATES` for the test suite's
+// regression name; alias only, no semantic difference from `DEFAULT_GATES`.
+export const BRIDGE_GATES: HardGates = DEFAULT_GATES;
 
 // Primary corpus — bootstrap probBgreaterA must clear MIN_PROBABILITY (0.95).
 // Auxiliary corpora may show directional lift only (small samples produce

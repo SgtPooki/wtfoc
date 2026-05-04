@@ -197,13 +197,17 @@ describe("decide", () => {
 		const candScores = Array.from({ length: 30 }, (_, i) =>
 			score({ id: `q${i}`, passed: i < 27 }),
 		);
+		// DEFAULT_GATES.demoCriticalMin is 0 post-recalibration (2026-05-04);
+		// override explicitly to test the gate-breaking path.
+		const gates = { ...DEFAULT_GATES, demoCriticalMin: 0.67 };
 		const verdict = decide({
 			baseline: makeReport({ scores: baseScores }),
 			candidate: makeReport({
 				scores: candScores,
-				demoCritical: 0.6, // <100% — hard gate fail
+				demoCritical: 0.6, // < gate floor 0.67 — fail
 				costComparable: { value: true, reasons: [] },
 			}),
+			gates,
 			bootstrapIterations: 2000,
 			rng: seededRng(7),
 		});
@@ -251,7 +255,10 @@ describe("decide", () => {
 		});
 		// With identical baseline+candidate, no lift → reject.
 		expect(verdict.accept).toBe(false);
-		expect(DEFAULT_GATES.demoCriticalMin).toBe(1);
+		// Recalibrated 2026-05-04 against post-hygiene empirical rates.
+		// Pre-hygiene was 1.0 (mathematically unreachable); now 0 pending
+		// per-corpus tier-presence check (#364).
+		expect(DEFAULT_GATES.demoCriticalMin).toBe(0);
 	});
 });
 
