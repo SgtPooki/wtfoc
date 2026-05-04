@@ -504,6 +504,8 @@ describe("evaluateQualityQueries", () => {
 			const run2 = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
 
 			// Deterministic slice: everything except wall-clock and duration.
+			// Per-query `durationMs` is wall-clock (#364) and varies run-to-run;
+			// strip it from the comparison.
 			const deterministic = (r: typeof run1) => ({
 				stage: r.stage,
 				verdict: r.verdict,
@@ -517,7 +519,7 @@ describe("evaluateQualityQueries", () => {
 					queryOnlyPassCount: r.metrics.queryOnlyPassCount,
 					totalQueries: r.metrics.totalQueries,
 					categoryBreakdown: r.metrics.categoryBreakdown,
-					scores: r.metrics.scores,
+					scores: r.metrics.scores.map(({ durationMs: _omit, ...rest }) => rest),
 					lineage: r.metrics.lineage,
 				},
 			});
