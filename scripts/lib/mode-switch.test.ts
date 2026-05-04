@@ -8,9 +8,18 @@ function jsonResponse(body: unknown, status = 200): Response {
 	});
 }
 
-function buildState(activeMode: string, modePhase: string): unknown {
+function buildState(
+	activeMode: string,
+	modePhase: string,
+	extra?: { failureReason?: string; targetMode?: string | null },
+): unknown {
 	return {
-		state: { activeMode, modePhase, targetMode: null },
+		state: {
+			activeMode,
+			modePhase,
+			targetMode: extra?.targetMode ?? null,
+			failureReason: extra?.failureReason ?? null,
+		},
 		observedSteadyMode: activeMode,
 	};
 }
@@ -91,6 +100,54 @@ describe("ensureMode", () => {
 				timeoutMs: 5000,
 			}),
 		).rejects.toThrow(/terminal failure/);
+	});
+
+	it("surfaces failureReason when terminal-OK lands on wrong mode (rollback)", async () => {
+		// Real-world case: target=rerank-gpu, image-pull fails, vllm-admin
+		// rolls back to chat, terminal phase becomes ChatActive. Caller
+		// needs the underlying reason without curling /admin/mode.
+		const seq: Response[] = [
+			jsonResponse(buildState("chat", "ChatActive")), // initial
+			jsonResponse({ operationId: "x" }), // POST
+			jsonResponse(
+				buildState("chat", "ChatActive", {
+					failureReason: "image_pull_back_off: target reranker-gpu ImagePullBackOff for >30s",
+					targetMode: "rerank-gpu",
+				}),
+			), // poll: rolled back
+		];
+		const fetchFn = vi.fn(async () => seq.shift() ?? jsonResponse({}));
+		await expect(
+			ensureMode("rerank-gpu", {
+				adminUrl: "http://admin",
+				fetchFn: fetchFn as unknown as typeof fetch,
+				enabled: true,
+				pollIntervalMs: 1,
+				timeoutMs: 5000,
+			}),
+		).rejects.toThrow(/image_pull_back_off/);
+	});
+
+	it("surfaces failureReason on terminal-failure phase", async () => {
+		const seq: Response[] = [
+			jsonResponse(buildState("chat", "ChatActive")),
+			jsonResponse({ operationId: "x" }),
+			jsonResponse(
+				buildState("chat", "RollbackFailed", {
+					failureReason: "kubelet_unreachable: node bt-gpu-1 NotReady",
+				}),
+			),
+		];
+		const fetchFn = vi.fn(async () => seq.shift() ?? jsonResponse({}));
+		await expect(
+			ensureMode("rerank-gpu", {
+				adminUrl: "http://admin",
+				fetchFn: fetchFn as unknown as typeof fetch,
+				enabled: true,
+				pollIntervalMs: 1,
+				timeoutMs: 5000,
+			}),
+		).rejects.toThrow(/kubelet_unreachable/);
 	});
 
 	it("throws on manual-recovery 409", async () => {

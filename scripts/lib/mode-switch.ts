@@ -37,6 +37,8 @@ interface ModeStateEnvelope {
 		activeMode: GpuMode;
 		modePhase: string;
 		targetMode: GpuMode | null;
+		failureReason?: string | null;
+		lastKnownGoodMode?: GpuMode | null;
 	};
 	observedSteadyMode: GpuMode | null;
 }
@@ -194,14 +196,22 @@ export async function ensureMode(
 		const phase = env.state.modePhase;
 		if (TERMINAL_OK.has(phase)) {
 			if (env.state.activeMode !== target) {
+				// vllm-admin reached a terminal-OK phase but on the wrong mode
+				// — typically rollback after the target failed (e.g. image
+				// pull error). Surface failureReason so callers don't need to
+				// curl /admin/mode for the actual cause.
+				const reason = env.state.failureReason;
+				const detail = reason ? ` reason=${reason}` : "";
 				throw new Error(
-					`mode-switch terminal-OK but activeMode=${env.state.activeMode} != target=${target}`,
+					`mode-switch terminal-OK but activeMode=${env.state.activeMode} != target=${target} (phase=${phase})${detail}`,
 				);
 			}
 			return { skipped: false, from, to: target, finalPhase: phase };
 		}
 		if (TERMINAL_FAIL.has(phase)) {
-			throw new Error(`mode-switch terminal failure: ${phase} (target=${target})`);
+			const reason = env.state.failureReason;
+			const detail = reason ? ` reason=${reason}` : "";
+			throw new Error(`mode-switch terminal failure: ${phase} (target=${target})${detail}`);
 		}
 		await sleep(pollMs);
 	}
