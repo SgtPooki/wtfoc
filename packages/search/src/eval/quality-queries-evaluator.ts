@@ -851,6 +851,12 @@ async function scoreText(
 	let recallAtK: number | null = null;
 	let recallK: number | null = null;
 	let topScore: number | null = null;
+	// #343 Phase A — calibration-stable score for the hard-negative gate.
+	// Composite `score` includes reranker output + boosts which compress
+	// or stretch the dynamic range per scorer variant. `retrievalScore` is
+	// always the raw embedder cosine, so the gate's thresholds (derived
+	// from bge-base empirics) stay portable across rerankers.
+	let topRetrievalScore: number | null = null;
 	let aboveNoiseCount = 0;
 
 	const requiredArtifacts = gq.expectedEvidence.filter((e) => e.required).map((e) => e.artifactId);
@@ -884,10 +890,19 @@ async function scoreText(
 			if (typeof r.score === "number" && (topScore === null || r.score > topScore)) {
 				topScore = r.score;
 			}
-			// #343 Phase A — count above-noise hits separately so the
-			// hard-negative gate can ignore the cosmic-noise tail that
-			// `query()` always fills top-K with.
-			if (typeof r.score === "number" && r.score >= HARD_NEGATIVE_NOISE_FLOOR) {
+			// Hard-negative gate inputs use `retrievalScore` (raw embedder
+			// cosine) so the floor + ceiling thresholds stay calibrated to
+			// bge-base empirics regardless of whether a reranker ran. See
+			// the constant comments above for the codex review chain.
+			const calibScore =
+				typeof r.retrievalScore === "number" ? r.retrievalScore : (r.score ?? null);
+			if (
+				typeof calibScore === "number" &&
+				(topRetrievalScore === null || calibScore > topRetrievalScore)
+			) {
+				topRetrievalScore = calibScore;
+			}
+			if (typeof calibScore === "number" && calibScore >= HARD_NEGATIVE_NOISE_FLOOR) {
 				aboveNoiseCount++;
 			}
 		}
@@ -979,7 +994,8 @@ async function scoreText(
 	// top-K unconditionally. Floor + ceiling distinguish K-filling from
 	// genuine retrieval pile-on. Codex guidance: "scorer should interpret
 	// scores, not punish retriever for filling K."
-	const hardNegativeNoStrongHits = topScore === null || topScore < HARD_NEGATIVE_SCORE_CEILING;
+	const hardNegativeNoStrongHits =
+		topRetrievalScore === null || topRetrievalScore < HARD_NEGATIVE_SCORE_CEILING;
 	// #343 Phase A — score-aware count gate. `query()` returns top-K
 	// unconditionally; raw `resultCount` always equals the K used. Counting
 	// only results above `HARD_NEGATIVE_NOISE_FLOOR` filters the cosmic-noise
