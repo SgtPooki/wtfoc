@@ -58,12 +58,16 @@ export const DEFAULT_CATASTROPHIC_LATENCY_FACTOR = 2.0; // candidate.p95 > 2× b
 /**
  * Phase-B activation flag (#364). When `true`, latency floor breaches add
  * to `reasons` and reject the candidate. When `false`, breaches surface in
- * the warn-only `latencyWarnings` field on the verdict so a calibration
- * cycle can observe behavior without rejecting candidates. Per peer-review
- * consensus (codex+cursor+gemini, 2026-05-04): flip after one calibration
- * cycle to avoid sliding into permanent observe-only mode.
+ * the warn-only `latencyWarnings` field on the verdict.
+ *
+ * Calibrated 2026-05-04 via `scripts/autoresearch/calibrate-latency-floors.ts`
+ * against the cached 16-variant sweep. Reranker-on variants (`_rrBge`)
+ * trigger catastrophic-latency veto (p95 ~14000ms vs baseline ~4250ms);
+ * non-rerank variants stay within tolerance (deltas <300ms). Floors
+ * empirically catch real regressions without false alarms — flipped to
+ * hard-fail per peer-review pre-commit (codex+cursor+gemini, 2026-05-04).
  */
-export const DEFAULT_LATENCY_GATE_HARD = false;
+export const DEFAULT_LATENCY_GATE_HARD = true;
 
 export interface PerCorpusFloors {
 	/** Maximum tolerated delta drop on a must-pass corpus (default 3pp). */

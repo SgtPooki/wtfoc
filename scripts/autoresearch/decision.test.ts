@@ -482,16 +482,31 @@ describe("decideMulti — latency floors (#364)", () => {
 		expect(v.reasons.some((r) => r.includes("p95"))).toBe(false);
 	});
 
-	it("warns (warn-only default) on p95 floor breach without rejecting", () => {
+	it("warns instead of rejecting when latencyGateHard=false", () => {
 		const baseline = new Map([["alpha", makeMultiReport(0.5, 30, 3000)]]);
 		// candidate +2000ms exceeds DEFAULT_P95_FLOOR_MS=1500
 		const candidate = new Map([["alpha", makeMultiReport(0.6, 30, 5000)]]);
-		const v = decideMulti({ baseline, candidate, cumulativeLocChange: 5 });
+		const v = decideMulti({
+			baseline,
+			candidate,
+			cumulativeLocChange: 5,
+			floors: { latencyGateHard: false },
+		});
 		expect(v.accept).toBe(true);
 		expect(
 			v.latencyWarnings.some((w) => w.includes("p95 regression") && w.includes("alpha")),
 		).toBe(true);
 		expect(v.reasons.some((r) => r.includes("p95 regression"))).toBe(false);
+	});
+
+	it("REJECTS p95 floor breach under DEFAULT_LATENCY_GATE_HARD=true (post-2026-05-04 calibration)", () => {
+		const baseline = new Map([["alpha", makeMultiReport(0.5, 30, 3000)]]);
+		const candidate = new Map([["alpha", makeMultiReport(0.6, 30, 5000)]]);
+		const v = decideMulti({ baseline, candidate, cumulativeLocChange: 5 });
+		expect(v.accept).toBe(false);
+		expect(v.reasons.some((r) => r.includes("p95 regression") && r.includes("alpha"))).toBe(
+			true,
+		);
 	});
 
 	it("REJECTS p95 floor breach when latencyGateHard=true", () => {
