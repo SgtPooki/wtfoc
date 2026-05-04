@@ -35,7 +35,7 @@ export type FailureLayer =
 
 export type FailureClass =
 	| "fixture-invalid"
-	| "gold-not-indexed"
+	| "retrieval-miss"
 	| "retrieved-not-ranked"
 	| "missing-edge"
 	| "answer-synthesis"
@@ -195,18 +195,21 @@ export function diagnoseFailure(input: DiagnoseFailureInput): FailureDiagnosis |
 		};
 	}
 
-	// Rule 3 — gold was not in the wider top-K. Either the chunk is not
-	// indexed at all (chunking/ingest), or the embedder doesn't cluster it
-	// near the query (embedding). Without a separate lexical-rank signal
-	// we cannot distinguish chunking vs embedding deterministically — we
-	// pin to `embedding` because it is the more common cause when gold is
-	// in catalog but absent from wider retrieval; chunking-layer triage
-	// can override this in step-5 patch-capsule selection.
+	// Rule 3 — gold artifact was recorded as absent from wider top-K
+	// (retrievedInWiderK === false). Honest label is "retrieval-miss":
+	// the artifact is in catalog but did NOT surface in widerK retrieval.
+	// Could be chunking (not indexed), ingest (lifecycle dropped it), or
+	// embedding (vectors don't cluster). Without a lexical-rank
+	// disambiguation signal we cannot tell deterministically — pin to
+	// `embedding` because empirically it is the dominant cause; the
+	// step-5 patch-capsule can re-route to chunking when triage finds
+	// missing chunks. Renamed from `gold-not-indexed` (#343 Phase A) so
+	// the class label no longer overclaims certainty about the cause.
 	if (retrievedInWiderK === false) {
 		return {
 			queryId: query.id,
 			corpusId: corpusId ?? null,
-			failureClass: "gold-not-indexed",
+			failureClass: "retrieval-miss",
 			layer: "embedding",
 			evidence,
 		};
@@ -287,7 +290,7 @@ export interface DiagnosisAggregate {
 
 const ALL_FAILURE_CLASSES: FailureClass[] = [
 	"fixture-invalid",
-	"gold-not-indexed",
+	"retrieval-miss",
 	"retrieved-not-ranked",
 	"missing-edge",
 	"answer-synthesis",

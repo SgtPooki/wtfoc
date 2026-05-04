@@ -33,7 +33,7 @@ function makeReport(
 		totalFailures: dominantLayer === null ? 0 : 5,
 		byFailureClass: {
 			"fixture-invalid": 0,
-			"gold-not-indexed": 0,
+			"retrieval-miss": 0,
 			"retrieved-not-ranked": 0,
 			"missing-edge": 0,
 			"answer-synthesis": 0,
