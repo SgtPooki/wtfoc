@@ -812,6 +812,15 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 	}
 
 	if (cli.dryRun) {
+		const productionVariantId = matrix.productionVariantId ?? "(unset)";
+		if (finding.variantId && finding.variantId !== productionVariantId) {
+			notes.push(
+				`DRY-RUN materialize-target: ${finding.variantId} (from finding) — ` +
+					`production=${productionVariantId}; base axes would be derived from target (#394)`,
+			);
+		} else {
+			notes.push(`DRY-RUN materialize-target: ${finding.variantId ?? productionVariantId}`);
+		}
 		notes.push(
 			`DRY-RUN proposal: ${proposal.axis}=${JSON.stringify(proposal.value)} — ${proposal.rationale}`,
 		);
@@ -828,6 +837,7 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 			productionMatrix: matrix,
 			productionMatrixName: cli.matrixName,
 			proposal: proposal,
+			targetVariantId: finding.variantId,
 		});
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
@@ -844,6 +854,12 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 		return { status: "materialize-failed", notes };
 	}
 
+	// Surface materialize audit notes (target-variant mapping, baseline
+	// window scoping) so the evidence chain is visible outside --dry-run.
+	for (const note of materialize.notes) {
+		notes.push(`materialize: ${note}`);
+	}
+
 	// Always log the attempt (accept or reject) so memory persists.
 	const candidateRow = materialize.candidateRows[0];
 	appendTriedRow({
@@ -855,7 +871,10 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 		sweepId: candidateRow?.sweepId,
 		runConfigFingerprint: candidateRow?.runConfigFingerprint,
 		verdict: materialize.aggregateAccept ? "accepted" : "rejected",
-		reasons: materialize.decisions.flatMap((d) => d.verdict?.reasons ?? [d.reason ?? ""]),
+		reasons: [
+			...materialize.notes,
+			...materialize.decisions.flatMap((d) => d.verdict?.reasons ?? [d.reason ?? ""]),
+		],
 		metrics: candidateRow?.summary
 			? {
 					passRate: candidateRow.summary.passRate,

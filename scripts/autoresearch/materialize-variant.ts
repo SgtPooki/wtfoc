@@ -37,6 +37,16 @@ export interface MaterializeInputs {
 	productionMatrix: Matrix;
 	productionMatrixName: string;
 	proposal: Proposal;
+	/**
+	 * Variant the patch should target (typically `finding.variantId` from
+	 * the regression detector). When set and different from
+	 * `productionMatrix.productionVariantId`, base axes are derived from
+	 * this variant id and the baseline window for decide() runs against
+	 * the same variant. Mapping is surfaced in `notes` for audit (#394).
+	 *
+	 * When unset, falls back to `productionVariantId` (legacy behavior).
+	 */
+	targetVariantId?: string;
 	/** Stage tag for the run. Default "autoresearch-proposal". */
 	stage?: string;
 	/**
@@ -66,19 +76,24 @@ export interface MaterializeResult {
 	notes: string[];
 }
 
-function applyAxisToMatrix(matrix: Matrix, knob: Knob, value: boolean | number | string): Matrix {
-	// Build single-value axes. For axes that are NOT the proposed one,
-	// pick the production-default so the derived matrix has exactly one
-	// variant.
+function applyAxisToMatrix(
+	matrix: Matrix,
+	knob: Knob,
+	value: boolean | number | string,
+	baseVariantId?: string,
+): Matrix {
+	// Build single-value axes from the base variant id (defaults to the
+	// matrix's productionVariantId; #394 lets callers override with a
+	// finding's targetVariantId so the derived matrix mutates against the
+	// regressed variant rather than unconditionally against production).
+	const baseId = baseVariantId ?? matrix.productionVariantId;
 	const axes: VariantAxes = {
-		autoRoute: [matrix.productionVariantId?.includes("ar_") && !matrix.productionVariantId.startsWith("noar")
-			? true
-			: false],
-		diversityEnforce: [matrix.productionVariantId?.includes("_div_") ?? true],
+		autoRoute: [baseId?.includes("ar_") && !baseId.startsWith("noar") ? true : false],
+		diversityEnforce: [baseId?.includes("_div_") ?? true],
 		reranker: [
-			matrix.productionVariantId?.includes("rrLlm")
+			baseId?.includes("rrLlm")
 				? ({ type: "llm", url: "http://127.0.0.1:4523/v1", model: "haiku" } as RerankerSpec)
-				: matrix.productionVariantId?.includes("rrBge")
+				: baseId?.includes("rrBge")
 					? ({ type: "bge", url: "http://127.0.0.1:8386" } as RerankerSpec)
 					: ("off" as const),
 		],
@@ -161,7 +176,8 @@ export async function materializeVariant(
 	mkdirSync(proposalDir, { recursive: true });
 	const matrixPath = join(proposalDir, "matrix.ts");
 
-	const derived = applyAxisToMatrix(input.productionMatrix, knob, input.proposal.value);
+	const baseVariantId = input.targetVariantId ?? input.productionMatrix.productionVariantId;
+	const derived = applyAxisToMatrix(input.productionMatrix, knob, input.proposal.value, baseVariantId);
 	writeFileSync(matrixPath, renderMatrixFile(derived, proposalId));
 
 	// Run the sweep.
@@ -208,6 +224,13 @@ export async function materializeVariant(
 	const decisions: MaterializeResult["decisions"] = [];
 	const corpora = Array.from(new Set(reports.map((r) => r.runConfig.collectionId)));
 	const notes: string[] = [];
+	if (input.targetVariantId && input.targetVariantId !== productionVariantId) {
+		notes.push(
+			`materialize: target=${input.targetVariantId} (from finding) ` +
+				`differs from productionVariantId=${productionVariantId || "(unset)"} — ` +
+				`base axes derived from target; baseline window scoped to target variant (#394)`,
+		);
+	}
 	let allAccept = corpora.length > 0;
 	for (const corpus of corpora) {
 		const candidateReport = reports.find((r) => r.runConfig.collectionId === corpus);
@@ -220,11 +243,12 @@ export async function materializeVariant(
 		// production variant on this corpus, sharing the SAME
 		// runConfigFingerprint. Comparability rule mirrors detector.
 		const candidateFingerprint = candidateReport.runConfigFingerprint;
+		const baselineVariantId = input.targetVariantId ?? productionVariantId;
 		const baselineRows = [...allRows]
 			.reverse()
 			.filter(
 				(r) =>
-					r.variantId === productionVariantId &&
+					r.variantId === baselineVariantId &&
 					r.runConfig.collectionId === corpus &&
 					r.stage === "nightly-cron" &&
 					r.runConfigFingerprint === candidateFingerprint &&
