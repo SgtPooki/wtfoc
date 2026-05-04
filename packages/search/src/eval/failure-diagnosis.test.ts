@@ -181,6 +181,36 @@ describe("diagnoseFailure", () => {
 		expect(result?.layer).toBe("trace");
 	});
 
+	it("canonical gate active: substringFound=true but documentIdFound=false → ranking failure (#344 D1)", () => {
+		// Query in widerK, required types met, substring superficially hit BUT
+		// the canonical exact-id gate failed. Rule 6 must consult `evidencePass`
+		// (= documentIdFound when canonical) and route to ranking, not let the
+		// stale substring=true mask the failure into answer-synthesis.
+		const result = diagnoseFailure({
+			score: makeScore({
+				id: "q1",
+				resultCount: 5,
+				requiredTypesFound: true,
+				substringFound: true,
+				documentIdFound: false,
+				evidenceGateCanonical: true,
+				goldProximity: {
+					widerK: 50,
+					topKCutoff: 10,
+					goldRank: 8,
+					goldScore: 0.5,
+					topKLastScore: 0.4,
+				},
+			}),
+			query: makeQuery({ id: "q1" }),
+			preflightStatus: "applicable",
+		});
+		expect(result?.failureClass).toBe("retrieved-not-ranked");
+		expect(result?.layer).toBe("ranking");
+		expect(result?.evidence.documentIdFound).toBe(false);
+		expect(result?.evidence.evidenceGateCanonical).toBe(true);
+	});
+
 	it("populates evidence.retrievedInWiderK as null when goldProximity is unrecorded", () => {
 		const result = diagnoseFailure({
 			score: makeScore({

@@ -127,6 +127,9 @@ export async function mountCollection(
 				content: chunk.content,
 				...chunk.metadata,
 			};
+			if (chunk.documentId) {
+				metadata.documentId = chunk.documentId;
+			}
 			if (chunk.signalScores && Object.keys(chunk.signalScores).length > 0) {
 				metadata.signalScores = JSON.stringify(chunk.signalScores);
 			}

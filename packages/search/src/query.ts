@@ -69,6 +69,7 @@ export interface QueryResult {
 		sourceType: string;
 		source: string;
 		sourceUrl?: string;
+		documentId?: string;
 		storageId: string;
 		/**
 		 * Composite ranking score. Composed of `retrievalScore` plus any
@@ -259,6 +260,7 @@ export async function query(
 				sourceType: m.entry.metadata.sourceType ?? "unknown",
 				source: m.entry.metadata.source ?? "unknown",
 				sourceUrl: m.entry.metadata.sourceUrl,
+				documentId: m.entry.metadata.documentId || undefined,
 				storageId: m.entry.storageId,
 				score: boostedScore,
 				retrievalScore,

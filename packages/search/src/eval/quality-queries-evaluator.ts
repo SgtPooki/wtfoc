@@ -155,6 +155,20 @@ interface QueryScore {
 	/** #261 — requiredTypesFound computed against query results only (no trace). */
 	requiredTypesFoundQueryOnly: boolean;
 	substringFound: boolean;
+	/**
+	 * #344 D1 — exact-match identity gate: true when at least one required
+	 * `expectedEvidence.artifactId` matches a retrieved chunk's `documentId`
+	 * exactly. Used as the canonical pass criterion when the corpus catalog
+	 * confirms the fixture is on v2.0.0-shape (artifactIds are real
+	 * documentIds). Falls back to `substringFound` for unmigrated queries.
+	 */
+	documentIdFound: boolean;
+	/**
+	 * True when the canonical exact-match gate (`documentIdFound`) is the
+	 * one that drove pass/fail. False when the legacy substring gate was
+	 * used instead (artifactIds didn't all resolve in the catalog).
+	 */
+	evidenceGateCanonical: boolean;
 	edgeHopFound: boolean;
 	crossSourceFound: boolean;
 	sourceTypesReached: string[];
@@ -336,6 +350,15 @@ export async function evaluateQualityQueries(
 
 	const { queries: activeQueries, filter: queryFilter } = getActiveQueries();
 
+	// #344 D1 — when the corpus catalog is available, build the documentId
+	// set once so the canonical exact-match evidence gate can confirm each
+	// query's `expectedEvidence.artifactId` is a real `Chunk.documentId`.
+	// Queries whose artifactIds aren't all in the catalog fall back to the
+	// legacy substring gate inside `scoreText`.
+	const catalogDocumentIds: ReadonlySet<string> | undefined = context.documentCatalog
+		? new Set(Object.keys(context.documentCatalog.documents))
+		: undefined;
+
 	for (const gq of activeQueries) {
 		signal?.throwIfAborted();
 		const skip = resolveSkip(gq, context);
@@ -359,6 +382,7 @@ export async function evaluateQualityQueries(
 			context.checkParaphrases ?? false,
 			context.retrievalOverrides ?? {},
 			context.recordGoldProximity ?? process.env.WTFOC_GOLD_PROXIMITY === "1",
+			catalogDocumentIds,
 		);
 		context.perQueryHook?.(gq.id, performance.now() - queryStart);
 		scores.push(score);
@@ -722,6 +746,8 @@ function skippedScore(gq: GoldQuery, reason: string): QueryScore {
 		requiredTypesFound: false,
 		requiredTypesFoundQueryOnly: false,
 		substringFound: true,
+		documentIdFound: true,
+		evidenceGateCanonical: false,
 		edgeHopFound: true,
 		crossSourceFound: true,
 		sourceTypesReached: [],
@@ -741,6 +767,8 @@ interface InnerScore {
 	requiredTypesFound: boolean;
 	requiredTypesFoundQueryOnly: boolean;
 	substringFound: boolean;
+	documentIdFound: boolean;
+	evidenceGateCanonical: boolean;
 	edgeHopFound: boolean;
 	crossSourceFound: boolean;
 	sourceTypesReached: string[];
@@ -782,6 +810,7 @@ async function scoreText(
 	diversityEnforce = false,
 	overrides: RetrievalOverrides = {},
 	recordGoldProximity = false,
+	catalogDocumentIds?: ReadonlySet<string>,
 ): Promise<InnerScore> {
 	const TOPK = overrides.topK ?? 10;
 	const TRACE_MAX_PER_SOURCE = overrides.traceMaxPerSource ?? 3;
@@ -793,6 +822,7 @@ async function scoreText(
 	// independently of the graph-assisted pass rate.
 	let requiredTypesFoundQueryOnly = false;
 	let substringFound = true; // default true if no substrings specified
+	let documentIdFound = true; // default true when no required artifacts
 	let edgeHopFound = true; // default true if not required
 	let crossSourceFound = true; // default true if not required
 	const sourceTypesReached: string[] = [];
@@ -842,14 +872,21 @@ async function scoreText(
 
 		if (requiredArtifacts.length > 0) {
 			const resultSources = qResult.results.map((r) => r.source);
-			// Substring (legacy) match retained during step-2 transition because
-			// the mechanically-migrated fixture still contains unresolved
-			// substrings as `artifactId`. Step-3 query regeneration emits exact
-			// catalog `documentId`s and the grader will switch to exact match
-			// against `Chunk.documentId` at that point.
+			// Legacy substring gate — kept for unmigrated queries whose
+			// `expectedEvidence.artifactId` is still a path substring rather
+			// than a canonical `Chunk.documentId`. The canonical gate below
+			// supersedes this when the corpus catalog confirms identity.
 			substringFound = requiredArtifacts.some((sub) =>
 				resultSources.some((src) => src.toLowerCase().includes(sub.toLowerCase())),
 			);
+			// Canonical exact-match gate (#344 D1). Compares each required
+			// `artifactId` against retrieved chunks' `documentId`. Pass requires
+			// at least one required artifact to be hit by exact identity.
+			const resultDocIds = qResult.results
+				.map((r) => r.documentId)
+				.filter((d): d is string => typeof d === "string" && d.length > 0);
+			documentIdFound =
+				resultDocIds.length > 0 && requiredArtifacts.some((aid) => resultDocIds.includes(aid));
 		}
 
 		// #311 Phase 0d — recall@K computed over the full evidence set
@@ -924,11 +961,23 @@ async function scoreText(
 
 	const hardNegativeNoStrongHits = topScore === null || topScore < HARD_NEGATIVE_SCORE_CEILING;
 
+	// #344 D1 — pick canonical exact-match identity gate when the catalog
+	// confirms every required artifactId is a real `documentId`. Otherwise
+	// fall back to the legacy substring gate. Codex caveat: replacement must
+	// assert identity, not silently drop the gate; that is why both
+	// `documentIdFound` and `substringFound` are output even though only one
+	// drives pass/fail.
+	const evidenceGateCanonical =
+		requiredArtifacts.length > 0 &&
+		catalogDocumentIds !== undefined &&
+		requiredArtifacts.every((aid) => catalogDocumentIds.has(aid));
+	const evidencePass = evidenceGateCanonical ? documentIdFound : substringFound;
+
 	const passed = gq.isHardNegative
 		? resultCount < HARD_NEGATIVE_RESULT_CEILING && hardNegativeNoStrongHits
 		: resultCount >= gq.minResults &&
 			requiredTypesFound &&
-			substringFound &&
+			evidencePass &&
 			edgeHopFound &&
 			crossSourceFound;
 
@@ -936,7 +985,7 @@ async function scoreText(
 	// and ignore edge-hop/cross-source requirements (those are inherently trace-assisted).
 	const passedQueryOnly = gq.isHardNegative
 		? resultCount < HARD_NEGATIVE_RESULT_CEILING && hardNegativeNoStrongHits
-		: resultCount >= gq.minResults && requiredTypesFoundQueryOnly && substringFound;
+		: resultCount >= gq.minResults && requiredTypesFoundQueryOnly && evidencePass;
 
 	let goldProximity: InnerScore["goldProximity"];
 	if (recordGoldProximity && !passed && allArtifacts.length > 0) {
@@ -985,6 +1034,8 @@ async function scoreText(
 		requiredTypesFound,
 		requiredTypesFoundQueryOnly,
 		substringFound,
+		documentIdFound,
+		evidenceGateCanonical,
 		edgeHopFound,
 		crossSourceFound,
 		sourceTypesReached,
@@ -1011,6 +1062,7 @@ async function scoreQuery(
 	checkParaphrases = false,
 	overrides: RetrievalOverrides = {},
 	recordGoldProximity = false,
+	catalogDocumentIds?: ReadonlySet<string>,
 ): Promise<QueryScore> {
 	const inner = await scoreText(
 		gq.query,
@@ -1025,6 +1077,7 @@ async function scoreQuery(
 		diversityEnforce,
 		overrides,
 		recordGoldProximity,
+		catalogDocumentIds,
 	);
 
 	let paraphraseScores: ParaphraseScore[] | undefined;
@@ -1044,6 +1097,8 @@ async function scoreQuery(
 				autoRoute,
 				diversityEnforce,
 				overrides,
+				false,
+				catalogDocumentIds,
 			);
 			paraphraseScores.push({ text: p, passed: ps.passed, passedQueryOnly: ps.passedQueryOnly });
 		}

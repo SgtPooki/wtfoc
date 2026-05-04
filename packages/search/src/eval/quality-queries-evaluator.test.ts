@@ -13,7 +13,7 @@ const { evaluateQualityQueries, getActiveQueries } = await import("./quality-que
 const { GOLD_STANDARD_QUERIES } = await import("./gold-standard-queries.js");
 
 function makeQueryResult(
-	results: Array<{ sourceType: string; source: string; score: number }>,
+	results: Array<{ sourceType: string; source: string; score: number; documentId?: string }>,
 ): QueryResult {
 	return {
 		query: "test query",
@@ -21,6 +21,7 @@ function makeQueryResult(
 			content: "test",
 			sourceType: r.sourceType,
 			source: r.source,
+			...(r.documentId ? { documentId: r.documentId } : {}),
 			storageId: "s1",
 			score: r.score,
 			retrievalScore: r.score,
@@ -652,6 +653,156 @@ describe("evaluateQualityQueries", () => {
 			};
 			expect(sig.collectionId).toBe("alpha");
 			expect(sig.thresholds.giniFloor).toBe(0.6);
+		});
+	});
+
+	describe("canonical exact-match evidence gate (#344 D1)", () => {
+		// Pick a query with at least one required artifactId. Tests confirm the
+		// canonical exact-match gate (`documentIdFound`) supersedes the legacy
+		// substring gate when the catalog confirms the artifactId is a real
+		// `Chunk.documentId`.
+		const candidate = GOLD_STANDARD_QUERIES.find(
+			(q) => q.expectedEvidence.some((e) => e.required) && !q.isHardNegative,
+		);
+		const allRequiredAids =
+			candidate?.expectedEvidence.filter((e) => e.required).map((e) => e.artifactId) ?? [];
+		const requiredAid = allRequiredAids[0];
+
+		function makeCatalog(documentIds: string[]) {
+			return {
+				schemaVersion: 1 as const,
+				collectionId: "alpha",
+				documents: Object.fromEntries(
+					documentIds.map((id) => [
+						id,
+						{
+							documentId: id,
+							currentVersionId: "v1",
+							previousVersionIds: [],
+							chunkIds: [],
+							supersededChunkIds: [],
+							contentFingerprints: [],
+							state: "active" as const,
+							mutability: "mutable-state" as const,
+							sourceType: "code",
+							updatedAt: new Date().toISOString(),
+						},
+					]),
+				),
+			};
+		}
+
+		it("substring-only hit FAILS when canonical gate is active (no documentId match)", async () => {
+			if (!candidate || !requiredAid) throw new Error("no canonical candidate query in fixture");
+			// Result whose `source` substring-matches but `documentId` does NOT.
+			mockQuery.mockResolvedValue(
+				makeQueryResult([
+					{
+						sourceType: candidate.requiredSourceTypes[0] ?? "code",
+						source: `wrapper-around-${requiredAid}-but-not-the-doc`,
+						documentId: "different-doc-id",
+						score: 0.9,
+					},
+				]),
+			);
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+			const result = await evaluateQualityQueries(
+				mockEmbedder,
+				mockVectorIndex,
+				mockSegments,
+				undefined,
+				[],
+				undefined,
+				false,
+				{
+					documentCatalog: makeCatalog(allRequiredAids),
+				},
+			);
+			const scores = result.metrics.scores as Array<{
+				id: string;
+				passed: boolean;
+				substringFound: boolean;
+				documentIdFound: boolean;
+				evidenceGateCanonical: boolean;
+			}>;
+			const score = scores.find((s) => s.id === candidate.id);
+			expect(score).toBeDefined();
+			expect(score?.evidenceGateCanonical).toBe(true);
+			expect(score?.substringFound).toBe(true);
+			expect(score?.documentIdFound).toBe(false);
+			expect(score?.passed).toBe(false);
+		});
+
+		it("exact documentId hit PASSES under canonical gate even with no substring match", async () => {
+			if (!candidate || !requiredAid) throw new Error("no canonical candidate query in fixture");
+			mockQuery.mockResolvedValue(
+				makeQueryResult(
+					Array.from({ length: candidate.minResults }, (_, i) => ({
+						sourceType: candidate.requiredSourceTypes[0] ?? "code",
+						source: `unrelated/path/${i}.ts`,
+						documentId: i === 0 ? requiredAid : `other-doc-${i}`,
+						score: 0.9 - i * 0.05,
+					})),
+				),
+			);
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+			const result = await evaluateQualityQueries(
+				mockEmbedder,
+				mockVectorIndex,
+				mockSegments,
+				undefined,
+				[],
+				undefined,
+				false,
+				{
+					documentCatalog: makeCatalog(allRequiredAids),
+				},
+			);
+			const scores = result.metrics.scores as Array<{
+				id: string;
+				substringFound: boolean;
+				documentIdFound: boolean;
+				evidenceGateCanonical: boolean;
+			}>;
+			const score = scores.find((s) => s.id === candidate.id);
+			expect(score?.evidenceGateCanonical).toBe(true);
+			expect(score?.substringFound).toBe(false);
+			expect(score?.documentIdFound).toBe(true);
+		});
+
+		it("falls back to substring gate when artifactId not in catalog (legacy fixture)", async () => {
+			if (!candidate || !requiredAid) throw new Error("no canonical candidate query in fixture");
+			mockQuery.mockResolvedValue(
+				makeQueryResult([
+					{
+						sourceType: candidate.requiredSourceTypes[0] ?? "code",
+						source: `path/with/${requiredAid}/inside.ts`,
+						documentId: "different-doc-id",
+						score: 0.9,
+					},
+				]),
+			);
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+			// Catalog deliberately empty — artifactId not present => legacy gate.
+			const result = await evaluateQualityQueries(
+				mockEmbedder,
+				mockVectorIndex,
+				mockSegments,
+				undefined,
+				[],
+				undefined,
+				false,
+				{ documentCatalog: makeCatalog([]) },
+			);
+			const scores = result.metrics.scores as Array<{
+				id: string;
+				substringFound: boolean;
+				documentIdFound: boolean;
+				evidenceGateCanonical: boolean;
+			}>;
+			const score = scores.find((s) => s.id === candidate.id);
+			expect(score?.evidenceGateCanonical).toBe(false);
+			expect(score?.substringFound).toBe(true);
 		});
 	});
 
