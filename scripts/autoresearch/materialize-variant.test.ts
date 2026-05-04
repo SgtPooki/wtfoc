@@ -172,6 +172,95 @@ describe("materializeVariant — matrix synthesis", () => {
 		expect(result.notes.some((n) => n.includes("#394"))).toBe(false);
 	});
 
+	it("falls back to fingerprint-loose baselines when strict matches insufficient", async () => {
+		// Real-world case: candidate sweep produces a fingerprint that no
+		// nightly-cron baseline shares (env/code drift). Strict match would
+		// always block knob proposals. Relaxed fallback uses recent
+		// nightly-cron rows for the same variant+corpus regardless of fp,
+		// mirrors materialize-patch's policy.
+		const stateDir = mkdtempSync(join(tmpdir(), "wtfoc-materialize-"));
+		// Pre-seed runs.jsonl with 3 nightly-cron rows + a candidate row.
+		// Use a temp run-log dir so we don't pollute real history.
+		const runLogDir = mkdtempSync(join(tmpdir(), "wtfoc-runlog-"));
+		const runsPath = join(runLogDir, "runs.jsonl");
+		const reportsDir = join(runLogDir, "reports");
+		mkdirSync(reportsDir, { recursive: true });
+		// Helper: write a minimal report file + return its path.
+		const writeReport = (variantId: string, fp: string, passRate: number) => {
+			const p = join(reportsDir, `${variantId}-${fp.slice(0, 8)}-${passRate}.json`);
+			const report = {
+				runConfig: { collectionId: "filoz" },
+				runConfigFingerprint: fp,
+				summary: { passRate, demoCriticalPassRate: 1, recallAtKMean: 0.5, latencyP95Ms: 1000 },
+				variantId,
+			};
+			writeFileSync(p, JSON.stringify(report));
+			return p;
+		};
+		// Distinct baseline rows — each gets its own report file so that
+		// every row in the baseline window can be loaded independently
+		// (overlapping report paths would silently collapse the window).
+		const candidateFp = "fp_candidate_drift";
+		const baselineRows = [0, 1, 2].map((i) => {
+			const fp = `fp_baseline_${i}`;
+			return {
+				schemaVersion: 1,
+				loggedAt: new Date(Date.now() - (i + 1) * 86400000).toISOString(),
+				matrixName: "retrieval-baseline",
+				variantId: "noar_div_rrOff",
+				sweepId: `nightly-${i}`,
+				runConfigFingerprint: fp,
+				runConfig: { collectionId: "filoz" },
+				stage: "nightly-cron",
+				reportPath: writeReport("noar_div_rrOff", fp, 0.5 + i * 0.01),
+				summary: {
+					passRate: 0.5 + i * 0.01,
+					demoCriticalPassRate: 1,
+					recallAtKMean: 0.5,
+					latencyP95Ms: 1000,
+				},
+			};
+		});
+		const candidateRow = {
+			schemaVersion: 1,
+			loggedAt: new Date().toISOString(),
+			matrixName: "retrieval-baseline",
+			variantId: "noar_div_rrOff_tps5",
+			sweepId: "ar-proposal-1",
+			runConfigFingerprint: candidateFp,
+			runConfig: { collectionId: "filoz" },
+			stage: "autoresearch-proposal",
+			reportPath: writeReport("noar_div_rrOff_tps5", candidateFp, 0.6),
+			summary: { passRate: 0.6, demoCriticalPassRate: 1, recallAtKMean: 0.6, latencyP95Ms: 1000 },
+		};
+		writeFileSync(runsPath, [...baselineRows, candidateRow].map((r) => JSON.stringify(r)).join("\n") + "\n");
+		// Point run-log at our temp dir.
+		const prevDir = process.env.WTFOC_AUTORESEARCH_DIR;
+		process.env.WTFOC_AUTORESEARCH_DIR = runLogDir;
+		try {
+			const result = await materializeVariant({
+				productionMatrix: baseMatrix(),
+				productionMatrixName: "retrieval-baseline",
+				proposal: { axis: "traceMaxPerSource", value: 5, rationale: "x" },
+				targetVariantId: "noar_div_rrOff",
+				spawnFn: () => Buffer.from(""),
+				stateDir,
+				minBaseline: 3,
+			});
+			// Relaxed-fallback path fired (note surfaced). decide() may
+			// return null if the minimal fixture reports lack scores —
+			// that's an orthogonal concern; what matters here is that the
+			// baseline-window construction is no longer empty.
+			expect(result.notes.some((n) => n.includes("fingerprint-loose"))).toBe(true);
+			expect(
+				result.decisions[0]?.reason?.includes("only 0 comparable production baseline"),
+			).not.toBe(true);
+		} finally {
+			if (prevDir === undefined) delete process.env.WTFOC_AUTORESEARCH_DIR;
+			else process.env.WTFOC_AUTORESEARCH_DIR = prevDir;
+		}
+	});
+
 	it("encodes reranker enum values into the derived matrix", async () => {
 		const stateDir = mkdtempSync(join(tmpdir(), "wtfoc-materialize-"));
 		const result = await materializeVariant({
