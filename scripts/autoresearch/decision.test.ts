@@ -91,7 +91,20 @@ function makeReport(opts: {
 	applicableRate?: number;
 	paraphraseInvariant?: number | null;
 	costComparable?: { value: boolean; reasons: string[] };
+	/** per-query-total p95 in ms; pass `null` to omit timing entirely. */
+	perQueryP95Ms?: number | null;
 }): ExtendedDogfoodReport {
+	const timing =
+		opts.perQueryP95Ms === null
+			? undefined
+			: {
+					"per-query-total": {
+						p50Ms: Math.round((opts.perQueryP95Ms ?? 3000) * 0.7),
+						p95Ms: opts.perQueryP95Ms ?? 3000,
+						callCount: 100,
+						totalMs: 0,
+					},
+				};
 	const m = {
 		passRate: opts.passRate ?? 0.7,
 		applicableRate: opts.applicableRate ?? 1,
@@ -106,6 +119,7 @@ function makeReport(opts: {
 				? { checked: false, invariantFraction: 0 }
 				: { checked: true, invariantFraction: opts.paraphraseInvariant ?? 0.81 },
 		scores: opts.scores,
+		...(timing ? { timing } : {}),
 	};
 	return {
 		reportSchemaVersion: "1.0.0",
@@ -284,13 +298,17 @@ describe("trimmedMean", () => {
 	});
 });
 
-function makeMultiReport(passRate: number, scoreCount = 30): ExtendedDogfoodReport {
+function makeMultiReport(
+	passRate: number,
+	scoreCount = 30,
+	perQueryP95Ms: number | null | undefined = 3000,
+): ExtendedDogfoodReport {
 	const scores = Array.from({ length: scoreCount }, (_, i) =>
 		score({ id: `q${i}`, passed: i / scoreCount < passRate }),
 	);
 	const actualPassRate =
 		scores.length === 0 ? 0 : scores.filter((entry) => entry.passed).length / scores.length;
-	return makeReport({ scores, passRate: actualPassRate });
+	return makeReport({ scores, passRate: actualPassRate, perQueryP95Ms });
 }
 
 describe("decideMulti", () => {
@@ -429,5 +447,109 @@ describe("decideMulti", () => {
 		const v = decideMulti({ baseline, candidate, cumulativeLocChange: 5 });
 		expect(v.perCorpus.find((p) => p.corpusId === "alpha")?.delta).toBeCloseTo(0.2, 1);
 		expect(v.perCorpus.find((p) => p.corpusId === "beta")?.delta).toBeCloseTo(0.1, 1);
+	});
+});
+
+describe("decideMulti — latency floors (#364)", () => {
+	it("emits a warning (warn-only default) when baseline timing is missing", () => {
+		const baseline = new Map([["alpha", makeMultiReport(0.5, 30, null)]]);
+		const candidate = new Map([["alpha", makeMultiReport(0.6, 30, 3000)]]);
+		const v = decideMulti({ baseline, candidate, cumulativeLocChange: 5 });
+		expect(v.accept).toBe(true);
+		expect(
+			v.latencyWarnings.some((w) => w.includes("alpha") && w.includes("missing")),
+		).toBe(true);
+		expect(v.reasons.some((r) => r.includes("p95"))).toBe(false);
+	});
+
+	it("emits a warning (warn-only default) when candidate timing is missing", () => {
+		const baseline = new Map([["alpha", makeMultiReport(0.5, 30, 3000)]]);
+		const candidate = new Map([["alpha", makeMultiReport(0.6, 30, null)]]);
+		const v = decideMulti({ baseline, candidate, cumulativeLocChange: 5 });
+		expect(v.accept).toBe(true);
+		expect(
+			v.latencyWarnings.some((w) => w.includes("alpha") && w.includes("missing")),
+		).toBe(true);
+	});
+
+	it("acceptable p95 delta within p95FloorMs leaves verdict clean", () => {
+		const baseline = new Map([["alpha", makeMultiReport(0.5, 30, 3000)]]);
+		// candidate +800ms, well under DEFAULT_P95_FLOOR_MS=1500
+		const candidate = new Map([["alpha", makeMultiReport(0.6, 30, 3800)]]);
+		const v = decideMulti({ baseline, candidate, cumulativeLocChange: 5 });
+		expect(v.accept).toBe(true);
+		expect(v.latencyWarnings).toHaveLength(0);
+		expect(v.reasons.some((r) => r.includes("p95"))).toBe(false);
+	});
+
+	it("warns (warn-only default) on p95 floor breach without rejecting", () => {
+		const baseline = new Map([["alpha", makeMultiReport(0.5, 30, 3000)]]);
+		// candidate +2000ms exceeds DEFAULT_P95_FLOOR_MS=1500
+		const candidate = new Map([["alpha", makeMultiReport(0.6, 30, 5000)]]);
+		const v = decideMulti({ baseline, candidate, cumulativeLocChange: 5 });
+		expect(v.accept).toBe(true);
+		expect(
+			v.latencyWarnings.some((w) => w.includes("p95 regression") && w.includes("alpha")),
+		).toBe(true);
+		expect(v.reasons.some((r) => r.includes("p95 regression"))).toBe(false);
+	});
+
+	it("REJECTS p95 floor breach when latencyGateHard=true", () => {
+		const baseline = new Map([["alpha", makeMultiReport(0.5, 30, 3000)]]);
+		const candidate = new Map([["alpha", makeMultiReport(0.6, 30, 5000)]]);
+		const v = decideMulti({
+			baseline,
+			candidate,
+			cumulativeLocChange: 5,
+			floors: { latencyGateHard: true },
+		});
+		expect(v.accept).toBe(false);
+		expect(v.reasons.some((r) => r.includes("p95 regression") && r.includes("alpha"))).toBe(
+			true,
+		);
+	});
+
+	it("REJECTS catastrophic 2× breach when latencyGateHard=true", () => {
+		const baseline = new Map([["alpha", makeMultiReport(0.5, 30, 3000)]]);
+		// candidate 6500ms > 2× 3000ms = 6000ms
+		const candidate = new Map([["alpha", makeMultiReport(0.6, 30, 6500)]]);
+		const v = decideMulti({
+			baseline,
+			candidate,
+			cumulativeLocChange: 5,
+			floors: { latencyGateHard: true },
+		});
+		expect(v.accept).toBe(false);
+		expect(
+			v.reasons.some((r) => r.includes("catastrophic latency") && r.includes("alpha")),
+		).toBe(true);
+		// Catastrophic check fires instead of the lower-priority p95FloorMs check.
+		expect(v.reasons.some((r) => r.includes("p95 regression"))).toBe(false);
+	});
+
+	it("REJECTS absolute totalP95FloorMs breach when latencyGateHard=true", () => {
+		const baseline = new Map([["alpha", makeMultiReport(0.5, 30, 9000)]]);
+		// candidate 9500ms — only +500ms (within p95FloorMs) but absolute
+		// >totalP95FloorMs after override.
+		const candidate = new Map([["alpha", makeMultiReport(0.6, 30, 9500)]]);
+		const v = decideMulti({
+			baseline,
+			candidate,
+			cumulativeLocChange: 5,
+			floors: { latencyGateHard: true, totalP95FloorMs: 9200 },
+		});
+		expect(v.accept).toBe(false);
+		expect(
+			v.reasons.some((r) => r.includes("absolute p95 ceiling") && r.includes("alpha")),
+		).toBe(true);
+	});
+
+	it("populates baselineP95Ms + candidateP95Ms on PerCorpusDelta", () => {
+		const baseline = new Map([["alpha", makeMultiReport(0.5, 30, 2500)]]);
+		const candidate = new Map([["alpha", makeMultiReport(0.6, 30, 2700)]]);
+		const v = decideMulti({ baseline, candidate, cumulativeLocChange: 5 });
+		const entry = v.perCorpus.find((p) => p.corpusId === "alpha");
+		expect(entry?.baselineP95Ms).toBe(2500);
+		expect(entry?.candidateP95Ms).toBe(2700);
 	});
 });
