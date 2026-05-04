@@ -266,3 +266,98 @@ describe("aggregateDiagnoses", () => {
 		expect(agg.dominantLayerShare).toBe(0);
 	});
 });
+
+describe("diagnoseFailure — slow-but-passing (#364)", () => {
+	it("emits slow-but-passing when a passing query exceeds the floor", () => {
+		const result = diagnoseFailure({
+			score: makeScore({
+				id: "q1",
+				passed: true,
+				passedQueryOnly: true,
+				resultCount: 5,
+				requiredTypesFound: true,
+				substringFound: true,
+				durationMs: 9500,
+			}),
+			query: makeQuery({ id: "q1" }),
+			slowQueryFloorMs: 8000,
+		});
+		expect(result?.failureClass).toBe("slow-but-passing");
+		expect(result?.layer).toBe("ranking");
+	});
+
+	it("returns null when passing query duration is at-or-below the floor", () => {
+		const result = diagnoseFailure({
+			score: makeScore({
+				id: "q1",
+				passed: true,
+				passedQueryOnly: true,
+				resultCount: 5,
+				requiredTypesFound: true,
+				substringFound: true,
+				durationMs: 8000,
+			}),
+			query: makeQuery({ id: "q1" }),
+			slowQueryFloorMs: 8000,
+		});
+		expect(result).toBeNull();
+	});
+
+	it("returns null when slowQueryFloorMs is undefined (legacy behavior)", () => {
+		const result = diagnoseFailure({
+			score: makeScore({
+				id: "q1",
+				passed: true,
+				passedQueryOnly: true,
+				resultCount: 5,
+				requiredTypesFound: true,
+				substringFound: true,
+				durationMs: 99_000,
+			}),
+			query: makeQuery({ id: "q1" }),
+		});
+		expect(result).toBeNull();
+	});
+
+	it("returns null when durationMs is missing", () => {
+		const result = diagnoseFailure({
+			score: makeScore({
+				id: "q1",
+				passed: true,
+				passedQueryOnly: true,
+				resultCount: 5,
+				requiredTypesFound: true,
+				substringFound: true,
+			}),
+			query: makeQuery({ id: "q1" }),
+			slowQueryFloorMs: 8000,
+		});
+		expect(result).toBeNull();
+	});
+
+	it("does not override a real failure with slow-but-passing", () => {
+		// Failed query with very high duration — must classify as the real
+		// failure (e.g. retrieved-not-ranked / retrieval-miss), not slow-but-passing.
+		const result = diagnoseFailure({
+			score: makeScore({
+				id: "q1",
+				passed: false,
+				passedQueryOnly: false,
+				resultCount: 0,
+				requiredTypesFound: false,
+				substringFound: false,
+				durationMs: 99_000,
+				goldProximity: {
+					widerK: 50,
+					topKCutoff: 10,
+					goldRank: null,
+					goldScore: null,
+					topKLastScore: null,
+				},
+			}),
+			query: makeQuery({ id: "q1" }),
+			slowQueryFloorMs: 8000,
+		});
+		expect(result?.failureClass).not.toBe("slow-but-passing");
+	});
+});

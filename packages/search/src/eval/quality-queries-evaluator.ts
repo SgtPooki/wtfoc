@@ -14,6 +14,7 @@ import { trace } from "../trace/trace.js";
 import type { PreflightStatus } from "./catalog-applicability-preflight.js";
 import {
 	aggregateDiagnoses,
+	DEFAULT_SLOW_QUERY_FLOOR_MS,
 	type DiagnosisAggregate,
 	diagnoseFailure,
 	type FailureDiagnosis,
@@ -155,6 +156,13 @@ interface QueryScore {
 	category: string;
 	queryText: string;
 	/**
+	 * #364 — wall-clock per-query duration in milliseconds (rounded). Captured
+	 * around `scoreQuery` and used by `failure-diagnosis` to detect the
+	 * `slow-but-passing` failure class. Optional because skipped queries
+	 * never run scoreQuery.
+	 */
+	durationMs?: number;
+	/**
 	 * True when the query was skipped as inapplicable to this corpus (because
 	 * its `requiredSourceTypes` are not present, or its `collectionScopePattern`
 	 * does not match the collection id). Skipped queries do not count toward
@@ -295,6 +303,12 @@ export interface QualityQueriesContext {
 	 */
 	checkParaphrases?: boolean;
 	/**
+	 * #364 — per-query duration floor (ms) above which a passing query is
+	 * diagnosed as `slow-but-passing`. When unset, defaults to
+	 * `DEFAULT_SLOW_QUERY_FLOOR_MS` from `failure-diagnosis`.
+	 */
+	slowQueryFloorMs?: number;
+	/**
 	 * Numeric retrieval-config overrides for the autoresearch loop
 	 * (#334). When unset, evaluator uses its built-in defaults
 	 * (topK=10, traceMaxPerSource=3, traceMaxTotal=15, traceMinScore=0.3).
@@ -403,7 +417,9 @@ export async function evaluateQualityQueries(
 			context.recordGoldProximity ?? process.env.WTFOC_GOLD_PROXIMITY === "1",
 			catalogDocumentIds,
 		);
-		context.perQueryHook?.(gq.id, performance.now() - queryStart);
+		const durationMs = performance.now() - queryStart;
+		score.durationMs = Math.round(durationMs);
+		context.perQueryHook?.(gq.id, durationMs);
 		scores.push(score);
 		if (score.passed) passCount++;
 		if (score.passedQueryOnly) queryOnlyPassCount++;
@@ -421,6 +437,7 @@ export async function evaluateQualityQueries(
 			query: gq,
 			corpusId: context.collectionId,
 			preflightStatus: context.preflightStatusByQueryId?.get(gq.id),
+			slowQueryFloorMs: context.slowQueryFloorMs ?? DEFAULT_SLOW_QUERY_FLOOR_MS,
 		});
 		if (d) diagnoses.push(d);
 	}
