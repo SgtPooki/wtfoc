@@ -13,7 +13,13 @@ const { evaluateQualityQueries, getActiveQueries } = await import("./quality-que
 const { GOLD_STANDARD_QUERIES } = await import("./gold-standard-queries.js");
 
 function makeQueryResult(
-	results: Array<{ sourceType: string; source: string; score: number; documentId?: string }>,
+	results: Array<{
+		sourceType: string;
+		source: string;
+		score: number;
+		documentId?: string;
+		retrievalScore?: number;
+	}>,
 ): QueryResult {
 	return {
 		query: "test query",
@@ -24,7 +30,7 @@ function makeQueryResult(
 			...(r.documentId ? { documentId: r.documentId } : {}),
 			storageId: "s1",
 			score: r.score,
-			retrievalScore: r.score,
+			retrievalScore: typeof r.retrievalScore === "number" ? r.retrievalScore : r.score,
 		})),
 	};
 }
@@ -803,6 +809,78 @@ describe("evaluateQualityQueries", () => {
 			const score = scores.find((s) => s.id === candidate.id);
 			expect(score?.evidenceGateCanonical).toBe(false);
 			expect(score?.substringFound).toBe(true);
+		});
+	});
+
+	describe("hard-negative score-aware gate (#343 Phase A)", () => {
+		const hardNeg = GOLD_STANDARD_QUERIES.find((q) => q.isHardNegative === true);
+
+		it("passes when top-K is filled with cosmic-noise scores (all below floor)", async () => {
+			if (!hardNeg) throw new Error("no hard-negative in fixture");
+			// `query()` returns top-K=10 unconditionally; pre-fix this failed
+			// because resultCount=10 >= ceiling=3. Score-aware gate ignores
+			// the noise tail.
+			mockQuery.mockResolvedValue(
+				makeQueryResult(
+					Array.from({ length: 10 }, (_, i) => ({
+						sourceType: "code",
+						source: `noise/${i}.ts`,
+						score: 0.05, // below NOISE_FLOOR=0.1
+					})),
+				),
+			);
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+			const result = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
+			const scores = result.metrics.scores as Array<{ id: string; passed: boolean }>;
+			expect(scores.find((s) => s.id === hardNeg.id)?.passed).toBe(true);
+		});
+
+		it("fails when ≥3 above-noise hits accumulate (genuine pile-on)", async () => {
+			if (!hardNeg) throw new Error("no hard-negative in fixture");
+			mockQuery.mockResolvedValue(
+				makeQueryResult([
+					{ sourceType: "code", source: "a.ts", score: 0.45 },
+					{ sourceType: "code", source: "b.ts", score: 0.4 },
+					{ sourceType: "code", source: "c.ts", score: 0.35 },
+					{ sourceType: "code", source: "d.ts", score: 0.05 },
+				]),
+			);
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+			const result = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
+			const scores = result.metrics.scores as Array<{ id: string; passed: boolean }>;
+			expect(scores.find((s) => s.id === hardNeg.id)?.passed).toBe(false);
+		});
+
+		it("uses retrievalScore (raw cosine) for thresholds, not composite score (codex MED-3)", async () => {
+			if (!hardNeg) throw new Error("no hard-negative in fixture");
+			// Reranker scenario: composite `score` = 0.85 (rerank output) but
+			// raw `retrievalScore` = 0.05 (real embedder cosine). The hard-
+			// negative gate must trust retrievalScore — the rerank output is
+			// scale-incompatible with the bge-derived 0.6 ceiling.
+			mockQuery.mockResolvedValue(
+				makeQueryResult([
+					{ sourceType: "code", source: "noise.ts", score: 0.85, retrievalScore: 0.05 },
+				]),
+			);
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+			const result = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
+			const scores = result.metrics.scores as Array<{ id: string; passed: boolean }>;
+			// Composite 0.85 would have failed gate; retrievalScore 0.05 passes.
+			expect(scores.find((s) => s.id === hardNeg.id)?.passed).toBe(true);
+		});
+
+		it("fails when a single high-confidence hit breaches score ceiling", async () => {
+			if (!hardNeg) throw new Error("no hard-negative in fixture");
+			mockQuery.mockResolvedValue(
+				makeQueryResult([
+					// retrievalScore 0.7 > 0.6 ceiling — fails immediately
+					{ sourceType: "code", source: "match.ts", score: 0.7, retrievalScore: 0.7 },
+				]),
+			);
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+			const result = await evaluateQualityQueries(mockEmbedder, mockVectorIndex, mockSegments);
+			const scores = result.metrics.scores as Array<{ id: string; passed: boolean }>;
+			expect(scores.find((s) => s.id === hardNeg.id)?.passed).toBe(false);
 		});
 	});
 
