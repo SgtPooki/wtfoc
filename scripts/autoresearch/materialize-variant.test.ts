@@ -137,6 +137,26 @@ describe("materializeVariant — matrix synthesis", () => {
 		expect(result.notes.some((n) => n.includes("noar_div_rrBge") && n.includes("#394"))).toBe(true);
 	});
 
+	it("preserves legacy `?? true` defaults when both productionVariantId and targetVariantId are unset", async () => {
+		// Exploratory matrices may have no productionVariantId. Pre-#394 the
+		// internal `matrix.productionVariantId?.includes(...) ?? true` fallback
+		// defaulted diversityEnforce to true. Coercing to "" would break that.
+		const stateDir = mkdtempSync(join(tmpdir(), "wtfoc-materialize-"));
+		const m = baseMatrix();
+		const noProdMatrix = { ...m, productionVariantId: undefined as unknown as string };
+		const result = await materializeVariant({
+			productionMatrix: noProdMatrix,
+			productionMatrixName: "retrieval-baseline",
+			proposal: { axis: "topK", value: 30, rationale: "wider K" },
+			spawnFn: () => Buffer.from(""),
+			stateDir,
+		});
+		const body = readFileSync(result.matrixPath, "utf-8");
+		const parsed = JSON.parse(body.split("export default ")[1]?.replace(/;\s*$/, "").trim() ?? "{}");
+		expect(parsed.axes.diversityEnforce).toEqual([true]);
+		expect(parsed.axes.reranker).toEqual(["off"]);
+	});
+
 	it("falls back to productionVariantId when targetVariantId omitted (legacy)", async () => {
 		const stateDir = mkdtempSync(join(tmpdir(), "wtfoc-materialize-"));
 		const result = await materializeVariant({

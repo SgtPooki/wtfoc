@@ -854,6 +854,12 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 		return { status: "materialize-failed", notes };
 	}
 
+	// Surface materialize audit notes (target-variant mapping, baseline
+	// window scoping) so the evidence chain is visible outside --dry-run.
+	for (const note of materialize.notes) {
+		notes.push(`materialize: ${note}`);
+	}
+
 	// Always log the attempt (accept or reject) so memory persists.
 	const candidateRow = materialize.candidateRows[0];
 	appendTriedRow({
@@ -865,7 +871,10 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 		sweepId: candidateRow?.sweepId,
 		runConfigFingerprint: candidateRow?.runConfigFingerprint,
 		verdict: materialize.aggregateAccept ? "accepted" : "rejected",
-		reasons: materialize.decisions.flatMap((d) => d.verdict?.reasons ?? [d.reason ?? ""]),
+		reasons: [
+			...materialize.notes,
+			...materialize.decisions.flatMap((d) => d.verdict?.reasons ?? [d.reason ?? ""]),
+		],
 		metrics: candidateRow?.summary
 			? {
 					passRate: candidateRow.summary.passRate,

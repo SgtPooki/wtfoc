@@ -176,8 +176,7 @@ export async function materializeVariant(
 	mkdirSync(proposalDir, { recursive: true });
 	const matrixPath = join(proposalDir, "matrix.ts");
 
-	const productionVariantId = input.productionMatrix.productionVariantId ?? "";
-	const baseVariantId = input.targetVariantId ?? productionVariantId;
+	const baseVariantId = input.targetVariantId ?? input.productionMatrix.productionVariantId;
 	const derived = applyAxisToMatrix(input.productionMatrix, knob, input.proposal.value, baseVariantId);
 	writeFileSync(matrixPath, renderMatrixFile(derived, proposalId));
 
@@ -220,6 +219,7 @@ export async function materializeVariant(
 	// of those baseline runs — mirroring the regression detector's
 	// majority rule. Single-baseline accept is too noisy given the
 	// documented paraphrase brittleness (~48%).
+	const productionVariantId = input.productionMatrix.productionVariantId ?? "";
 	const minBaseline = input.minBaseline ?? 3;
 	const decisions: MaterializeResult["decisions"] = [];
 	const corpora = Array.from(new Set(reports.map((r) => r.runConfig.collectionId)));
