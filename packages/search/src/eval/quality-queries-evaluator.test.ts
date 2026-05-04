@@ -776,6 +776,48 @@ describe("evaluateQualityQueries", () => {
 			expect(score?.documentIdFound).toBe(true);
 		});
 
+		it("mixed fixture: one canonical + one legacy artifactId — canonical drives pass/fail (codex HIGH-2)", async () => {
+			// Codex caught the original `requiredArtifacts.every()` rule
+			// disabled canonical gating for the entire query if any single
+			// required artifact was legacy. Per-artifact resolution must
+			// keep canonical gating active when at least one required is in
+			// catalog, even if another required is legacy.
+			if (!candidate || !requiredAid) throw new Error("no canonical candidate query in fixture");
+			// Catalog has only the canonical id; the candidate's other
+			// required artifactIds (if any) are treated as legacy.
+			mockQuery.mockResolvedValue(
+				makeQueryResult([
+					{
+						sourceType: candidate.requiredSourceTypes[0] ?? "code",
+						source: "unrelated/path.ts",
+						documentId: requiredAid,
+						score: 0.9,
+					},
+				]),
+			);
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+			const result = await evaluateQualityQueries(
+				mockEmbedder,
+				mockVectorIndex,
+				mockSegments,
+				undefined,
+				[],
+				undefined,
+				false,
+				{ documentCatalog: makeCatalog([requiredAid]) },
+			);
+			const scores = result.metrics.scores as Array<{
+				id: string;
+				evidenceGateCanonical: boolean;
+				documentIdFound: boolean;
+			}>;
+			const score = scores.find((s) => s.id === candidate.id);
+			// Canonical gate is ACTIVE because at least one required artifact
+			// is in catalog — even if other required artifacts are legacy.
+			expect(score?.evidenceGateCanonical).toBe(true);
+			expect(score?.documentIdFound).toBe(true);
+		});
+
 		it("falls back to substring gate when artifactId not in catalog (legacy fixture)", async () => {
 			if (!candidate || !requiredAid) throw new Error("no canonical candidate query in fixture");
 			mockQuery.mockResolvedValue(
@@ -809,6 +851,84 @@ describe("evaluateQualityQueries", () => {
 			const score = scores.find((s) => s.id === candidate.id);
 			expect(score?.evidenceGateCanonical).toBe(false);
 			expect(score?.substringFound).toBe(true);
+		});
+	});
+
+	describe("goldProximity match by documentId when canonical (codex HIGH-1)", () => {
+		const candidate = GOLD_STANDARD_QUERIES.find(
+			(q) => q.expectedEvidence.some((e) => e.required) && !q.isHardNegative,
+		);
+		const requiredAid = candidate?.expectedEvidence.find((e) => e.required)?.artifactId;
+
+		it("records goldRank from documentId match even when source path doesn't substring-match", async () => {
+			if (!candidate || !requiredAid) throw new Error("no canonical candidate query in fixture");
+			// Failed query with canonical gate active. Wider retrieval must
+			// match gold by documentId, not substring. Codex caught that
+			// proximity was using substring-only — a canonical query whose
+			// gold artifact had no path overlap got `goldRank=null` and was
+			// misrouted to `retrieval-miss`.
+			const failingResults = [
+				{ sourceType: "code", source: "noise/a.ts", score: 0.05, documentId: "noise-a" },
+			];
+			const widerResults = [
+				{
+					sourceType: "code",
+					source: "still-no-substring/b.ts",
+					score: 0.3,
+					documentId: "noise-b",
+				},
+				{
+					sourceType: "code",
+					source: "totally-unrelated-path/c.ts",
+					score: 0.25,
+					documentId: requiredAid,
+				},
+			];
+			let callCount = 0;
+			mockQuery.mockImplementation(async () => {
+				callCount++;
+				if (callCount === 1) return makeQueryResult(failingResults);
+				return makeQueryResult(widerResults);
+			});
+			mockTrace.mockResolvedValue(makeTraceResult([]));
+			const documentCatalog = {
+				schemaVersion: 1 as const,
+				collectionId: "alpha",
+				documents: {
+					[requiredAid]: {
+						documentId: requiredAid,
+						currentVersionId: "v1",
+						previousVersionIds: [],
+						chunkIds: [],
+						supersededChunkIds: [],
+						contentFingerprints: [],
+						state: "active" as const,
+						mutability: "mutable-state" as const,
+						sourceType: "code",
+						updatedAt: new Date().toISOString(),
+					},
+				},
+			};
+			const result = await evaluateQualityQueries(
+				mockEmbedder,
+				mockVectorIndex,
+				mockSegments,
+				undefined,
+				[],
+				undefined,
+				false,
+				{ documentCatalog, recordGoldProximity: true },
+			);
+			const scores = result.metrics.scores as Array<{
+				id: string;
+				goldProximity?: { goldRank: number | null };
+			}>;
+			const score = scores.find((s) => s.id === candidate.id);
+			// Without the codex fix, goldRank would be null because the
+			// path substring is "totally-unrelated-path" not the artifactId.
+			// With the fix, documentId exact-match catches the gold at
+			// rank 2.
+			expect(score?.goldProximity?.goldRank).toBe(2);
 		});
 	});
 

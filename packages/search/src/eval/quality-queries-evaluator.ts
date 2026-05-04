@@ -554,7 +554,16 @@ export async function evaluateQualityQueries(
 			const reasons: string[] = [];
 			if (score.resultCount === 0) reasons.push("no results");
 			if (!score.requiredTypesFound) reasons.push("missing required source types");
-			if (!score.substringFound) reasons.push("missing expected source substrings");
+			// #344 D1 — when the canonical exact-match gate drove pass/fail,
+			// report missing-documentId rather than missing-substring. Codex
+			// peer-review caught that a stale `substringFound=true` on a
+			// `documentIdFound=false` canonical query produced an empty
+			// reasons list — silent failures in forensics output.
+			if (score.evidenceGateCanonical && !score.documentIdFound) {
+				reasons.push("missing expected canonical artifactId (documentId mismatch)");
+			} else if (!score.evidenceGateCanonical && !score.substringFound) {
+				reasons.push("missing expected source substrings");
+			}
 			if (!score.edgeHopFound) reasons.push("no edge hops");
 			if (!score.crossSourceFound) reasons.push("no cross-source hops");
 			checks.push({
@@ -913,21 +922,39 @@ async function scoreText(
 
 		if (requiredArtifacts.length > 0) {
 			const resultSources = qResult.results.map((r) => r.source);
-			// Legacy substring gate — kept for unmigrated queries whose
-			// `expectedEvidence.artifactId` is still a path substring rather
-			// than a canonical `Chunk.documentId`. The canonical gate below
-			// supersedes this when the corpus catalog confirms identity.
+			const resultDocIdSet = new Set(
+				qResult.results
+					.map((r) => r.documentId)
+					.filter((d): d is string => typeof d === "string" && d.length > 0),
+			);
+			// Per-artifact resolution (#344 D1). Codex peer-review on the
+			// initial all-or-nothing `requiredArtifacts.every()` gate caught
+			// that one unresolved legacy artifactId disabled identity gating
+			// for every artifact in the same query.
+			//
+			// Now: each artifact resolves independently. Canonical artifacts
+			// (in catalog) hit when their value matches a retrieved chunk's
+			// `documentId`. Legacy artifacts hit by substring against
+			// retrieved sources. `documentIdFound` is true when ≥1 canonical
+			// artifact is required AND ≥1 such canonical artifact hit by
+			// exact `documentId`. `substringFound` keeps the legacy
+			// any-substring-hit signal — used as the pass driver only when
+			// the query has zero canonical artifacts.
+			let canonicalAnyRequired = false;
+			let canonicalAnyHit = false;
+			for (const aid of requiredArtifacts) {
+				const isCanonical = catalogDocumentIds?.has(aid) ?? false;
+				if (isCanonical) {
+					canonicalAnyRequired = true;
+					if (resultDocIdSet.has(aid)) {
+						canonicalAnyHit = true;
+					}
+				}
+			}
+			documentIdFound = canonicalAnyRequired && canonicalAnyHit;
 			substringFound = requiredArtifacts.some((sub) =>
 				resultSources.some((src) => src.toLowerCase().includes(sub.toLowerCase())),
 			);
-			// Canonical exact-match gate (#344 D1). Compares each required
-			// `artifactId` against retrieved chunks' `documentId`. Pass requires
-			// at least one required artifact to be hit by exact identity.
-			const resultDocIds = qResult.results
-				.map((r) => r.documentId)
-				.filter((d): d is string => typeof d === "string" && d.length > 0);
-			documentIdFound =
-				resultDocIds.length > 0 && requiredArtifacts.some((aid) => resultDocIds.includes(aid));
 		}
 
 		// #311 Phase 0d — recall@K computed over the full evidence set
@@ -1003,16 +1030,16 @@ async function scoreText(
 	// genuinely-similar false positives, not on K-filling alone.
 	const hardNegativeFewAboveNoise = aboveNoiseCount < HARD_NEGATIVE_RESULT_CEILING;
 
-	// #344 D1 — pick canonical exact-match identity gate when the catalog
-	// confirms every required artifactId is a real `documentId`. Otherwise
-	// fall back to the legacy substring gate. Codex caveat: replacement must
-	// assert identity, not silently drop the gate; that is why both
-	// `documentIdFound` and `substringFound` are output even though only one
-	// drives pass/fail.
+	// #344 D1 — when ANY required artifact resolves canonically (its value
+	// is a real `documentId` in the corpus catalog), the canonical gate is
+	// the active driver of pass/fail. The per-artifact resolution above
+	// already enforces that EVERY canonical artifact must hit exactly; we
+	// just need to detect "is there a canonical requirement at all?" here.
+	// Pure-legacy queries fall back to the substring signal as before.
 	const evidenceGateCanonical =
 		requiredArtifacts.length > 0 &&
 		catalogDocumentIds !== undefined &&
-		requiredArtifacts.every((aid) => catalogDocumentIds.has(aid));
+		requiredArtifacts.some((aid) => catalogDocumentIds.has(aid));
 	const evidencePass = evidenceGateCanonical ? documentIdFound : substringFound;
 
 	const passed = gq.isHardNegative
@@ -1043,11 +1070,29 @@ async function scoreText(
 			});
 			let goldRank: number | null = null;
 			let goldScore: number | null = null;
+			// Codex peer-review caught: pass/fail gate uses canonical
+			// `documentId` exact-match for any artifact in the catalog, but
+			// proximity was matching with substring only. A canonical
+			// query whose gold appeared at a real `documentId` (no path
+			// substring overlap) would record `goldRank = null` and get
+			// misrouted to `retrieval-miss`. Match using the same per-
+			// artifact resolution as the pass/fail gate so the diagnosis
+			// signal is consistent.
 			for (let i = 0; i < wider.results.length; i++) {
 				const r = wider.results[i];
 				if (!r) continue;
-				const src = r.source.toLowerCase();
-				const matches = allArtifacts.some((sub) => src.includes(sub.toLowerCase()));
+				let matches = false;
+				if (typeof r.documentId === "string" && r.documentId.length > 0) {
+					if (allArtifacts.some((aid) => aid === r.documentId)) {
+						matches = true;
+					}
+				}
+				if (!matches) {
+					const src = r.source.toLowerCase();
+					if (allArtifacts.some((sub) => src.includes(sub.toLowerCase()))) {
+						matches = true;
+					}
+				}
 				if (matches) {
 					goldRank = i + 1;
 					goldScore = typeof r.score === "number" ? r.score : null;
