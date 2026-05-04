@@ -72,6 +72,10 @@ export interface DiagnosisEvidence {
 	crossSourceMet: boolean;
 	/** True when ≥1 `required:true` artifactId surfaced in retrieved sources. */
 	substringFound: boolean;
+	/** #344 D1 — true when ≥1 required artifactId exact-matched a retrieved `Chunk.documentId`. */
+	documentIdFound?: boolean;
+	/** True when canonical exact-match gate drove pass/fail (vs legacy substring). */
+	evidenceGateCanonical?: boolean;
 	/** Gold-source proximity context, when available. */
 	goldRank: number | null;
 	topKCutoff: number | null;
@@ -99,6 +103,8 @@ export interface DiagnosisScoreInput {
 	resultCount: number;
 	requiredTypesFound: boolean;
 	substringFound: boolean;
+	documentIdFound?: boolean;
+	evidenceGateCanonical?: boolean;
 	edgeHopFound: boolean;
 	crossSourceFound: boolean;
 	goldProximity?: {
@@ -138,6 +144,14 @@ export function diagnoseFailure(input: DiagnoseFailureInput): FailureDiagnosis |
 		score.goldProximity === undefined ? null : score.goldProximity.goldRank !== null;
 	const goldInCatalog = preflightStatus !== "invalid";
 
+	// #344 D1 — when the canonical exact-match gate is in force, evidence
+	// pass/fail is `documentIdFound`. Otherwise the legacy substring gate
+	// drives. Routing rules below consult the active signal so a substring-
+	// only hit in a canonical query no longer masquerades as a pass.
+	const evidencePass = score.evidenceGateCanonical
+		? score.documentIdFound === true
+		: score.substringFound;
+
 	const evidence: DiagnosisEvidence = {
 		goldInCatalog,
 		retrievedInWiderK,
@@ -146,6 +160,8 @@ export function diagnoseFailure(input: DiagnoseFailureInput): FailureDiagnosis |
 		edgeHopsMet: score.edgeHopFound,
 		crossSourceMet: score.crossSourceFound,
 		substringFound: score.substringFound,
+		documentIdFound: score.documentIdFound,
+		evidenceGateCanonical: score.evidenceGateCanonical,
 		goldRank,
 		topKCutoff,
 		widerK,
@@ -230,11 +246,11 @@ export function diagnoseFailure(input: DiagnoseFailureInput): FailureDiagnosis |
 		};
 	}
 
-	// Rule 6 — required types absent or substring absent: ranking layer.
-	// (Substring matching is the legacy proxy for evidence presence and
-	// will switch to exact documentId match in step 3 fixture regen; until
-	// then a substring miss is still a ranking failure on the gold set.)
-	if (!score.requiredTypesFound || !score.substringFound) {
+	// Rule 6 — required types absent or evidence gate failed: ranking layer.
+	// `evidencePass` is `documentIdFound` when canonical, `substringFound`
+	// otherwise. Either way, gold IS in widerK (Rule 3 already exited) so
+	// the failure is "retrieved but the right artifact didn't surface".
+	if (!score.requiredTypesFound || !evidencePass) {
 		return {
 			queryId: query.id,
 			corpusId: corpusId ?? null,
