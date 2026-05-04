@@ -24,7 +24,9 @@ Each entry pins:
 +const TOPK = overrides.topK ?? 30;
 ```
 
-Monotonic retrieval lift: more candidates per query → more chances rubric thresholds met. Cannot reduce pass rate. Reverted on main; lives in candidate runs only.
+Retrieval lift: more candidates per query → more chances rubric thresholds met. Reverted on main; lives in candidate runs only.
+
+**Monotonicity caveat** (Copilot review on PR #386): TOPK is *not* strictly monotonic — `aboveNoiseCount` in the hard-negative gate increments for every retrieved result above `HARD_NEGATIVE_NOISE_FLOOR` (0.1), so a wider top-K can push previously-passing hard-negative queries past `HARD_NEGATIVE_RESULT_CEILING` (3) and flip them pass→fail. Empirically inert here because hard-negatives sit at 0/12 in both baseline and candidate runs (already floored, cannot get worse). A future Phase B retrieval improvement that lifts hard-negative pass rate above 0/12 would need this seam re-validated; document the assumption explicitly so the regression check doesn't silently break.
 
 ### Configuration (held constant across A/B)
 
@@ -85,10 +87,11 @@ All four held: gate 3 PASS.
 - Hard-gate inversions (a Phase B recalibration that pushes a floor above achievable rates)
 - Patch-routing changes that fail to apply a synthetic patch end-to-end
 
-### Why TOPK 10→30 is a valid synthetic positive
+### Why TOPK 10→30 is a valid synthetic positive (current corpus state)
 
 - Real, single-line code change (not a sweep-axis flip)
-- Monotonic — additional candidates can only increase pass rate, never decrease
+- Empirically positive in current state — additional candidates increased pass rate on filoz, dogfood, with zero hard-negative regression because hard-negatives floored at 0/12
+- *Not* unconditionally monotonic — see hard-negative caveat above
 - Independent of the 04-30 audit's known retrieval bugs (no overlap with #314/#327 territory)
 - Cheap to verify (~3-5 min per corpus run)
 - Easy to revert (1 LoC numeric)

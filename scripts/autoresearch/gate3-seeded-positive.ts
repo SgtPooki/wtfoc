@@ -3,9 +3,12 @@
  *
  * Verifies the autoresearch decideMulti + decide path accepts a known-good
  * synthetic patch end-to-end. Patch: bump default `TOPK` constant in
- * `quality-queries-evaluator.ts` from 10 → 30 (1 LoC). This is a
- * monotonic retrieval-quality lift — more candidates per query, more
- * chances to satisfy rubric thresholds, cannot reduce pass rate.
+ * `quality-queries-evaluator.ts` from 10 → 30 (1 LoC).
+ *
+ * Not strictly monotonic — see hard-negative caveat in
+ * docs/autoresearch/seeded-positives.md (SP-1). Empirically positive on
+ * the 2026-05-04 corpus state because hard-negatives sit at 0/12 and
+ * cannot regress further.
  *
  * Baseline: cached main reports from 2026-05-04 16-variant sweep
  * (`~/.wtfoc/autoresearch/reports/sweep-retrieval-baseline-1777900815204/`,
@@ -14,7 +17,8 @@
  *
  * Candidate: fresh dogfood runs on `feat/381-gate3-v2` branch with the
  * patch applied, on the same `noar_div_rrOff` axis settings (autoRoute
- * off, diversity on, no rerank).
+ * off, diversity on, no rerank). Committed under
+ * docs/autoresearch/seeded-positives/ for reproducibility.
  *
  * Hard gates: BRIDGE_GATES — relaxed against post-hygiene empirical pass
  * rates pending Phase B (#364) recalibration of DEFAULT_GATES. Gate 3
@@ -30,37 +34,25 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import type { ExtendedDogfoodReport } from "../lib/run-config.js";
-import { decide, decideMulti, type HardGates } from "./decision.js";
+import {
+	decide,
+	decideMulti,
+	type DecideMultiVerdict,
+	type DecisionVerdict,
+	type HardGates,
+} from "./decision.js";
 
 const BASELINE_DIR = join(
 	homedir(),
 	".wtfoc/autoresearch/reports/sweep-retrieval-baseline-1777900815204",
 );
 
-const CANDIDATE_PATHS: Record<string, string> = {
+export const SP1_CANDIDATE_PATHS: Record<string, string> = {
 	"filoz-ecosystem-2026-04-v12": "docs/autoresearch/seeded-positives/sp1-candidate-filoz.json",
 	"wtfoc-dogfood-2026-04-v3": "docs/autoresearch/seeded-positives/sp1-candidate-dogfood.json",
 };
 
 const BASELINE_VARIANT = "noar_div_rrOff";
-
-function loadBaseline(corpus: string): ExtendedDogfoodReport {
-	const path = join(BASELINE_DIR, `${BASELINE_VARIANT}__${corpus}.json`);
-	return JSON.parse(readFileSync(path, "utf-8")) as ExtendedDogfoodReport;
-}
-
-function loadCandidate(corpus: string): ExtendedDogfoodReport {
-	const path = CANDIDATE_PATHS[corpus];
-	if (!path) throw new Error(`No candidate path for corpus ${corpus}`);
-	return JSON.parse(readFileSync(path, "utf-8")) as ExtendedDogfoodReport;
-}
-
-const baseline = new Map<string, ExtendedDogfoodReport>();
-const candidate = new Map<string, ExtendedDogfoodReport>();
-for (const corpus of Object.keys(CANDIDATE_PATHS)) {
-	baseline.set(corpus, loadBaseline(corpus));
-	candidate.set(corpus, loadCandidate(corpus));
-}
 
 // Bridge gates — calibrated against post-scorer-hygiene empirical pass
 // rates from the 2026-05-04 sweep. Floors set just below current
@@ -68,7 +60,7 @@ for (const corpus of Object.keys(CANDIDATE_PATHS)) {
 // DEFAULT_GATES (pre-hygiene calibration) are stale; demoCriticalMin=1.0
 // is mathematically unreachable on current scorer state. Phase B (#364)
 // recalibrates DEFAULT_GATES from empirical reality.
-const BRIDGE_GATES: HardGates = {
+export const BRIDGE_GATES: HardGates = {
 	overallMin: 0.4,
 	// dogfood corpus has no demo-critical queries; evaluateGates emits
 	// passRate=0 in that case which would falsely trip a positive floor.
@@ -85,57 +77,127 @@ const BRIDGE_GATES: HardGates = {
 // Auxiliary corpora may show directional lift only (small samples produce
 // underpowered single-corpus bootstrap; cross-corpus aggregate via
 // decideMulti is the spec-binding acceptance signal).
-const PRIMARY_CORPUS = "filoz-ecosystem-2026-04-v12";
+export const PRIMARY_CORPUS = "filoz-ecosystem-2026-04-v12";
 
-console.log(`# Gate 3 — seeded positive control (TOPK 10→30)`);
-console.log(`Baseline:  ${BASELINE_DIR} (variant ${BASELINE_VARIANT})`);
-console.log(`Candidate: ${Object.values(CANDIDATE_PATHS).join(", ")}`);
-console.log();
-
-const multi = decideMulti({
-	baseline,
-	candidate,
-	cumulativeLocChange: 1,
-	gates: BRIDGE_GATES,
-});
-
-console.log(`## decideMulti`);
-console.log(`accept:             ${multi.accept}`);
-console.log(`trimmedMeanDelta:   ${multi.trimmedMeanDelta.toFixed(4)}`);
-console.log(`per-corpus deltas:`);
-for (const p of multi.perCorpus) {
-	console.log(
-		`  ${p.corpusId}: ${p.baselinePassRate.toFixed(3)} → ${p.candidatePassRate.toFixed(3)} (Δ ${p.delta >= 0 ? "+" : ""}${p.delta.toFixed(3)})`,
-	);
+export interface Sp1Verification {
+	multi: DecideMultiVerdict;
+	perCorpus: Array<{ corpusId: string; isPrimary: boolean; verdict: DecisionVerdict }>;
+	primaryBootstrapPass: boolean;
+	auxiliaryDirectional: boolean;
+	accept: boolean;
 }
-console.log(`reasons (if reject): ${multi.reasons.join("; ") || "(none)"}`);
-console.log();
 
-console.log(`## decide (per-corpus bootstrap)`);
-let primaryBootstrapPass = false;
-let auxiliaryDirectional = true;
-for (const corpus of Object.keys(CANDIDATE_PATHS)) {
-	const v = decide({
-		baseline: baseline.get(corpus)!,
-		candidate: candidate.get(corpus)!,
-		gates: BRIDGE_GATES,
+/**
+ * Pure verification logic. Takes already-loaded reports + gates so
+ * tests can swap in synthetic data instead of reading from disk.
+ */
+export function verifySp1(input: {
+	baseline: ReadonlyMap<string, ExtendedDogfoodReport>;
+	candidate: ReadonlyMap<string, ExtendedDogfoodReport>;
+	gates: HardGates;
+	primaryCorpus: string;
+}): Sp1Verification {
+	const multi = decideMulti({
+		baseline: input.baseline,
+		candidate: input.candidate,
+		cumulativeLocChange: 1,
+		gates: input.gates,
 	});
-	const isPrimary = corpus === PRIMARY_CORPUS;
-	console.log(`${corpus}${isPrimary ? " [PRIMARY]" : " [auxiliary]"}:`);
-	console.log(`  accept:           ${v.accept}`);
-	console.log(`  meanDelta:        ${v.bootstrap.meanDelta.toFixed(4)}`);
-	console.log(`  probBgreaterA:    ${v.bootstrap.probBgreaterA.toFixed(4)}`);
-	console.log(`  ci95:             [${v.bootstrap.ciLow.toFixed(4)}, ${v.bootstrap.ciHigh.toFixed(4)}]`);
-	console.log(`  reasons:          ${v.reasons.join("; ") || "(none)"}`);
-	if (isPrimary) {
-		primaryBootstrapPass = v.accept && v.bootstrap.probBgreaterA >= 0.95;
-	} else if (v.bootstrap.meanDelta <= 0) {
-		auxiliaryDirectional = false;
-	}
-}
-console.log();
 
-const ok = multi.accept && primaryBootstrapPass && auxiliaryDirectional;
-console.log(`## Verdict`);
-console.log(ok ? "PASS — harness accepts seeded positive end-to-end" : "FAIL — see reasons");
-process.exit(ok ? 0 : 1);
+	const perCorpus: Sp1Verification["perCorpus"] = [];
+	let primaryBootstrapPass = false;
+	let auxiliaryDirectional = true;
+	for (const corpusId of input.candidate.keys()) {
+		const verdict = decide({
+			baseline: input.baseline.get(corpusId)!,
+			candidate: input.candidate.get(corpusId)!,
+			gates: input.gates,
+		});
+		const isPrimary = corpusId === input.primaryCorpus;
+		perCorpus.push({ corpusId, isPrimary, verdict });
+		if (isPrimary) {
+			primaryBootstrapPass = verdict.accept && verdict.bootstrap.probBgreaterA >= 0.95;
+		} else if (verdict.bootstrap.meanDelta <= 0) {
+			auxiliaryDirectional = false;
+		}
+	}
+
+	return {
+		multi,
+		perCorpus,
+		primaryBootstrapPass,
+		auxiliaryDirectional,
+		accept: multi.accept && primaryBootstrapPass && auxiliaryDirectional,
+	};
+}
+
+function loadBaseline(corpus: string): ExtendedDogfoodReport {
+	const path = join(BASELINE_DIR, `${BASELINE_VARIANT}__${corpus}.json`);
+	return JSON.parse(readFileSync(path, "utf-8")) as ExtendedDogfoodReport;
+}
+
+function loadCandidate(corpus: string): ExtendedDogfoodReport {
+	const path = SP1_CANDIDATE_PATHS[corpus];
+	if (!path) throw new Error(`No candidate path for corpus ${corpus}`);
+	return JSON.parse(readFileSync(path, "utf-8")) as ExtendedDogfoodReport;
+}
+
+function main(): void {
+	const baseline = new Map<string, ExtendedDogfoodReport>();
+	const candidate = new Map<string, ExtendedDogfoodReport>();
+	for (const corpus of Object.keys(SP1_CANDIDATE_PATHS)) {
+		baseline.set(corpus, loadBaseline(corpus));
+		candidate.set(corpus, loadCandidate(corpus));
+	}
+
+	console.log(`# Gate 3 — seeded positive control (TOPK 10→30)`);
+	console.log(`Baseline:  ${BASELINE_DIR} (variant ${BASELINE_VARIANT})`);
+	console.log(`Candidate: ${Object.values(SP1_CANDIDATE_PATHS).join(", ")}`);
+	console.log();
+
+	const result = verifySp1({
+		baseline,
+		candidate,
+		gates: BRIDGE_GATES,
+		primaryCorpus: PRIMARY_CORPUS,
+	});
+
+	console.log(`## decideMulti`);
+	console.log(`accept:             ${result.multi.accept}`);
+	console.log(`trimmedMeanDelta:   ${result.multi.trimmedMeanDelta.toFixed(4)}`);
+	console.log(`per-corpus deltas:`);
+	for (const p of result.multi.perCorpus) {
+		console.log(
+			`  ${p.corpusId}: ${p.baselinePassRate.toFixed(3)} → ${p.candidatePassRate.toFixed(3)} (Δ ${p.delta >= 0 ? "+" : ""}${p.delta.toFixed(3)})`,
+		);
+	}
+	console.log(`reasons (if reject): ${result.multi.reasons.join("; ") || "(none)"}`);
+	console.log();
+
+	console.log(`## decide (per-corpus bootstrap)`);
+	for (const { corpusId, isPrimary, verdict } of result.perCorpus) {
+		console.log(`${corpusId}${isPrimary ? " [PRIMARY]" : " [auxiliary]"}:`);
+		console.log(`  accept:           ${verdict.accept}`);
+		console.log(`  meanDelta:        ${verdict.bootstrap.meanDelta.toFixed(4)}`);
+		console.log(`  probBgreaterA:    ${verdict.bootstrap.probBgreaterA.toFixed(4)}`);
+		console.log(
+			`  ci95:             [${verdict.bootstrap.ciLow.toFixed(4)}, ${verdict.bootstrap.ciHigh.toFixed(4)}]`,
+		);
+		console.log(`  reasons:          ${verdict.reasons.join("; ") || "(none)"}`);
+	}
+	console.log();
+
+	console.log(`## Verdict`);
+	console.log(
+		result.accept
+			? "PASS — harness accepts seeded positive end-to-end"
+			: "FAIL — see reasons",
+	);
+	process.exit(result.accept ? 0 : 1);
+}
+
+// Only run main when invoked directly. Lets the module be imported by
+// tests without triggering disk reads + process.exit.
+if (import.meta.url === `file://${process.argv[1]}`) {
+	main();
+}
