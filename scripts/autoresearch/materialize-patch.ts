@@ -9,9 +9,11 @@
  *   - `git apply` is run with `--check` first; refuse to materialize
  *     if the diff doesn't apply cleanly.
  *   - The sweep runs against the production matrix (knob axes
- *     unchanged) — only the source tree differs. Variant id stays
- *     the production variant id; only `runConfigFingerprint` differs
- *     because git sha changes.
+ *     unchanged) — only the source tree differs. The sweep targets
+ *     `targetVariantId` when supplied (typically `finding.variantId`,
+ *     #403); otherwise falls back to `productionVariantId`. The
+ *     `runConfigFingerprint` differs from baselines because git sha
+ *     changes.
  *   - On accept, the caller (autonomous-loop) opens a draft PR from
  *     the worktree's branch.
  */
@@ -30,6 +32,19 @@ export interface MaterializePatchInputs {
 	productionMatrix: Matrix;
 	productionMatrixName: string;
 	proposal: PatchProposal;
+	/**
+	 * Variant the patch should be evaluated against (typically
+	 * `finding.variantId`). When set and different from
+	 * `productionMatrix.productionVariantId`, the sweep filters to this
+	 * variant and decide() compares against this variant's baseline
+	 * window. Mirrors the #394 fix for materialize-variant. Without
+	 * this, a patch designed to fix a non-production variant (e.g.
+	 * noar_div_rrBge for #327) is measured only on production code paths
+	 * and the patch's intended effect is invisible (#403).
+	 *
+	 * When unset, falls back to `productionVariantId` (legacy behavior).
+	 */
+	targetVariantId?: string;
 	stage?: string;
 	minBaseline?: number;
 	repoRoot?: string;
@@ -264,8 +279,18 @@ export async function materializePatchProposal(
 	}
 
 	// Run the sweep against the worktree using the existing matrix.
-	// Production variant only — the patch is the variable, not the
-	// knob configuration.
+	// Single variant — defaults to production, overridable via
+	// `targetVariantId` so that patches authored to fix a non-production
+	// variant are actually exercised on that variant (#403).
+	const productionVariantId = input.productionMatrix.productionVariantId ?? "";
+	const sweepVariantId = input.targetVariantId ?? productionVariantId;
+	if (input.targetVariantId && input.targetVariantId !== productionVariantId) {
+		notes.push(
+			`materialize-patch: target=${input.targetVariantId} (from finding) ` +
+				`differs from productionVariantId=${productionVariantId || "(unset)"} — ` +
+				`sweep + decide() scoped to target variant (#403)`,
+		);
+	}
 	try {
 		spawnFn(
 			"pnpm",
@@ -275,7 +300,7 @@ export async function materializePatchProposal(
 				"--stage",
 				stage,
 				"--variant-filter",
-				input.productionMatrix.productionVariantId ?? "",
+				sweepVariantId,
 			],
 			{ cwd: worktreePath },
 		);
@@ -294,13 +319,13 @@ export async function materializePatchProposal(
 
 	// Read newly-appended runs.jsonl rows. Same approach as
 	// materialize-variant.ts; the patched run has a NEW git sha, hence
-	// a new runConfigFingerprint, but the variantId is unchanged.
+	// a new runConfigFingerprint, but the variantId is unchanged from
+	// the sweep filter.
 	const allRows = readRunLog(runLogPaths());
-	const productionVariantId = input.productionMatrix.productionVariantId ?? "";
 	const candidateRows = allRows.filter(
 		(r) =>
 			r.stage === stage &&
-			r.variantId === productionVariantId &&
+			r.variantId === sweepVariantId &&
 			r.matrixName === input.productionMatrix.name &&
 			r.reportPath,
 	);
@@ -335,14 +360,15 @@ export async function materializePatchProposal(
 		}
 		// Patches change runConfigFingerprint via gitSha. Comparability
 		// rule for patches is RELAXED: we compare against any recent
-		// nightly-cron run for the production variant + corpus,
-		// regardless of fingerprint, since the whole point is to compare
-		// "code-before vs code-after." Document this caveat.
+		// nightly-cron run for the SAME variant we just swept (target
+		// or production, per #403) + corpus, regardless of fingerprint,
+		// since the whole point is to compare "code-before vs
+		// code-after." Document this caveat.
 		const baselineRows = [...allRows]
 			.reverse()
 			.filter(
 				(r) =>
-					r.variantId === productionVariantId &&
+					r.variantId === sweepVariantId &&
 					r.runConfig.collectionId === corpus &&
 					r.stage === "nightly-cron" &&
 					r.reportPath,
