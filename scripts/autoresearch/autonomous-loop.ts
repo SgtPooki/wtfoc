@@ -596,10 +596,18 @@ async function runPatchPath(input: {
 		proposal: {
 			axis: "(code-patch)",
 			value: llm.proposal.baseSha,
-			rationale: llm.proposal.rationale.slice(0, 200),
+			// Preserve full rationale (LLM's diagnosis chain) so subsequent
+			// proposer calls can see why prior attempts targeted what they
+			// targeted. Pre-fix the rationale was clamped to 200 chars,
+			// truncating the analysis section that explains the LLM's
+			// reasoning to itself.
+			rationale: llm.proposal.rationale,
 		},
 		verdict: materialize.aggregateAccept ? "accepted" : "rejected",
-		reasons: materialize.decisions.flatMap((d) => d.verdict?.reasons ?? [d.reason ?? ""]).concat(materialize.notes),
+		reasons: materialize.decisions
+			.flatMap((d) => d.verdict?.reasons ?? [d.reason ?? ""])
+			.concat(materialize.notes)
+			.filter(Boolean),
 	});
 
 	if (!materialize.aggregateAccept) {
@@ -875,7 +883,7 @@ async function runLoop(cli: CliArgs): Promise<LoopOutcome> {
 		reasons: [
 			...materialize.notes,
 			...materialize.decisions.flatMap((d) => d.verdict?.reasons ?? [d.reason ?? ""]),
-		],
+		].filter(Boolean),
 		metrics: candidateRow?.summary
 			? {
 					passRate: candidateRow.summary.passRate,
