@@ -19,39 +19,31 @@ import {
 	BgeReranker,
 	CachingEmbedder,
 	evaluateEdgeResolution,
-	evaluateQualityQueries,
 	evaluateSearch,
 	evaluateThemes,
-	GOLD_STANDARD_QUERIES,
 	GOLD_STANDARD_QUERIES_VERSION,
+	GOLD_STANDARD_QUERIES,
 	InMemoryVectorIndex,
 	LlmReranker,
 	OpenAIEmbedder,
-	type PreflightStatus,
 	type Reranker,
-	runPreflight,
 } from "@wtfoc/search";
 import { evaluateStorage, createStore } from "@wtfoc/store";
 import { formatDogfoodReport } from "./dogfood-formatter.js";
 import { buildRunConfig, defaultQualityQueriesRetrieval } from "./lib/build-run-config.js";
-import { namespacedCacheDir } from "./lib/cache-namespace.js";
 import { CostAggregator } from "./lib/cost-aggregator.js";
 import {
-	GRADER_PROMPT_VERSION,
-	GRADER_SYSTEM_PROMPT,
-	SYNTHESIS_PROMPT_VERSION,
-	SYNTHESIS_SYSTEM_PROMPT,
-} from "./lib/grounding-prompts.js";
-import { runGrounding } from "./lib/grounding-runner.js";
+	buildRetrievalContext,
+	groundingPromptHashes,
+	runQualityQueriesPipeline,
+} from "./lib/dogfood-pipeline.js";
 import type { LlmUsage } from "./lib/llm-usage.js";
 import {
 	computeRunConfigFingerprint,
 	type ExtendedDogfoodReport,
 	FINGERPRINT_VERSION,
 } from "./lib/run-config.js";
-import { sha256Hex } from "./lib/run-config.js";
 import { SubstageTimer } from "./lib/substage-timer.js";
-import { TimingVectorIndex } from "./lib/timing-vector-index.js";
 
 const VALID_STAGES = [
 	"ingest",
@@ -204,12 +196,7 @@ async function main() {
 					apiKey: values["extractor-key"],
 				}
 			: null;
-	const promptHashes: Record<string, string> = groundingEnabled
-		? {
-				synthesis: `${SYNTHESIS_PROMPT_VERSION}:${sha256Hex(SYNTHESIS_SYSTEM_PROMPT)}`,
-				grader: `${GRADER_PROMPT_VERSION}:${sha256Hex(GRADER_SYSTEM_PROMPT)}`,
-			}
-		: {};
+	const promptHashes = groundingPromptHashes(groundingEnabled);
 
 	// Build the run identity record + fingerprint up front so cache
 	// namespacing can use it before any stage runs. Variants with
@@ -447,55 +434,13 @@ async function main() {
 							checks: [],
 						};
 					} else {
-						const rawEmbedder = new OpenAIEmbedder({
-							apiKey: values["embedder-key"] || process.env.WTFOC_EMBEDDER_KEY || values["extractor-key"] || "no-key",
-							baseUrl: values["embedder-url"],
-							model: values["embedder-model"],
-							usageSink: embedderUsageSink,
-						});
-						const embedCacheBaseDir =
-							values["embedder-cache-dir"] ?? process.env.WTFOC_EMBEDDER_CACHE_DIR;
-						const embedder = embedCacheBaseDir
-							? new CachingEmbedder(rawEmbedder, {
-									cacheDir: namespacedCacheDir(embedCacheBaseDir, runConfigFingerprint),
-									provider: "openai-compatible",
-									modelVersion: "unknown",
-								})
-							: rawEmbedder;
-						const baseVectorIndex = new InMemoryVectorIndex();
-						for (const seg of segments) {
-							const entries = seg.chunks
-								.filter((c: { embedding?: number[] }) => c.embedding && c.embedding.length > 0)
-								.map((c: { id: string; storageId: string; content: string; sourceType: string; source: string; sourceUrl?: string; embedding: number[]; metadata?: Record<string, string>; signalScores?: Record<string, number> }) => ({
-									id: c.id,
-									vector: new Float32Array(c.embedding),
-									storageId: c.storageId || c.id,
-									metadata: {
-										sourceType: c.sourceType,
-										source: c.source,
-										sourceUrl: c.sourceUrl ?? "",
-										content: c.content,
-										...(c.metadata ?? {}),
-										...(c.signalScores && Object.keys(c.signalScores).length > 0
-											? { signalScores: JSON.stringify(c.signalScores) }
-											: {}),
-									},
-								}));
-							if (entries.length > 0) {
-								await baseVectorIndex.add(entries);
-							}
+						const collectionId = values.collection;
+						if (!collectionId) {
+							throw new Error("--collection is required for the quality-queries stage");
 						}
-						const vectorIndex = new TimingVectorIndex(baseVectorIndex, (ms) =>
-							timer.record("vector-retrieve", ms),
-						);
 						const qqManifestDir =
 							(store.manifests as { dir?: string }).dir ??
 							`${process.env.HOME ?? "."}.wtfoc/projects`;
-						const qqOverlayEdges = await loadAllOverlayEdges(qqManifestDir, values.collection!);
-						const corpusSourceTypes = new Set<string>();
-						for (const segSummary of head.manifest.segments) {
-							for (const st of segSummary.sourceTypes ?? []) corpusSourceTypes.add(st);
-						}
 						const retrievalOverrides: {
 							topK?: number;
 							traceMaxPerSource?: number;
@@ -510,131 +455,37 @@ async function main() {
 						if (values["trace-min-score"] !== undefined)
 							retrievalOverrides.traceMinScore = Number.parseFloat(values["trace-min-score"]);
 
-						// #344 step 3 — pre-flight catalog applicability so the
-						// failure-diagnosis layer's rule-1 short-circuit can fire
-						// (gold artifacts absent from this corpus = `fixture-invalid`,
-						// no retrieval-layer triage). Loads the catalog for the
-						// active collection only and runs preflight against the
-						// subset of queries that target this corpus, so
-						// `runPreflight`'s cross-corpus schema check (which would
-						// hard-error on every multi-corpus query) does not fire.
-						const collectionId = values.collection;
-						if (!collectionId) {
-							throw new Error("--collection is required for the quality-queries stage");
-						}
-						const qqCatPath = catalogFilePath(qqManifestDir, collectionId);
-						const qqCatalog = await readCatalog(qqCatPath);
-						const preflightStatusByQueryId = new Map<string, PreflightStatus>();
-						if (qqCatalog) {
-							// Project each query down to "this corpus" before preflight so
-							// `runPreflight`'s matrix-validation pass (which expects a
-							// catalog for every applicableCorpora id it sees) gets a
-							// single-corpus view it can satisfy.
-							const localQueries = GOLD_STANDARD_QUERIES.filter((q) =>
-								q.applicableCorpora.includes(collectionId),
-							).map((q) => ({ ...q, applicableCorpora: [collectionId] }));
-							const preflight = runPreflight({
-								queries: localQueries,
-								catalogs: [{ corpusId: collectionId, catalog: qqCatalog }],
-							});
-							if (preflight.hardErrors.length > 0) {
-								console.warn(
-									`[dogfood] preflight hard-errors (${preflight.hardErrors.length}); skipping fixture-invalid wiring`,
-								);
-								for (const e of preflight.hardErrors) console.warn(`  - ${e}`);
-							} else {
-								for (const r of preflight.results) {
-									if (r.corpusId === collectionId) {
-										preflightStatusByQueryId.set(r.queryId, r.status);
-									}
-								}
-							}
-						}
-
-						result = await evaluateQualityQueries(
-						embedder,
-						vectorIndex,
-						segments,
-						undefined,
-						qqOverlayEdges,
-						reranker,
-						values["auto-route"] ?? false,
-						{
-							collectionId: values.collection!,
-							corpusSourceTypes,
-							perQueryHook: (id, ms) => timer.record("per-query-total", ms),
-							checkParaphrases: process.env.WTFOC_CHECK_PARAPHRASES === "1",
-							...(preflightStatusByQueryId.size > 0
-								? { preflightStatusByQueryId }
-								: {}),
-							...(Object.keys(retrievalOverrides).length > 0
-								? { retrievalOverrides }
-								: {}),
-							// #360 — feed the per-corpus document catalog so the
-							// evaluator emits coverageReport + fixtureHealthSignal
-							// alongside diagnosisAggregate. Knobs land via env so
-							// the autoresearch sweep can override per-cycle.
-							...(qqCatalog ? { documentCatalog: qqCatalog } : {}),
-							...(process.env.WTFOC_RECIPE_GINI_FLOOR
-								? { coverageGiniFloor: Number(process.env.WTFOC_RECIPE_GINI_FLOOR) }
-								: {}),
-							...(process.env.WTFOC_RECIPE_MIN_UNCOVERED_STRATA
-								? {
-										coverageMinUncoveredStrata: Number(
-											process.env.WTFOC_RECIPE_MIN_UNCOVERED_STRATA,
-										),
-									}
-								: {}),
-						},
-						values["diversity-enforce"] ?? false,
-					);
-
-					// Phase 0f — citation/grounding on the synthesis tier. Off
-					// by default; opt-in via WTFOC_GROUND_CHECK=1 (single
-					// pinned grader, no escalation, no rate-limit risk on
-					// local vLLM). Synthesis prompts the extractor to emit
-					// claims; grader (stronger model than extractor) verdicts
-					// each claim against the same retrieved evidence.
-					let grounding: Awaited<ReturnType<typeof runGrounding>> | null = null;
-					if (groundingEnabled && graderConfig && synthesizerConfig) {
-						const synthSink = (u: LlmUsage): void => {
-							if (typeof u.durationMs === "number") timer.record("synthesize", u.durationMs);
-							costs.record("synthesize", u);
-						};
-						const graderSink = (u: LlmUsage): void => {
-							if (typeof u.durationMs === "number") timer.record("grade", u.durationMs);
-							costs.record("grade", u);
-						};
-						const synthQueries = GOLD_STANDARD_QUERIES.filter(
-							(q) =>
-								q.queryType === "howto" && q.applicableCorpora.includes(values.collection!),
-						).map((q) => ({ id: q.id, queryText: q.query }));
-						console.error(
-							`[dogfood] grounding: ${synthQueries.length} synthesis-tier queries (grader=${graderConfig.model})`,
-						);
-						grounding = await runGrounding({
-							queries: synthQueries,
-							synthesizer: synthesizerConfig,
-							grader: graderConfig,
-							embedder,
-							vectorIndex,
-							reranker,
-							topK: 10,
-							synthesizerUsageSink: synthSink,
-							graderUsageSink: graderSink,
+						const ctx = await buildRetrievalContext({
+							collectionId,
+							manifestDir: qqManifestDir,
+							manifest: head.manifest,
+							segments,
+							runConfigFingerprint,
+							embedderUrl: values["embedder-url"],
+							embedderModel: values["embedder-model"],
+							embedderApiKey:
+								values["embedder-key"] ||
+								process.env.WTFOC_EMBEDDER_KEY ||
+								values["extractor-key"],
+							embedderCacheDir:
+								values["embedder-cache-dir"] ?? process.env.WTFOC_EMBEDDER_CACHE_DIR,
+							retrievalOverrides,
+							timer,
+							embedderUsageSink,
 						});
-					}
 
-					// Attach timing + cost telemetry (and grounding when run)
-					// to the stage's metrics payload — published
-					// `EvalStageResult.metrics` is `Record<string, unknown>`
-					// so this is additive.
-					result.metrics = {
-						...result.metrics,
-						timing: timer.allStats(),
-						cost: costs.allStats(),
-						...(grounding ? { grounding } : {}),
-					};
+						result = await runQualityQueriesPipeline(ctx, {
+							reranker,
+							autoRoute: values["auto-route"] ?? false,
+							diversityEnforce: values["diversity-enforce"] ?? false,
+							checkParaphrases: process.env.WTFOC_CHECK_PARAPHRASES === "1",
+							timer,
+							costs,
+							groundingEnabled,
+							graderConfig,
+							synthesizerConfig,
+							collectionId,
+						});
 					}
 					break;
 				}
