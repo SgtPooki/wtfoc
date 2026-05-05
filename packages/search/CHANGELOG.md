@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.0.5](https://github.com/SgtPooki/wtfoc/compare/search-v0.0.4...search-v0.0.5) (2026-05-05)
+
+
+### Features
+
+* **autoresearch:** emit coverageReport from evaluator (refs [#360](https://github.com/SgtPooki/wtfoc/issues/360)) ([#367](https://github.com/SgtPooki/wtfoc/issues/367)) ([c05b7a5](https://github.com/SgtPooki/wtfoc/commit/c05b7a53beabc6acb3de714ae60881b13e28c4e2))
+* **autoresearch:** emit coverageReport from quality-queries evaluator (refs [#360](https://github.com/SgtPooki/wtfoc/issues/360)) ([c05b7a5](https://github.com/SgtPooki/wtfoc/commit/c05b7a53beabc6acb3de714ae60881b13e28c4e2))
+* **autoresearch:** FixtureHealthSignal + CoverageReport types (refs [#360](https://github.com/SgtPooki/wtfoc/issues/360)) ([#366](https://github.com/SgtPooki/wtfoc/issues/366)) ([932d805](https://github.com/SgtPooki/wtfoc/commit/932d805cce45d4504cd979841f85ea3d6a4406cf))
+* **autoresearch:** gold-query schema + catalog-applicability preflight ([#345](https://github.com/SgtPooki/wtfoc/issues/345)) ([30a2a8d](https://github.com/SgtPooki/wtfoc/commit/30a2a8dd578294e17dba6ecdda445c8ac97db6d3))
+* **autoresearch:** grader rewire to GoldQuery + drop legacy adapter ([#346](https://github.com/SgtPooki/wtfoc/issues/346)) ([afee67f](https://github.com/SgtPooki/wtfoc/commit/afee67fecb42a83fc79286e09b98b67597f290ff))
+* **autoresearch:** real-improvement infra — knobs plumbed, planner, gold-proximity, code-patch (refs [#331](https://github.com/SgtPooki/wtfoc/issues/331)) ([#334](https://github.com/SgtPooki/wtfoc/issues/334)) ([69352c9](https://github.com/SgtPooki/wtfoc/commit/69352c984cb3ade3038f3a731843f11dbef5bca6))
+* **autoresearch:** recipe-apply CLI + AUTHORED_QUERIES splice (close step-2 review pipeline) ([#361](https://github.com/SgtPooki/wtfoc/issues/361)) ([b26462c](https://github.com/SgtPooki/wtfoc/commit/b26462c8a076a73e2cbebffd67d066972e16719e))
+* **autoresearch:** RejectReason taxonomy expansion (refs [#360](https://github.com/SgtPooki/wtfoc/issues/360)) ([#362](https://github.com/SgtPooki/wtfoc/issues/362)) ([a2a34b6](https://github.com/SgtPooki/wtfoc/commit/a2a34b6be0fe7f1f33dab4a0fc46b92a8f709080))
+* **autoresearch:** rewire grader to GoldQuery + drop legacy adapter ([afee67f](https://github.com/SgtPooki/wtfoc/commit/afee67fecb42a83fc79286e09b98b67597f290ff)), closes [#344](https://github.com/SgtPooki/wtfoc/issues/344)
+* **autoresearch:** rule-based failure-diagnosis layer ([#347](https://github.com/SgtPooki/wtfoc/issues/347)) ([409dcfc](https://github.com/SgtPooki/wtfoc/commit/409dcfc45d5c846ede7541a915e2ee01b52562c0)), closes [#344](https://github.com/SgtPooki/wtfoc/issues/344)
+* **autoresearch:** slow-but-passing FailureClass + per-query duration capture ([#392](https://github.com/SgtPooki/wtfoc/issues/392)) ([b83f6c9](https://github.com/SgtPooki/wtfoc/commit/b83f6c9eef75674c865d845c784c28b5c70ef68a))
+* **autoresearch:** stratified-template recipe primitives (step 2a) ([#353](https://github.com/SgtPooki/wtfoc/issues/353)) ([5d2df9a](https://github.com/SgtPooki/wtfoc/commit/5d2df9a77d6bd073bd59a0b13f43146c272159ed)), closes [#344](https://github.com/SgtPooki/wtfoc/issues/344)
+* **eval:** canonical documentId evidence gate ([#344](https://github.com/SgtPooki/wtfoc/issues/344) D1) ([#376](https://github.com/SgtPooki/wtfoc/issues/376)) ([5363556](https://github.com/SgtPooki/wtfoc/commit/5363556ab73ba7edbcd5619196a9ad5f0d3ea5c7))
+* **eval:** retrieval-miss class + per-artifact OR + proximity-by-documentId ([#343](https://github.com/SgtPooki/wtfoc/issues/343) Phase A) ([#379](https://github.com/SgtPooki/wtfoc/issues/379)) ([25dfcb5](https://github.com/SgtPooki/wtfoc/commit/25dfcb556e72444775a297df94204cc7c48eac28))
+* **eval:** score-aware hard-negative gate ([#343](https://github.com/SgtPooki/wtfoc/issues/343) Phase A) ([#377](https://github.com/SgtPooki/wtfoc/issues/377)) ([471c045](https://github.com/SgtPooki/wtfoc/commit/471c045878a9e2da42eb55f8ed21d608779955d5))
+
+
+### Bug Fixes
+
+* **eval:** preflight invalid status now actually skips (refs [#343](https://github.com/SgtPooki/wtfoc/issues/343) P0, [#345](https://github.com/SgtPooki/wtfoc/issues/345)) ([#375](https://github.com/SgtPooki/wtfoc/issues/375)) ([fe3fdb8](https://github.com/SgtPooki/wtfoc/commit/fe3fdb87337fb235a4ca6c681110e8e796ac4605))
+* **eval:** preflight invalid status now actually skips queries (refs [#343](https://github.com/SgtPooki/wtfoc/issues/343) P0, [#345](https://github.com/SgtPooki/wtfoc/issues/345)) ([fe3fdb8](https://github.com/SgtPooki/wtfoc/commit/fe3fdb87337fb235a4ca6c681110e8e796ac4605))
+
 ## [0.0.4](https://github.com/SgtPooki/wtfoc/compare/search-v0.0.3...search-v0.0.4) (2026-04-30)
 
 
