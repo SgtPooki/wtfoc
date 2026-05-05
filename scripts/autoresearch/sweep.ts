@@ -30,7 +30,12 @@
  * defaults. That gate stays manual until methodology is hardened.
  */
 
-import { ensureMode, type GpuMode, resolveModeFromMatrix } from "../lib/mode-switch.js";
+import { ensureMode, resolveModeFromMatrix } from "../lib/mode-switch.js";
+import {
+	type PhaseName,
+	type PhasePlan,
+	planSweepPhases,
+} from "./sweep-phase-planner.js";
 import { safeExecFileSync as execFileSync } from "../lib/safe-exec.js";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -178,11 +183,17 @@ async function loadMatrix(matrixName: string): Promise<Matrix> {
 	}
 }
 
+interface PhaseInvocation {
+	phase: PhaseName;
+	cacheBase: string;
+}
+
 function runVariantOnCorpus(
 	matrix: Matrix,
 	variant: Variant,
 	collection: string,
 	sweepId: string,
+	phaseInvocation?: PhaseInvocation,
 ): { report: ExtendedDogfoodReport; durationMs: number; reportPath: string } {
 	const archiveDir = resolve(
 		`${process.env.WTFOC_AUTORESEARCH_DIR ?? `${process.env.HOME}/.wtfoc/autoresearch`}/reports/${sweepId}`,
@@ -246,8 +257,22 @@ function runVariantOnCorpus(
 		args.push("--trace-max-total", String(variant.axes.traceMaxTotal));
 	if (variant.axes.traceMinScore !== undefined)
 		args.push("--trace-min-score", String(variant.axes.traceMinScore));
+	if (phaseInvocation) {
+		args.push(
+			"--phase",
+			phaseInvocation.phase,
+			"--cache-base",
+			phaseInvocation.cacheBase,
+			"--sweep-id",
+			sweepId,
+			"--variant-id",
+			variant.variantId,
+		);
+	}
 
-	logErr(`[sweep] running variant ${variant.variantId} on ${collection}`);
+	logErr(
+		`[sweep] running variant ${variant.variantId} on ${collection}${phaseInvocation ? ` (phase=${phaseInvocation.phase})` : ""}`,
+	);
 	const t0 = performance.now();
 	execFileSync("pnpm", args, { stdio: ["ignore", "pipe", "inherit"], env: childEnv });
 	const durationMs = performance.now() - t0;
@@ -368,117 +393,283 @@ async function main(): Promise<void> {
 		} sweepId=${sweepId} stage=${stage ?? "(none)"}`,
 	);
 
-	// #360 — auto-switch GPU mode for sweeps targeting a GPU-only
-	// workload (rerank-gpu / embed-gpu). Mirrors the autonomous-loop's
-	// `swapMode` wrapper. Gated by `WTFOC_VLLM_AUTOSWAP=1`; when unset
-	// every call is a noop and the sweep runs in whatever mode is
-	// already active. After the sweep finishes (success OR failure),
-	// the GPU is returned to `chat` so the autonomous-loop's analyze
-	// phase has a chat-ready model.
-	const sweepMode: GpuMode | null = resolveModeFromMatrix(matrix);
-	if (sweepMode) {
-		logErr(`[sweep] resolved gpu mode requirement: ${sweepMode}`);
+	// 3-phase sweep architecture (single-GPU mode-switch deployments).
+	// Compute the embed → search → score plan once, then either run a
+	// single-shot fast path (every phase mode is null — fully cloud or
+	// no GPU dependency) or batch each phase across all variant×corpus
+	// combinations with one ensureMode call per phase. Gated by
+	// `WTFOC_VLLM_AUTOSWAP=1`; when unset every ensureMode is a noop
+	// and the sweep runs in whatever mode is already active.
+	const adminHostFromEnv = (() => {
+		const url = process.env.WTFOC_VLLM_ADMIN_URL;
+		if (!url) return null;
 		try {
-			const r = await ensureMode(sweepMode, { reason: `sweep ${matrix.name}` });
-			if (r.skipped) {
-				logErr(`[sweep] mode-switch skipped (${sweepMode}): ${r.skippedReason}`);
-			} else {
-				logErr(`[sweep] mode-switch ok: ${r.from ?? "?"}→${r.to ?? sweepMode}`);
-			}
-		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err);
-			logErr(`[sweep] mode-switch FAILED (${sweepMode}): ${msg}`);
-			logErr(
-				`[sweep] aborting — variants targeting a ${sweepMode} workload would 503 against the inactive deployment`,
-			);
-			process.exit(3);
+			return new URL(url).host;
+		} catch {
+			return null;
 		}
-	}
+	})();
+	const phasePlan: PhasePlan[] = planSweepPhases({
+		embedderUrl: matrix.baseConfig.embedderUrl,
+		extractorUrl: matrix.baseConfig.extractorUrl,
+		variants,
+		adminHost: adminHostFromEnv,
+		groundingEnabled: process.env.WTFOC_GROUND_CHECK === "1",
+	});
+	const phasesNeedingMode = phasePlan.filter((p) => p.mode !== null);
+	const usePhaseSplit = phasesNeedingMode.length > 0;
+	logErr(
+		`[sweep] phase plan: ${phasePlan
+			.map((p) => `${p.phase}=${p.mode ?? "cloud"}${p.skip ? ":skip" : ""}`)
+			.join(" → ")}`,
+	);
 
 	const results: SweepRunResult[] = [];
-	let primaryBaselineReport: ExtendedDogfoodReport | null = null;
-	let secondaryBaselineReport: ExtendedDogfoodReport | null = null;
 
-	for (const v of variants) {
-		// Primary corpus run.
-		const primaryRun = runVariantOnCorpus(matrix, v, corpora.primary, sweepId);
-		const primary: PerCorpusRun = {
-			corpus: corpora.primary,
-			report: primaryRun.report,
-			durationMs: primaryRun.durationMs,
-			reportPath: primaryRun.reportPath,
-		};
-		if (primaryBaselineReport) {
-			primary.decisionVsBaseline = decide({
-				baseline: primaryBaselineReport,
-				candidate: primary.report,
-			});
-		} else {
-			primaryBaselineReport = primary.report;
-		}
-		appendRunLogRow(
-			buildRunLogRow({
-				sweepId,
-				matrixName: matrix.name,
-				variantId: v.variantId,
-				report: primary.report,
-				durationMs: primary.durationMs,
-				reportPath: primary.reportPath,
-				...(stage ? { stage } : {}),
-			}),
-		);
-
-		// Secondary corpus run (when configured).
-		let secondary: PerCorpusRun | undefined;
-		if (corpora.secondary) {
-			const secondaryRun = runVariantOnCorpus(matrix, v, corpora.secondary, sweepId);
-			secondary = {
-				corpus: corpora.secondary,
-				report: secondaryRun.report,
-				durationMs: secondaryRun.durationMs,
-				reportPath: secondaryRun.reportPath,
+	if (!usePhaseSplit) {
+		// Single-shot fast path: no GPU mode swaps required for any
+		// phase, so the existing per-variant×corpus invocation runs
+		// the full pipeline in one shot — no cache hand-off, no phase
+		// flag.
+		let primaryBaselineReport: ExtendedDogfoodReport | null = null;
+		let secondaryBaselineReport: ExtendedDogfoodReport | null = null;
+		for (const v of variants) {
+			const primaryRun = runVariantOnCorpus(matrix, v, corpora.primary, sweepId);
+			const primary: PerCorpusRun = {
+				corpus: corpora.primary,
+				report: primaryRun.report,
+				durationMs: primaryRun.durationMs,
+				reportPath: primaryRun.reportPath,
 			};
-			if (secondaryBaselineReport) {
-				secondary.decisionVsBaseline = decide({
-					baseline: secondaryBaselineReport,
-					candidate: secondary.report,
+			if (primaryBaselineReport) {
+				primary.decisionVsBaseline = decide({
+					baseline: primaryBaselineReport,
+					candidate: primary.report,
 				});
 			} else {
-				secondaryBaselineReport = secondary.report;
+				primaryBaselineReport = primary.report;
 			}
 			appendRunLogRow(
 				buildRunLogRow({
 					sweepId,
 					matrixName: matrix.name,
 					variantId: v.variantId,
-					report: secondary.report,
-					durationMs: secondary.durationMs,
-					reportPath: secondary.reportPath,
+					report: primary.report,
+					durationMs: primary.durationMs,
+					reportPath: primary.reportPath,
 					...(stage ? { stage } : {}),
 				}),
 			);
+
+			let secondary: PerCorpusRun | undefined;
+			if (corpora.secondary) {
+				const secondaryRun = runVariantOnCorpus(
+					matrix,
+					v,
+					corpora.secondary,
+					sweepId,
+				);
+				secondary = {
+					corpus: corpora.secondary,
+					report: secondaryRun.report,
+					durationMs: secondaryRun.durationMs,
+					reportPath: secondaryRun.reportPath,
+				};
+				if (secondaryBaselineReport) {
+					secondary.decisionVsBaseline = decide({
+						baseline: secondaryBaselineReport,
+						candidate: secondary.report,
+					});
+				} else {
+					secondaryBaselineReport = secondary.report;
+				}
+				appendRunLogRow(
+					buildRunLogRow({
+						sweepId,
+						matrixName: matrix.name,
+						variantId: v.variantId,
+						report: secondary.report,
+						durationMs: secondary.durationMs,
+						reportPath: secondary.reportPath,
+						...(stage ? { stage } : {}),
+					}),
+				);
+			}
+
+			const headline = computeHeadline({
+				v12: primary.report,
+				...(secondary ? { v3: secondary.report } : {}),
+			});
+			const aggregateAccept =
+				(primary.decisionVsBaseline ? primary.decisionVsBaseline.accept : true) &&
+				(secondary?.decisionVsBaseline
+					? secondary.decisionVsBaseline.accept
+					: true);
+			results.push({
+				variantId: v.variantId,
+				variant: v,
+				primary,
+				...(secondary ? { secondary } : {}),
+				headline,
+				aggregateAccept,
+			});
+		}
+	} else {
+		// Phase-split orchestration. One ensureMode call per phase, then
+		// every variant×corpus runs that phase against a shared cache
+		// dir. Total swaps = number of phases with non-null mode (at
+		// most 3). The score phase reads the cache the search phase
+		// wrote, so retrieval never re-runs under the wrong GPU mode.
+		const phaseCacheBase = mkdtempSync(join(tmpdir(), "wtfoc-sweep-phase-"));
+		logErr(`[sweep] phase cache base: ${phaseCacheBase}`);
+
+		// (variant, corpus) → most recent useful run. Embed-phase output
+		// is a sentinel (`pass: embeddings warmed`) and would mask the
+		// search/score reports if it landed in this map, so we skip it.
+		type RunOutput = {
+			report: ExtendedDogfoodReport;
+			durationMs: number;
+			reportPath: string;
+		};
+		const lastReportPerKey = new Map<string, RunOutput>();
+		const corpusList = corpora.secondary
+			? [corpora.primary, corpora.secondary]
+			: [corpora.primary];
+
+		for (const phase of phasePlan) {
+			if (phase.skip) {
+				logErr(`[sweep] phase=${phase.phase} skip (no GPU dependency)`);
+				continue;
+			}
+			if (phase.mode) {
+				logErr(`[sweep] ensureMode → ${phase.mode} (phase=${phase.phase})`);
+				try {
+					const r = await ensureMode(phase.mode, {
+						reason: `sweep ${matrix.name} phase=${phase.phase}`,
+					});
+					if (r.skipped) {
+						logErr(
+							`[sweep] mode-switch skipped (${phase.mode}): ${r.skippedReason}`,
+						);
+					} else {
+						logErr(
+							`[sweep] mode-switch ok: ${r.from ?? "?"}→${r.to ?? phase.mode}`,
+						);
+					}
+				} catch (err) {
+					const msg = err instanceof Error ? err.message : String(err);
+					logErr(
+						`[sweep] mode-switch FAILED (${phase.mode}, phase=${phase.phase}): ${msg}`,
+					);
+					process.exit(3);
+				}
+			}
+
+			for (const v of variants) {
+				for (const corpus of corpusList) {
+					const out = runVariantOnCorpus(matrix, v, corpus, sweepId, {
+						phase: phase.phase,
+						cacheBase: phaseCacheBase,
+					});
+					if (phase.phase !== "embed") {
+						lastReportPerKey.set(`${v.variantId}|${corpus}`, out);
+					}
+				}
+			}
 		}
 
-		const headline = computeHeadline({
-			v12: primary.report,
-			...(secondary ? { v3: secondary.report } : {}),
-		});
+		let primaryBaselineReport: ExtendedDogfoodReport | null = null;
+		let secondaryBaselineReport: ExtendedDogfoodReport | null = null;
+		for (const v of variants) {
+			const primaryOut = lastReportPerKey.get(
+				`${v.variantId}|${corpora.primary}`,
+			);
+			if (!primaryOut) {
+				throw new Error(
+					`phase-split: no final report captured for variant=${v.variantId} corpus=${corpora.primary}`,
+				);
+			}
+			const primary: PerCorpusRun = {
+				corpus: corpora.primary,
+				report: primaryOut.report,
+				durationMs: primaryOut.durationMs,
+				reportPath: primaryOut.reportPath,
+			};
+			if (primaryBaselineReport) {
+				primary.decisionVsBaseline = decide({
+					baseline: primaryBaselineReport,
+					candidate: primary.report,
+				});
+			} else {
+				primaryBaselineReport = primary.report;
+			}
+			appendRunLogRow(
+				buildRunLogRow({
+					sweepId,
+					matrixName: matrix.name,
+					variantId: v.variantId,
+					report: primary.report,
+					durationMs: primary.durationMs,
+					reportPath: primary.reportPath,
+					...(stage ? { stage } : {}),
+				}),
+			);
 
-		// Aggregate accept = all per-corpus decisions accept (or, in
-		// single-corpus mode, just the primary). The very first variant
-		// has no decision (it IS the baseline) and counts as accepting.
-		const aggregateAccept =
-			(primary.decisionVsBaseline ? primary.decisionVsBaseline.accept : true) &&
-			(secondary?.decisionVsBaseline ? secondary.decisionVsBaseline.accept : true);
+			let secondary: PerCorpusRun | undefined;
+			if (corpora.secondary) {
+				const secondaryOut = lastReportPerKey.get(
+					`${v.variantId}|${corpora.secondary}`,
+				);
+				if (!secondaryOut) {
+					throw new Error(
+						`phase-split: no final report captured for variant=${v.variantId} corpus=${corpora.secondary}`,
+					);
+				}
+				secondary = {
+					corpus: corpora.secondary,
+					report: secondaryOut.report,
+					durationMs: secondaryOut.durationMs,
+					reportPath: secondaryOut.reportPath,
+				};
+				if (secondaryBaselineReport) {
+					secondary.decisionVsBaseline = decide({
+						baseline: secondaryBaselineReport,
+						candidate: secondary.report,
+					});
+				} else {
+					secondaryBaselineReport = secondary.report;
+				}
+				appendRunLogRow(
+					buildRunLogRow({
+						sweepId,
+						matrixName: matrix.name,
+						variantId: v.variantId,
+						report: secondary.report,
+						durationMs: secondary.durationMs,
+						reportPath: secondary.reportPath,
+						...(stage ? { stage } : {}),
+					}),
+				);
+			}
 
-		results.push({
-			variantId: v.variantId,
-			variant: v,
-			primary,
-			...(secondary ? { secondary } : {}),
-			headline,
-			aggregateAccept,
-		});
+			const headline = computeHeadline({
+				v12: primary.report,
+				...(secondary ? { v3: secondary.report } : {}),
+			});
+			const aggregateAccept =
+				(primary.decisionVsBaseline ? primary.decisionVsBaseline.accept : true) &&
+				(secondary?.decisionVsBaseline
+					? secondary.decisionVsBaseline.accept
+					: true);
+			results.push({
+				variantId: v.variantId,
+				variant: v,
+				primary,
+				...(secondary ? { secondary } : {}),
+				headline,
+				aggregateAccept,
+			});
+		}
 	}
 
 	summarize(results);
