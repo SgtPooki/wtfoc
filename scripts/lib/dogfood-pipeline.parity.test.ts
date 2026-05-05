@@ -52,12 +52,18 @@ function buildStub(): EvalStageResult {
 }
 
 function fakeContext(): RetrievalContext {
-	const fakeEmbed = vi
-		.fn<(text: string) => Promise<{ vector: Float32Array }>>()
-		.mockResolvedValue({ vector: new Float32Array([0.1, 0.2]) });
+	const fakeEmbedder: RetrievalContext["embedder"] = {
+		embed: vi
+			.fn<(text: string) => Promise<{ vector: Float32Array }>>()
+			.mockResolvedValue({ vector: new Float32Array([0.1, 0.2]) }),
+	};
+	const fakeVectorIndex: RetrievalContext["vectorIndex"] = {
+		add: vi.fn().mockResolvedValue(undefined),
+		search: vi.fn().mockResolvedValue([]),
+	};
 	return {
-		embedder: { embed: fakeEmbed } as unknown as RetrievalContext["embedder"],
-		vectorIndex: {} as RetrievalContext["vectorIndex"],
+		embedder: fakeEmbedder,
+		vectorIndex: fakeVectorIndex,
 		segments: [] as Segment[],
 		overlayEdges: [],
 		documentCatalog: null,
@@ -105,7 +111,6 @@ describe("phase-split parity", () => {
 			groundingEnabled: false,
 			graderConfig: null,
 			synthesizerConfig: null,
-			collectionId: "demo",
 		});
 
 		const cachePath = {
@@ -127,7 +132,6 @@ describe("phase-split parity", () => {
 			checkParaphrases: false,
 			timer: new SubstageTimer(),
 			costs: new CostAggregator(),
-			collectionId: "demo",
 			manifestId: "m1",
 			segmentIds: [],
 			rerankerIdentity: null,
@@ -137,13 +141,13 @@ describe("phase-split parity", () => {
 
 		const cached = loadSearchPhaseCache(cachePath, "demo", fingerprint);
 		expect(cached).not.toBeNull();
-		const phaseSplit = await runScorePhase(ctx, cached!, {
+		if (!cached) throw new Error("loadSearchPhaseCache returned null");
+		const phaseSplit = await runScorePhase(ctx, cached, {
 			timer: new SubstageTimer(),
 			costs: new CostAggregator(),
 			groundingEnabled: false,
 			graderConfig: null,
 			synthesizerConfig: null,
-			collectionId: "demo",
 		});
 
 		expect(stripVolatile(phaseSplit)).toEqual(stripVolatile(singleShot));
@@ -164,7 +168,6 @@ describe("phase-split parity", () => {
 			checkParaphrases: false,
 			timer: new SubstageTimer(),
 			costs: new CostAggregator(),
-			collectionId: "demo",
 			manifestId: "m1",
 			segmentIds: [],
 			rerankerIdentity: null,
@@ -174,13 +177,13 @@ describe("phase-split parity", () => {
 		expect(evaluateQualityQueriesMock).toHaveBeenCalledTimes(1);
 
 		const cached = loadSearchPhaseCache(cachePath, "demo", fingerprint);
-		await runScorePhase(ctx, cached!, {
+		if (!cached) throw new Error("loadSearchPhaseCache returned null");
+		await runScorePhase(ctx, cached, {
 			timer: new SubstageTimer(),
 			costs: new CostAggregator(),
 			groundingEnabled: false,
 			graderConfig: null,
 			synthesizerConfig: null,
-			collectionId: "demo",
 		});
 		expect(evaluateQualityQueriesMock).toHaveBeenCalledTimes(1);
 	});

@@ -211,7 +211,6 @@ export interface QualityQueriesPipelineOptions {
 	groundingEnabled: boolean;
 	graderConfig: { url: string; model: string; apiKey?: string } | null;
 	synthesizerConfig: { url: string; model: string; apiKey?: string } | null;
-	collectionId: string;
 }
 
 /**
@@ -270,11 +269,9 @@ export async function runQualityQueriesPipeline(
 			if (typeof u.durationMs === "number") opts.timer.record("grade", u.durationMs);
 			opts.costs.record("grade", u);
 		};
-		const synthQueries = GOLD_STANDARD_QUERIES.filter(
-			(q) =>
-				q.queryType === "howto" &&
-				q.applicableCorpora.includes(opts.collectionId),
-		).map((q) => ({ id: q.id, queryText: q.query }));
+		const synthQueries = activeGoldQueries(ctx.collectionId)
+			.filter((q) => q.queryType === "howto")
+			.map((q) => ({ id: q.id, queryText: q.query }));
 		console.error(
 			`[dogfood] grounding: ${synthQueries.length} synthesis-tier queries (grader=${opts.graderConfig.model})`,
 		);
@@ -386,7 +383,6 @@ export interface SearchPhaseOptions {
 	checkParaphrases: boolean;
 	timer: SubstageTimer;
 	costs: CostAggregator;
-	collectionId: string;
 	manifestId: string;
 	segmentIds: string[];
 	rerankerIdentity: { type: string; model?: string; url?: string } | null;
@@ -478,7 +474,6 @@ export interface ScorePhaseOptions {
 	groundingEnabled: boolean;
 	graderConfig: { url: string; model: string; apiKey?: string } | null;
 	synthesizerConfig: { url: string; model: string; apiKey?: string } | null;
-	collectionId: string;
 }
 
 /**
@@ -504,7 +499,7 @@ export async function runScorePhase(
 			if (typeof u.durationMs === "number") opts.timer.record("grade", u.durationMs);
 			opts.costs.record("grade", u);
 		};
-		const synthQueries = activeGoldQueries(opts.collectionId)
+		const synthQueries = activeGoldQueries(ctx.collectionId)
 			.filter((q) => q.queryType === "howto")
 			.map((q) => ({ id: q.id, queryText: q.query }));
 		console.error(

@@ -105,15 +105,17 @@ export function resolveRequiredMode(
 	if (!adminHost) return "cloud";
 	let host: string;
 	try {
-		host = new URL(url).host;
+		host = new URL(url).hostname;
 	} catch {
 		return "cloud";
 	}
 	const adminHostNormalized = (() => {
 		try {
-			return new URL(adminHost).host;
+			return new URL(adminHost).hostname;
 		} catch {
-			return adminHost;
+			// Strip any port suffix from a bare host string so the
+			// parent-domain comparison stays apples-to-apples.
+			return adminHost.replace(/:\d+$/, "");
 		}
 	})();
 	// Compare on the parent-domain level (last two labels) so an admin
@@ -141,12 +143,13 @@ function reduceModes(
 		(m): m is { owner: string; mode: GpuMode } =>
 			m.mode !== null && m.mode !== "cloud",
 	);
-	if (local.length === 0) return null;
+	const [first] = local;
+	if (!first) return null;
 	const distinct = new Set(local.map((m) => m.mode));
 	if (distinct.size > 1) {
 		throw new PhaseCompositionError(phase, local);
 	}
-	return local[0]!.mode;
+	return first.mode;
 }
 
 /**
@@ -198,9 +201,12 @@ export function planSweepPhases(input: PlanSweepPhasesInput): PhasePlan[] {
 			// Score phase needs an LLM only when grounding is wired up.
 			// Without grounding, the deterministic-scoring output is
 			// already in the search-phase cache and the score phase is a
-			// no-op replay → no GPU mode needed.
+			// no-op replay → no GPU mode needed. The phase itself still
+			// runs (without a swap) so it can re-attach timing / cost
+			// telemetry onto the cached EvalStageResult; otherwise the
+			// downstream Pareto leaderboard would lose cost+latency.
 			mode: groundingEnabled ? extractorMode : null,
-			skip: !groundingEnabled,
+			skip: false,
 		},
 	];
 }

@@ -545,14 +545,20 @@ async function main() {
 								groundingEnabled,
 								graderConfig,
 								synthesizerConfig,
-								collectionId,
 							});
 						} else if (phase === "embed") {
 							if (!cachePath) throw new Error("phase=embed requires cache path");
+							const embedderUrl = values["embedder-url"];
+							const embedderModel = values["embedder-model"];
+							if (!embedderUrl || !embedderModel) {
+								throw new Error(
+									"phase=embed requires --embedder-url and --embedder-model",
+								);
+							}
 							await runEmbedPhase(ctx, cachePath, {
 								runConfigFingerprint,
-								embedderUrl: values["embedder-url"]!,
-								embedderModel: values["embedder-model"]!,
+								embedderUrl,
+								embedderModel,
 								embedderCacheDir:
 									values["embedder-cache-dir"] ??
 									process.env.WTFOC_EMBEDDER_CACHE_DIR ??
@@ -576,7 +582,6 @@ async function main() {
 								checkParaphrases: process.env.WTFOC_CHECK_PARAPHRASES === "1",
 								timer,
 								costs,
-								collectionId,
 								manifestId,
 								segmentIds,
 								rerankerIdentity,
@@ -604,7 +609,6 @@ async function main() {
 								groundingEnabled,
 								graderConfig,
 								synthesizerConfig,
-								collectionId,
 							});
 						}
 					}

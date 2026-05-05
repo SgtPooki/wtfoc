@@ -99,6 +99,15 @@ describe("write/read phase cache", () => {
 					timingMs: 42,
 				},
 			],
+			stageResult: {
+				stage: "quality-queries",
+				startedAt: "2026-05-05T00:00:00Z",
+				durationMs: 1234,
+				verdict: "pass",
+				summary: "stub",
+				metrics: { passRate: 1.0 },
+				checks: [],
+			},
 			searchTiming: {},
 			searchCost: {},
 		};

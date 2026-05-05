@@ -37,7 +37,7 @@ import {
 	planSweepPhases,
 } from "./sweep-phase-planner.js";
 import { safeExecFileSync as execFileSync } from "../lib/safe-exec.js";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -404,7 +404,7 @@ async function main(): Promise<void> {
 		const url = process.env.WTFOC_VLLM_ADMIN_URL;
 		if (!url) return null;
 		try {
-			return new URL(url).host;
+			return new URL(url).hostname;
 		} catch {
 			return null;
 		}
@@ -522,6 +522,27 @@ async function main(): Promise<void> {
 		// wrote, so retrieval never re-runs under the wrong GPU mode.
 		const phaseCacheBase = mkdtempSync(join(tmpdir(), "wtfoc-sweep-phase-"));
 		logErr(`[sweep] phase cache base: ${phaseCacheBase}`);
+		// Phase caches are per-sweep ephemera. The summary report is the
+		// durable artifact; the cache only exists so the score phase can
+		// replay search-phase results under a different GPU mode. Clean
+		// up unconditionally — even on failure — so successive sweeps
+		// don't accumulate gigabytes under /tmp.
+		const cleanupPhaseCache = (): void => {
+			try {
+				rmSync(phaseCacheBase, { recursive: true, force: true });
+			} catch (err) {
+				logErr(
+					`[sweep] phase cache cleanup failed (${phaseCacheBase}): ${err instanceof Error ? err.message : String(err)}`,
+				);
+			}
+		};
+		// Belt-and-suspenders: ensure the cache dir is removed even if the
+		// sweep throws before reaching the explicit cleanup at the end of
+		// this block. The handler is per-sweep so successive sweeps don't
+		// stack listeners.
+		const exitHandler = (): void => cleanupPhaseCache();
+		process.once("exit", exitHandler);
+		try {
 
 		// (variant, corpus) → most recent useful run. Embed-phase output
 		// is a sentinel (`pass: embeddings warmed`) and would mask the
@@ -669,6 +690,10 @@ async function main(): Promise<void> {
 				headline,
 				aggregateAccept,
 			});
+		}
+		} finally {
+			process.removeListener("exit", exitHandler);
+			cleanupPhaseCache();
 		}
 	}
 

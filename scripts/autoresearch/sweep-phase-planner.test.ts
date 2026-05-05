@@ -98,7 +98,8 @@ describe("planSweepPhases", () => {
 		expect(plan.find((p) => p.phase === "embed")?.mode).toBe("embed-gpu");
 		expect(plan.find((p) => p.phase === "search")?.mode).toBe("rerank-gpu");
 		expect(plan.find((p) => p.phase === "score")?.mode).toBe(null);
-		expect(plan.find((p) => p.phase === "score")?.skip).toBe(true);
+		// Score phase still runs (metrics attachment) — just no swap.
+		expect(plan.find((p) => p.phase === "score")?.skip).toBe(false);
 	});
 
 	it("full-local + grounding: 3 GPU modes total (embed-gpu / rerank-gpu / chat)", () => {
