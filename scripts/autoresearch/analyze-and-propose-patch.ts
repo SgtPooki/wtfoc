@@ -140,7 +140,10 @@ RULES:
 5. Each edit ≤ 30 lines. Keep changes minimal and focused.
 6. Stay under 200 total added+removed lines across all edits.
 7. Do NOT include line numbers or unified-diff hunk headers — this is search/replace, not diff.
-8. Do NOT propose changes that already appear in the tried-log.
+8. **Use the tried-log as a learning signal, not just a dedup filter.** Each prior attempt entry shows verdict, your previous Rationale, and the system's Outcome (reject reasons like "anti-overfit: worst per-baseline degradation 16.5pp > floor 2.0pp"). Before proposing:
+   - If a prior attempt targeted the SAME file or mechanism and was rejected for anti-overfit / per-baseline degradation, do NOT submit a near-duplicate. Either (a) target a different file or seam, or (b) explain in Analysis why your new edit avoids the specific failure mode that rejected the prior attempt (e.g. "prior attempt clamped X to 0.3 which overshot on baseline-2; this edit keeps the existing floor and instead changes Y").
+   - If multiple prior attempts share a diagnosis but all failed, the diagnosis is likely wrong — propose a DIFFERENT root cause hypothesis rather than another variation on the rejected fix.
+   - Treat prior Rationale entries as your own past reasoning. Build on them; don't re-derive the same conclusion in isolation.
 
 EXAMPLE of a valid edit (note 4 lines of context, full replacement, preserved tabs):
 

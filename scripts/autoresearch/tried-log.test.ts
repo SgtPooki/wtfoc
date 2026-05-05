@@ -93,7 +93,7 @@ describe("triedLogPromptLines", () => {
 		expect(lines[0]).toMatch(/no prior attempts/);
 	});
 
-	it("renders a one-line entry per row, newest last", () => {
+	it("renders a structured entry per row with verdict header + rationale (newest last)", () => {
 		const lines = triedLogPromptLines(
 			[
 				row({ proposal: { axis: "topK", value: 15, rationale: "first" } }),
@@ -101,9 +101,36 @@ describe("triedLogPromptLines", () => {
 			],
 			"retrieval-baseline",
 		);
-		expect(lines).toHaveLength(2);
-		expect(lines[0]).toContain("rejected");
-		expect(lines[1]).toContain("accepted");
+		// Each row produces a header line + a Rationale line (no Outcome
+		// when reasons are empty); newest row comes last.
+		const joined = lines.join("\n");
+		expect(joined).toMatch(/\[rejected\] topK=15/);
+		expect(joined).toMatch(/Rationale: first/);
+		expect(joined).toMatch(/\[accepted\] topK=20/);
+		expect(joined).toMatch(/Rationale: second/);
+		// "rejected" header for first entry must appear BEFORE "accepted"
+		// header in the rendered string.
+		expect(joined.indexOf("[rejected]")).toBeLessThan(joined.indexOf("[accepted]"));
+	});
+
+	it("surfaces reject reasons as an Outcome line — closes the goldfish-memory gap (#382)", () => {
+		const lines = triedLogPromptLines(
+			[
+				row({
+					verdict: "rejected",
+					proposal: { axis: "(code-patch)", value: "abc1234", rationale: "fix applySeedDiversity" },
+					reasons: [
+						"anti-overfit: worst per-baseline degradation 16.5pp > floor 2.0pp",
+						"patch window: only 0/3 clear decide() (need 2)",
+					],
+				}),
+			],
+			"retrieval-baseline",
+		);
+		const joined = lines.join("\n");
+		expect(joined).toMatch(/Outcome: anti-overfit/);
+		expect(joined).toMatch(/16\.5pp/);
+		expect(joined).toMatch(/0\/3 clear decide/);
 	});
 
 	it("filters by matrix", () => {
@@ -114,7 +141,8 @@ describe("triedLogPromptLines", () => {
 			],
 			"retrieval-baseline",
 		);
-		expect(lines).toHaveLength(1);
-		expect(lines[0]).toContain("topK=15");
+		const joined = lines.join("\n");
+		expect(joined).toContain("topK=15");
+		expect(joined).not.toContain("topK=20");
 	});
 });

@@ -115,8 +115,20 @@ export function alreadyTried(
 }
 
 /**
- * Render a compact prompt section listing prior attempts. Used as
- * input to the LLM proposer so it doesn't repeat itself.
+ * Render a prompt section listing prior attempts with full cause-and-
+ * effect context. The proposer needs to see not just THAT something was
+ * rejected but WHY (anti-overfit, baseline-window failure, validation
+ * error, etc.) so it can avoid repeating the same shape of mistake.
+ *
+ * Format per row (multi-line, structured):
+ *   - [verdict] axis=value pass=X%
+ *     Rationale: <full LLM rationale, untruncated>
+ *     Outcome: <reasons joined; system's response to the proposal>
+ *
+ * Pre-fix the LLM saw `[rejected]` markers + 120-char truncated
+ * rationale snippets and no reasons at all — "goldfish memory regarding
+ * consequences" (gemini peer-review 2026-05-05). One-shot reasoning
+ * across iterations because it never saw why prior tries failed.
  */
 export function triedLogPromptLines(
 	rows: readonly TriedLogRow[],
@@ -125,11 +137,22 @@ export function triedLogPromptLines(
 ): string[] {
 	const filtered = rows.filter((r) => r.matrixName === matrixName).slice(-limit);
 	if (filtered.length === 0) return ["(no prior attempts on this matrix)"];
-	return filtered.map((r) => {
+	const lines: string[] = [];
+	for (const r of filtered) {
 		const m = r.metrics;
 		const metricStr = m
-			? `pass=${m.passRate !== undefined ? (m.passRate * 100).toFixed(1) + "%" : "?"}`
+			? `pass=${m.passRate !== undefined ? `${(m.passRate * 100).toFixed(1)}%` : "?"}`
 			: "";
-		return `- [${r.verdict}] ${r.proposal.axis}=${JSON.stringify(r.proposal.value)} ${metricStr} — ${r.proposal.rationale.slice(0, 120)}`;
-	});
+		lines.push(
+			`- [${r.verdict}] ${r.proposal.axis}=${JSON.stringify(r.proposal.value)} ${metricStr}`,
+		);
+		if (r.proposal.rationale) {
+			lines.push(`  Rationale: ${r.proposal.rationale}`);
+		}
+		const reasons = r.reasons?.filter(Boolean) ?? [];
+		if (reasons.length > 0) {
+			lines.push(`  Outcome: ${reasons.join("; ")}`);
+		}
+	}
+	return lines;
 }

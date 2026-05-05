@@ -72,7 +72,7 @@ Rules:
        * { "axis": "<knob name>", "value": <valid value>, "rationale": "<one sentence>" }
        * { "axis": null }   (when no proposal is appropriate)
 2. The axis MUST be one of the inventory names. The value MUST satisfy the knob's type and range.
-3. Do NOT propose a knob+value combination that already appears in the tried-log within the recent window — pick a different axis or value.
+3. Do NOT propose a knob+value combination that already appears in the tried-log within the recent window — pick a different axis or value. Use the tried-log entries' Outcome lines (system reject reasons) as a learning signal: if multiple prior attempts on the SAME axis were rejected for the same metric reason, prefer a different axis rather than another value on the same axis.
 4. Keep the analysis under 300 words. The rationale string under 200 chars.
 5. Prefer cheap knobs (no re-ingest required) over expensive ones unless the cheap space is exhausted.
 6. If the finding is a breach (hard gate floor violated), your proposal should target the breached metric specifically.
