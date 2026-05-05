@@ -86,12 +86,22 @@ export class PhaseCompositionError extends Error {
 
 /**
  * Classify a single URL into "cloud" or a concrete GPU mode. Pure.
+ *
+ * GPU-mode markers (`embedder-gpu`, `reranker-gpu`) are honored
+ * regardless of host: a vllm-admin cluster typically exposes those
+ * workloads on dedicated subdomains that share only a parent domain
+ * with the admin URL, so a strict prefix/substring check on the admin
+ * host would miss them. The admin host is still used to classify
+ * generic chat endpoints — a URL with no GPU marker on the admin host
+ * is the chat workload; off-admin URLs with no marker are cloud.
  */
 export function resolveRequiredMode(
 	url: string | undefined,
 	adminHost: string | null,
 ): ComponentMode | null {
 	if (!url) return null;
+	if (url.includes("embedder-gpu")) return "embed-gpu";
+	if (url.includes("reranker-gpu")) return "rerank-gpu";
 	if (!adminHost) return "cloud";
 	let host: string;
 	try {
@@ -106,9 +116,15 @@ export function resolveRequiredMode(
 			return adminHost;
 		}
 	})();
-	if (!host.includes(adminHostNormalized)) return "cloud";
-	if (url.includes("embedder-gpu")) return "embed-gpu";
-	if (url.includes("reranker-gpu")) return "rerank-gpu";
+	// Compare on the parent-domain level (last two labels) so an admin
+	// URL like `admin.example.com` matches a chat endpoint at
+	// `chat.example.com` even though their leftmost labels differ.
+	const parentOf = (h: string): string => {
+		const parts = h.split(".");
+		if (parts.length < 2) return h;
+		return parts.slice(-2).join(".");
+	};
+	if (parentOf(host) !== parentOf(adminHostNormalized)) return "cloud";
 	return "chat";
 }
 

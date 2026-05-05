@@ -47,9 +47,26 @@ describe("resolveRequiredMode", () => {
 		).toBe("chat");
 	});
 
-	it("treats every URL as cloud when adminHost is null", () => {
+	it("honors GPU markers even when adminHost is null", () => {
+		// URL substring is the authoritative signal — admin host is only
+		// used to disambiguate generic chat endpoints from cloud.
 		expect(
 			resolveRequiredMode(`https://embedder-gpu.${ADMIN}/v1`, null),
+		).toBe("embed-gpu");
+		expect(resolveRequiredMode(`https://chat.${ADMIN}/v1`, null)).toBe(
+			"cloud",
+		);
+	});
+
+	it("classifies chat endpoint by parent-domain match (subdomain need not match)", () => {
+		expect(
+			resolveRequiredMode("https://chat.example.com/v1", "https://admin.example.com"),
+		).toBe("chat");
+		expect(
+			resolveRequiredMode(
+				"https://chat.openrouter.ai/api/v1",
+				"https://admin.example.com",
+			),
 		).toBe("cloud");
 	});
 });
