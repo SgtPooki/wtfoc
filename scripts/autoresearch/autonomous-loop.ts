@@ -584,6 +584,7 @@ async function runPatchPath(input: {
 		productionMatrix: matrix,
 		productionMatrixName: cli.matrixName,
 		proposal: llm.proposal,
+		targetVariantId: finding.variantId,
 	});
 
 	// Persist a tried-log row regardless of outcome.
