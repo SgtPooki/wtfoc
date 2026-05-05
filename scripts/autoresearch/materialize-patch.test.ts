@@ -1,7 +1,7 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Matrix } from "./matrix.js";
 import { materializePatchProposal } from "./materialize-patch.js";
 import type { PatchProposal } from "./patch-proposal.js";
@@ -24,18 +24,12 @@ function baseMatrix(): Matrix {
 	};
 }
 
-function setupTestEnv(targetFilePath: string, fileContent: string) {
+function setupTestEnv() {
 	const stateDir = mkdtempSync(join(tmpdir(), "wtfoc-mp-"));
-	process.env.WTFOC_AUTORESEARCH_DIR = stateDir;
-	// Pre-create the worktree dir + target file so that applyEdit doesn't
-	// blow up on a missing path (we mock the spawnFn that would normally
-	// `git worktree add` it for real).
-	const proposalIdPrefix = "patch_";
 	// proposalDir is computed inside the function as
-	// stateDir/proposals/<proposalId>/worktree. We can't predict the
-	// proposalId since it includes Date.now(), so create the proposals
-	// dir and a generic worktree under any nested layout via mkdir -p
-	// once spawnFn fires.
+	// stateDir/proposals/<proposalId>/worktree. The proposalId includes
+	// Date.now() so we can't predict it; create the proposals root and
+	// let spawnFn-mock create the worktree subtree once it fires.
 	const proposalsRoot = join(stateDir, "proposals");
 	mkdirSync(proposalsRoot, { recursive: true });
 	return { stateDir, proposalsRoot };
@@ -77,9 +71,22 @@ describe("materializePatchProposal — #403 target-variant sweep", () => {
 		rationale: "fix applySeedDiversity",
 	};
 
+	const tempDirs: string[] = [];
+	afterEach(() => {
+		for (const d of tempDirs) {
+			try {
+				rmSync(d, { recursive: true, force: true });
+			} catch {
+				// best-effort cleanup
+			}
+		}
+		tempDirs.length = 0;
+	});
+
 	it("invokes sweep with --variant-filter <targetVariantId> when target differs from production", async () => {
 		const calls: Array<{ cmd: string; args: string[] }> = [];
-		const { stateDir } = setupTestEnv("", "");
+		const { stateDir } = setupTestEnv();
+		tempDirs.push(stateDir);
 		const spawnFn = buildSpawnFn(calls, (worktreePath) => {
 			const target = join(worktreePath, "packages/search/src/trace/trace.ts");
 			mkdirSync(join(worktreePath, "packages/search/src/trace"), { recursive: true });
@@ -112,9 +119,34 @@ describe("materializePatchProposal — #403 target-variant sweep", () => {
 		).toBe(true);
 	});
 
+	it("bails with skippedReason when both productionVariantId and targetVariantId are unset", async () => {
+		const calls: Array<{ cmd: string; args: string[] }> = [];
+		const { stateDir } = setupTestEnv();
+		tempDirs.push(stateDir);
+		const spawnFn = buildSpawnFn(calls, () => {});
+		const m = baseMatrix();
+		const noProdMatrix = { ...m, productionVariantId: undefined as unknown as string };
+		const result = await materializePatchProposal({
+			productionMatrix: noProdMatrix,
+			productionMatrixName: "retrieval-baseline",
+			proposal,
+			spawnFn,
+			stateDir,
+		});
+		expect(result.skippedReason).toMatch(/no variant id resolvable/);
+		expect(result.aggregateAccept).toBe(false);
+		// Sweep must NOT have fired with empty filter (which would run all
+		// variants and obscure evidence).
+		const sweepCall = calls.find(
+			(c) => c.cmd === "pnpm" && c.args.includes("autoresearch:sweep"),
+		);
+		expect(sweepCall).toBeUndefined();
+	});
+
 	it("falls back to productionVariantId when targetVariantId omitted (legacy)", async () => {
 		const calls: Array<{ cmd: string; args: string[] }> = [];
-		const { stateDir } = setupTestEnv("", "");
+		const { stateDir } = setupTestEnv();
+		tempDirs.push(stateDir);
 		const spawnFn = buildSpawnFn(calls, (worktreePath) => {
 			const target = join(worktreePath, "packages/search/src/trace/trace.ts");
 			mkdirSync(join(worktreePath, "packages/search/src/trace"), { recursive: true });

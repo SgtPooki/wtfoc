@@ -201,9 +201,38 @@ export async function materializePatchProposal(
 	const branch = `autoresearch/${proposalId}`;
 	const worktreePath = join(proposalDir, "worktree");
 	const editsPath = join(proposalDir, "edits.json");
-	writeFileSync(editsPath, JSON.stringify(input.proposal.edits, null, 2));
 
 	const notes: string[] = [];
+
+	// Resolve target variant up-front. Bail before any fs/git work when
+	// neither the production matrix nor the caller can name a variant —
+	// sweeping with `--variant-filter ""` would run every variant and
+	// obscure the patch's intended effect.
+	const productionVariantId = input.productionMatrix.productionVariantId ?? "";
+	const sweepVariantId = input.targetVariantId ?? productionVariantId;
+	if (!sweepVariantId) {
+		return {
+			proposalId,
+			worktreePath,
+			branch,
+			candidateReports: [],
+			decisions: [],
+			aggregateAccept: false,
+			notes,
+			skippedReason:
+				"no variant id resolvable: matrix has no productionVariantId and no targetVariantId supplied",
+		};
+	}
+	if (input.targetVariantId && input.targetVariantId !== productionVariantId) {
+		notes.push(
+			`materialize-patch: target=${input.targetVariantId} (from finding) ` +
+				`differs from productionVariantId=${productionVariantId || "(unset)"} — ` +
+				`sweep + decide() scoped to target variant (#403)`,
+		);
+	}
+
+	writeFileSync(editsPath, JSON.stringify(input.proposal.edits, null, 2));
+
 	notes.push(
 		`patch touches ${validation.touchedPaths.length} file(s): ${validation.touchedPaths.slice(0, 3).join(", ")}${validation.touchedPaths.length > 3 ? "…" : ""}`,
 	);
@@ -281,16 +310,8 @@ export async function materializePatchProposal(
 	// Run the sweep against the worktree using the existing matrix.
 	// Single variant — defaults to production, overridable via
 	// `targetVariantId` so that patches authored to fix a non-production
-	// variant are actually exercised on that variant (#403).
-	const productionVariantId = input.productionMatrix.productionVariantId ?? "";
-	const sweepVariantId = input.targetVariantId ?? productionVariantId;
-	if (input.targetVariantId && input.targetVariantId !== productionVariantId) {
-		notes.push(
-			`materialize-patch: target=${input.targetVariantId} (from finding) ` +
-				`differs from productionVariantId=${productionVariantId || "(unset)"} — ` +
-				`sweep + decide() scoped to target variant (#403)`,
-		);
-	}
+	// variant are actually exercised on that variant (#403). Resolution
+	// happened earlier; sweepVariantId is non-empty by this point.
 	try {
 		spawnFn(
 			"pnpm",
