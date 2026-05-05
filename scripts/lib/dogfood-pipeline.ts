@@ -23,6 +23,7 @@ import { catalogFilePath, loadAllOverlayEdges, readCatalog } from "@wtfoc/ingest
 import {
 	CachingEmbedder,
 	evaluateQualityQueries,
+	type GoldQuery,
 	GOLD_STANDARD_QUERIES,
 	InMemoryVectorIndex,
 	OpenAIEmbedder,
@@ -31,6 +32,14 @@ import {
 } from "@wtfoc/search";
 import { namespacedCacheDir } from "./cache-namespace.js";
 import { CostAggregator } from "./cost-aggregator.js";
+import {
+	type CachePathInput,
+	type EmbedPhaseCacheV1,
+	type SearchPhaseCacheV1,
+	CACHE_SCHEMA_VERSION,
+	readPhaseCache,
+	writePhaseCache,
+} from "./dogfood-cache.js";
 import {
 	GRADER_PROMPT_VERSION,
 	GRADER_SYSTEM_PROMPT,
@@ -303,4 +312,242 @@ export function groundingPromptHashes(enabled: boolean): Record<string, string> 
 		synthesis: `${SYNTHESIS_PROMPT_VERSION}:${sha256Hex(SYNTHESIS_SYSTEM_PROMPT)}`,
 		grader: `${GRADER_PROMPT_VERSION}:${sha256Hex(GRADER_SYSTEM_PROMPT)}`,
 	};
+}
+
+/**
+ * Resolve the gold-standard queries that apply to a given corpus.
+ * Pure — used by every phase to enumerate the active query set.
+ */
+export function activeGoldQueries(collectionId: string): GoldQuery[] {
+	return GOLD_STANDARD_QUERIES.filter((q) =>
+		q.applicableCorpora.includes(collectionId),
+	);
+}
+
+export interface PhaseCachePathBase {
+	cacheBase: string;
+	sweepId: string;
+	variantId: string;
+}
+
+function pathFor(
+	base: PhaseCachePathBase,
+	ctx: { collectionId: string },
+	fingerprint: string,
+	phase: "embed" | "search" | "score",
+): CachePathInput {
+	return {
+		base: base.cacheBase,
+		sweepId: base.sweepId,
+		variantId: base.variantId,
+		corpus: ctx.collectionId,
+		runConfigFingerprint: fingerprint,
+		phase,
+	};
+}
+
+/**
+ * Embed phase: warm the embedder cache for every active query so the
+ * search phase can run without an embed-mode GPU. Idempotent — calling
+ * the embedder for an already-cached query is a free hash lookup. Emits
+ * an `EmbedPhaseCacheV1` manifest the next phase asserts against.
+ */
+export async function runEmbedPhase(
+	ctx: RetrievalContext,
+	cachePath: PhaseCachePathBase,
+	opts: { runConfigFingerprint: string; embedderUrl: string; embedderModel: string; embedderCacheDir: string | null },
+): Promise<EmbedPhaseCacheV1> {
+	const queries = activeGoldQueries(ctx.collectionId);
+	for (const q of queries) {
+		await ctx.embedder.embed(q.query);
+	}
+	const payload: EmbedPhaseCacheV1 = {
+		schemaVersion: CACHE_SCHEMA_VERSION,
+		phase: "embed",
+		capturedAt: new Date().toISOString(),
+		runConfigFingerprint: opts.runConfigFingerprint,
+		collectionId: ctx.collectionId,
+		embedderModel: opts.embedderModel,
+		embedderUrl: opts.embedderUrl,
+		embedderCacheDir: opts.embedderCacheDir,
+		warmedQueryIds: queries.map((q) => q.id),
+	};
+	writePhaseCache(
+		pathFor(cachePath, ctx, opts.runConfigFingerprint, "embed"),
+		payload,
+	);
+	return payload;
+}
+
+export interface SearchPhaseOptions {
+	reranker?: Reranker;
+	autoRoute: boolean;
+	diversityEnforce: boolean;
+	checkParaphrases: boolean;
+	timer: SubstageTimer;
+	costs: CostAggregator;
+	collectionId: string;
+	manifestId: string;
+	segmentIds: string[];
+	rerankerIdentity: { type: string; model?: string; url?: string } | null;
+	documentCatalogId: string | null;
+	runConfigFingerprint: string;
+}
+
+/**
+ * Search phase: run the deterministic-scoring quality-queries evaluator
+ * (no grounding) and persist the result so the score phase can replay
+ * it under a different GPU mode.
+ */
+export async function runSearchPhase(
+	ctx: RetrievalContext,
+	cachePath: PhaseCachePathBase,
+	opts: SearchPhaseOptions,
+): Promise<{ stageResult: EvalStageResult; cache: SearchPhaseCacheV1 }> {
+	const stageResult = await evaluateQualityQueries(
+		ctx.embedder,
+		ctx.vectorIndex,
+		ctx.segments,
+		undefined,
+		ctx.overlayEdges,
+		opts.reranker,
+		opts.autoRoute,
+		{
+			collectionId: ctx.collectionId,
+			corpusSourceTypes: ctx.corpusSourceTypes,
+			perQueryHook: (id, ms) => opts.timer.record("per-query-total", ms),
+			checkParaphrases: opts.checkParaphrases,
+			...(ctx.preflightStatusByQueryId.size > 0
+				? { preflightStatusByQueryId: ctx.preflightStatusByQueryId }
+				: {}),
+			...(Object.keys(ctx.retrievalOverrides).length > 0
+				? { retrievalOverrides: ctx.retrievalOverrides }
+				: {}),
+			...(ctx.documentCatalog ? { documentCatalog: ctx.documentCatalog } : {}),
+			...(process.env.WTFOC_RECIPE_GINI_FLOOR
+				? { coverageGiniFloor: Number(process.env.WTFOC_RECIPE_GINI_FLOOR) }
+				: {}),
+			...(process.env.WTFOC_RECIPE_MIN_UNCOVERED_STRATA
+				? {
+						coverageMinUncoveredStrata: Number(
+							process.env.WTFOC_RECIPE_MIN_UNCOVERED_STRATA,
+						),
+					}
+				: {}),
+		},
+		opts.diversityEnforce,
+	);
+
+	const queries = activeGoldQueries(ctx.collectionId);
+	const preflight: Record<string, PreflightStatus> = {};
+	for (const [id, status] of ctx.preflightStatusByQueryId.entries()) {
+		preflight[id] = status;
+	}
+
+	const cache: SearchPhaseCacheV1 = {
+		schemaVersion: CACHE_SCHEMA_VERSION,
+		phase: "search",
+		capturedAt: new Date().toISOString(),
+		runConfigFingerprint: opts.runConfigFingerprint,
+		collectionId: ctx.collectionId,
+		manifestId: opts.manifestId,
+		segmentIds: opts.segmentIds,
+		activeQueryIds: queries.map((q) => q.id),
+		preflight,
+		corpusSourceTypes: [...ctx.corpusSourceTypes],
+		documentCatalogId: opts.documentCatalogId,
+		retrievalOverrides: ctx.retrievalOverrides,
+		reranker: opts.rerankerIdentity,
+		diversityEnforce: opts.diversityEnforce,
+		autoRoute: opts.autoRoute,
+		stageResult,
+		searchTiming: opts.timer.allStats(),
+		searchCost: opts.costs.allStats(),
+	};
+	writePhaseCache(
+		pathFor(cachePath, ctx, opts.runConfigFingerprint, "search"),
+		cache,
+	);
+	return { stageResult, cache };
+}
+
+export interface ScorePhaseOptions {
+	reranker?: Reranker;
+	timer: SubstageTimer;
+	costs: CostAggregator;
+	groundingEnabled: boolean;
+	graderConfig: { url: string; model: string; apiKey?: string } | null;
+	synthesizerConfig: { url: string; model: string; apiKey?: string } | null;
+	collectionId: string;
+}
+
+/**
+ * Score phase: replay the cached search-phase EvalStageResult and layer
+ * the optional grounding pass on top. When grounding is disabled this
+ * phase is a deterministic projection of the search-phase output —
+ * still safe to call so the dogfood report shape stays uniform across
+ * configurations.
+ */
+export async function runScorePhase(
+	ctx: RetrievalContext,
+	searchCache: SearchPhaseCacheV1,
+	opts: ScorePhaseOptions,
+): Promise<EvalStageResult> {
+	const result = searchCache.stageResult as EvalStageResult;
+	let grounding: Awaited<ReturnType<typeof runGrounding>> | null = null;
+	if (opts.groundingEnabled && opts.graderConfig && opts.synthesizerConfig) {
+		const synthSink = (u: LlmUsage): void => {
+			if (typeof u.durationMs === "number") opts.timer.record("synthesize", u.durationMs);
+			opts.costs.record("synthesize", u);
+		};
+		const graderSink = (u: LlmUsage): void => {
+			if (typeof u.durationMs === "number") opts.timer.record("grade", u.durationMs);
+			opts.costs.record("grade", u);
+		};
+		const synthQueries = activeGoldQueries(opts.collectionId)
+			.filter((q) => q.queryType === "howto")
+			.map((q) => ({ id: q.id, queryText: q.query }));
+		console.error(
+			`[dogfood] grounding: ${synthQueries.length} synthesis-tier queries (grader=${opts.graderConfig.model})`,
+		);
+		grounding = await runGrounding({
+			queries: synthQueries,
+			synthesizer: opts.synthesizerConfig,
+			grader: opts.graderConfig,
+			embedder: ctx.embedder,
+			vectorIndex: ctx.vectorIndex,
+			reranker: opts.reranker,
+			topK: 10,
+			synthesizerUsageSink: synthSink,
+			graderUsageSink: graderSink,
+		});
+	}
+	result.metrics = {
+		...result.metrics,
+		timing: opts.timer.allStats(),
+		cost: opts.costs.allStats(),
+		...(grounding ? { grounding } : {}),
+	};
+	return result;
+}
+
+/**
+ * Read the search-phase cache for a (sweep, variant, corpus, fingerprint)
+ * tuple. Returns null when missing — callers (typically `--phase=score`
+ * standalone runs) decide whether absence is fatal.
+ */
+export function loadSearchPhaseCache(
+	cacheBase: PhaseCachePathBase,
+	collectionId: string,
+	runConfigFingerprint: string,
+): SearchPhaseCacheV1 | null {
+	const cache = readPhaseCache({
+		base: cacheBase.cacheBase,
+		sweepId: cacheBase.sweepId,
+		variantId: cacheBase.variantId,
+		corpus: collectionId,
+		runConfigFingerprint,
+		phase: "search",
+	});
+	return cache as SearchPhaseCacheV1 | null;
 }

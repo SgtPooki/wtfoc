@@ -35,7 +35,11 @@ import { CostAggregator } from "./lib/cost-aggregator.js";
 import {
 	buildRetrievalContext,
 	groundingPromptHashes,
+	loadSearchPhaseCache,
+	runEmbedPhase,
 	runQualityQueriesPipeline,
+	runScorePhase,
+	runSearchPhase,
 } from "./lib/dogfood-pipeline.js";
 import type { LlmUsage } from "./lib/llm-usage.js";
 import {
@@ -94,6 +98,14 @@ const { values } = parseArgs({
 		"trace-max-per-source": { type: "string" },
 		"trace-max-total": { type: "string" },
 		"trace-min-score": { type: "string" },
+		// 3-phase sweep (single-GPU mode-switch) — split the
+		// quality-queries pipeline into embed → search → score so the sweep
+		// driver can swap GPU modes between phases without forcing the full
+		// matrix to share one mode.
+		phase: { type: "string", default: "all" },
+		"cache-base": { type: "string" },
+		"sweep-id": { type: "string" },
+		"variant-id": { type: "string" },
 		help: { type: "boolean", short: "h", default: false },
 	},
 	strict: true,
@@ -114,6 +126,10 @@ Options:
   --embedder-url <url>       Embedder endpoint
   --embedder-model <model>   Embedder model name
   --embedder-key <key>       Embedder API key
+  --phase <name>             quality-queries phase: all|embed|search|score (default: all)
+  --cache-base <path>        Phase cache root (or env WTFOC_DOGFOOD_CACHE_DIR)
+  --sweep-id <id>            Sweep id for phase cache path
+  --variant-id <id>          Variant id for phase cache path
   -h, --help                 Show this help
 `);
 	process.exit(0);
@@ -130,6 +146,29 @@ if (values.stage && !VALID_STAGES.includes(values.stage as StageName)) {
 		`Error: --stage must be one of: ${VALID_STAGES.join(", ")}`,
 	);
 	process.exit(1);
+}
+
+const VALID_PHASES = ["all", "embed", "search", "score"] as const;
+type PhaseName = (typeof VALID_PHASES)[number];
+const phase = (values.phase ?? "all") as string;
+if (!VALID_PHASES.includes(phase as PhaseName)) {
+	console.error(`Error: --phase must be one of: ${VALID_PHASES.join(", ")}`);
+	process.exit(1);
+}
+if (phase !== "all") {
+	const cacheBase = values["cache-base"] ?? process.env.WTFOC_DOGFOOD_CACHE_DIR;
+	if (!cacheBase) {
+		console.error(
+			"Error: --phase != all requires --cache-base or WTFOC_DOGFOOD_CACHE_DIR",
+		);
+		process.exit(1);
+	}
+	if (!values["sweep-id"] || !values["variant-id"]) {
+		console.error(
+			"Error: --phase != all requires --sweep-id and --variant-id",
+		);
+		process.exit(1);
+	}
 }
 
 // Validate edge stage requires extractor options
@@ -474,18 +513,100 @@ async function main() {
 							embedderUsageSink,
 						});
 
-						result = await runQualityQueriesPipeline(ctx, {
-							reranker,
-							autoRoute: values["auto-route"] ?? false,
-							diversityEnforce: values["diversity-enforce"] ?? false,
-							checkParaphrases: process.env.WTFOC_CHECK_PARAPHRASES === "1",
-							timer,
-							costs,
-							groundingEnabled,
-							graderConfig,
-							synthesizerConfig,
-							collectionId,
-						});
+						const cacheBaseDir =
+							values["cache-base"] ?? process.env.WTFOC_DOGFOOD_CACHE_DIR;
+						const cachePath = cacheBaseDir
+							? {
+									cacheBase: cacheBaseDir,
+									sweepId: values["sweep-id"] ?? "default",
+									variantId: values["variant-id"] ?? "default",
+								}
+							: null;
+						const rerankerIdentity = values["reranker-type"] && values["reranker-url"]
+							? {
+									type: values["reranker-type"],
+									url: values["reranker-url"],
+									...(values["reranker-model"]
+										? { model: values["reranker-model"] }
+										: {}),
+								}
+							: null;
+						const manifestId = head.manifest.currentRevisionId ?? collectionId;
+						const segmentIds = head.manifest.segments.map((s) => s.id);
+
+						if (phase === "all") {
+							result = await runQualityQueriesPipeline(ctx, {
+								reranker,
+								autoRoute: values["auto-route"] ?? false,
+								diversityEnforce: values["diversity-enforce"] ?? false,
+								checkParaphrases: process.env.WTFOC_CHECK_PARAPHRASES === "1",
+								timer,
+								costs,
+								groundingEnabled,
+								graderConfig,
+								synthesizerConfig,
+								collectionId,
+							});
+						} else if (phase === "embed") {
+							if (!cachePath) throw new Error("phase=embed requires cache path");
+							await runEmbedPhase(ctx, cachePath, {
+								runConfigFingerprint,
+								embedderUrl: values["embedder-url"]!,
+								embedderModel: values["embedder-model"]!,
+								embedderCacheDir:
+									values["embedder-cache-dir"] ??
+									process.env.WTFOC_EMBEDDER_CACHE_DIR ??
+									null,
+							});
+							result = {
+								stage: STAGE_ID[stage],
+								startedAt: new Date().toISOString(),
+								durationMs: 0,
+								verdict: "pass",
+								summary: "phase=embed: query embeddings warmed",
+								metrics: {},
+								checks: [],
+							};
+						} else if (phase === "search") {
+							if (!cachePath) throw new Error("phase=search requires cache path");
+							const { stageResult } = await runSearchPhase(ctx, cachePath, {
+								reranker,
+								autoRoute: values["auto-route"] ?? false,
+								diversityEnforce: values["diversity-enforce"] ?? false,
+								checkParaphrases: process.env.WTFOC_CHECK_PARAPHRASES === "1",
+								timer,
+								costs,
+								collectionId,
+								manifestId,
+								segmentIds,
+								rerankerIdentity,
+								documentCatalogId: ctx.documentCatalog ? "present" : null,
+								runConfigFingerprint,
+							});
+							result = stageResult;
+						} else {
+							// phase === "score"
+							if (!cachePath) throw new Error("phase=score requires cache path");
+							const searchCache = loadSearchPhaseCache(
+								cachePath,
+								collectionId,
+								runConfigFingerprint,
+							);
+							if (!searchCache) {
+								throw new Error(
+									`phase=score: no search-phase cache at ${cachePath.cacheBase} for sweep=${cachePath.sweepId} variant=${cachePath.variantId} corpus=${collectionId} fingerprint=${runConfigFingerprint.slice(0, 12)}`,
+								);
+							}
+							result = await runScorePhase(ctx, searchCache, {
+								reranker,
+								timer,
+								costs,
+								groundingEnabled,
+								graderConfig,
+								synthesizerConfig,
+								collectionId,
+							});
+						}
 					}
 					break;
 				}

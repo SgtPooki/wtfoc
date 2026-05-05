@@ -167,7 +167,19 @@ export interface SearchPhaseCacheV1 {
 	reranker: { type: string; model?: string; url?: string } | null;
 	diversityEnforce: boolean;
 	autoRoute: boolean;
-	queries: CachedQueryEntry[];
+	/**
+	 * Granular per-query rows for forensics. Optional in v1 — populated
+	 * when the evaluator surfaces its internal QueryScore[] (a follow-up).
+	 * The score phase prefers `stageResult` when present.
+	 */
+	queries?: CachedQueryEntry[];
+	/**
+	 * The deterministic-scoring `EvalStageResult` produced by the search
+	 * phase. The score phase replays this verbatim and layers grounding /
+	 * additional metrics on top, so the cached search can drive the final
+	 * report under a different GPU mode without re-running retrieval.
+	 */
+	stageResult: unknown;
 	searchTiming: Record<string, unknown>;
 	searchCost: Record<string, unknown>;
 }
